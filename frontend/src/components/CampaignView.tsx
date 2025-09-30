@@ -562,10 +562,19 @@ const CampaignView: React.FC = () => {
                   height: '200px',
                   border: '2px dashed rgba(212, 193, 156, 0.3)',
                   borderRadius: '0.5rem',
-                  background: 'rgba(255, 255, 255, 0.02)'
-                }}>
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  transition: 'background 0.2s',
+                  cursor: draggedItem?.fromSlot ? 'pointer' : 'default'
+                }}
+                onDragOver={handleInventoryDragOver}
+                onDragLeave={handleInventoryDragLeave}
+                onDrop={handleInventoryDrop}
+              >
                   <p className="text-muted" style={{ fontSize: '0.9rem', textAlign: 'center' }}>
-                    No equippable items available
+                    No equippable items available<br/>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      {draggedItem?.fromSlot ? 'Drop here to unequip' : ''}
+                    </span>
                   </p>
                 </div>
               )}
