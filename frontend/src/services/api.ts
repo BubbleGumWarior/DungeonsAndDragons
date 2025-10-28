@@ -280,6 +280,21 @@ export const characterAPI = {
   unequipItem: async (characterId: number, slot: string): Promise<{ message: string; character: Character; unequipped_item: string; slot: string }> => {
     const response = await api.post(`/characters/${characterId}/unequip`, { slot });
     return response.data;
+  },
+
+  addItemToInventory: async (characterId: number, itemName: string): Promise<{ message: string; character: Character; added_item: string }> => {
+    const response = await api.post(`/characters/${characterId}/add-item`, { itemName });
+    return response.data;
+  },
+
+  removeItemFromInventory: async (characterId: number, itemName: string): Promise<{ message: string; character: Character; removed_item: string; unequipped_from?: string }> => {
+    const response = await api.post(`/characters/${characterId}/remove-item`, { itemName });
+    return response.data;
+  },
+
+  createCustomItem: async (characterId: number, itemData: any): Promise<{ message: string; character: Character; custom_item: InventoryItem }> => {
+    const response = await api.post(`/characters/${characterId}/create-custom-item`, itemData);
+    return response.data;
   }
 };
 

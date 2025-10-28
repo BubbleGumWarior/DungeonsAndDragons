@@ -9,15 +9,7 @@ const { authenticateToken } = require('../middleware/auth');
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const character = await Charact    // Validate item type for slot
-    const slotItemCompatibility = {
-      head: ['Armor'],
-      chest: ['Armor'],
-      legs: ['Armor'], 
-      feet: ['Armor'],
-      main_hand: ['Weapon', 'Tool'], // Only weapons and tools in main hand
-      off_hand: ['Weapon', 'Tool'] // Only weapons and tools in off hand (shields are weapons)
-    };Id(id);
+    const character = await Character.findById(id);
     
     if (!character) {
       return res.status(404).json({ error: 'Character not found' });
@@ -460,8 +452,15 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       legs: ['Armor'], 
       feet: ['Armor'],
       main_hand: ['Weapon', 'Tool'], // Only weapons and tools in main hand
-      off_hand: ['Weapon', 'Tool'] // Only weapons and tools in off hand (shields are weapons)
+      off_hand: ['Weapon', 'Tool', 'Armor'] // Weapons, tools, and shields (armor subcategory)
     };
+
+    // Special validation for off-hand armor - only shields allowed
+    if (slot === 'off_hand' && item.category === 'Armor' && (!item.subcategory || !item.subcategory.toLowerCase().includes('shield'))) {
+      return res.status(400).json({ 
+        error: `Only shields can be equipped in the off-hand slot for armor items.` 
+      });
+    }
 
     if (!slotItemCompatibility[slot].includes(item.category)) {
       return res.status(400).json({ 
@@ -469,15 +468,72 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       });
     }
 
-    // Additional validation for specific items
-    if (slot === 'head' && item.subcategory && !item.subcategory.toLowerCase().includes('helmet') && !item.subcategory.toLowerCase().includes('hat') && !item.subcategory.toLowerCase().includes('circlet')) {
-      return res.status(400).json({ error: 'Only head armor can be equipped in head slot' });
+    // Additional validation for armor items to ensure proper slot assignment
+    if (item.category === 'Armor') {
+      const subcategory = item.subcategory ? item.subcategory.toLowerCase() : '';
+      
+      // Shield validation
+      if (subcategory.includes('shield')) {
+        if (slot !== 'off_hand') {
+          return res.status(400).json({ error: 'Shields can only be equipped in the off-hand slot' });
+        }
+      }
+      // Boot validation - boots should only go to feet
+      else if (subcategory.includes('boot') || item.item_name.toLowerCase().includes('boot')) {
+        if (slot !== 'feet') {
+          return res.status(400).json({ error: 'Boots can only be equipped in the feet slot' });
+        }
+      }
+      // Helmet/head armor validation
+      else if (subcategory.includes('helmet') || subcategory.includes('hat') || subcategory.includes('circlet') || 
+               subcategory === 'Helmet' ||
+               item.item_name.toLowerCase().includes('helmet') || item.item_name.toLowerCase().includes('hat') || 
+               item.item_name.toLowerCase().includes('circlet') || item.item_name.toLowerCase().includes('crown')) {
+        if (slot !== 'head') {
+          return res.status(400).json({ error: 'Head armor can only be equipped in the head slot' });
+        }
+      }
+      // General armor (chest pieces) validation
+      else if (subcategory.includes('light armor') || subcategory.includes('medium armor') || subcategory.includes('heavy armor') ||
+               item.item_name.toLowerCase().includes('mail') || item.item_name.toLowerCase().includes('armor') ||
+               item.item_name.toLowerCase().includes('breastplate') || item.item_name.toLowerCase().includes('plate')) {
+        if (slot !== 'chest') {
+          return res.status(400).json({ error: 'Body armor can only be equipped in the chest slot' });
+        }
+      }
     }
-    if ((slot === 'chest' || slot === 'legs') && item.subcategory && item.subcategory.toLowerCase().includes('shield')) {
-      return res.status(400).json({ error: 'Shields cannot be equipped in chest or legs slots' });
+
+    // Slot-specific validation to ensure only appropriate items can go in each slot
+    if (slot === 'head' && item.category === 'Armor') {
+      const subcategory = item.subcategory ? item.subcategory.toLowerCase() : '';
+      const itemName = item.item_name.toLowerCase();
+      const isHelmet = subcategory.includes('helmet') || subcategory === 'helmet' || 
+                      subcategory.includes('hat') || subcategory.includes('circlet') ||
+                      itemName.includes('helmet') || itemName.includes('hat') || 
+                      itemName.includes('circlet') || itemName.includes('crown');
+      
+      if (!isHelmet) {
+        return res.status(400).json({ error: 'Only head armor (helmets, hats, circlets) can be equipped in head slot' });
+      }
     }
-    if (slot === 'feet' && item.subcategory && !item.subcategory.toLowerCase().includes('boot') && !item.subcategory.toLowerCase().includes('shoe')) {
-      return res.status(400).json({ error: 'Only foot armor can be equipped in feet slot' });
+    
+    if (slot === 'feet' && item.category === 'Armor') {
+      const subcategory = item.subcategory ? item.subcategory.toLowerCase() : '';
+      const itemName = item.item_name.toLowerCase();
+      if (!subcategory.includes('boot') && !subcategory.includes('shoe') && 
+          !itemName.includes('boot') && !itemName.includes('shoe')) {
+        return res.status(400).json({ error: 'Only foot armor (boots, shoes) can be equipped in feet slot' });
+      }
+    }
+    
+    if (slot === 'chest' && item.category === 'Armor') {
+      const subcategory = item.subcategory ? item.subcategory.toLowerCase() : '';
+      const itemName = item.item_name.toLowerCase();
+      if (subcategory.includes('shield') || subcategory.includes('boot') || subcategory.includes('helmet') ||
+          itemName.includes('shield') || itemName.includes('boot') || itemName.includes('helmet') ||
+          itemName.includes('hat') || itemName.includes('shoe') || itemName.includes('circlet')) {
+        return res.status(400).json({ error: 'Only body armor can be equipped in chest slot' });
+      }
     }
 
     // Check if character has this item in their equipment
@@ -607,6 +663,226 @@ router.post('/:id/unequip', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error unequipping item:', error);
     res.status(500).json({ error: 'Failed to unequip item' });
+  }
+});
+
+// Add item to character inventory (DM only)
+router.post('/:id/add-item', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { itemName } = req.body;
+    
+    if (!itemName) {
+      return res.status(400).json({ error: 'Item name is required' });
+    }
+    
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Check if user is DM for this campaign
+    const campaign = await Campaign.findById(character.campaign_id);
+    if (req.user.role !== 'Dungeon Master' || campaign.dungeon_master_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the dungeon master can add items to character inventories' });
+    }
+
+    // Add item to character equipment
+    const newEquipment = [...character.equipment, itemName];
+    
+    const updatedCharacter = await Character.update(id, {
+      equipment: newEquipment
+    });
+
+    // Emit real-time update via WebSocket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${character.campaign_id}`).emit('inventoryChanged', {
+        characterId: character.id,
+        action: 'add',
+        itemName,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      message: 'Item added successfully',
+      character: updatedCharacter,
+      added_item: itemName
+    });
+  } catch (error) {
+    console.error('Error adding item to inventory:', error);
+    res.status(500).json({ error: 'Failed to add item to inventory' });
+  }
+});
+
+// Remove item from character inventory (DM only)
+router.post('/:id/remove-item', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { itemName } = req.body;
+    
+    if (!itemName) {
+      return res.status(400).json({ error: 'Item name is required' });
+    }
+    
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Check if user is DM for this campaign
+    const campaign = await Campaign.findById(character.campaign_id);
+    if (req.user.role !== 'Dungeon Master' || campaign.dungeon_master_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the dungeon master can remove items from character inventories' });
+    }
+
+    // Check if character has this item
+    if (!character.equipment.includes(itemName)) {
+      return res.status(400).json({ error: 'Character does not have this item in their inventory' });
+    }
+
+    // Remove item from character equipment (only first occurrence)
+    const newEquipment = [...character.equipment];
+    const itemIndex = newEquipment.indexOf(itemName);
+    if (itemIndex > -1) {
+      newEquipment.splice(itemIndex, 1);
+    }
+
+    // Also unequip the item if it's equipped
+    const equippedItems = character.equipped_items || {};
+    const newEquippedItems = { ...equippedItems };
+    let unequippedSlot = null;
+    
+    for (const [slot, equippedItem] of Object.entries(equippedItems)) {
+      if (equippedItem === itemName) {
+        newEquippedItems[slot] = null;
+        unequippedSlot = slot;
+        break;
+      }
+    }
+    
+    const updatedCharacter = await Character.update(id, {
+      equipment: newEquipment,
+      equipped_items: newEquippedItems
+    });
+
+    // Emit real-time update via WebSocket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${character.campaign_id}`).emit('inventoryChanged', {
+        characterId: character.id,
+        action: 'remove',
+        itemName,
+        unequippedFrom: unequippedSlot,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      message: 'Item removed successfully',
+      character: updatedCharacter,
+      removed_item: itemName,
+      unequipped_from: unequippedSlot
+    });
+  } catch (error) {
+    console.error('Error removing item from inventory:', error);
+    res.status(500).json({ error: 'Failed to remove item from inventory' });
+  }
+});
+
+// Create custom item and add to character inventory (DM only)
+router.post('/:id/create-custom-item', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      itemName, 
+      category, 
+      subcategory, 
+      description, 
+      damage_dice,
+      damage_type,
+      range_normal,
+      range_long,
+      armor_class,
+      weight,
+      cost_cp,
+      strength_requirement,
+      stealth_disadvantage,
+      properties,
+      rarity,
+      attunement_required
+    } = req.body;
+    
+    if (!itemName || !category || !description) {
+      return res.status(400).json({ error: 'Item name, category, and description are required' });
+    }
+    
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Check if user is DM for this campaign
+    const campaign = await Campaign.findById(character.campaign_id);
+    if (req.user.role !== 'Dungeon Master' || campaign.dungeon_master_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the dungeon master can create custom items' });
+    }
+
+    // Create the custom item in the inventory database
+    const customItem = {
+      item_name: itemName,
+      category: category || 'General',
+      subcategory: subcategory || '',
+      description: description,
+      damage_dice: damage_dice || null,
+      damage_type: damage_type || null,
+      range_normal: range_normal || null,
+      range_long: range_long || null,
+      armor_class: armor_class || null,
+      weight: weight || null,
+      cost_cp: cost_cp || null,
+      strength_requirement: strength_requirement || null,
+      stealth_disadvantage: stealth_disadvantage || false,
+      properties: properties || [],
+      rarity: rarity || 'Common',
+      attunement_required: attunement_required || false
+    };
+
+    try {
+      await Inventory.createCustomItem(customItem);
+    } catch (error) {
+      // If item already exists, that's okay - we'll use the existing one
+      console.log('Custom item may already exist:', error.message);
+    }
+
+    // Add item to character equipment
+    const newEquipment = [...character.equipment, itemName];
+    
+    const updatedCharacter = await Character.update(id, {
+      equipment: newEquipment
+    });
+
+    // Emit real-time update via WebSocket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${character.campaign_id}`).emit('inventoryChanged', {
+        characterId: character.id,
+        action: 'add',
+        itemName,
+        isCustom: true,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      message: 'Custom item created and added successfully',
+      character: updatedCharacter,
+      custom_item: customItem
+    });
+  } catch (error) {
+    console.error('Error creating custom item:', error);
+    res.status(500).json({ error: 'Failed to create custom item' });
   }
 });
 

@@ -55,6 +55,49 @@
   --transition-slow: 0.5s ease;
 }
 
+/* Custom Scrollbar Styling - Black and Gold Theme */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--primary-black);
+  border-radius: 6px;
+  border: 1px solid rgba(212, 193, 156, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--primary-gold), var(--secondary-gold));
+  border-radius: 6px;
+  border: 1px solid var(--primary-black);
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--secondary-gold), var(--accent-gold));
+  box-shadow: 
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    0 0 8px rgba(212, 193, 156, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(135deg, var(--dark-gold), var(--secondary-gold));
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--primary-black);
+}
+
+/* Firefox scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary-gold) var(--primary-black);
+}
+
 /* Global Styles */
 * {
   box-sizing: border-box;
@@ -1328,5 +1371,17 @@ label:has(input[type="checkbox"]:disabled) {
   50% {
     transform: scale(1.05);
     opacity: 0.9;
+  }
+}
+
+/* Toast notification animation */
+@keyframes slideInRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
   }
 }

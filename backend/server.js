@@ -30,15 +30,51 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// CORS configuration
+// CORS configuration - Simplified and more robust for development
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000'],
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001'],
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-access-token']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-access-token', 'Accept', 'Origin', 'X-Requested-With'],
+  preflightContinue: false
 };
+
+// Apply CORS before any routes
 app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
+// Fallback CORS middleware to ensure headers are always set
+app.use((req, res, next) => {
+  // Only set headers if they haven't been set by the cors middleware
+  if (!res.get('Access-Control-Allow-Origin')) {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || 'http://localhost:3000');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-access-token, Accept, Origin, X-Requested-With');
+  }
+  next();
+});
+
+// Request logging middleware for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`, {
+    origin: req.headers.origin,
+    contentType: req.headers['content-type'],
+    userAgent: req.headers['user-agent']
+  });
+  
+  // Log when responses are sent
+  const originalSend = res.send;
+  res.send = function(data) {
+    console.log(`${new Date().toISOString()} - Response ${res.statusCode} for ${req.method} ${req.path}`);
+    originalSend.call(this, data);
+  };
+  
+  next();
+});
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -51,10 +87,14 @@ app.use('/api/characters', characterRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || 'http://localhost:3000');
+  res.header('Access-Control-Allow-Credentials', 'true');
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
   });
 });
 
@@ -66,7 +106,32 @@ app.use('*', (req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Global error handler:', err);
+  
+  // Ensure CORS headers are always present in error responses
+  res.header('Access-Control-Allow-Origin', req.headers.origin || 'http://localhost:3000');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-access-token, Accept, Origin, X-Requested-With');
+  
   res.status(500).json({ error: 'Internal server error' });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit in development to avoid constant server restarts
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  }
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit in development to avoid constant server restarts
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  }
 });
 
 // Function to start the server
@@ -103,43 +168,85 @@ const startServer = async () => {
       cors: {
         origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000'],
         methods: ['GET', 'POST'],
-        credentials: true
+        credentials: true,
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-access-token', 'Accept', 'Origin', 'X-Requested-With']
       }
     });
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {
-      console.log(`� User connected: ${socket.id}`);
+      console.log(`👤 User connected: ${socket.id}`);
+      
+      // Add error handler for this socket
+      socket.on('error', (error) => {
+        console.error(`Socket error for ${socket.id}:`, error);
+      });
       
       // Join campaign room for real-time updates
       socket.on('joinCampaign', (campaignId) => {
-        socket.join(`campaign_${campaignId}`);
-        console.log(`👥 User ${socket.id} joined campaign ${campaignId}`);
+        try {
+          socket.join(`campaign_${campaignId}`);
+          console.log(`👥 User ${socket.id} joined campaign ${campaignId}`);
+        } catch (error) {
+          console.error(`Error joining campaign ${campaignId}:`, error);
+        }
       });
       
       // Leave campaign room
       socket.on('leaveCampaign', (campaignId) => {
-        socket.leave(`campaign_${campaignId}`);
-        console.log(`👋 User ${socket.id} left campaign ${campaignId}`);
+        try {
+          socket.leave(`campaign_${campaignId}`);
+          console.log(`👋 User ${socket.id} left campaign ${campaignId}`);
+        } catch (error) {
+          console.error(`Error leaving campaign ${campaignId}:`, error);
+        }
       });
       
       // Handle equipment changes
       socket.on('equipmentUpdate', (data) => {
-        const { campaignId, characterId, action, slot, itemName } = data;
-        // Broadcast to all users in the campaign except sender
-        socket.to(`campaign_${campaignId}`).emit('equipmentChanged', {
-          characterId,
-          action, // 'equip' or 'unequip'
-          slot,
-          itemName,
-          timestamp: new Date().toISOString()
-        });
-        console.log(`⚔️ Equipment update: ${action} ${itemName} in ${slot} for character ${characterId}`);
+        try {
+          const { campaignId, characterId, action, slot, itemName } = data;
+          // Broadcast to all users in the campaign except sender
+          socket.to(`campaign_${campaignId}`).emit('equipmentChanged', {
+            characterId,
+            action, // 'equip' or 'unequip'
+            slot,
+            itemName,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`⚔️ Equipment update: ${action} ${itemName} in ${slot} for character ${characterId}`);
+        } catch (error) {
+          console.error('Error handling equipment update:', error);
+        }
+      });
+
+      // Handle inventory changes
+      socket.on('inventoryUpdate', (data) => {
+        try {
+          const { campaignId, characterId, action, itemName, unequippedFrom, isCustom } = data;
+          // Broadcast to all users in the campaign except sender
+          socket.to(`campaign_${campaignId}`).emit('inventoryChanged', {
+            characterId,
+            action, // 'add' or 'remove'
+            itemName,
+            unequippedFrom,
+            isCustom,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🎒 Inventory update: ${action} ${itemName} for character ${characterId}${isCustom ? ' (custom item)' : ''}`);
+        } catch (error) {
+          console.error('Error handling inventory update:', error);
+        }
       });
       
-      socket.on('disconnect', () => {
-        console.log(`� User disconnected: ${socket.id}`);
+      socket.on('disconnect', (reason) => {
+        console.log(`👋 User disconnected: ${socket.id}, reason: ${reason}`);
       });
+    });
+
+    // Add error handler for Socket.IO server
+    io.on('error', (error) => {
+      console.error('Socket.IO server error:', error);
     });
 
     // Make io available to routes
@@ -158,13 +265,16 @@ const startServer = async () => {
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
+  console.log('Server will restart automatically if using nodemon');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
+  console.log('Server will restart automatically if using nodemon');
   process.exit(0);
 });
 
 // Start the server
+console.log('🚀 Starting D&D Campaign Manager Server...');
 startServer();

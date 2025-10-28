@@ -167,6 +167,11 @@ class Inventory {
     }
   }
 
+  // Create custom item (alias for addItem with DM context)
+  static async createCustomItem(itemData) {
+    return this.addItem(itemData);
+  }
+
   // Update item
   static async updateItem(itemName, updateData) {
     const validFields = [
