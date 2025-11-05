@@ -2270,7 +2270,7 @@ const CampaignView: React.FC = () => {
                                 {isCurrentTurn && <span style={{ marginLeft: '0.5rem' }}>← Current Turn</span>}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
-                                Movement: {remainingMovement[combatant.characterId] ?? combatant.movement_speed}/{combatant.movement_speed} ft
+                                Movement: {(remainingMovement[combatant.characterId] ?? combatant.movement_speed).toFixed(2)}/{combatant.movement_speed} ft
                               </div>
                             </div>
                           </div>
@@ -2582,7 +2582,7 @@ const CampaignView: React.FC = () => {
                             transition: 'all 0.3s ease',
                             opacity: isDM ? 1 : (canMove && remaining > 0 ? 1 : 0.5)
                           }}
-                          title={`${displayName} - ${remaining.toFixed(1)}ft remaining${!combatStarted ? ' (Combat not started - DM only)' : !isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? ' (Monster)' : ''}`}
+                          title={`${displayName} - ${remaining.toFixed(2)}ft remaining${!combatStarted ? ' (Combat not started - DM only)' : !isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? ' (Monster)' : ''}`}
                         >
                           {!imageUrl && name.charAt(0).toUpperCase()}
                         </div>
@@ -2598,7 +2598,7 @@ const CampaignView: React.FC = () => {
                           color: remaining < 0 ? '#fff' : '#000',
                           whiteSpace: 'nowrap'
                         }}>
-                          {remaining < 0 ? `${remaining.toFixed(0)}ft` : `${remaining.toFixed(0)}ft`}
+                          {remaining < 0 ? `${remaining.toFixed(2)}ft` : `${remaining.toFixed(2)}ft`}
                         </div>
                       </div>
                     );
