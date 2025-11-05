@@ -9,10 +9,13 @@ const path = require('path');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
-const { initializeDB } = require('./models/database');
+const { initializeDB, pool } = require('./models/database');
 const authRoutes = require('./routes/auth');
 const campaignRoutes = require('./routes/campaigns');
 const characterRoutes = require('./routes/characters');
+const monsterRoutes = require('./routes/monsters');
+const Character = require('./models/Character');
+const Campaign = require('./models/Campaign');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -93,6 +96,7 @@ app.use('/uploads', (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/characters', characterRoutes);
+app.use('/api/monsters', monsterRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -182,9 +186,19 @@ const startServer = async () => {
       }
     });
 
-    // Server-side storage for battle movement tracking (prevents client-side exploits)
-    // Structure: { campaignId: { characterId: remainingMovement } }
-    const battleMovementState = {};
+  // Server-side storage for battle movement tracking (prevents client-side exploits)
+  // Structure: { campaignId: { characterId: remainingMovement } }
+  const battleMovementState = {};
+
+  // Server-side combat state per campaign
+  // Structure: {
+  //   campaignId: {
+  //     combatants: [{ characterId, playerId, name, initiative, movement_speed }],
+  //     initiativeOrder: [characterId,...] (sorted desc by initiative),
+  //     currentTurnIndex: -1
+  //   }
+  // }
+  const battleCombatState = {};
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {
@@ -282,15 +296,15 @@ const startServer = async () => {
       socket.on('characterBattleMove', (data) => {
         try {
           const { campaignId, characterId, characterName, x, y, remainingMovement } = data;
-          
+
           // Initialize campaign movement state if not exists
           if (!battleMovementState[campaignId]) {
             battleMovementState[campaignId] = {};
           }
-          
-          // Update server-side movement state
+
+          // Update server-side movement state (authoritative)
           battleMovementState[campaignId][characterId] = remainingMovement;
-          
+
           // Broadcast to all users in the campaign except sender
           socket.to(`campaign_${campaignId}`).emit('characterBattleMoved', {
             characterId,
@@ -300,28 +314,208 @@ const startServer = async () => {
             remainingMovement,
             timestamp: new Date().toISOString()
           });
-          console.log(`⚔️ Battle character moved: ${characterName} to (${x.toFixed(2)}, ${y.toFixed(2)}) - ${remainingMovement.toFixed(1)}ft remaining in campaign ${campaignId}`);
+          console.log(`⚔️ Battle character moved: ${characterName} to (${x.toFixed(2)}, ${y.toFixed(2)}) - ${remainingMovement}ft remaining in campaign ${campaignId}`);
         } catch (error) {
           console.error('Error handling battle character movement:', error);
         }
       });
 
-      // Handle next turn - DM resets all character movement
-      socket.on('nextTurn', (data) => {
+      // Invite a player/character to join combat (DM action)
+      socket.on('inviteToCombat', async (data) => {
         try {
-          const { campaignId, resetMovement } = data;
+          const { campaignId, characterId, targetPlayerId, isMonster } = data;
           
-          // Update server-side movement state with reset values
-          battleMovementState[campaignId] = resetMovement;
-          
-          // Broadcast to all users in the campaign including sender
-          io.to(`campaign_${campaignId}`).emit('turnReset', {
-            resetMovement,
+          // If it's a monster, add directly to combat (DM-controlled)
+          if (isMonster) {
+            // Ensure combat state exists for this campaign
+            if (!battleCombatState[campaignId]) {
+              battleCombatState[campaignId] = { combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
+            }
+
+            // Fetch monster details
+            const Monster = require('./models/Monster');
+            const monster = await Monster.findById(characterId);
+            if (!monster) {
+              console.warn(`Monster ${characterId} not found for combat`);
+              return;
+            }
+
+            // Roll initiative for monster (d20 + 0 for now; can be enhanced later)
+            const roll = Math.floor(Math.random() * 20) + 1;
+            const initiative = roll;
+
+            // Add to combatants list
+            battleCombatState[campaignId].combatants.push({
+              characterId: monster.id,
+              playerId: targetPlayerId, // DM's ID
+              name: monster.name,
+              initiative,
+              movement_speed: 30, // Default monster speed
+              isMonster: true
+            });
+
+            // Re-sort initiative order
+            battleCombatState[campaignId].initiativeOrder = battleCombatState[campaignId].combatants
+              .sort((a, b) => b.initiative - a.initiative)
+              .map(c => c.characterId);
+
+            // If this is the first combatant, set current turn
+            if (battleCombatState[campaignId].currentTurnIndex === -1) {
+              battleCombatState[campaignId].currentTurnIndex = 0;
+            }
+
+            // Broadcast updated combatants
+            io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
+              combatants: battleCombatState[campaignId].combatants,
+              initiativeOrder: battleCombatState[campaignId].initiativeOrder,
+              currentTurnIndex: battleCombatState[campaignId].currentTurnIndex
+            });
+
+            console.log(`🐉 Monster ${monster.name} added to combat in campaign ${campaignId} (initiative: ${initiative})`);
+          } else {
+            // Regular player character invite
+            io.to(`campaign_${campaignId}`).emit('combatInvite', {
+              campaignId,
+              characterId,
+              targetPlayerId,
+              timestamp: new Date().toISOString()
+            });
+            console.log(`📣 Combat invite sent for character ${characterId} in campaign ${campaignId} to player ${targetPlayerId}`);
+          }
+        } catch (error) {
+          console.error('Error sending combat invite:', error);
+        }
+      });
+
+      // Player accepts an invite to combat
+      socket.on('acceptCombatInvite', async (data) => {
+        try {
+          const { campaignId, characterId, playerId } = data;
+
+          // Ensure combat state exists for this campaign
+          if (!battleCombatState[campaignId]) {
+            battleCombatState[campaignId] = { combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
+          }
+
+          // Fetch character to get abilities and movement_speed
+          const character = await Character.findById(characterId);
+          if (!character) {
+            console.warn(`Character ${characterId} not found for combat`);
+            return;
+          }
+
+          // Roll initiative: d20 + dex modifier
+          const roll = Math.floor(Math.random() * 20) + 1;
+          const dex = character.abilities?.dex ?? 10;
+          const dexMod = Character.getAbilityModifier(dex);
+          const initiative = roll + dexMod;
+
+          // Add to combatants list
+          battleCombatState[campaignId].combatants.push({
+            characterId: character.id,
+            playerId: playerId,
+            name: character.name,
+            initiative,
+            movement_speed: character.movement_speed ?? 30
+          });
+
+          // Mark character as in combat in DB
+          try {
+            await pool.query('UPDATE characters SET combat_active = TRUE WHERE id = $1', [characterId]);
+          } catch (dbErr) {
+            console.error('Error setting combat_active in DB:', dbErr);
+          }
+
+          // Initialize movement state for this character
+          if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
+          battleMovementState[campaignId][characterId] = character.movement_speed ?? 30;
+
+          // Sort initiative order (highest first)
+          const sorted = [...battleCombatState[campaignId].combatants].sort((a, b) => b.initiative - a.initiative);
+          battleCombatState[campaignId].initiativeOrder = sorted.map(c => c.characterId);
+
+          // If no currentTurnIndex, set to 0
+          if (battleCombatState[campaignId].currentTurnIndex === -1) {
+            battleCombatState[campaignId].currentTurnIndex = 0;
+          }
+
+          // Broadcast updated combat state to campaign
+          io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
+            combatants: sorted,
+            initiativeOrder: battleCombatState[campaignId].initiativeOrder,
+            currentTurnIndex: battleCombatState[campaignId].currentTurnIndex,
             timestamp: new Date().toISOString()
           });
-          console.log(`🔄 Next turn in campaign ${campaignId} - all movement reset`);
+
+          console.log(`🛡️ ${character.name} added to combat in campaign ${campaignId} with initiative ${initiative}`);
         } catch (error) {
-          console.error('Error handling next turn:', error);
+          console.error('Error accepting combat invite:', error);
+        }
+      });
+
+      // Advance to next turn in initiative order (DM action)
+      socket.on('nextTurn', (data) => {
+        try {
+          const { campaignId } = data;
+          const state = battleCombatState[campaignId];
+          if (!state || !state.initiativeOrder || state.initiativeOrder.length === 0) {
+            console.warn('No combat state for campaign', campaignId);
+            return;
+          }
+
+          // Advance index
+          state.currentTurnIndex = (state.currentTurnIndex + 1) % state.initiativeOrder.length;
+          const currentCharacterId = state.initiativeOrder[state.currentTurnIndex];
+
+          // Reset only the current character's movement to their movement_speed
+          const combatant = state.combatants.find(c => c.characterId === currentCharacterId);
+          if (combatant) {
+            if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
+            battleMovementState[campaignId][currentCharacterId] = combatant.movement_speed;
+          }
+
+          // Broadcast turn advance with movement speed included
+          io.to(`campaign_${campaignId}`).emit('turnAdvanced', {
+            currentCharacterId,
+            initiativeOrder: state.initiativeOrder,
+            currentTurnIndex: state.currentTurnIndex,
+            resetMovementFor: currentCharacterId,
+            movementSpeed: combatant ? combatant.movement_speed : 30,
+            timestamp: new Date().toISOString()
+          });
+
+          console.log(`➡️ Advanced turn in campaign ${campaignId} to character ${currentCharacterId}`);
+        } catch (error) {
+          console.error('Error advancing turn:', error);
+        }
+      });
+
+      // Reset combat - clear all combatants and initiative (DM action)
+      socket.on('resetCombat', async (data) => {
+        try {
+          const { campaignId } = data;
+          
+          // Clear combat state for this campaign
+          if (battleCombatState[campaignId]) {
+            delete battleCombatState[campaignId];
+          }
+          
+          // Clear movement state for this campaign
+          if (battleMovementState[campaignId]) {
+            delete battleMovementState[campaignId];
+          }
+          
+          // Set all characters' combat_active to false in database
+          await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0 WHERE campaign_id = $1', [campaignId]);
+          
+          // Broadcast combat reset to all users in campaign
+          io.to(`campaign_${campaignId}`).emit('combatReset', {
+            timestamp: new Date().toISOString()
+          });
+          
+          console.log(`🔄 Combat reset for campaign ${campaignId}`);
+        } catch (error) {
+          console.error('Error resetting combat:', error);
         }
       });
       

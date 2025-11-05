@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, InventoryItem } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
 import FigureImage from '../assets/images/Board/Figure.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
@@ -32,7 +32,7 @@ const CampaignView: React.FC = () => {
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip'>('board');
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
-  const [campaignTab, setCampaignTab] = useState<'map' | 'battle' | 'news' | 'journal'>('map');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'battle' | 'news' | 'journal' | 'encyclopedia'>('map');
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
@@ -75,6 +75,26 @@ const CampaignView: React.FC = () => {
   const [draggedCharacter, setDraggedCharacter] = useState<number | null>(null);
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
   const [currentDragPosition, setCurrentDragPosition] = useState<{ x: number; y: number } | null>(null);
+
+  // Combat state
+  const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
+  const [showCombatInviteModal, setShowCombatInviteModal] = useState(false);
+  const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string } | null>(null);
+  const [combatants, setCombatants] = useState<Array<{ characterId: number; playerId: number; name: string; initiative: number; movement_speed: number }>>([]);
+  const [initiativeOrder, setInitiativeOrder] = useState<number[]>([]);
+  const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(-1);
+
+  // Monster/Encyclopedia state
+  const [monsters, setMonsters] = useState<any[]>([]);
+  const [showAddMonsterModal, setShowAddMonsterModal] = useState(false);
+  const [monsterFormData, setMonsterFormData] = useState<any>({
+    name: '',
+    description: '',
+    limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
+    limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 }
+  });
+  const [monsterImageFile, setMonsterImageFile] = useState<File | null>(null);
+  const [viewImageModal, setViewImageModal] = useState<{ imageUrl: string; name: string } | null>(null);
 
   // Helper functions for category-specific options
   const getSubcategoryOptions = (category: string) => {
@@ -249,6 +269,21 @@ const CampaignView: React.FC = () => {
       }
     }
   }, [currentCampaign, user]);
+
+  // Load monsters when campaign changes
+  useEffect(() => {
+    const loadMonsters = async () => {
+      if (currentCampaign) {
+        try {
+          const fetchedMonsters = await monsterAPI.getCampaignMonsters(currentCampaign.campaign.id);
+          setMonsters(fetchedMonsters);
+        } catch (error) {
+          console.error('Error loading monsters:', error);
+        }
+      }
+    };
+    loadMonsters();
+  }, [currentCampaign]);
 
   // Reset backstory page when character changes
   useEffect(() => {
@@ -681,6 +716,75 @@ const CampaignView: React.FC = () => {
         console.log('🔄 Turn reset received:', data);
         setRemainingMovement(data.resetMovement);
       });
+
+      // Listen for combat invites (player receives)
+      newSocket.on('combatInvite', (data: {
+        campaignId: number;
+        characterId: number;
+        targetPlayerId: number;
+        timestamp: string;
+      }) => {
+        console.log('📣 Combat invite received:', data);
+        // Check if this invite is for the current user
+        if (user && data.targetPlayerId === user.id) {
+          const character = currentCampaign.characters.find((c: any) => c.id === data.characterId);
+          if (character) {
+            setCombatInvite({ characterId: data.characterId, characterName: character.name });
+            setShowCombatInviteModal(true);
+          }
+        }
+      });
+
+      // Listen for combatants updated (new combatant added or initiative changed)
+      newSocket.on('combatantsUpdated', (data: {
+        combatants: Array<{ characterId: number; playerId: number; name: string; initiative: number; movement_speed: number }>;
+        initiativeOrder: number[];
+        currentTurnIndex: number;
+        timestamp: string;
+      }) => {
+        console.log('🛡️ Combatants updated:', data);
+        setCombatants(data.combatants);
+        setInitiativeOrder(data.initiativeOrder);
+        setCurrentTurnIndex(data.currentTurnIndex);
+        // Reload campaign to get updated combat_active flags
+        if (campaignName) {
+          loadCampaign(campaignName);
+        }
+      });
+
+      // Listen for turn advanced (initiative moves to next combatant)
+      newSocket.on('turnAdvanced', (data: {
+        currentCharacterId: number;
+        initiativeOrder: number[];
+        currentTurnIndex: number;
+        resetMovementFor: number;
+        movementSpeed: number;
+        timestamp: string;
+      }) => {
+        console.log('➡️ Turn advanced:', data);
+        setInitiativeOrder(data.initiativeOrder);
+        setCurrentTurnIndex(data.currentTurnIndex);
+        // Reset movement only for the current character (works for both characters and monsters)
+        setRemainingMovement(prev => ({
+          ...prev,
+          [data.resetMovementFor]: data.movementSpeed
+        }));
+      });
+
+      // Listen for combat reset (DM clears all combatants)
+      newSocket.on('combatReset', (data: {
+        timestamp: string;
+      }) => {
+        console.log('🔄 Combat reset received:', data);
+        // Clear all combat state
+        setCombatants([]);
+        setInitiativeOrder([]);
+        setCurrentTurnIndex(-1);
+        // Reload campaign to get updated combat_active flags
+        if (campaignName) {
+          loadCampaign(campaignName);
+        }
+      });
       
       setSocket(newSocket);
       
@@ -689,7 +793,7 @@ const CampaignView: React.FC = () => {
         newSocket.disconnect();
       };
     }
-  }, [currentCampaign, loadEquippedItems, loadEquipmentDetails, campaignName, loadCampaign, selectedCharacter]);
+  }, [currentCampaign, loadEquippedItems, loadEquipmentDetails, campaignName, loadCampaign, selectedCharacter, user]);
 
   // Load equipped items when character changes
   useEffect(() => {
@@ -1803,7 +1907,7 @@ const CampaignView: React.FC = () => {
             {/* Campaign Tab Navigation */}
             <div className="glass-panel" style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                {(['map', 'battle', 'news', 'journal'] as const).map((tab) => (
+                {(['map', 'battle', 'encyclopedia', 'news', 'journal'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setCampaignTab(tab)}
@@ -1840,6 +1944,7 @@ const CampaignView: React.FC = () => {
                   >
                     {tab === 'map' ? '🗺️ Campaign Map' : 
                      tab === 'battle' ? '⚔️ Battle Area' :
+                     tab === 'encyclopedia' ? '📚 Encyclopedia' :
                      tab === 'news' ? '📰 Campaign News' : 
                      '📖 Campaign Journal'}
                   </button>
@@ -2001,40 +2106,150 @@ const CampaignView: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                   <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Battle Area</h5>
                   {user?.role === 'Dungeon Master' && (
-                    <button
-                      onClick={() => {
-                        if (socket && currentCampaign) {
-                          // Reset all characters' remaining movement
-                          const resetMovement: Record<number, number> = {};
-                          currentCampaign.characters.forEach(character => {
-                            resetMovement[character.id] = character.movement_speed ?? 30;
-                          });
-                          setRemainingMovement(resetMovement);
-                          
-                          // Broadcast to all users
-                          socket.emit('nextTurn', {
-                            campaignId: currentCampaign.campaign.id,
-                            resetMovement
-                          });
-                          
-                          console.log('🔄 Next turn - all movement reset');
-                        }
-                      }}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        background: 'linear-gradient(135deg, #c9a961, #b8935a)',
-                        border: '2px solid var(--text-gold)',
-                        borderRadius: '0.5rem',
-                        color: '#000',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        fontSize: '0.9rem'
-                      }}
-                    >
-                      🔄 Next Turn
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <button
+                        onClick={() => setShowAddToCombatModal(true)}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: 'linear-gradient(135deg, #61c961, #5ab85a)',
+                          border: '2px solid #4a4',
+                          borderRadius: '0.5rem',
+                          color: '#000',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        ➕ Add to Combat
+                      </button>
+                      {combatants.length > 0 && (
+                        <>
+                          <button
+                            onClick={() => {
+                              if (socket && currentCampaign) {
+                                // Use the new initiative system
+                                socket.emit('nextTurn', {
+                                  campaignId: currentCampaign.campaign.id
+                                });
+                                console.log('🔄 Next turn emitted');
+                              }
+                            }}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'linear-gradient(135deg, #c9a961, #b8935a)',
+                              border: '2px solid var(--text-gold)',
+                              borderRadius: '0.5rem',
+                              color: '#000',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            🔄 Next Turn
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (socket && currentCampaign && window.confirm('Reset combat? This will clear all combatants and initiative order.')) {
+                                socket.emit('resetCombat', {
+                                  campaignId: currentCampaign.campaign.id
+                                });
+                                console.log('🔄 Combat reset emitted');
+                              }
+                            }}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'linear-gradient(135deg, #d9534f, #c9302c)',
+                              border: '2px solid #a94442',
+                              borderRadius: '0.5rem',
+                              color: '#fff',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            🔄 Reset Combat
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
+
+                {/* Initiative Order Display */}
+                {combatants.length > 0 && (
+                  <div style={{
+                    marginBottom: '1.5rem',
+                    padding: '1rem',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.75rem'
+                  }}>
+                    <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🎲</span>
+                      <span>Initiative Order</span>
+                      {currentTurnIndex >= 0 && initiativeOrder.length > 0 && (
+                        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#999' }}>
+                          Turn {currentTurnIndex + 1} of {initiativeOrder.length}
+                        </span>
+                      )}
+                    </h6>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {combatants.map((combatant, index) => {
+                        const isCurrentTurn = currentTurnIndex >= 0 && initiativeOrder[currentTurnIndex] === combatant.characterId;
+                        return (
+                          <div
+                            key={combatant.characterId}
+                            style={{
+                              padding: '0.75rem',
+                              background: isCurrentTurn 
+                                ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.2), rgba(90, 184, 90, 0.2))'
+                                : 'rgba(212, 193, 156, 0.05)',
+                              border: isCurrentTurn 
+                                ? '2px solid #4a4'
+                                : '1px solid rgba(212, 193, 156, 0.2)',
+                              borderRadius: '0.5rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '1rem',
+                              transition: 'all 0.3s ease'
+                            }}
+                          >
+                            <div style={{
+                              minWidth: '2rem',
+                              height: '2rem',
+                              borderRadius: '50%',
+                              background: isCurrentTurn 
+                                ? 'linear-gradient(135deg, #61c961, #5ab85a)'
+                                : 'rgba(212, 193, 156, 0.2)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: isCurrentTurn ? '#000' : 'var(--text-gold)',
+                              fontWeight: 'bold',
+                              fontSize: '1rem'
+                            }}>
+                              {combatant.initiative}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{
+                                color: isCurrentTurn ? '#4a4' : 'var(--text-gold)',
+                                fontWeight: isCurrentTurn ? 'bold' : 'normal',
+                                fontSize: isCurrentTurn ? '1.05rem' : '0.95rem'
+                              }}>
+                                {combatant.name}
+                                {isCurrentTurn && <span style={{ marginLeft: '0.5rem' }}>← Current Turn</span>}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
+                                Movement: {remainingMovement[combatant.characterId] ?? combatant.movement_speed}/{combatant.movement_speed} ft
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{
                   position: 'relative',
                   width: '100%',
@@ -2239,21 +2454,44 @@ const CampaignView: React.FC = () => {
                     </>
                   )}
                   
-                  {/* Character icons on battle map */}
-                  {currentCampaign?.characters.map(character => {
-                    const position = battlePositions[character.id];
-                    if (!position) return null;
+                  {/* Combat tokens on battle map (Characters and Monsters) */}
+                  {combatants.map(combatant => {
+                    const position = battlePositions[combatant.characterId];
+                    if (!position) {
+                      // Set initial random position for new combatants
+                      const randomX = 20 + Math.random() * 60;
+                      const randomY = 20 + Math.random() * 60;
+                      setBattlePositions(prev => ({ ...prev, [combatant.characterId]: { x: randomX, y: randomY } }));
+                      return null;
+                    }
                     
-                    const canMove = user?.role === 'Dungeon Master' || character.player_id === user?.id;
-                    const remaining = remainingMovement[character.id] ?? character.movement_speed ?? 30;
                     const isDM = user?.role === 'Dungeon Master';
-                    const imageUrl = character.image_url 
-                      ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${character.image_url}`
+                    const remaining = remainingMovement[combatant.characterId] ?? combatant.movement_speed ?? 30;
+                    
+                    // Check if it's this token's turn (in combat)
+                    const isTheirTurn = currentTurnIndex >= 0 && initiativeOrder.length > 0
+                      ? initiativeOrder[currentTurnIndex] === combatant.characterId
+                      : true;
+                    
+                    // Find if this is a character or monster
+                    const character = currentCampaign?.characters.find((c: any) => c.id === combatant.characterId);
+                    const monster = monsters.find((m: Monster) => m.id === combatant.characterId);
+                    const isMonster = !character && monster;
+                    
+                    // Can move if: (DM always can) OR (is owner AND it's their turn)
+                    const isOwner = character ? character.player_id === user?.id : false;
+                    const canMove = isDM || (isOwner && isTheirTurn);
+                    
+                    const imageUrl = (character?.image_url || monster?.image_url)
+                      ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${character?.image_url || monster?.image_url}`
                       : null;
+                    
+                    const name = combatant.name;
+                    const displayName = character ? `${name} (${character.player_name})` : name;
                     
                     return (
                       <div
-                        key={`battle-${character.id}`}
+                        key={`battle-${combatant.characterId}`}
                         style={{
                           position: 'absolute',
                           left: `${position.x}%`,
@@ -2262,15 +2500,15 @@ const CampaignView: React.FC = () => {
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          zIndex: draggedCharacter === character.id ? 1000 : 1
+                          zIndex: draggedCharacter === combatant.characterId ? 1000 : 1
                         }}
                       >
                         <div
                           draggable={canMove && (isDM || remaining > 0)}
                           onDragStart={() => {
                             if (canMove && (isDM || remaining > 0)) {
-                              console.log('🎯 Drag started for character:', character.name, 'at position:', position);
-                              setDraggedCharacter(character.id);
+                              console.log('🎯 Drag started for:', name, 'at position:', position);
+                              setDraggedCharacter(combatant.characterId);
                               setDragStartPosition({ x: position.x, y: position.y });
                               setCurrentDragPosition(null);
                             }
@@ -2285,11 +2523,15 @@ const CampaignView: React.FC = () => {
                             width: '50px',
                             height: '50px',
                             borderRadius: '50%',
-                            border: `3px solid ${remaining > 0 ? 'var(--text-gold)' : remaining === 0 ? '#888' : '#f44336'}`,
+                            border: isTheirTurn 
+                              ? `3px solid ${remaining > 0 ? '#4a4' : remaining === 0 ? '#888' : '#f44336'}`
+                              : `3px solid ${isMonster ? '#d9534f' : remaining > 0 ? 'var(--text-gold)' : remaining === 0 ? '#888' : '#f44336'}`,
                             backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
-                            backgroundColor: !imageUrl ? 'linear-gradient(135deg, rgba(139, 69, 19, 0.8), rgba(101, 67, 33, 0.8))' : undefined,
+                            backgroundColor: !imageUrl 
+                              ? (isMonster ? 'linear-gradient(135deg, rgba(217, 83, 79, 0.8), rgba(200, 60, 60, 0.8))' : 'linear-gradient(135deg, rgba(139, 69, 19, 0.8), rgba(101, 67, 33, 0.8))')
+                              : undefined,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -2298,22 +2540,20 @@ const CampaignView: React.FC = () => {
                             fontSize: '1.2rem',
                             cursor: canMove && (isDM || remaining > 0) ? 'move' : 'not-allowed',
                             userSelect: 'none',
-                            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
-                            transition: 'transform 0.1s',
-                            opacity: isDM ? 1 : (remaining > 0 ? 1 : 0.5)
+                            boxShadow: isTheirTurn ? '0 0 12px rgba(74, 164, 74, 0.6)' : '0 4px 8px rgba(0, 0, 0, 0.3)',
+                            transition: 'all 0.3s ease',
+                            opacity: isDM ? 1 : (canMove && remaining > 0 ? 1 : 0.5)
                           }}
-                          title={`${character.name} (${character.player_name}) - ${remaining.toFixed(1)}ft remaining${isDM && remaining <= 0 ? ' (DM Override)' : ''}`}
+                          title={`${displayName} - ${remaining.toFixed(1)}ft remaining${!isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? ' (Monster)' : ''}`}
                         >
-                          {!imageUrl && character.name.charAt(0).toUpperCase()}
+                          {!imageUrl && name.charAt(0).toUpperCase()}
                         </div>
                         <div style={{
                           marginTop: '4px',
                           padding: '2px 6px',
-                          background: remaining > 0 
-                            ? 'rgba(212, 193, 156, 0.9)' 
-                            : remaining === 0 
-                              ? 'rgba(136, 136, 136, 0.9)' 
-                              : 'rgba(244, 67, 54, 0.9)',
+                          background: isTheirTurn
+                            ? (remaining > 0 ? 'rgba(74, 164, 74, 0.9)' : remaining === 0 ? 'rgba(136, 136, 136, 0.9)' : 'rgba(244, 67, 54, 0.9)')
+                            : (remaining > 0 ? (isMonster ? 'rgba(217, 83, 79, 0.9)' : 'rgba(212, 193, 156, 0.9)') : remaining === 0 ? 'rgba(136, 136, 136, 0.9)' : 'rgba(244, 67, 54, 0.9)'),
                           borderRadius: '4px',
                           fontSize: '0.7rem',
                           fontWeight: 'bold',
@@ -2349,6 +2589,216 @@ const CampaignView: React.FC = () => {
                     This section will display campaign updates, quest announcements, world events, and important news.
                     The DM can post updates to keep all players informed of the evolving story.
                   </p>
+                </div>
+              </div>
+            )}
+
+            {campaignTab === 'encyclopedia' && (
+              <div className="glass-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📚 Monster Encyclopedia</h5>
+                  {user?.role === 'Dungeon Master' && (
+                    <button
+                      onClick={() => setShowAddMonsterModal(true)}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: 'linear-gradient(135deg, #61c961, #5ab85a)',
+                        border: '2px solid #4a4',
+                        borderRadius: '0.5rem',
+                        color: '#000',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      ➕ Add Monster
+                    </button>
+                  )}
+                </div>
+
+                {/* Monster Grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                  gap: '1.5rem',
+                  marginTop: '1.5rem'
+                }}>
+                  {monsters.length === 0 ? (
+                    <div style={{
+                      gridColumn: '1 / -1',
+                      minHeight: '300px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '2px dashed rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      padding: '3rem'
+                    }}>
+                      <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>📚</div>
+                      <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Monsters Yet</h4>
+                      <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                        {user?.role === 'Dungeon Master' 
+                          ? 'Click "Add Monster" to add creatures to your encyclopedia.'
+                          : 'The DM hasn\'t added any monsters to the encyclopedia yet.'}
+                      </p>
+                    </div>
+                  ) : (
+                    monsters.map((monster: Monster) => {
+                      const isDM = user?.role === 'Dungeon Master';
+                      const showDetails = isDM || monster.visible_to_players;
+                      const imageUrl = monster.image_url 
+                        ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${monster.image_url}`
+                        : null;
+
+                      return (
+                        <div
+                          key={monster.id}
+                          style={{
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            border: '2px solid rgba(212, 193, 156, 0.3)',
+                            borderRadius: '0.75rem',
+                            padding: '1rem',
+                            transition: 'all 0.3s ease'
+                          }}
+                        >
+                          {/* Monster Image */}
+                          {imageUrl && (
+                            <div 
+                              onClick={() => setViewImageModal({ imageUrl, name: monster.name })}
+                              style={{
+                                width: '100%',
+                                height: '200px',
+                                borderRadius: '0.5rem',
+                                backgroundImage: `url(${imageUrl})`,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center',
+                                marginBottom: '1rem',
+                                border: '1px solid rgba(212, 193, 156, 0.2)',
+                                cursor: 'pointer',
+                                transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'scale(1.02)';
+                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(212, 193, 156, 0.3)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'scale(1)';
+                                e.currentTarget.style.boxShadow = 'none';
+                              }}
+                            />
+                          )}
+
+                          {/* Monster Name */}
+                          <h6 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem', fontSize: '1.1rem' }}>
+                            {monster.name}
+                          </h6>
+
+                          {/* Show Details if visible or is DM */}
+                          {showDetails ? (
+                            <>
+                              {/* Description */}
+                              {monster.description && (
+                                <p style={{ color: '#ccc', fontSize: '0.85rem', marginBottom: '1rem', lineHeight: '1.4' }}>
+                                  {monster.description}
+                                </p>
+                              )}
+
+                              {/* Limb Health */}
+                              <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                  Health
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.75rem' }}>
+                                  <div style={{ color: '#999' }}>Head: <span style={{ color: '#fff' }}>{monster.limb_health?.head}</span></div>
+                                  <div style={{ color: '#999' }}>Chest: <span style={{ color: '#fff' }}>{monster.limb_health?.chest}</span></div>
+                                  <div style={{ color: '#999' }}>L.Arm: <span style={{ color: '#fff' }}>{monster.limb_health?.left_arm}</span></div>
+                                  <div style={{ color: '#999' }}>R.Arm: <span style={{ color: '#fff' }}>{monster.limb_health?.right_arm}</span></div>
+                                  <div style={{ color: '#999' }}>L.Leg: <span style={{ color: '#fff' }}>{monster.limb_health?.left_leg}</span></div>
+                                  <div style={{ color: '#999' }}>R.Leg: <span style={{ color: '#fff' }}>{monster.limb_health?.right_leg}</span></div>
+                                </div>
+                              </div>
+
+                              {/* Limb AC */}
+                              <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                  Armor Class
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.75rem' }}>
+                                  <div style={{ color: '#999' }}>Head: <span style={{ color: '#fff' }}>{monster.limb_ac?.head}</span></div>
+                                  <div style={{ color: '#999' }}>Chest: <span style={{ color: '#fff' }}>{monster.limb_ac?.chest}</span></div>
+                                  <div style={{ color: '#999' }}>L.Arm: <span style={{ color: '#fff' }}>{monster.limb_ac?.left_arm}</span></div>
+                                  <div style={{ color: '#999' }}>R.Arm: <span style={{ color: '#fff' }}>{monster.limb_ac?.right_arm}</span></div>
+                                  <div style={{ color: '#999' }}>L.Leg: <span style={{ color: '#fff' }}>{monster.limb_ac?.left_leg}</span></div>
+                                  <div style={{ color: '#999' }}>R.Leg: <span style={{ color: '#fff' }}>{monster.limb_ac?.right_leg}</span></div>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <p style={{ color: '#999', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                              Details hidden by DM
+                            </p>
+                          )}
+
+                          {/* DM Controls */}
+                          {isDM && (
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(212, 193, 156, 0.2)' }}>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const updated = await monsterAPI.toggleVisibility(monster.id);
+                                    setMonsters(prev => prev.map(m => m.id === monster.id ? updated : m));
+                                  } catch (error) {
+                                    console.error('Error toggling visibility:', error);
+                                  }
+                                }}
+                                style={{
+                                  flex: 1,
+                                  padding: '0.4rem',
+                                  background: monster.visible_to_players 
+                                    ? 'linear-gradient(135deg, #61c961, #5ab85a)'
+                                    : 'linear-gradient(135deg, #c9a961, #b8935a)',
+                                  border: 'none',
+                                  borderRadius: '0.25rem',
+                                  color: '#000',
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                {monster.visible_to_players ? '👁️ Visible' : '🔒 Hidden'}
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm(`Delete ${monster.name}?`)) {
+                                    try {
+                                      await monsterAPI.deleteMonster(monster.id);
+                                      setMonsters(prev => prev.filter(m => m.id !== monster.id));
+                                    } catch (error) {
+                                      console.error('Error deleting monster:', error);
+                                    }
+                                  }
+                                }}
+                                style={{
+                                  padding: '0.4rem 0.75rem',
+                                  background: 'linear-gradient(135deg, #d9534f, #c9302c)',
+                                  border: 'none',
+                                  borderRadius: '0.25rem',
+                                  color: '#fff',
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}
@@ -4467,6 +4917,613 @@ const CampaignView: React.FC = () => {
           onClose={() => setDeleteModal({ isOpen: false, characterId: null, characterName: '' })}
           isDangerous={true}
         />
+
+        {/* Add to Combat Modal (DM) */}
+        {showAddToCombatModal && currentCampaign && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(30, 30, 30, 0.95) 100%)',
+              border: '2px solid var(--text-gold)',
+              borderRadius: '1rem',
+              padding: '2rem',
+              maxWidth: '900px',
+              width: '90%',
+              maxHeight: '80vh',
+              overflow: 'auto'
+            }}>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⚔️ Add to Combat</h3>
+              
+              {/* Two-column layout */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                {/* Left Column - Player Characters */}
+                <div>
+                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                    👥 Player Characters
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {currentCampaign.characters.map((character: any) => (
+                      <button
+                        key={character.id}
+                        onClick={() => {
+                          if (socket && currentCampaign) {
+                            socket.emit('inviteToCombat', {
+                              campaignId: currentCampaign.campaign.id,
+                              characterId: character.id,
+                              targetPlayerId: character.player_id
+                            });
+                            console.log(`📣 Invited ${character.name} to combat`);
+                            setShowAddToCombatModal(false);
+                          }
+                        }}
+                        style={{
+                          padding: '1rem',
+                          background: 'rgba(97, 201, 97, 0.1)',
+                          border: '1px solid rgba(97, 201, 97, 0.3)',
+                          borderRadius: '0.5rem',
+                          color: '#4a4',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(97, 201, 97, 0.2)';
+                          e.currentTarget.style.borderColor = '#4a4';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(97, 201, 97, 0.1)';
+                          e.currentTarget.style.borderColor = 'rgba(97, 201, 97, 0.3)';
+                        }}
+                      >
+                        <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{character.name}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#999' }}>
+                          Level {character.level} {character.race} {character.class}
+                        </div>
+                      </button>
+                    ))}
+                    {currentCampaign.characters.length === 0 && (
+                      <div style={{ 
+                        padding: '2rem', 
+                        textAlign: 'center', 
+                        color: '#999',
+                        border: '1px dashed rgba(97, 201, 97, 0.3)',
+                        borderRadius: '0.5rem'
+                      }}>
+                        No player characters
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column - Monsters */}
+                <div>
+                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                    🐉 Monsters
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {monsters.map((monster: Monster) => {
+                      const imageUrl = monster.image_url 
+                        ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${monster.image_url}`
+                        : null;
+                      
+                      return (
+                        <button
+                          key={monster.id}
+                          onClick={() => {
+                            if (socket && currentCampaign) {
+                              // For monsters, we don't have a player_id, so we'll use the DM's ID
+                              socket.emit('inviteToCombat', {
+                                campaignId: currentCampaign.campaign.id,
+                                characterId: monster.id,
+                                targetPlayerId: user?.id, // DM controls monsters
+                                isMonster: true
+                              });
+                              console.log(`📣 Added ${monster.name} to combat`);
+                              setShowAddToCombatModal(false);
+                            }
+                          }}
+                          style={{
+                            padding: '1rem',
+                            background: 'rgba(217, 83, 79, 0.1)',
+                            border: '1px solid rgba(217, 83, 79, 0.3)',
+                            borderRadius: '0.5rem',
+                            color: '#d9534f',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            gap: '1rem',
+                            alignItems: 'center'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(217, 83, 79, 0.2)';
+                            e.currentTarget.style.borderColor = '#d9534f';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(217, 83, 79, 0.1)';
+                            e.currentTarget.style.borderColor = 'rgba(217, 83, 79, 0.3)';
+                          }}
+                        >
+                          {imageUrl && (
+                            <div style={{
+                              width: '50px',
+                              height: '50px',
+                              borderRadius: '0.25rem',
+                              backgroundImage: `url(${imageUrl})`,
+                              backgroundSize: 'cover',
+                              backgroundPosition: 'center',
+                              border: '1px solid rgba(217, 83, 79, 0.3)',
+                              flexShrink: 0
+                            }} />
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{monster.name}</div>
+                            {monster.limb_health && (
+                              <div style={{ fontSize: '0.85rem', color: '#999' }}>
+                                HP: {monster.limb_health.chest} | AC: {monster.limb_ac?.chest || 10}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {monsters.length === 0 && (
+                      <div style={{ 
+                        padding: '2rem', 
+                        textAlign: 'center', 
+                        color: '#999',
+                        border: '1px dashed rgba(217, 83, 79, 0.3)',
+                        borderRadius: '0.5rem'
+                      }}>
+                        No monsters in encyclopedia
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Cancel Button */}
+              <button
+                onClick={() => setShowAddToCombatModal(false)}
+                style={{
+                  marginTop: '1.5rem',
+                  padding: '0.75rem 1.5rem',
+                  background: 'rgba(100, 100, 100, 0.3)',
+                  border: '1px solid #666',
+                  borderRadius: '0.5rem',
+                  color: '#ccc',
+                  cursor: 'pointer',
+                  width: '100%'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Combat Invite Modal (Player) */}
+        {showCombatInviteModal && combatInvite && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(30, 30, 30, 0.95) 100%)',
+              border: '2px solid var(--text-gold)',
+              borderRadius: '1rem',
+              padding: '2rem',
+              maxWidth: '500px',
+              width: '90%'
+            }}>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⚔️ Combat Invitation</h3>
+              <p style={{ color: '#ccc', marginBottom: '1.5rem', fontSize: '1.1rem' }}>
+                You've been invited to join combat with <strong style={{ color: 'var(--text-gold)' }}>{combatInvite.characterName}</strong>!
+              </p>
+              <p style={{ color: '#999', marginBottom: '2rem', fontSize: '0.9rem' }}>
+                Accepting will roll your initiative and add you to the battle.
+              </p>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button
+                  onClick={() => {
+                    if (socket && currentCampaign && user) {
+                      socket.emit('acceptCombatInvite', {
+                        campaignId: currentCampaign.campaign.id,
+                        characterId: combatInvite.characterId,
+                        playerId: user.id
+                      });
+                      console.log(`🛡️ Accepted combat invite for ${combatInvite.characterName}`);
+                      setShowCombatInviteModal(false);
+                      setCombatInvite(null);
+                      // Navigate to campaign view and battle tab
+                      setMainView('campaign');
+                      setCampaignTab('battle');
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem 1.5rem',
+                    background: 'linear-gradient(135deg, #61c961, #5ab85a)',
+                    border: '2px solid #4a4',
+                    borderRadius: '0.5rem',
+                    color: '#000',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '1rem'
+                  }}
+                >
+                  ✓ Accept
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCombatInviteModal(false);
+                    setCombatInvite(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 100, 0.3)',
+                    border: '1px solid #666',
+                    borderRadius: '0.5rem',
+                    color: '#ccc',
+                    cursor: 'pointer',
+                    fontSize: '1rem'
+                  }}
+                >
+                  ✗ Decline
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Monster Modal (DM) */}
+        {showAddMonsterModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            overflow: 'auto'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(30, 30, 30, 0.95) 100%)',
+              border: '2px solid var(--text-gold)',
+              borderRadius: '1rem',
+              padding: '2rem',
+              maxWidth: '600px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflow: 'auto'
+            }}>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📚 Add Monster</h3>
+              
+              {/* Name */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
+                  Name *
+                </label>
+                <input
+                  type="text"
+                  value={monsterFormData.name}
+                  onChange={(e) => setMonsterFormData({ ...monsterFormData, name: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: '#fff',
+                    fontSize: '1rem'
+                  }}
+                  placeholder="Enter monster name"
+                />
+              </div>
+
+              {/* Description */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
+                  Description
+                </label>
+                <textarea
+                  value={monsterFormData.description}
+                  onChange={(e) => setMonsterFormData({ ...monsterFormData, description: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: '#fff',
+                    fontSize: '0.9rem',
+                    minHeight: '80px',
+                    resize: 'vertical'
+                  }}
+                  placeholder="Enter monster description"
+                />
+              </div>
+
+              {/* Limb Health */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ color: 'var(--text-gold)', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block', fontWeight: 'bold' }}>
+                  Limb Health
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  {Object.entries(monsterFormData.limb_health).map(([limb, value]) => (
+                    <div key={limb}>
+                      <label style={{ color: '#999', fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', textTransform: 'capitalize' }}>
+                        {limb.replace('_', ' ')}
+                      </label>
+                      <input
+                        type="number"
+                        value={value as number}
+                        onChange={(e) => setMonsterFormData({
+                          ...monsterFormData,
+                          limb_health: { ...monsterFormData.limb_health, [limb]: parseInt(e.target.value) || 0 }
+                        })}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          borderRadius: '0.25rem',
+                          color: '#fff',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Limb AC */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ color: 'var(--text-gold)', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block', fontWeight: 'bold' }}>
+                  Limb Armor Class
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  {Object.entries(monsterFormData.limb_ac).map(([limb, value]) => (
+                    <div key={limb}>
+                      <label style={{ color: '#999', fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', textTransform: 'capitalize' }}>
+                        {limb.replace('_', ' ')}
+                      </label>
+                      <input
+                        type="number"
+                        value={value as number}
+                        onChange={(e) => setMonsterFormData({
+                          ...monsterFormData,
+                          limb_ac: { ...monsterFormData.limb_ac, [limb]: parseInt(e.target.value) || 0 }
+                        })}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          borderRadius: '0.25rem',
+                          color: '#fff',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Image Upload */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
+                  Monster Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setMonsterImageFile(e.target.files[0]);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: '#ccc',
+                    fontSize: '0.9rem'
+                  }}
+                />
+              </div>
+
+              {/* Buttons */}
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button
+                  onClick={async () => {
+                    if (!monsterFormData.name.trim()) {
+                      alert('Please enter a monster name');
+                      return;
+                    }
+                    try {
+                      // Create the monster
+                      const newMonster = await monsterAPI.createMonster({
+                        campaign_id: currentCampaign?.campaign.id,
+                        ...monsterFormData
+                      });
+
+                      // Upload image if provided
+                      if (monsterImageFile) {
+                        await monsterAPI.uploadMonsterImage(newMonster.id, monsterImageFile);
+                      }
+
+                      // Reload monsters
+                      const updated = await monsterAPI.getCampaignMonsters(currentCampaign!.campaign.id);
+                      setMonsters(updated);
+
+                      // Reset form and close
+                      setMonsterFormData({
+                        name: '',
+                        description: '',
+                        limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
+                        limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 }
+                      });
+                      setMonsterImageFile(null);
+                      setShowAddMonsterModal(false);
+                    } catch (error) {
+                      console.error('Error creating monster:', error);
+                      alert('Failed to create monster');
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem 1.5rem',
+                    background: 'linear-gradient(135deg, #61c961, #5ab85a)',
+                    border: '2px solid #4a4',
+                    borderRadius: '0.5rem',
+                    color: '#000',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '1rem'
+                  }}
+                >
+                  ✓ Create Monster
+                </button>
+                <button
+                  onClick={() => {
+                    setMonsterFormData({
+                      name: '',
+                      description: '',
+                      limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
+                      limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 }
+                    });
+                    setMonsterImageFile(null);
+                    setShowAddMonsterModal(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 100, 0.3)',
+                    border: '1px solid #666',
+                    borderRadius: '0.5rem',
+                    color: '#ccc',
+                    cursor: 'pointer',
+                    fontSize: '1rem'
+                  }}
+                >
+                  ✗ Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image Viewer Modal */}
+        {viewImageModal && (
+          <div 
+            onClick={() => setViewImageModal(null)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.9)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 2000,
+              padding: '2rem',
+              cursor: 'pointer'
+            }}
+          >
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'relative',
+                maxWidth: '90vw',
+                maxHeight: '90vh',
+                cursor: 'default'
+              }}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setViewImageModal(null)}
+                style={{
+                  position: 'absolute',
+                  top: '-3rem',
+                  right: 0,
+                  padding: '0.75rem 1.5rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '2px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '0.5rem',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.borderColor = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                }}
+              >
+                ✕ Close
+              </button>
+
+              {/* Monster name */}
+              <div style={{
+                position: 'absolute',
+                top: '-3rem',
+                left: 0,
+                color: 'var(--text-gold)',
+                fontSize: '1.5rem',
+                fontWeight: 'bold',
+                textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)'
+              }}>
+                {viewImageModal.name}
+              </div>
+
+              {/* Image */}
+              <img
+                src={viewImageModal.imageUrl}
+                alt={viewImageModal.name}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '90vh',
+                  borderRadius: '0.75rem',
+                  border: '3px solid var(--text-gold)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

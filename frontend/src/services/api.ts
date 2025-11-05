@@ -85,6 +85,8 @@ export interface Character {
   battle_position_x?: number;
   battle_position_y?: number;
   movement_speed?: number;
+  combat_active?: boolean;
+  initiative?: number;
   player_name?: string;
   campaign_name?: string;
   created_at: string;
@@ -124,6 +126,33 @@ export interface InventoryItem {
   properties: string[];
   rarity: 'Common' | 'Uncommon' | 'Rare' | 'Very Rare' | 'Legendary' | 'Artifact';
   attunement_required?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Monster {
+  id: number;
+  campaign_id: number;
+  name: string;
+  description?: string;
+  image_url?: string;
+  limb_health?: {
+    head: number;
+    chest: number;
+    left_arm: number;
+    right_arm: number;
+    left_leg: number;
+    right_leg: number;
+  };
+  limb_ac?: {
+    head: number;
+    chest: number;
+    left_arm: number;
+    right_arm: number;
+    left_leg: number;
+    right_leg: number;
+  };
+  visible_to_players: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -343,6 +372,44 @@ export const inventoryAPI = {
 
   getItemByName: async (itemName: string): Promise<InventoryItem> => {
     const response = await api.get(`/characters/inventory/item/${encodeURIComponent(itemName)}`);
+    return response.data;
+  }
+};
+
+export const monsterAPI = {
+  getCampaignMonsters: async (campaignId: number): Promise<Monster[]> => {
+    const response = await api.get(`/monsters/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  createMonster: async (monsterData: Partial<Monster>): Promise<Monster> => {
+    const response = await api.post('/monsters', monsterData);
+    return response.data;
+  },
+
+  uploadMonsterImage: async (monsterId: number, imageFile: File): Promise<Monster> => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    const response = await api.post(`/monsters/${monsterId}/image`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  updateMonster: async (monsterId: number, updates: Partial<Monster>): Promise<Monster> => {
+    const response = await api.put(`/monsters/${monsterId}`, updates);
+    return response.data;
+  },
+
+  toggleVisibility: async (monsterId: number): Promise<Monster> => {
+    const response = await api.patch(`/monsters/${monsterId}/toggle-visibility`);
+    return response.data;
+  },
+
+  deleteMonster: async (monsterId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/monsters/${monsterId}`);
     return response.data;
   }
 };

@@ -266,6 +266,62 @@ const runMigrations = async () => {
       console.log('✅ movement_speed and battle position columns already exist');
     }
     
+    // Migration 6: Add combat_active and initiative columns to characters table
+    const checkCombatColumns = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'characters' 
+      AND column_name IN ('combat_active', 'initiative')
+    `);
+    
+    if (checkCombatColumns.rows.length < 2) {
+      console.log('Adding combat_active and initiative columns to characters table...');
+      await pool.query(`
+        ALTER TABLE characters 
+        ADD COLUMN IF NOT EXISTS combat_active BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS initiative INTEGER DEFAULT 0
+      `);
+      
+      console.log('✅ combat_active and initiative columns added successfully');
+    } else {
+      console.log('✅ combat_active and initiative columns already exist');
+    }
+    
+    // Migration 7: Create monsters table for encyclopedia
+    const checkMonstersTable = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'monsters'
+      );
+    `);
+    
+    if (!checkMonstersTable.rows[0].exists) {
+      console.log('Creating monsters table...');
+      await pool.query(`
+        CREATE TABLE monsters (
+          id SERIAL PRIMARY KEY,
+          campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          description TEXT DEFAULT '',
+          image_url VARCHAR(500),
+          limb_health JSONB DEFAULT '{"head": 10, "chest": 30, "left_arm": 15, "right_arm": 15, "left_leg": 20, "right_leg": 20}'::jsonb,
+          limb_ac JSONB DEFAULT '{"head": 10, "chest": 12, "left_arm": 10, "right_arm": 10, "left_leg": 10, "right_leg": 10}'::jsonb,
+          visible_to_players BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      
+      // Create index for faster lookups
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_monsters_campaign ON monsters(campaign_id);
+      `);
+      
+      console.log('✅ monsters table created successfully');
+    } else {
+      console.log('✅ monsters table already exists');
+    }
+    
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running database migrations:', error);
