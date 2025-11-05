@@ -7,6 +7,7 @@ import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import CampaignView from './components/CampaignView';
 import CharacterCreation from './components/CharacterCreation';
+import './App.css';
 import './styles/theme.css';
 
 function App() {

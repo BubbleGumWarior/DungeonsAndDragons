@@ -36,3 +36,50 @@
     transform: rotate(360deg);
   }
 }
+
+/* Page turning animations for backstory book */
+.page-flip-forward {
+  animation: pageFlipForward 0.6s ease-in-out !important;
+}
+
+.page-flip-backward {
+  animation: pageFlipBackward 0.6s ease-in-out !important;
+}
+
+@keyframes pageFlipForward {
+  0% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: rotateY(-90deg) scale(0.9);
+    opacity: 0;
+  }
+  51% {
+    transform: rotateY(90deg) scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pageFlipBackward {
+  0% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: rotateY(90deg) scale(0.9);
+    opacity: 0;
+  }
+  51% {
+    transform: rotateY(-90deg) scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+}

@@ -62,11 +62,11 @@ const CampaignView: React.FC = () => {
   const getSubcategoryOptions = (category: string) => {
     switch (category) {
       case 'Armor':
-        return ['Light Armor', 'Medium Armor', 'Heavy Armor', 'Shield', 'Helmet'];
+        return ['Light Armor', 'Medium Armor', 'Heavy Armor', 'Shield', 'Helmet', 'Boots'];
       case 'Weapon':
         return ['Simple Melee', 'Martial Melee', 'Simple Ranged', 'Martial Ranged'];
       case 'Tool':
-        return ['Artisan\'s Tools', 'Gaming Set', 'Kit', 'Musical Instrument', 'Other Tools'];
+        return ['Artisan\'s Tools', 'Gaming Set', 'Kit', 'Musical Instrument', 'Thieves\' Tools', 'Navigator\'s Tools', 'Herbalism Kit', 'Disguise Kit', 'Forgery Kit', 'Poisoner\'s Kit', 'Other Tools'];
       case 'General':
         return ['Adventuring Gear', 'Container', 'Food & Drink', 'Trade Goods'];
       case 'Magic Item':
@@ -76,6 +76,26 @@ const CampaignView: React.FC = () => {
       default:
         return [];
     }
+  };
+
+  // Get available weapon/armor properties
+  const getAvailableProperties = () => {
+    return [
+      'Versatile',
+      'Finesse',
+      'Light',
+      'Heavy',
+      'Two-Handed',
+      'Thrown',
+      'Reach',
+      'Loading',
+      'Ammunition',
+      'Special',
+      'Magical',
+      'Cursed',
+      'Silvered',
+      'Adamantine'
+    ];
   };
 
   const getDamageTypes = () => {
@@ -113,6 +133,7 @@ const CampaignView: React.FC = () => {
   // Backstory pagination state
   const [backstoryPage, setBackstoryPage] = useState(0);
   const [isKeyboardNavigating, setIsKeyboardNavigating] = useState(false);
+  const [pageDirection, setPageDirection] = useState<'forward' | 'backward' | null>(null);
 
   // Function to split backstory into pages with intelligent paragraph boundary detection
   const paginateBackstory = useCallback((text: string, wordsPerPage: number = 500): string[] => {
@@ -182,6 +203,7 @@ const CampaignView: React.FC = () => {
   // Reset backstory page when character changes
   useEffect(() => {
     setBackstoryPage(0);
+    setPageDirection(null);
   }, [selectedCharacter]);
 
   // Helper function to determine if user can view all tabs for the selected character
@@ -241,10 +263,18 @@ const CampaignView: React.FC = () => {
             
             if (event.key === 'ArrowLeft' && backstoryPage > 0) {
               event.preventDefault();
-              setBackstoryPage(backstoryPage - 1);
+              setPageDirection('backward');
+              setTimeout(() => {
+                setBackstoryPage(backstoryPage - 1);
+                setTimeout(() => setPageDirection(null), 600);
+              }, 50);
             } else if (event.key === 'ArrowRight' && backstoryPage < pages.length - 1) {
               event.preventDefault();
-              setBackstoryPage(backstoryPage + 1);
+              setPageDirection('forward');
+              setTimeout(() => {
+                setBackstoryPage(backstoryPage + 1);
+                setTimeout(() => setPageDirection(null), 600);
+              }, 50);
             }
           }
         }
@@ -1010,18 +1040,28 @@ const CampaignView: React.FC = () => {
             )}
           </div>
           {character.equipment && character.equipment.length > 0 ? (
-            <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))',
+              gap: '1rem',
+              maxHeight: '70vh',
+              overflowY: 'auto',
+              paddingRight: '0.5rem'
+            }}>
               {character.equipment.map((itemName: string, index: number) => {
                 // Find detailed information for this item
                 const itemDetails = characterEquipmentDetails.find(detail => detail.item_name === itemName);
                 
                 return (
                   <div key={index} style={{ 
-                    padding: '1rem', 
+                    padding: '0.875rem', 
                     background: 'rgba(255, 255, 255, 0.08)',
-                    borderRadius: '0.75rem',
+                    borderRadius: '0.5rem',
                     border: '1px solid rgba(212, 193, 156, 0.3)',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.625rem'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
@@ -1033,145 +1073,157 @@ const CampaignView: React.FC = () => {
                   }}
                   >
                     {/* Item Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                      <div style={{ flex: 1 }}>
-                        <div className="text-gold" style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
-                          {itemName}
-                        </div>
-                        {itemDetails && (
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            {itemDetails.category} {itemDetails.subcategory && `• ${itemDetails.subcategory}`}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {/* Top row: Title centered with badges on sides */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        {/* Left spacer - matches right side width when badges exist */}
+                        <div style={{ 
+                          width: (itemDetails?.rarity && itemDetails.rarity !== 'Common') || user?.role === 'Dungeon Master' ? '80px' : '0',
+                          flexShrink: 0
+                        }} />
+                        
+                        {/* Center: Item title */}
+                        <div style={{ flex: 1, textAlign: 'center' }}>
+                          <div className="text-gold" style={{ fontWeight: 'bold', fontSize: '0.95rem', lineHeight: '1.3' }}>
+                            {itemName}
                           </div>
-                        )}
+                        </div>
+                        
+                        {/* Right: Badges */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0, width: '80px', justifyContent: 'flex-end' }}>
+                          {itemDetails?.rarity && itemDetails.rarity !== 'Common' && (
+                            <span style={{
+                              fontSize: '0.65rem',
+                              padding: '0.2rem 0.4rem',
+                              borderRadius: '0.75rem',
+                              background: itemDetails.rarity === 'Rare' ? 'rgba(59, 130, 246, 0.2)' : 
+                                        itemDetails.rarity === 'Uncommon' ? 'rgba(34, 197, 94, 0.2)' : 
+                                        'rgba(212, 193, 156, 0.2)',
+                              color: itemDetails.rarity === 'Rare' ? '#60a5fa' : 
+                                   itemDetails.rarity === 'Uncommon' ? '#4ade80' : 
+                                   'var(--text-gold)',
+                              border: '1px solid currentColor',
+                              whiteSpace: 'nowrap',
+                              lineHeight: '1'
+                            }}>
+                              {itemDetails.rarity}
+                            </span>
+                          )}
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={() => handleRemoveItemFromInventory(character.id, itemName)}
+                              style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '50%',
+                                border: '1px solid rgba(220, 53, 69, 0.4)',
+                                background: 'rgba(220, 53, 69, 0.2)',
+                                color: '#f5c6cb',
+                                fontSize: '0.75rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s ease',
+                                padding: 0,
+                                lineHeight: '1'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(220, 53, 69, 0.4)';
+                                e.currentTarget.style.borderColor = 'rgba(220, 53, 69, 0.6)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(220, 53, 69, 0.2)';
+                                e.currentTarget.style.borderColor = 'rgba(220, 53, 69, 0.4)';
+                              }}
+                              title={`Remove ${itemName} from inventory`}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {itemDetails?.rarity && itemDetails.rarity !== 'Common' && (
-                          <span style={{
-                            fontSize: '0.7rem',
-                            padding: '0.25rem 0.5rem',
-                            borderRadius: '1rem',
-                            background: itemDetails.rarity === 'Rare' ? 'rgba(59, 130, 246, 0.2)' : 
-                                      itemDetails.rarity === 'Uncommon' ? 'rgba(34, 197, 94, 0.2)' : 
-                                      'rgba(212, 193, 156, 0.2)',
-                            color: itemDetails.rarity === 'Rare' ? '#60a5fa' : 
-                                 itemDetails.rarity === 'Uncommon' ? '#4ade80' : 
-                                 'var(--text-gold)',
-                            border: '1px solid currentColor'
-                          }}>
-                            {itemDetails.rarity}
-                          </span>
-                        )}
-                        {user?.role === 'Dungeon Master' && (
-                          <button
-                            onClick={() => handleRemoveItemFromInventory(character.id, itemName)}
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '50%',
-                              border: '1px solid rgba(220, 53, 69, 0.4)',
-                              background: 'rgba(220, 53, 69, 0.2)',
-                              color: '#f5c6cb',
-                              fontSize: '0.8rem',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'rgba(220, 53, 69, 0.4)';
-                              e.currentTarget.style.borderColor = 'rgba(220, 53, 69, 0.6)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'rgba(220, 53, 69, 0.2)';
-                              e.currentTarget.style.borderColor = 'rgba(220, 53, 69, 0.4)';
-                            }}
-                            title={`Remove ${itemName} from inventory`}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
+                      
+                      {/* Subtitle: Category */}
+                      {itemDetails && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: '1.2', textAlign: 'center' }}>
+                          {itemDetails.category} {itemDetails.subcategory && `• ${itemDetails.subcategory}`}
+                        </div>
+                      )}
                     </div>
 
                     {/* Item Description */}
                     {itemDetails?.description ? (
                       <div style={{ 
-                        fontSize: '0.9rem', 
+                        fontSize: '0.8rem', 
                         color: 'var(--text-secondary)', 
-                        lineHeight: '1.5',
-                        marginBottom: '0.75rem'
+                        lineHeight: '1.4',
+                        maxHeight: '3.6em',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical'
                       }}>
                         {itemDetails.description}
                       </div>
                     ) : (
                       <div style={{ 
-                        fontSize: '0.85rem', 
+                        fontSize: '0.75rem', 
                         color: 'var(--text-muted)', 
-                        fontStyle: 'italic',
-                        marginBottom: '0.75rem'
+                        fontStyle: 'italic'
                       }}>
-                        {hasDetailedData ? 'Item details not found in inventory database' : 'Loading item details...'}
+                        {hasDetailedData ? 'Item details not found' : 'Loading...'}
                       </div>
                     )}
 
-                    {/* Item Stats */}
+                    {/* Item Stats - Compact Grid */}
                     {itemDetails && (
                       <div style={{ 
                         display: 'grid', 
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
-                        gap: '0.75rem',
-                        padding: '0.75rem',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', 
+                        gap: '0.5rem',
+                        padding: '0.5rem',
                         background: 'rgba(255, 255, 255, 0.05)',
-                        borderRadius: '0.5rem',
+                        borderRadius: '0.375rem',
                         border: '1px solid rgba(212, 193, 156, 0.2)'
                       }}>
                         {itemDetails.damage_dice && (
                           <div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.125rem' }}>
                               Damage
                             </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                              {itemDetails.damage_dice} {itemDetails.damage_type}
-                            </div>
-                          </div>
-                        )}
-                        {itemDetails.range_normal && (
-                          <div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold' }}>
-                              Range
-                            </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                              {itemDetails.range_normal}/{itemDetails.range_long} ft
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.2' }}>
+                              {itemDetails.damage_dice}
                             </div>
                           </div>
                         )}
                         {itemDetails.armor_class && (
                           <div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold' }}>
-                              Armor Class
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.125rem' }}>
+                              AC
                             </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.2' }}>
                               {itemDetails.armor_class > 10 ? itemDetails.armor_class : `+${itemDetails.armor_class}`}
                             </div>
                           </div>
                         )}
                         {itemDetails.weight && (
                           <div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.125rem' }}>
                               Weight
                             </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.2' }}>
                               {itemDetails.weight} lb
                             </div>
                           </div>
                         )}
                         {itemDetails.cost_cp && (
                           <div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.125rem' }}>
                               Value
                             </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.2' }}>
                               {itemDetails.cost_cp >= 100 ? `${Math.floor(itemDetails.cost_cp / 100)} gp` : `${itemDetails.cost_cp} cp`}
                             </div>
                           </div>
@@ -1179,41 +1231,50 @@ const CampaignView: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Item Properties */}
-                    {itemDetails?.properties && itemDetails.properties.length > 0 && (
-                      <div style={{ marginTop: '0.75rem' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                          Properties
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                          {itemDetails.properties.map((prop, propIndex) => (
+                    {/* Item Properties - Compact */}
+                    {itemDetails?.properties && itemDetails.properties.length > 0 && (() => {
+                      // Filter out Stealth Disadvantage from properties - it should only show as a warning
+                      const filteredProps = itemDetails.properties.filter(prop => 
+                        !prop.toLowerCase().includes('stealth disadvantage')
+                      );
+                      
+                      if (filteredProps.length === 0) return null;
+                      
+                      return (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>
+                            Properties:
+                          </span>
+                          {filteredProps.map((prop, propIndex) => (
                             <span key={propIndex} style={{
-                              fontSize: '0.75rem',
-                              padding: '0.25rem 0.5rem',
+                              fontSize: '0.65rem',
+                              padding: '0.2rem 0.4rem',
                               background: 'rgba(212, 193, 156, 0.2)',
                               color: 'var(--text-gold)',
-                              borderRadius: '0.75rem',
-                              border: '1px solid rgba(212, 193, 156, 0.3)'
+                              borderRadius: '0.5rem',
+                              border: '1px solid rgba(212, 193, 156, 0.3)',
+                              lineHeight: '1'
                             }}>
                               {prop}
                             </span>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
-                    {/* Special Warnings */}
-                    {itemDetails?.stealth_disadvantage && (
+                    {/* Special Warnings - Compact */}
+                    {(itemDetails?.stealth_disadvantage || 
+                      itemDetails?.properties?.some(prop => prop.toLowerCase().includes('stealth'))) && (
                       <div style={{ 
-                        marginTop: '0.75rem',
-                        padding: '0.5rem',
+                        padding: '0.375rem 0.5rem',
                         background: 'rgba(239, 68, 68, 0.1)',
                         border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: '0.5rem',
-                        fontSize: '0.8rem',
-                        color: '#fca5a5'
+                        borderRadius: '0.375rem',
+                        fontSize: '0.7rem',
+                        color: '#fca5a5',
+                        lineHeight: '1.3'
                       }}>
-                        ⚠️ This armor gives disadvantage on Stealth checks
+                        ⚠️ Stealth disadvantage
                       </div>
                     )}
                   </div>
@@ -1512,13 +1573,164 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'board' && (
                   <div className="glass-panel">
                     <h6>📋 Character Overview</h6>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                      <div>
-                        <h6 className="text-gold">Basic Info</h6>
-                        <p><strong>Race:</strong> {selectedCharacterData.race}</p>
-                        <p><strong>Class:</strong> {selectedCharacterData.class}</p>
-                        <p><strong>Level:</strong> {selectedCharacterData.level}</p>
-                        <p><strong>Background:</strong> {selectedCharacterData.background || 'None'}</p>
+                    
+                    {/* Character Name Header */}
+                    <div style={{
+                      textAlign: 'center',
+                      marginBottom: '2rem',
+                      padding: '1.5rem',
+                      background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+                      borderRadius: '12px',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                    }}>
+                      <div style={{
+                        fontSize: '2rem',
+                        fontWeight: 'bold',
+                        color: 'var(--primary-gold)',
+                        textShadow: '0 2px 4px rgba(0, 0, 0, 0.5), 0 0 20px rgba(212, 193, 156, 0.3)',
+                        letterSpacing: '2px',
+                        marginBottom: '0.5rem'
+                      }}>
+                        {selectedCharacterData.name}
+                      </div>
+                      <div style={{
+                        fontSize: '0.9rem',
+                        color: 'var(--text-muted)',
+                        fontStyle: 'italic'
+                      }}>
+                      </div>
+                    </div>
+                    
+                    {/* Basic Info Section - Styled Cards */}
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                      gap: '1rem',
+                      marginBottom: '2rem'
+                    }}>
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(212, 193, 156, 0.2)',
+                        textAlign: 'center',
+                        transition: 'all 0.3s ease',
+                        cursor: 'default'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                      }}>
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: 'var(--text-muted)', 
+                          marginBottom: '0.5rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '1px'
+                        }}>Race</div>
+                        <div style={{ 
+                          fontSize: '1.1rem', 
+                          color: 'var(--text-gold)', 
+                          fontWeight: 'bold'
+                        }}>{selectedCharacterData.race}</div>
+                      </div>
+
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(212, 193, 156, 0.2)',
+                        textAlign: 'center',
+                        transition: 'all 0.3s ease',
+                        cursor: 'default'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                      }}>
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: 'var(--text-muted)', 
+                          marginBottom: '0.5rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '1px'
+                        }}>Class</div>
+                        <div style={{ 
+                          fontSize: '1.1rem', 
+                          color: 'var(--text-gold)', 
+                          fontWeight: 'bold'
+                        }}>{selectedCharacterData.class}</div>
+                      </div>
+
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(212, 193, 156, 0.2)',
+                        textAlign: 'center',
+                        transition: 'all 0.3s ease',
+                        cursor: 'default'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                      }}>
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: 'var(--text-muted)', 
+                          marginBottom: '0.5rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '1px'
+                        }}>Level</div>
+                        <div style={{ 
+                          fontSize: '1.1rem', 
+                          color: 'var(--text-gold)', 
+                          fontWeight: 'bold'
+                        }}>{selectedCharacterData.level}</div>
+                      </div>
+
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(212, 193, 156, 0.2)',
+                        textAlign: 'center',
+                        transition: 'all 0.3s ease',
+                        cursor: 'default'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                      }}>
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: 'var(--text-muted)', 
+                          marginBottom: '0.5rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '1px'
+                        }}>Background</div>
+                        <div style={{ 
+                          fontSize: '1.1rem', 
+                          color: 'var(--text-gold)', 
+                          fontWeight: 'bold'
+                        }}>{selectedCharacterData.background || 'None'}</div>
                       </div>
                     </div>
                     
@@ -1529,6 +1741,20 @@ const CampaignView: React.FC = () => {
                           const pages = paginateBackstory(selectedCharacterData.backstory);
                           const currentPage = Math.min(backstoryPage, pages.length - 1);
                           
+                          // Calculate max height - account for line breaks AND text wrapping
+                          const calculatePageHeight = (text: string) => {
+                            const explicitLines = text.split('\n').length;
+                            // Average ~120 chars per line before wrapping at justify (more generous)
+                            const charsPerLine = 120;
+                            const wrappedLines = Math.ceil(text.length / charsPerLine);
+                            const totalLines = Math.max(explicitLines, wrappedLines);
+                            // 27 pixels per line (1.8 line height * 15px font)
+                            return totalLines * 27 + 50;
+                          };
+                          
+                          const heights = pages.map(page => calculatePageHeight(page));
+                          const maxHeight = Math.max(...heights, 300);
+                          
                           return (
                             <div style={{ 
                               padding: '1.5rem',
@@ -1537,7 +1763,9 @@ const CampaignView: React.FC = () => {
                               border: '2px solid rgba(212, 193, 156, 0.2)',
                               position: 'relative',
                               minHeight: '200px',
-                              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                              perspective: '2000px',
+                              perspectiveOrigin: 'center center'
                             }}>
                               {/* Book-style header */}
                               <div style={{ 
@@ -1568,19 +1796,42 @@ const CampaignView: React.FC = () => {
                               </div>
 
                               {/* Page content */}
-                              <div style={{ 
-                                lineHeight: '1.8', 
-                                whiteSpace: 'pre-wrap',
-                                fontSize: '0.95rem',
-                                color: 'var(--text-primary)',
-                                minHeight: '150px',
-                                textAlign: 'justify',
-                                paddingBottom: '1rem',
-                                animation: 'fadeIn 0.3s ease-in-out',
-                                wordWrap: 'break-word',
-                                overflowWrap: 'break-word'
+                              <div style={{
+                                height: `${maxHeight}px`,
+                                position: 'relative',
+                                overflow: 'visible'
                               }}>
-                                {pages[currentPage] || 'No content available.'}
+                                {pageDirection ? (
+                                  <div 
+                                    key={`page-${currentPage}-${pageDirection}-${Date.now()}`}
+                                    className={pageDirection === 'forward' ? 'page-flip-forward' : 'page-flip-backward'}
+                                    style={{ 
+                                      lineHeight: '1.8', 
+                                      whiteSpace: 'pre-wrap',
+                                      fontSize: '0.95rem',
+                                      color: 'var(--text-primary)',
+                                      textAlign: 'justify',
+                                      paddingBottom: '1rem',
+                                      wordWrap: 'break-word',
+                                      overflowWrap: 'break-word'
+                                    }}>
+                                    {pages[currentPage] || 'No content available.'}
+                                  </div>
+                                ) : (
+                                  <div 
+                                    style={{ 
+                                      lineHeight: '1.8', 
+                                      whiteSpace: 'pre-wrap',
+                                      fontSize: '0.95rem',
+                                      color: 'var(--text-primary)',
+                                      textAlign: 'justify',
+                                      paddingBottom: '1rem',
+                                      wordWrap: 'break-word',
+                                      overflowWrap: 'break-word'
+                                    }}>
+                                    {pages[currentPage] || 'No content available.'}
+                                  </div>
+                                )}
                               </div>
 
                               {/* Navigation controls */}
@@ -1594,7 +1845,15 @@ const CampaignView: React.FC = () => {
                                   borderTop: '1px solid rgba(212, 193, 156, 0.2)'
                                 }}>
                                   <button
-                                    onClick={() => setBackstoryPage(Math.max(0, backstoryPage - 1))}
+                                    onClick={() => {
+                                      if (backstoryPage > 0) {
+                                        setPageDirection('backward');
+                                        setTimeout(() => {
+                                          setBackstoryPage(backstoryPage - 1);
+                                          setTimeout(() => setPageDirection(null), 600);
+                                        }, 50);
+                                      }
+                                    }}
                                     disabled={backstoryPage === 0}
                                     className="btn btn-secondary"
                                     style={{ 
@@ -1614,7 +1873,16 @@ const CampaignView: React.FC = () => {
                                       {pages.map((_, index) => (
                                         <button
                                           key={index}
-                                          onClick={() => setBackstoryPage(index)}
+                                          onClick={() => {
+                                            if (index !== currentPage) {
+                                              const direction = index > currentPage ? 'forward' : 'backward';
+                                              setPageDirection(direction);
+                                              setTimeout(() => {
+                                                setBackstoryPage(index);
+                                                setTimeout(() => setPageDirection(null), 600);
+                                              }, 50);
+                                            }
+                                          }}
                                           style={{
                                             width: '8px',
                                             height: '8px',
@@ -1651,7 +1919,15 @@ const CampaignView: React.FC = () => {
                                   </div>
 
                                   <button
-                                    onClick={() => setBackstoryPage(Math.min(pages.length - 1, backstoryPage + 1))}
+                                    onClick={() => {
+                                      if (backstoryPage < pages.length - 1) {
+                                        setPageDirection('forward');
+                                        setTimeout(() => {
+                                          setBackstoryPage(backstoryPage + 1);
+                                          setTimeout(() => setPageDirection(null), 600);
+                                        }, 50);
+                                      }
+                                    }}
                                     disabled={backstoryPage === pages.length - 1}
                                     className="btn btn-secondary"
                                     style={{ 
@@ -2387,215 +2663,432 @@ const CampaignView: React.FC = () => {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000
+            zIndex: 1000,
+            backdropFilter: 'blur(4px)'
           }}>
             <div style={{
-              background: 'var(--background-dark)',
+              background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98) 0%, rgba(30, 30, 40, 0.98) 100%)',
               borderRadius: '1rem',
               padding: '2rem',
               width: '90%',
-              maxWidth: '800px',
-              maxHeight: '80vh',
+              maxWidth: '900px',
+              maxHeight: '85vh',
               overflow: 'auto',
-              border: '1px solid rgba(212, 193, 156, 0.3)'
+              border: '2px solid rgba(212, 193, 156, 0.4)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(212, 193, 156, 0.1)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>Create Custom Item</h4>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(212, 193, 156, 0.3)' }}>
+                <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.5rem', textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)' }}>✨ Create Custom Item</h4>
                 <button
-                  onClick={() => setShowCreateCustomModal(false)}
+                  onClick={() => {
+                    setShowCreateCustomModal(false);
+                    // Reset form
+                    setCustomItemData({
+                      item_name: '',
+                      category: 'Weapon',
+                      subcategory: '',
+                      description: '',
+                      rarity: 'Common',
+                      properties: []
+                    });
+                  }}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
+                    background: 'rgba(220, 53, 69, 0.2)',
+                    border: '1px solid rgba(220, 53, 69, 0.4)',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    color: '#f5c6cb',
                     fontSize: '1.5rem',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(220, 53, 69, 0.4)';
+                    e.currentTarget.style.borderColor = 'rgba(220, 53, 69, 0.6)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(220, 53, 69, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(220, 53, 69, 0.4)';
                   }}
                 >
                   ×
                 </button>
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                {/* Item Name */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                    Item Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={customItemData.item_name || ''}
-                    onChange={(e) => setCustomItemData({ ...customItemData, item_name: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
-                      borderRadius: '0.5rem',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  />
-                </div>
+              {/* Basic Info */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>Basic Information</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                  {/* Item Name */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                      Item Name <span style={{ color: '#ff6b6b' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={customItemData.item_name || ''}
+                      onChange={(e) => setCustomItemData({ ...customItemData, item_name: e.target.value })}
+                      placeholder="Enter item name..."
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: 'white',
+                        fontSize: '0.9rem',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.6)';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                      }}
+                    />
+                  </div>
 
-                {/* Category */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                    Category *
-                  </label>
-                  <select
-                    value={customItemData.category || 'Weapon'}
-                    onChange={(e) => {
-                      const newCategory = e.target.value as any;
-                      setCustomItemData({ 
-                        ...customItemData, 
-                        category: newCategory,
-                        subcategory: '', // Reset subcategory when category changes
-                        // Clear category-specific fields
-                        damage_dice: newCategory === 'Weapon' ? customItemData.damage_dice : undefined,
-                        damage_type: newCategory === 'Weapon' ? customItemData.damage_type : undefined,
-                        armor_class: newCategory === 'Armor' ? customItemData.armor_class : undefined
-                      });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: 'rgba(0, 0, 0, 0.8)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
-                      borderRadius: '0.5rem',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    <option value="Weapon">Weapon</option>
-                    <option value="Armor">Armor</option>
-                    <option value="Tool">Tool</option>
-                    <option value="General">General</option>
-                    <option value="Magic Item">Magic Item</option>
-                    <option value="Consumable">Consumable</option>
-                  </select>
-                </div>
+                  {/* Category */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                      Category <span style={{ color: '#ff6b6b' }}>*</span>
+                    </label>
+                    <select
+                      value={customItemData.category || 'Weapon'}
+                      onChange={(e) => {
+                        const newCategory = e.target.value as any;
+                        setCustomItemData({ 
+                          ...customItemData, 
+                          category: newCategory,
+                          subcategory: '',
+                          damage_dice: newCategory === 'Weapon' ? customItemData.damage_dice : undefined,
+                          damage_type: newCategory === 'Weapon' ? customItemData.damage_type : undefined,
+                          armor_class: newCategory === 'Armor' ? customItemData.armor_class : undefined,
+                          stealth_disadvantage: newCategory === 'Armor' ? customItemData.stealth_disadvantage : undefined
+                        });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: 'white',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="Weapon">Weapon</option>
+                      <option value="Armor">Armor</option>
+                      <option value="Tool">Tool</option>
+                      <option value="General">General</option>
+                      <option value="Magic Item">Magic Item</option>
+                      <option value="Consumable">Consumable</option>
+                    </select>
+                  </div>
 
-                {/* Subcategory */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                    Subcategory
-                  </label>
-                  <select
-                    value={customItemData.subcategory || ''}
-                    onChange={(e) => setCustomItemData({ ...customItemData, subcategory: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: 'rgba(0, 0, 0, 0.8)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
-                      borderRadius: '0.5rem',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    <option value="">Select subcategory...</option>
-                    {getSubcategoryOptions(customItemData.category || 'Weapon').map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                </div>
+                  {/* Subcategory */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                      Subcategory
+                    </label>
+                    <select
+                      value={customItemData.subcategory || ''}
+                      onChange={(e) => setCustomItemData({ ...customItemData, subcategory: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: 'white',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="">Select subcategory...</option>
+                      {getSubcategoryOptions(customItemData.category || 'Weapon').map(option => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Rarity */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                    Rarity
-                  </label>
-                  <select
-                    value={customItemData.rarity || 'Common'}
-                    onChange={(e) => setCustomItemData({ ...customItemData, rarity: e.target.value as any })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: 'rgba(0, 0, 0, 0.8)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
-                      borderRadius: '0.5rem',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    <option value="Common">Common</option>
-                    <option value="Uncommon">Uncommon</option>
-                    <option value="Rare">Rare</option>
-                    <option value="Very Rare">Very Rare</option>
-                    <option value="Legendary">Legendary</option>
-                    <option value="Artifact">Artifact</option>
-                  </select>
+                  {/* Rarity */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                      Rarity
+                    </label>
+                    <select
+                      value={customItemData.rarity || 'Common'}
+                      onChange={(e) => setCustomItemData({ ...customItemData, rarity: e.target.value as any })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: 'white',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="Common">Common</option>
+                      <option value="Uncommon">Uncommon</option>
+                      <option value="Rare">Rare</option>
+                      <option value="Very Rare">Very Rare</option>
+                      <option value="Legendary">Legendary</option>
+                      <option value="Artifact">Artifact</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
               {/* Description */}
-              <div style={{ marginTop: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                  Description *
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                  Description <span style={{ color: '#ff6b6b' }}>*</span>
                 </label>
                 <textarea
                   value={customItemData.description || ''}
                   onChange={(e) => setCustomItemData({ ...customItemData, description: e.target.value })}
+                  placeholder="Describe the item's appearance, history, or special features..."
                   rows={3}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.1)',
+                    background: 'rgba(255, 255, 255, 0.08)',
                     border: '1px solid rgba(212, 193, 156, 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '0.9rem',
-                    resize: 'vertical'
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.6)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
                   }}
                 />
               </div>
 
+              {/* Properties Section */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>Properties</h5>
+                
+                {/* Property Selector */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    Add Property
+                  </label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value && !customItemData.properties?.includes(e.target.value)) {
+                        setCustomItemData({
+                          ...customItemData,
+                          properties: [...(customItemData.properties || []), e.target.value]
+                        });
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.5)',
+                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      color: 'white',
+                      fontSize: '0.9rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">Select a property to add...</option>
+                    {getAvailableProperties()
+                      .filter(prop => !customItemData.properties?.includes(prop))
+                      .map(prop => (
+                        <option key={prop} value={prop}>{prop}</option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Selected Properties List */}
+                {customItemData.properties && customItemData.properties.length > 0 && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                      Selected Properties
+                    </label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '0.5rem', border: '1px solid rgba(212, 193, 156, 0.2)' }}>
+                      {customItemData.properties.map((prop, index) => (
+                        <span key={index} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.375rem',
+                          fontSize: '0.8rem',
+                          padding: '0.375rem 0.625rem',
+                          background: 'rgba(212, 193, 156, 0.2)',
+                          color: 'var(--text-gold)',
+                          borderRadius: '1rem',
+                          border: '1px solid rgba(212, 193, 156, 0.3)'
+                        }}>
+                          {prop}
+                          <button
+                            onClick={() => {
+                              setCustomItemData({
+                                ...customItemData,
+                                properties: customItemData.properties?.filter((_, i) => i !== index)
+                              });
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#ff6b6b',
+                              fontSize: '1rem',
+                              cursor: 'pointer',
+                              padding: 0,
+                              lineHeight: '1',
+                              width: '16px',
+                              height: '16px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: '50%',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(220, 53, 69, 0.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'none';
+                            }}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Category-Specific Stats */}
               {customItemData.category === 'Weapon' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
-                  {/* Damage Dice */}
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                      Damage Dice
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={damageCount}
-                        onChange={(e) => {
-                          const count = parseInt(e.target.value) || 1;
-                          setDamageCount(count);
-                          setCustomItemData({ ...customItemData, damage_dice: `${count}d${damageDie}` });
-                        }}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>Weapon Stats</h5>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                    {/* Damage Dice */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Damage Dice
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={damageCount}
+                          onChange={(e) => {
+                            const count = parseInt(e.target.value) || 1;
+                            setDamageCount(count);
+                            setCustomItemData({ ...customItemData, damage_dice: `${count}d${damageDie}` });
+                          }}
+                          style={{
+                            width: '60px',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(212, 193, 156, 0.3)',
+                            borderRadius: '0.5rem',
+                            color: 'white',
+                            fontSize: '0.9rem',
+                            textAlign: 'center'
+                          }}
+                        />
+                        <span style={{ color: 'var(--text-gold)', fontSize: '1.2rem', fontWeight: 'bold' }}>d</span>
+                        <input
+                          type="number"
+                          value={damageDie}
+                          onChange={(e) => {
+                            const die = parseInt(e.target.value) || 4;
+                            setDamageDie(die);
+                            setCustomItemData({ ...customItemData, damage_dice: `${damageCount}d${die}` });
+                          }}
+                          style={{
+                            width: '60px',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(212, 193, 156, 0.3)',
+                            borderRadius: '0.5rem',
+                            color: 'white',
+                            fontSize: '0.9rem',
+                            textAlign: 'center'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Damage Type */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Damage Type
+                      </label>
+                      <select
+                        value={customItemData.damage_type || ''}
+                        onChange={(e) => setCustomItemData({ ...customItemData, damage_type: e.target.value })}
                         style={{
-                          width: '60px',
+                          width: '100%',
                           padding: '0.75rem',
-                          background: 'rgba(255, 255, 255, 0.1)',
+                          background: 'rgba(0, 0, 0, 0.5)',
                           border: '1px solid rgba(212, 193, 156, 0.3)',
                           borderRadius: '0.5rem',
                           color: 'white',
-                          fontSize: '0.9rem'
+                          fontSize: '0.9rem',
+                          cursor: 'pointer'
                         }}
-                      />
-                      <span style={{ color: 'white', fontSize: '1rem', fontWeight: 'bold' }}>d</span>
+                      >
+                        <option value="">Select damage type...</option>
+                        {getDamageTypes().map(type => (
+                          <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {customItemData.category === 'Armor' && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>Armor Stats</h5>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                    {/* Armor Class */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Armor Class
+                      </label>
                       <input
                         type="number"
-                        value={damageDie}
-                        onChange={(e) => {
-                          const die = parseInt(e.target.value) || 4;
-                          setDamageDie(die);
-                          setCustomItemData({ ...customItemData, damage_dice: `${damageCount}d${die}` });
-                        }}
+                        min="10"
+                        max="20"
+                        value={customItemData.armor_class || ''}
+                        onChange={(e) => setCustomItemData({ ...customItemData, armor_class: parseInt(e.target.value) || undefined })}
+                        placeholder="Enter AC value..."
                         style={{
-                          width: '60px',
+                          width: '100%',
                           padding: '0.75rem',
-                          background: 'rgba(255, 255, 255, 0.1)',
+                          background: 'rgba(255, 255, 255, 0.08)',
                           border: '1px solid rgba(212, 193, 156, 0.3)',
                           borderRadius: '0.5rem',
                           color: 'white',
@@ -2603,52 +3096,96 @@ const CampaignView: React.FC = () => {
                         }}
                       />
                     </div>
-                  </div>
 
-                  {/* Damage Type */}
+                    {/* Stealth Disadvantage Toggle */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Stealth Penalty
+                      </label>
+                      <button
+                        onClick={() => setCustomItemData({ 
+                          ...customItemData, 
+                          stealth_disadvantage: !customItemData.stealth_disadvantage 
+                        })}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          background: customItemData.stealth_disadvantage 
+                            ? 'rgba(239, 68, 68, 0.2)' 
+                            : 'rgba(255, 255, 255, 0.08)',
+                          border: customItemData.stealth_disadvantage 
+                            ? '2px solid rgba(239, 68, 68, 0.5)' 
+                            : '1px solid rgba(212, 193, 156, 0.3)',
+                          borderRadius: '0.5rem',
+                          color: customItemData.stealth_disadvantage ? '#fca5a5' : 'var(--text-secondary)',
+                          fontSize: '0.9rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          transition: 'all 0.2s ease',
+                          fontWeight: customItemData.stealth_disadvantage ? 'bold' : 'normal'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = customItemData.stealth_disadvantage 
+                            ? 'rgba(239, 68, 68, 0.3)' 
+                            : 'rgba(255, 255, 255, 0.12)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = customItemData.stealth_disadvantage 
+                            ? 'rgba(239, 68, 68, 0.2)' 
+                            : 'rgba(255, 255, 255, 0.08)';
+                        }}
+                      >
+                        {customItemData.stealth_disadvantage ? '⚠️ Stealth Disadvantage' : '✓ No Stealth Penalty'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* General Stats */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>General Stats</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                      Damage Type
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                      Weight (lbs)
                     </label>
-                    <select
-                      value={customItemData.damage_type || ''}
-                      onChange={(e) => setCustomItemData({ ...customItemData, damage_type: e.target.value })}
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={customItemData.weight || ''}
+                      onChange={(e) => setCustomItemData({ ...customItemData, weight: parseFloat(e.target.value) || undefined })}
+                      placeholder="0.0"
                       style={{
                         width: '100%',
                         padding: '0.75rem',
-                        background: 'rgba(0, 0, 0, 0.8)',
+                        background: 'rgba(255, 255, 255, 0.08)',
                         border: '1px solid rgba(212, 193, 156, 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '0.9rem'
                       }}
-                    >
-                      <option value="">Select damage type...</option>
-                      {getDamageTypes().map(type => (
-                        <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
-                </div>
-              )}
 
-              {customItemData.category === 'Armor' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
-                  {/* Armor Class */}
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                      Armor Class
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                      Cost (copper pieces)
                     </label>
                     <input
                       type="number"
-                      min="10"
-                      max="20"
-                      value={customItemData.armor_class || ''}
-                      onChange={(e) => setCustomItemData({ ...customItemData, armor_class: parseInt(e.target.value) || undefined })}
+                      min="0"
+                      value={customItemData.cost_cp || ''}
+                      onChange={(e) => setCustomItemData({ ...customItemData, cost_cp: parseInt(e.target.value) || undefined })}
+                      placeholder="0"
                       style={{
                         width: '100%',
                         padding: '0.75rem',
-                        background: 'rgba(255, 255, 255, 0.1)',
+                        background: 'rgba(255, 255, 255, 0.08)',
                         border: '1px solid rgba(212, 193, 156, 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
@@ -2657,62 +3194,41 @@ const CampaignView: React.FC = () => {
                     />
                   </div>
                 </div>
-              )}
-
-              {/* General Stats for all items */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                    Weight (lbs)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={customItemData.weight || ''}
-                    onChange={(e) => setCustomItemData({ ...customItemData, weight: parseFloat(e.target.value) || undefined })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
-                      borderRadius: '0.5rem',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
-                    Cost (cp)
-                  </label>
-                  <input
-                    type="number"
-                    value={customItemData.cost_cp || ''}
-                    onChange={(e) => setCustomItemData({ ...customItemData, cost_cp: parseInt(e.target.value) || undefined })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
-                      borderRadius: '0.5rem',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  />
-                </div>
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem', paddingTop: '1.5rem', borderTop: '2px solid rgba(212, 193, 156, 0.2)' }}>
                 <button
-                  onClick={() => setShowCreateCustomModal(false)}
+                  onClick={() => {
+                    setShowCreateCustomModal(false);
+                    setCustomItemData({
+                      item_name: '',
+                      category: 'Weapon',
+                      subcategory: '',
+                      description: '',
+                      rarity: 'Common',
+                      properties: []
+                    });
+                  }}
                   className="btn btn-secondary"
                   style={{
-                    padding: '0.75rem 1.5rem',
+                    padding: '0.875rem 1.75rem',
                     background: 'rgba(255, 255, 255, 0.1)',
                     border: '1px solid rgba(212, 193, 156, 0.3)',
-                    color: 'var(--text-secondary)'
+                    color: 'var(--text-secondary)',
+                    borderRadius: '0.5rem',
+                    fontSize: '0.95rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
                   }}
                 >
                   Cancel
@@ -2721,13 +3237,29 @@ const CampaignView: React.FC = () => {
                   onClick={() => selectedCharacterData && handleCreateCustomItem(selectedCharacterData.id)}
                   className="btn btn-primary"
                   style={{
-                    padding: '0.75rem 1.5rem',
-                    background: 'rgba(59, 130, 246, 0.3)',
-                    border: '1px solid rgba(59, 130, 246, 0.5)',
-                    color: '#60a5fa'
+                    padding: '0.875rem 1.75rem',
+                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(37, 99, 235, 0.3) 100%)',
+                    border: '2px solid rgba(59, 130, 246, 0.5)',
+                    color: '#60a5fa',
+                    borderRadius: '0.5rem',
+                    fontSize: '0.95rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.4) 0%, rgba(37, 99, 235, 0.4) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.7)';
+                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(59, 130, 246, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(37, 99, 235, 0.3) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.2)';
                   }}
                 >
-                  Create & Add
+                  ✨ Create & Add to Inventory
                 </button>
               </div>
             </div>
