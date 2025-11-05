@@ -182,6 +182,10 @@ const startServer = async () => {
       }
     });
 
+    // Server-side storage for battle movement tracking (prevents client-side exploits)
+    // Structure: { campaignId: { characterId: remainingMovement } }
+    const battleMovementState = {};
+
     // Socket.IO connection handling
     io.on('connection', (socket) => {
       console.log(`👤 User connected: ${socket.id}`);
@@ -196,6 +200,14 @@ const startServer = async () => {
         try {
           socket.join(`campaign_${campaignId}`);
           console.log(`👥 User ${socket.id} joined campaign ${campaignId}`);
+          
+          // Send current battle movement state for this campaign
+          if (battleMovementState[campaignId]) {
+            socket.emit('battleMovementSync', {
+              movementState: battleMovementState[campaignId]
+            });
+            console.log(`📊 Sent movement state to user ${socket.id} for campaign ${campaignId}`);
+          }
         } catch (error) {
           console.error(`Error joining campaign ${campaignId}:`, error);
         }
@@ -263,6 +275,53 @@ const startServer = async () => {
           console.log(`🗺️ Character moved: ${characterName} to (${x.toFixed(2)}, ${y.toFixed(2)}) in campaign ${campaignId}`);
         } catch (error) {
           console.error('Error handling character movement:', error);
+        }
+      });
+
+      // Handle real-time character movement on battle map
+      socket.on('characterBattleMove', (data) => {
+        try {
+          const { campaignId, characterId, characterName, x, y, remainingMovement } = data;
+          
+          // Initialize campaign movement state if not exists
+          if (!battleMovementState[campaignId]) {
+            battleMovementState[campaignId] = {};
+          }
+          
+          // Update server-side movement state
+          battleMovementState[campaignId][characterId] = remainingMovement;
+          
+          // Broadcast to all users in the campaign except sender
+          socket.to(`campaign_${campaignId}`).emit('characterBattleMoved', {
+            characterId,
+            characterName,
+            x,
+            y,
+            remainingMovement,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`⚔️ Battle character moved: ${characterName} to (${x.toFixed(2)}, ${y.toFixed(2)}) - ${remainingMovement.toFixed(1)}ft remaining in campaign ${campaignId}`);
+        } catch (error) {
+          console.error('Error handling battle character movement:', error);
+        }
+      });
+
+      // Handle next turn - DM resets all character movement
+      socket.on('nextTurn', (data) => {
+        try {
+          const { campaignId, resetMovement } = data;
+          
+          // Update server-side movement state with reset values
+          battleMovementState[campaignId] = resetMovement;
+          
+          // Broadcast to all users in the campaign including sender
+          io.to(`campaign_${campaignId}`).emit('turnReset', {
+            resetMovement,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🔄 Next turn in campaign ${campaignId} - all movement reset`);
+        } catch (error) {
+          console.error('Error handling next turn:', error);
         }
       });
       

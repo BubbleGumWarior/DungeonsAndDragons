@@ -6,6 +6,7 @@ import { characterAPI, inventoryAPI, InventoryItem } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
 import FigureImage from '../assets/images/Board/Figure.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
+import BattleMapImage from '../assets/images/Campaign/BattleMap.jpg';
 import io from 'socket.io-client';
 
 const CampaignView: React.FC = () => {
@@ -69,7 +70,11 @@ const CampaignView: React.FC = () => {
 
   // Character map positions state
   const [characterPositions, setCharacterPositions] = useState<Record<number, { x: number; y: number }>>({});
+  const [battlePositions, setBattlePositions] = useState<Record<number, { x: number; y: number }>>({});
+  const [remainingMovement, setRemainingMovement] = useState<Record<number, number>>({});
   const [draggedCharacter, setDraggedCharacter] = useState<number | null>(null);
+  const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
+  const [currentDragPosition, setCurrentDragPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Helper functions for category-specific options
   const getSubcategoryOptions = (category: string) => {
@@ -200,14 +205,37 @@ const CampaignView: React.FC = () => {
   // Initialize character positions from campaign data
   useEffect(() => {
     if (currentCampaign) {
-      const positions: Record<number, { x: number; y: number }> = {};
+      const mapPositions: Record<number, { x: number; y: number }> = {};
+      const battlePos: Record<number, { x: number; y: number }> = {};
+      
       currentCampaign.characters.forEach(character => {
-        positions[character.id] = {
+        mapPositions[character.id] = {
           x: character.map_position_x ?? 50,
           y: character.map_position_y ?? 50
         };
+        battlePos[character.id] = {
+          x: character.battle_position_x ?? 50,
+          y: character.battle_position_y ?? 50
+        };
       });
-      setCharacterPositions(positions);
+      
+      setCharacterPositions(mapPositions);
+      setBattlePositions(battlePos);
+      
+      // Only initialize movement if not already set by server sync
+      // Server sync will override this via battleMovementSync event
+      setRemainingMovement(prev => {
+        // If we already have movement state (from server), keep it
+        if (Object.keys(prev).length > 0) {
+          return prev;
+        }
+        // Otherwise initialize with character movement speeds
+        const movement: Record<number, number> = {};
+        currentCampaign.characters.forEach(character => {
+          movement[character.id] = character.movement_speed ?? 30;
+        });
+        return movement;
+      });
     }
   }, [currentCampaign]);
 
@@ -599,7 +627,7 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Listen for character movement on map
+      // Listen for character movement on world map
       newSocket.on('characterMoved', (data: {
         characterId: number;
         characterName: string;
@@ -607,12 +635,51 @@ const CampaignView: React.FC = () => {
         y: number;
         timestamp: string;
       }) => {
-        console.log('📍 Received character movement:', data);
+        console.log('📍 Received world map character movement:', data);
         // Update character position in state
         setCharacterPositions(prev => ({
           ...prev,
           [data.characterId]: { x: data.x, y: data.y }
         }));
+      });
+
+      // Listen for character movement on battle map
+      newSocket.on('characterBattleMoved', (data: {
+        characterId: number;
+        characterName: string;
+        x: number;
+        y: number;
+        remainingMovement: number;
+        timestamp: string;
+      }) => {
+        console.log('📍 Received battle map character movement:', data);
+        // Update character battle position in state
+        setBattlePositions(prev => ({
+          ...prev,
+          [data.characterId]: { x: data.x, y: data.y }
+        }));
+        // Update remaining movement
+        setRemainingMovement(prev => ({
+          ...prev,
+          [data.characterId]: data.remainingMovement
+        }));
+      });
+
+      // Listen for battle movement sync (server sends authoritative state on join)
+      newSocket.on('battleMovementSync', (data: {
+        movementState: Record<number, number>;
+      }) => {
+        console.log('📊 Battle movement sync received:', data);
+        setRemainingMovement(data.movementState);
+      });
+
+      // Listen for next turn event (DM resets all movement)
+      newSocket.on('turnReset', (data: {
+        resetMovement: Record<number, number>;
+        timestamp: string;
+      }) => {
+        console.log('🔄 Turn reset received:', data);
+        setRemainingMovement(data.resetMovement);
       });
       
       setSocket(newSocket);
@@ -1931,24 +1998,333 @@ const CampaignView: React.FC = () => {
 
             {campaignTab === 'battle' && (
               <div className="glass-panel">
-                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⚔️ Battle Area</h5>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Battle Area</h5>
+                  {user?.role === 'Dungeon Master' && (
+                    <button
+                      onClick={() => {
+                        if (socket && currentCampaign) {
+                          // Reset all characters' remaining movement
+                          const resetMovement: Record<number, number> = {};
+                          currentCampaign.characters.forEach(character => {
+                            resetMovement[character.id] = character.movement_speed ?? 30;
+                          });
+                          setRemainingMovement(resetMovement);
+                          
+                          // Broadcast to all users
+                          socket.emit('nextTurn', {
+                            campaignId: currentCampaign.campaign.id,
+                            resetMovement
+                          });
+                          
+                          console.log('🔄 Next turn - all movement reset');
+                        }
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: 'linear-gradient(135deg, #c9a961, #b8935a)',
+                        border: '2px solid var(--text-gold)',
+                        borderRadius: '0.5rem',
+                        color: '#000',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      🔄 Next Turn
+                    </button>
+                  )}
+                </div>
                 <div style={{
-                  minHeight: '400px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '2px dashed rgba(212, 193, 156, 0.3)',
+                  position: 'relative',
+                  width: '100%',
+                  minHeight: '600px',
+                  border: '2px solid rgba(212, 193, 156, 0.3)',
                   borderRadius: '0.75rem',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  padding: '3rem'
-                }}>
-                  <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>⚔️</div>
-                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Battle Grid Coming Soon</h4>
-                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
-                    This area will provide a tactical battle grid for combat encounters. 
-                    Players and the DM can position characters, track initiative, and manage combat in real-time.
-                  </p>
+                  overflow: 'hidden',
+                  background: 'rgba(0, 0, 0, 0.3)'
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Update current drag position for visual feedback
+                  if (draggedCharacter !== null && dragStartPosition) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    setCurrentDragPosition({ x, y });
+                    // console.log('📍 Drag position:', x.toFixed(1), y.toFixed(1)); // Uncomment for debugging
+                  }
+                }}
+                onDragLeave={(e) => {
+                  // Only clear if we're leaving the container, not just moving between children
+                  if (e.currentTarget === e.target) {
+                    setCurrentDragPosition(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggedCharacter !== null && dragStartPosition) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    
+                    // Calculate distance moved in percentage points
+                    const deltaX = x - dragStartPosition.x;
+                    const deltaY = y - dragStartPosition.y;
+                    const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    
+                    // Convert percentage distance to feet (assuming battle map is 100ft x 100ft)
+                    // 1% of map = 1 foot of movement
+                    const distanceFeet = distancePercent;
+                    
+                    const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
+                    const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
+                    
+                    // DM can move characters beyond their movement limit
+                    const isDM = user?.role === 'Dungeon Master';
+                    
+                    // Check if character has enough movement (only enforce for non-DMs)
+                    if (!isDM && distanceFeet > currentRemaining) {
+                      // Clear drag state without moving
+                      setDraggedCharacter(null);
+                      setDragStartPosition(null);
+                      setCurrentDragPosition(null);
+                      return;
+                    }
+                    
+                    // Update position in state immediately
+                    setBattlePositions(prev => ({
+                      ...prev,
+                      [draggedCharacter]: { x, y }
+                    }));
+                    
+                    // Decrease remaining movement (can go negative if DM overrides)
+                    const newRemaining = currentRemaining - distanceFeet;
+                    setRemainingMovement(prev => ({
+                      ...prev,
+                      [draggedCharacter]: newRemaining
+                    }));
+                    
+                    // Emit to other users via Socket.IO immediately
+                    if (socket && currentCampaign) {
+                      const moveData = {
+                        campaignId: currentCampaign.campaign.id,
+                        characterId: draggedCharacter,
+                        characterName: character?.name || '',
+                        x,
+                        y,
+                        remainingMovement: newRemaining
+                      };
+                      console.log('🎯 Emitting battle character movement:', moveData);
+                      socket.emit('characterBattleMove', moveData);
+                    }
+                    
+                    // Update position in backend (async, doesn't block UI)
+                    characterAPI.updateBattlePosition(draggedCharacter, x, y).catch(error => {
+                      console.error('Error updating character battle position:', error);
+                    });
+                    
+                    setDraggedCharacter(null);
+                    setDragStartPosition(null);
+                    setCurrentDragPosition(null);
+                  }
+                }}
+                >
+                  <img 
+                    src={BattleMapImage} 
+                    alt="Battle Map" 
+                    style={{ 
+                      width: '100%', 
+                      height: 'auto',
+                      display: 'block',
+                      userSelect: 'none',
+                      pointerEvents: 'none'
+                    }} 
+                  />
+                  
+                  {/* Visual movement line while dragging */}
+                  {draggedCharacter !== null && dragStartPosition && currentDragPosition && (
+                    <>
+                      {/* Distance line */}
+                      <svg
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'none',
+                          zIndex: 999
+                        }}
+                      >
+                        <line
+                          x1={`${dragStartPosition.x}%`}
+                          y1={`${dragStartPosition.y}%`}
+                          x2={`${currentDragPosition.x}%`}
+                          y2={`${currentDragPosition.y}%`}
+                          stroke={(() => {
+                            const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
+                            const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
+                            const deltaX = currentDragPosition.x - dragStartPosition.x;
+                            const deltaY = currentDragPosition.y - dragStartPosition.y;
+                            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                            return distance <= currentRemaining ? '#4CAF50' : '#f44336';
+                          })()}
+                          strokeWidth="3"
+                          strokeDasharray="5,5"
+                          markerEnd="url(#arrowhead)"
+                        />
+                        <defs>
+                          <marker
+                            id="arrowhead"
+                            markerWidth="10"
+                            markerHeight="10"
+                            refX="9"
+                            refY="3"
+                            orient="auto"
+                          >
+                            <polygon
+                              points="0 0, 10 3, 0 6"
+                              fill={(() => {
+                                const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
+                                const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
+                                const deltaX = currentDragPosition.x - dragStartPosition.x;
+                                const deltaY = currentDragPosition.y - dragStartPosition.y;
+                                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                                return distance <= currentRemaining ? '#4CAF50' : '#f44336';
+                              })()}
+                            />
+                          </marker>
+                        </defs>
+                      </svg>
+                      
+                      {/* Distance label */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: `${(dragStartPosition.x + currentDragPosition.x) / 2}%`,
+                          top: `${(dragStartPosition.y + currentDragPosition.y) / 2}%`,
+                          transform: 'translate(-50%, -150%)',
+                          background: (() => {
+                            const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
+                            const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
+                            const deltaX = currentDragPosition.x - dragStartPosition.x;
+                            const deltaY = currentDragPosition.y - dragStartPosition.y;
+                            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                            return distance <= currentRemaining ? 'rgba(76, 175, 80, 0.9)' : 'rgba(244, 67, 54, 0.9)';
+                          })(),
+                          color: 'white',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.9rem',
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          pointerEvents: 'none',
+                          zIndex: 1000,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                          border: '2px solid rgba(255,255,255,0.3)'
+                        }}
+                      >
+                        {(() => {
+                          const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
+                          const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
+                          const deltaX = currentDragPosition.x - dragStartPosition.x;
+                          const deltaY = currentDragPosition.y - dragStartPosition.y;
+                          const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                          const afterMove = currentRemaining - distance;
+                          return `${distance.toFixed(1)}ft (${afterMove.toFixed(1)}ft remaining)`;
+                        })()}
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* Character icons on battle map */}
+                  {currentCampaign?.characters.map(character => {
+                    const position = battlePositions[character.id];
+                    if (!position) return null;
+                    
+                    const canMove = user?.role === 'Dungeon Master' || character.player_id === user?.id;
+                    const remaining = remainingMovement[character.id] ?? character.movement_speed ?? 30;
+                    const isDM = user?.role === 'Dungeon Master';
+                    const imageUrl = character.image_url 
+                      ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${character.image_url}`
+                      : null;
+                    
+                    return (
+                      <div
+                        key={`battle-${character.id}`}
+                        style={{
+                          position: 'absolute',
+                          left: `${position.x}%`,
+                          top: `${position.y}%`,
+                          transform: 'translate(-50%, -50%)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          zIndex: draggedCharacter === character.id ? 1000 : 1
+                        }}
+                      >
+                        <div
+                          draggable={canMove && (isDM || remaining > 0)}
+                          onDragStart={() => {
+                            if (canMove && (isDM || remaining > 0)) {
+                              console.log('🎯 Drag started for character:', character.name, 'at position:', position);
+                              setDraggedCharacter(character.id);
+                              setDragStartPosition({ x: position.x, y: position.y });
+                              setCurrentDragPosition(null);
+                            }
+                          }}
+                          onDragEnd={() => {
+                            console.log('🎯 Drag ended');
+                            setDraggedCharacter(null);
+                            setDragStartPosition(null);
+                            setCurrentDragPosition(null);
+                          }}
+                          style={{
+                            width: '50px',
+                            height: '50px',
+                            borderRadius: '50%',
+                            border: `3px solid ${remaining > 0 ? 'var(--text-gold)' : remaining === 0 ? '#888' : '#f44336'}`,
+                            backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            backgroundColor: !imageUrl ? 'linear-gradient(135deg, rgba(139, 69, 19, 0.8), rgba(101, 67, 33, 0.8))' : undefined,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            fontSize: '1.2rem',
+                            cursor: canMove && (isDM || remaining > 0) ? 'move' : 'not-allowed',
+                            userSelect: 'none',
+                            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+                            transition: 'transform 0.1s',
+                            opacity: isDM ? 1 : (remaining > 0 ? 1 : 0.5)
+                          }}
+                          title={`${character.name} (${character.player_name}) - ${remaining.toFixed(1)}ft remaining${isDM && remaining <= 0 ? ' (DM Override)' : ''}`}
+                        >
+                          {!imageUrl && character.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{
+                          marginTop: '4px',
+                          padding: '2px 6px',
+                          background: remaining > 0 
+                            ? 'rgba(212, 193, 156, 0.9)' 
+                            : remaining === 0 
+                              ? 'rgba(136, 136, 136, 0.9)' 
+                              : 'rgba(244, 67, 54, 0.9)',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          fontWeight: 'bold',
+                          color: remaining < 0 ? '#fff' : '#000',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {remaining < 0 ? `${remaining.toFixed(0)}ft` : `${remaining.toFixed(0)}ft`}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -82,6 +82,9 @@ export interface Character {
   image_url?: string;
   map_position_x?: number;
   map_position_y?: number;
+  battle_position_x?: number;
+  battle_position_y?: number;
+  movement_speed?: number;
   player_name?: string;
   campaign_name?: string;
   created_at: string;
@@ -318,6 +321,11 @@ export const characterAPI = {
 
   updateMapPosition: async (characterId: number, x: number, y: number): Promise<{ message: string; position: { x: number; y: number } }> => {
     const response = await api.put(`/characters/${characterId}/map-position`, { x, y });
+    return response.data;
+  },
+
+  updateBattlePosition: async (characterId: number, x: number, y: number): Promise<{ message: string; position: { x: number; y: number } }> => {
+    const response = await api.put(`/characters/${characterId}/battle-position`, { x, y });
     return response.data;
   }
 };

@@ -1093,4 +1093,49 @@ router.put('/:id/map-position', authenticateToken, async (req, res) => {
   }
 });
 
+// Update character battle position (Player for own character, DM for any character in their campaign)
+router.put('/:id/battle-position', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { x, y } = req.body;
+    
+    if (x === undefined || y === undefined) {
+      return res.status(400).json({ error: 'Both x and y coordinates are required' });
+    }
+    
+    // Validate coordinates are percentages (0-100)
+    if (x < 0 || x > 100 || y < 0 || y > 100) {
+      return res.status(400).json({ error: 'Coordinates must be between 0 and 100' });
+    }
+    
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Check permissions - only character owner or DM can move
+    const campaign = await Campaign.findById(character.campaign_id);
+    const isOwner = character.player_id === req.user.id;
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    
+    if (!isOwner && !isDM) {
+      return res.status(403).json({ error: 'Only the character owner or dungeon master can move character on the battle map' });
+    }
+
+    // Update character battle position
+    await pool.query(
+      'UPDATE characters SET battle_position_x = $1, battle_position_y = $2 WHERE id = $3',
+      [x, y, id]
+    );
+
+    res.json({
+      message: 'Character battle position updated successfully',
+      position: { x, y }
+    });
+  } catch (error) {
+    console.error('Error updating character battle position:', error);
+    res.status(500).json({ error: 'Failed to update character battle position' });
+  }
+});
+
 module.exports = router;

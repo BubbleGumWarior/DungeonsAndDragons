@@ -207,7 +207,8 @@ const CharacterCreation: React.FC = () => {
         personality_traits: characterData.personality_traits,
         ideals: characterData.ideals,
         bonds: characterData.bonds,
-        flaws: characterData.flaws
+        flaws: characterData.flaws,
+        movement_speed: 30 // Default movement speed
       });
 
       // Clear saved random classes so next character gets new random options

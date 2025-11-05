@@ -237,6 +237,35 @@ const runMigrations = async () => {
       console.log('✅ map position columns already exist');
     }
     
+    // Migration 5: Add movement_speed and battle position columns to characters table
+    const checkMovementColumns = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'characters' 
+      AND column_name IN ('movement_speed', 'battle_position_x', 'battle_position_y')
+    `);
+    
+    if (checkMovementColumns.rows.length < 3) {
+      console.log('Adding movement_speed and battle position columns to characters table...');
+      await pool.query(`
+        ALTER TABLE characters 
+        ADD COLUMN IF NOT EXISTS movement_speed INTEGER DEFAULT 30,
+        ADD COLUMN IF NOT EXISTS battle_position_x DECIMAL(5,2) DEFAULT 50.00,
+        ADD COLUMN IF NOT EXISTS battle_position_y DECIMAL(5,2) DEFAULT 50.00
+      `);
+      
+      // Update existing characters to have movement_speed of 30
+      await pool.query(`
+        UPDATE characters 
+        SET movement_speed = 30 
+        WHERE movement_speed IS NULL
+      `);
+      
+      console.log('✅ movement_speed and battle position columns added successfully');
+    } else {
+      console.log('✅ movement_speed and battle position columns already exist');
+    }
+    
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running database migrations:', error);

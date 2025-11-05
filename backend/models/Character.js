@@ -34,7 +34,8 @@ class Character {
       personality_traits = '',
       ideals = '',
       bonds = '',
-      flaws = ''
+      flaws = '',
+      movement_speed = 30
     } = characterData;
     
     try {
@@ -42,14 +43,14 @@ class Character {
         `INSERT INTO characters (
           player_id, campaign_id, name, race, class, background, level,
           hit_points, armor_class, abilities, skills, equipment, spells,
-          backstory, personality_traits, ideals, bonds, flaws
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
+          backstory, personality_traits, ideals, bonds, flaws, movement_speed
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) 
         RETURNING *`,
         [
           player_id, campaign_id, name, race, characterClass, background, level,
           hit_points, armor_class, JSON.stringify(abilities), JSON.stringify(skills),
           JSON.stringify(equipment), JSON.stringify(spells), backstory,
-          personality_traits, ideals, bonds, flaws
+          personality_traits, ideals, bonds, flaws, movement_speed
         ]
       );
       
