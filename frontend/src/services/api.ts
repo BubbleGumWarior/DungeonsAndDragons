@@ -79,6 +79,9 @@ export interface Character {
   ideals: string;
   bonds: string;
   flaws: string;
+  image_url?: string;
+  map_position_x?: number;
+  map_position_y?: number;
   player_name?: string;
   campaign_name?: string;
   created_at: string;
@@ -298,6 +301,23 @@ export const characterAPI = {
 
   createCustomItem: async (characterId: number, itemData: any): Promise<{ message: string; character: Character; custom_item: InventoryItem }> => {
     const response = await api.post(`/characters/${characterId}/create-custom-item`, itemData);
+    return response.data;
+  },
+
+  uploadCharacterImage: async (characterId: number, imageFile: File): Promise<{ message: string; image_url: string; character: Character }> => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    
+    const response = await api.post(`/characters/${characterId}/upload-image`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  updateMapPosition: async (characterId: number, x: number, y: number): Promise<{ message: string; position: { x: number; y: number } }> => {
+    const response = await api.put(`/characters/${characterId}/map-position`, { x, y });
     return response.data;
   }
 };

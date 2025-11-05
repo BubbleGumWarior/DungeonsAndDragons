@@ -1,9 +1,50 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { pool } = require('../models/database');
 const Character = require('../models/Character');
 const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
 const { authenticateToken } = require('../middleware/auth');
+
+// Configure multer for character image uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '..', 'uploads', 'characters');
+    // Ensure directory exists
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    // Create unique filename: characterId_timestamp.ext
+    const uniqueSuffix = Date.now();
+    const ext = path.extname(file.originalname);
+    cb(null, `character_${req.params.id}_${uniqueSuffix}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    // Accept only image files
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
+    }
+  }
+});
 
 // Get character by ID
 router.get('/:id', authenticateToken, async (req, res) => {
@@ -931,6 +972,124 @@ router.post('/:id/create-custom-item', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error creating custom item:', error);
     res.status(500).json({ error: 'Failed to create custom item' });
+  }
+});
+
+// Upload character image (Player for own character, DM for any character in their campaign)
+router.post('/:id/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+    
+    const character = await Character.findById(id);
+    if (!character) {
+      // Clean up uploaded file if character not found
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Check permissions - only character owner or DM can upload
+    const campaign = await Campaign.findById(character.campaign_id);
+    const isOwner = character.player_id === req.user.id;
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    
+    if (!isOwner && !isDM) {
+      // Clean up uploaded file if unauthorized
+      fs.unlinkSync(req.file.path);
+      return res.status(403).json({ error: 'Only the character owner or dungeon master can upload character images' });
+    }
+
+    // Delete old image if it exists
+    if (character.image_url) {
+      const oldImagePath = path.join(__dirname, '..', 'uploads', 'characters', path.basename(character.image_url));
+      if (fs.existsSync(oldImagePath)) {
+        try {
+          fs.unlinkSync(oldImagePath);
+        } catch (err) {
+          console.error('Error deleting old image:', err);
+        }
+      }
+    }
+
+    // Update character with new image URL (relative path)
+    const imageUrl = `/uploads/characters/${req.file.filename}`;
+    const updatedCharacter = await Character.update(id, {
+      image_url: imageUrl
+    });
+
+    res.json({
+      message: 'Character image uploaded successfully',
+      image_url: imageUrl,
+      character: updatedCharacter
+    });
+  } catch (error) {
+    // Clean up uploaded file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error('Error uploading character image:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload character image' });
+  }
+});
+
+// Update character map position (Player for own character, DM for any character in their campaign)
+router.put('/:id/map-position', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { x, y } = req.body;
+    
+    if (x === undefined || y === undefined) {
+      return res.status(400).json({ error: 'Both x and y coordinates are required' });
+    }
+    
+    // Validate coordinates are percentages (0-100)
+    if (x < 0 || x > 100 || y < 0 || y > 100) {
+      return res.status(400).json({ error: 'Coordinates must be between 0 and 100' });
+    }
+    
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Check permissions - only character owner or DM can move
+    const campaign = await Campaign.findById(character.campaign_id);
+    const isOwner = character.player_id === req.user.id;
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    
+    if (!isOwner && !isDM) {
+      return res.status(403).json({ error: 'Only the character owner or dungeon master can move character on the map' });
+    }
+
+    // Update character position
+    await pool.query(
+      'UPDATE characters SET map_position_x = $1, map_position_y = $2 WHERE id = $3',
+      [x, y, id]
+    );
+
+    // Emit real-time update via WebSocket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${character.campaign_id}`).emit('characterMoved', {
+        characterId: character.id,
+        characterName: character.name,
+        x,
+        y,
+        movedBy: req.user.username,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      message: 'Character position updated successfully',
+      position: { x, y }
+    });
+  } catch (error) {
+    console.error('Error updating character map position:', error);
+    res.status(500).json({ error: 'Failed to update character position' });
   }
 });
 

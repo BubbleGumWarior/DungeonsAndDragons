@@ -5,6 +5,7 @@ import { useCampaign } from '../contexts/CampaignContext';
 import { characterAPI, inventoryAPI, InventoryItem } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
 import FigureImage from '../assets/images/Board/Figure.png';
+import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
 import io from 'socket.io-client';
 
 const CampaignView: React.FC = () => {
@@ -29,6 +30,8 @@ const CampaignView: React.FC = () => {
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip'>('board');
+  const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'battle' | 'news' | 'journal'>('map');
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
@@ -57,6 +60,16 @@ const CampaignView: React.FC = () => {
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Image cropping state
+  const [showImageCropModal, setShowImageCropModal] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<{ file: File; url: string; characterId: number } | null>(null);
+  const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 }); // Percentage position
+  const [imageScale, setImageScale] = useState(100); // Percentage scale
+
+  // Character map positions state
+  const [characterPositions, setCharacterPositions] = useState<Record<number, { x: number; y: number }>>({});
+  const [draggedCharacter, setDraggedCharacter] = useState<number | null>(null);
 
   // Helper functions for category-specific options
   const getSubcategoryOptions = (category: string) => {
@@ -100,11 +113,6 @@ const CampaignView: React.FC = () => {
 
   const getDamageTypes = () => {
     return ['acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder'];
-  };
-
-  const updateDamageDice = () => {
-    const diceString = `${damageCount}d${damageDie}`;
-    setCustomItemData({ ...customItemData, damage_dice: diceString });
   };
 
   // Get dynamic icon for equipment slots
@@ -189,6 +197,20 @@ const CampaignView: React.FC = () => {
     }
   }, [campaignName, loadCampaign]);
 
+  // Initialize character positions from campaign data
+  useEffect(() => {
+    if (currentCampaign) {
+      const positions: Record<number, { x: number; y: number }> = {};
+      currentCampaign.characters.forEach(character => {
+        positions[character.id] = {
+          x: character.map_position_x ?? 50,
+          y: character.map_position_y ?? 50
+        };
+      });
+      setCharacterPositions(positions);
+    }
+  }, [currentCampaign]);
+
   // Auto-select character for players, first character for DMs
   useEffect(() => {
     if (currentCampaign) {
@@ -205,6 +227,47 @@ const CampaignView: React.FC = () => {
     setBackstoryPage(0);
     setPageDirection(null);
   }, [selectedCharacter]);
+
+  // Helper function to calculate total character health from limbs
+  const calculateCharacterHealth = (character: any) => {
+    const baseHitPoints = character.hit_points;
+    const conModifier = Math.floor((character.abilities.con - 10) / 2);
+    const conBonus = Math.max(0, conModifier * 0.1);
+
+    // Calculate limb health ratios (same as in character sheet)
+    const limbHealthRatios = {
+      head: Math.min(1.0, 0.25 + conBonus),
+      torso: Math.min(2.0, 1.0 + conBonus),
+      hand: Math.min(1.0, 0.15 + conBonus),  // Per hand
+      leg: Math.min(1.0, 0.4 + conBonus)      // Per leg
+    };
+
+    const limbHealths = {
+      head: Math.floor(baseHitPoints * limbHealthRatios.head),
+      torso: Math.floor(baseHitPoints * limbHealthRatios.torso),
+      leftHand: Math.floor(baseHitPoints * limbHealthRatios.hand),
+      rightHand: Math.floor(baseHitPoints * limbHealthRatios.hand),
+      leftLeg: Math.floor(baseHitPoints * limbHealthRatios.leg),
+      rightLeg: Math.floor(baseHitPoints * limbHealthRatios.leg)
+    };
+
+    // Calculate total health: each limb counted separately
+    const totalMaxHealth = limbHealths.head + limbHealths.torso + 
+                          limbHealths.leftHand + limbHealths.rightHand + 
+                          limbHealths.leftLeg + limbHealths.rightLeg;
+    
+    // TODO: When we add current health tracking, calculate current health for each limb separately
+    // For now, assuming full health
+    const currentHealth = totalMaxHealth;
+    
+    return {
+      current: currentHealth,
+      max: totalMaxHealth,
+      percentage: (currentHealth / totalMaxHealth) * 100,
+      isDead: currentHealth <= 0,
+      limbs: limbHealths  // Return individual limb healths for future damage tracking
+    };
+  };
 
   // Helper function to determine if user can view all tabs for the selected character
   const canViewAllTabs = useCallback((characterId: number): boolean => {
@@ -287,14 +350,6 @@ const CampaignView: React.FC = () => {
 
   const handleBackToDashboard = () => {
     navigate('/dashboard');
-  };
-
-  const handleDeleteCharacter = (characterId: number, characterName: string) => {
-    setDeleteModal({ 
-      isOpen: true, 
-      characterId, 
-      characterName 
-    });
   };
 
   const confirmDeleteCharacter = async () => {
@@ -542,6 +597,22 @@ const CampaignView: React.FC = () => {
           setToastMessage(`${data.itemName}${customText} ${action} ${characterName}'s inventory${unequipText}`);
           setTimeout(() => setToastMessage(null), 4000);
         }
+      });
+
+      // Listen for character movement on map
+      newSocket.on('characterMoved', (data: {
+        characterId: number;
+        characterName: string;
+        x: number;
+        y: number;
+        timestamp: string;
+      }) => {
+        console.log('📍 Received character movement:', data);
+        // Update character position in state
+        setCharacterPositions(prev => ({
+          ...prev,
+          [data.characterId]: { x: data.x, y: data.y }
+        }));
       });
       
       setSocket(newSocket);
@@ -1371,7 +1442,6 @@ const CampaignView: React.FC = () => {
   }
 
   const { campaign, characters } = currentCampaign;
-  const isDungeonMaster = user?.role === 'Dungeon Master' && campaign.dungeon_master_id === user.id;
 
   const selectedCharacterData = characters.find(c => c.id === selectedCharacter);
 
@@ -1401,48 +1471,138 @@ const CampaignView: React.FC = () => {
           </div>
         </div>
 
-        {/* Campaign Content */}
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
-          {/* Character List */}
-          <div style={{ flex: '0 0 300px' }}>
-            <div className="glass-panel">
+        {/* Main View Switcher */}
+        <div className="glass-panel" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+            <button
+              onClick={() => setMainView('campaign')}
+              style={{
+                padding: '0.625rem 1.5rem',
+                background: mainView === 'campaign' 
+                  ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)' 
+                  : 'rgba(255, 255, 255, 0.05)',
+                border: mainView === 'campaign' 
+                  ? '2px solid var(--primary-gold)' 
+                  : '1px solid rgba(212, 193, 156, 0.2)',
+                borderRadius: '0.75rem',
+                color: mainView === 'campaign' ? 'var(--text-gold)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                transition: 'all 0.3s ease',
+                boxShadow: mainView === 'campaign' 
+                  ? '0 4px 12px rgba(212, 193, 156, 0.2)' 
+                  : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseEnter={(e) => {
+                if (mainView !== 'campaign') {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (mainView !== 'campaign') {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                }
+              }}
+            >
+              <span style={{ fontSize: '1.1rem' }}>🗺️</span>
+              Campaign View
+            </button>
+            <button
+              onClick={() => setMainView('character')}
+              style={{
+                padding: '0.625rem 1.5rem',
+                background: mainView === 'character' 
+                  ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)' 
+                  : 'rgba(255, 255, 255, 0.05)',
+                border: mainView === 'character' 
+                  ? '2px solid var(--primary-gold)' 
+                  : '1px solid rgba(212, 193, 156, 0.2)',
+                borderRadius: '0.75rem',
+                color: mainView === 'character' ? 'var(--text-gold)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                transition: 'all 0.3s ease',
+                boxShadow: mainView === 'character' 
+                  ? '0 4px 12px rgba(212, 193, 156, 0.2)' 
+                  : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseEnter={(e) => {
+                if (mainView !== 'character') {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (mainView !== 'character') {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                }
+              }}
+            >
+              <span style={{ fontSize: '1.1rem' }}>👤</span>
+              Character View
+            </button>
+          </div>
+        </div>
+
+        {/* Main Content Area with Character List */}
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+          {/* Character List - Always Visible */}
+          <div style={{ flex: '0 0 280px' }}>
+            <div className="glass-panel" style={{ position: 'sticky', top: '1rem' }}>
               <div style={{ marginBottom: '1rem' }}>
-                <h6>👥 Characters ({characters.length})</h6>
+                <h6 style={{ margin: 0, marginBottom: '0.5rem' }}>👥 Characters ({characters.length})</h6>
                 {characters.length > 1 && (
                   <div style={{ 
                     fontSize: '0.65rem', 
                     color: 'var(--text-muted)', 
-                    fontStyle: 'italic',
-                    marginTop: '0.25rem'
+                    fontStyle: 'italic'
                   }}>
-                    Use ↑ ↓ arrow keys to navigate • Wraps around
+                    Use ↑ ↓ arrow keys to navigate
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.25rem' }}>
                 {characters.map((character) => (
-                  <div 
+                  <button
                     key={character.id}
-                    onClick={() => setSelectedCharacter(character.id)}
+                    onClick={() => {
+                      setSelectedCharacter(character.id);
+                      if (mainView !== 'character') {
+                        setMainView('character');
+                      }
+                    }}
                     style={{
-                      padding: '1rem',
+                      padding: '0.75rem',
                       background: selectedCharacter === character.id 
                         ? 'rgba(212, 193, 156, 0.2)' 
                         : 'rgba(255, 255, 255, 0.08)',
                       border: selectedCharacter === character.id 
                         ? '2px solid var(--primary-gold)' 
                         : '1px solid rgba(212, 193, 156, 0.2)',
-                      borderRadius: '0.75rem',
+                      borderRadius: '0.5rem',
                       cursor: 'pointer',
                       transition: 'all var(--transition-normal)',
                       boxShadow: selectedCharacter === character.id && isKeyboardNavigating
-                        ? '0 0 20px rgba(212, 193, 156, 0.6), 0 0 40px rgba(212, 193, 156, 0.3)'
+                        ? '0 0 20px rgba(212, 193, 156, 0.6)'
                         : selectedCharacter === character.id
                         ? '0 0 10px rgba(212, 193, 156, 0.3)'
                         : 'none',
-                      transform: selectedCharacter === character.id && isKeyboardNavigating 
-                        ? 'scale(1.02)' 
-                        : 'scale(1)'
+                      textAlign: 'left',
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.25rem'
                     }}
                     onMouseEnter={(e) => {
                       if (selectedCharacter !== character.id) {
@@ -1457,115 +1617,448 @@ const CampaignView: React.FC = () => {
                       }
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <div className="text-gold" style={{ fontWeight: 'bold', fontSize: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="text-gold" style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
                         {character.name}
                       </div>
                       {characters.length > 1 && selectedCharacter === character.id && (
                         <div style={{ 
-                          fontSize: '0.7rem', 
+                          fontSize: '0.65rem', 
                           color: 'var(--text-muted)',
                           backgroundColor: 'rgba(212, 193, 156, 0.1)',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: '12px',
+                          padding: '0.2rem 0.4rem',
+                          borderRadius: '10px',
                           border: '1px solid rgba(212, 193, 156, 0.2)'
                         }}>
                           {characters.findIndex(c => c.id === character.id) + 1}/{characters.length}
                         </div>
                       )}
                     </div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                      Level {character.level} {character.race} {character.class}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Lvl {character.level} {character.race} {character.class}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Player: {character.player_name}
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      {character.player_name}
                     </div>
                     
-                    {/* Delete button for DM */}
-                    {isDungeonMaster && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteCharacter(character.id, character.name);
-                        }}
-                        style={{
-                          marginTop: '0.5rem',
-                          padding: '0.25rem 0.5rem',
-                          background: 'rgba(220, 53, 69, 0.2)',
-                          border: '1px solid rgba(220, 53, 69, 0.4)',
-                          borderRadius: '0.25rem',
-                          color: '#f5c6cb',
-                          fontSize: '0.7rem',
-                          cursor: 'pointer',
-                          float: 'right'
-                        }}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
+                    {/* Health Bar and Status */}
+                    {(() => {
+                      const health = calculateCharacterHealth(character);
+                      const healthColor = health.isDead 
+                        ? '#dc3545' 
+                        : health.percentage > 50 
+                        ? '#28a745' 
+                        : health.percentage > 25 
+                        ? '#ffc107' 
+                        : '#dc3545';
+                      
+                      return (
+                        <div style={{ marginTop: '0.5rem' }}>
+                          {/* Health Bar */}
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.5rem',
+                            marginBottom: '0.25rem'
+                          }}>
+                            {/* Status Icon */}
+                            <div style={{ 
+                              fontSize: '1rem',
+                              filter: health.isDead ? 'none' : 'drop-shadow(0 0 4px rgba(40, 167, 69, 0.6))'
+                            }} title={health.isDead ? 'Dead' : 'Alive'}>
+                              {health.isDead ? '💀' : '❤️'}
+                            </div>
+                            
+                            {/* Health Bar Background */}
+                            <div style={{
+                              flex: 1,
+                              height: '12px',
+                              background: 'rgba(0, 0, 0, 0.4)',
+                              borderRadius: '6px',
+                              overflow: 'hidden',
+                              border: '1px solid rgba(212, 193, 156, 0.3)',
+                              position: 'relative'
+                            }}>
+                              {/* Health Bar Fill */}
+                              <div style={{
+                                width: `${health.percentage}%`,
+                                height: '100%',
+                                background: `linear-gradient(90deg, ${healthColor} 0%, ${healthColor}dd 100%)`,
+                                transition: 'width 0.3s ease',
+                                boxShadow: `0 0 8px ${healthColor}88`
+                              }} />
+                              
+                              {/* Health Text Overlay */}
+                              <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.65rem',
+                                fontWeight: 'bold',
+                                color: '#fff',
+                                textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+                                pointerEvents: 'none'
+                              }}>
+                                {health.current}/{health.max}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Health Percentage */}
+                          <div style={{
+                            fontSize: '0.65rem',
+                            color: healthColor,
+                            textAlign: 'right',
+                            fontWeight: 'bold'
+                          }}>
+                            {health.percentage.toFixed(0)}% HP
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Character Details Panel */}
+          {/* Main Content Area */}
           <div style={{ flex: '1', minWidth: 0 }}>
-            {selectedCharacterData ? (
+
+        {/* Campaign Content */}
+        {mainView === 'campaign' && (
+          <div>
+            {/* Campaign Tab Navigation */}
+            <div className="glass-panel" style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                {(['map', 'battle', 'news', 'journal'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setCampaignTab(tab)}
+                    style={{
+                      padding: '0.625rem 1.25rem',
+                      background: campaignTab === tab 
+                        ? 'rgba(212, 193, 156, 0.3)' 
+                        : 'rgba(255, 255, 255, 0.1)',
+                      border: campaignTab === tab 
+                        ? '2px solid var(--primary-gold)' 
+                        : '1px solid rgba(212, 193, 156, 0.2)',
+                      borderRadius: '1.5rem',
+                      color: campaignTab === tab ? 'var(--text-gold)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
+                      transition: 'all var(--transition-normal)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (campaignTab !== tab) {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (campaignTab !== tab) {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                      }
+                    }}
+                  >
+                    {tab === 'map' ? '🗺️ Campaign Map' : 
+                     tab === 'battle' ? '⚔️ Battle Area' :
+                     tab === 'news' ? '📰 Campaign News' : 
+                     '📖 Campaign Journal'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Campaign Tab Content */}
+            {campaignTab === 'map' && (
+              <div className="glass-panel">
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>🗺️ Campaign Map</h5>
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  borderRadius: '0.75rem',
+                  overflow: 'hidden',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '2px solid rgba(212, 193, 156, 0.3)'
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggedCharacter !== null) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    
+                    // Update position in state immediately
+                    setCharacterPositions(prev => ({
+                      ...prev,
+                      [draggedCharacter]: { x, y }
+                    }));
+                    
+                    // Emit to other users via Socket.IO immediately
+                    if (socket && currentCampaign) {
+                      const character = currentCampaign.characters.find(c => c.id === draggedCharacter);
+                      const moveData = {
+                        campaignId: currentCampaign.campaign.id,
+                        characterId: draggedCharacter,
+                        characterName: character?.name || '',
+                        x,
+                        y
+                      };
+                      console.log('🎯 Emitting character movement:', moveData);
+                      socket.emit('characterMove', moveData);
+                    }
+                    
+                    // Update position in backend (async, doesn't block UI)
+                    characterAPI.updateMapPosition(draggedCharacter, x, y).catch(error => {
+                      console.error('Error updating character position:', error);
+                    });
+                    
+                    setDraggedCharacter(null);
+                  }
+                }}
+                >
+                  <img 
+                    src={WorldMapImage} 
+                    alt="Campaign World Map" 
+                    style={{ 
+                      width: '100%', 
+                      height: 'auto',
+                      display: 'block'
+                    }} 
+                  />
+                  
+                  {/* Character Icons */}
+                  {currentCampaign && currentCampaign.characters.map(character => {
+                    const position = characterPositions[character.id] || { x: 50, y: 50 };
+                    const canMove = user?.role === 'Dungeon Master' || character.player_id === user?.id;
+                    
+                    return (
+                      <div
+                        key={character.id}
+                        draggable={canMove}
+                        onDragStart={() => {
+                          if (canMove) {
+                            setDraggedCharacter(character.id);
+                          }
+                        }}
+                        onDragEnd={() => setDraggedCharacter(null)}
+                        style={{
+                          position: 'absolute',
+                          left: `${position.x}%`,
+                          top: `${position.y}%`,
+                          transform: 'translate(-50%, -50%)',
+                          cursor: canMove ? 'grab' : 'default',
+                          transition: draggedCharacter === character.id ? 'none' : 'all 0.3s ease',
+                          zIndex: draggedCharacter === character.id ? 1000 : 10
+                        }}
+                        title={character.name}
+                      >
+                        {character.image_url ? (
+                          <div style={{
+                            width: '50px',
+                            height: '50px',
+                            borderRadius: '50%',
+                            border: '3px solid var(--primary-gold)',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+                            overflow: 'hidden',
+                            background: 'rgba(0, 0, 0, 0.3)'
+                          }}>
+                            <img 
+                              src={`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${character.image_url}`}
+                              alt={character.name}
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                pointerEvents: 'none'
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{
+                            width: '50px',
+                            height: '50px',
+                            borderRadius: '50%',
+                            border: '3px solid var(--primary-gold)',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+                            background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.5rem',
+                            fontWeight: 'bold',
+                            color: 'var(--text-gold)'
+                          }}>
+                            {character.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '-20px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          whiteSpace: 'nowrap',
+                          background: 'rgba(0, 0, 0, 0.8)',
+                          color: 'var(--text-gold)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          pointerEvents: 'none'
+                        }}>
+                          {character.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {campaignTab === 'battle' && (
+              <div className="glass-panel">
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⚔️ Battle Area</h5>
+                <div style={{
+                  minHeight: '400px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px dashed rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  padding: '3rem'
+                }}>
+                  <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>⚔️</div>
+                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Battle Grid Coming Soon</h4>
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                    This area will provide a tactical battle grid for combat encounters. 
+                    Players and the DM can position characters, track initiative, and manage combat in real-time.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {campaignTab === 'news' && (
+              <div className="glass-panel">
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📰 Campaign News & Updates</h5>
+                <div style={{
+                  minHeight: '400px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px dashed rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  padding: '3rem'
+                }}>
+                  <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>📰</div>
+                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Campaign News Coming Soon</h4>
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                    This section will display campaign updates, quest announcements, world events, and important news.
+                    The DM can post updates to keep all players informed of the evolving story.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {campaignTab === 'journal' && (
+              <div className="glass-panel">
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📖 Campaign Journal</h5>
+                <div style={{
+                  minHeight: '400px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px dashed rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  padding: '3rem'
+                }}>
+                  <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>📖</div>
+                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Campaign Journal Coming Soon</h4>
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                    This area will contain the campaign's shared journal with session recaps, important discoveries,
+                    NPC notes, and a timeline of major events. Both players and DM can contribute entries.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Character Content (existing) */}
+        {mainView === 'character' && (
+          <div>
+          {/* Character Details Panel */}
+          {selectedCharacterData ? (
               <div>
                 {/* Character Tab Navigation */}
                 <div className="glass-panel" style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <h5 style={{ margin: 0, color: 'var(--text-gold)' }}>{selectedCharacterData.name}</h5>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
-                      {(canViewAllTabs(selectedCharacterData.id) 
-                        ? (['board', 'sheet', 'inventory', 'equip'] as const)
-                        : (['board'] as const)
-                      ).map((tab) => (
-                        <button
-                          key={tab}
-                          onClick={() => setActiveTab(tab)}
-                          className={`tab-button ${activeTab === tab ? 'active' : ''}`}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            background: activeTab === tab 
-                              ? 'rgba(212, 193, 156, 0.3)' 
-                              : 'rgba(255, 255, 255, 0.1)',
-                            border: activeTab === tab 
-                              ? '2px solid var(--primary-gold)' 
-                              : '1px solid rgba(212, 193, 156, 0.2)',
-                            borderRadius: '1.5rem',
-                            color: activeTab === tab ? 'var(--text-gold)' : 'var(--text-secondary)',
-                            cursor: 'pointer',
-                            fontSize: '0.85rem',
-                            fontWeight: 'bold',
-                            transition: 'all var(--transition-normal)',
-                            textTransform: 'capitalize'
-                          }}
-                        >
-                          {tab === 'board' ? '📋 Overview' : 
-                           tab === 'sheet' ? '📊 Character Sheet' :
-                           tab === 'inventory' ? '🎒 Inventory' : 
-                           '⚔️ Equipment'}
-                        </button>
-                      ))}
-                      
-                      {/* Show a lock icon and message for restricted characters */}
-                      {!canViewAllTabs(selectedCharacterData.id) && (
-                        <div style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '0.5rem',
-                          fontSize: '0.75rem',
-                          color: 'var(--text-muted)',
-                          fontStyle: 'italic',
-                          marginLeft: '1rem'
-                        }}>
-                          🔒 Limited view - overview only
-                        </div>
-                      )}
-                    </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
+                    {(canViewAllTabs(selectedCharacterData.id) 
+                      ? (['board', 'sheet', 'inventory', 'equip'] as const)
+                      : (['board'] as const)
+                    ).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`tab-button ${activeTab === tab ? 'active' : ''}`}
+                        style={{
+                          padding: '0.625rem 1.25rem',
+                          background: activeTab === tab 
+                            ? 'rgba(212, 193, 156, 0.3)' 
+                            : 'rgba(255, 255, 255, 0.1)',
+                          border: activeTab === tab 
+                            ? '2px solid var(--primary-gold)' 
+                            : '1px solid rgba(212, 193, 156, 0.2)',
+                          borderRadius: '1.5rem',
+                          color: activeTab === tab ? 'var(--text-gold)' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          fontWeight: 'bold',
+                          transition: 'all var(--transition-normal)',
+                          textTransform: 'capitalize'
+                        }}
+                      >
+                        {tab === 'board' ? '📋 Overview' : 
+                         tab === 'sheet' ? '📊 Character Sheet' :
+                         tab === 'inventory' ? '🎒 Inventory' : 
+                         '⚔️ Equipment'}
+                      </button>
+                    ))}
+                    
+                    {/* Show a lock icon and message for restricted characters */}
+                    {!canViewAllTabs(selectedCharacterData.id) && (
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '0.5rem',
+                        fontSize: '0.75rem',
+                        color: 'var(--text-muted)',
+                        fontStyle: 'italic',
+                        padding: '0.625rem 1rem'
+                      }}>
+                        🔒 Limited view - overview only
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1600,6 +2093,83 @@ const CampaignView: React.FC = () => {
                         fontStyle: 'italic'
                       }}>
                       </div>
+                    </div>
+                    
+                    {/* Character Image */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      marginBottom: '2rem'
+                    }}>
+                      {selectedCharacterData.image_url ? (
+                        <img 
+                          src={`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${selectedCharacterData.image_url}`}
+                          alt={selectedCharacterData.name}
+                          style={{
+                            width: '250px',
+                            height: '250px',
+                            objectFit: 'cover',
+                            borderRadius: '12px',
+                            border: '3px solid rgba(212, 193, 156, 0.4)',
+                            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+                            backgroundColor: 'rgba(0, 0, 0, 0.3)'
+                          }}
+                          onError={(e) => {
+                            console.error('Failed to load image:', selectedCharacterData.image_url);
+                            // Hide image on error
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
+                          <button
+                            onClick={() => {
+                              const input = document.createElement('input');
+                              input.type = 'file';
+                              input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
+                              input.onchange = async (e) => {
+                                const file = (e.target as HTMLInputElement).files?.[0];
+                                if (file) {
+                                  // Create URL for preview
+                                  const url = URL.createObjectURL(file);
+                                  setImageToCrop({ file, url, characterId: selectedCharacterData.id });
+                                  setShowImageCropModal(true);
+                                  setImagePosition({ x: 50, y: 50 });
+                                  setImageScale(100);
+                                }
+                              };
+                              input.click();
+                            }}
+                            style={{
+                              width: '250px',
+                              height: '250px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '1rem',
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              border: '3px dashed rgba(212, 193, 156, 0.3)',
+                              borderRadius: '12px',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                              color: 'var(--text-muted)'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                            }}
+                          >
+                            <div style={{ fontSize: '3rem', opacity: 0.5 }}>📷</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Upload Character Image</div>
+                            <div style={{ fontSize: '0.7rem' }}>Click to select an image</div>
+                          </button>
+                        )
+                      )}
                     </div>
                     
                     {/* Basic Info Section - Styled Cards */}
@@ -2519,7 +3089,12 @@ const CampaignView: React.FC = () => {
               </div>
             )}
           </div>
+        )}
+        {/* End of Character View */}
+
+          </div>
         </div>
+        {/* End of Main Content Area */}
 
         {/* Toast Notification */}
         {toastMessage && (
@@ -3260,6 +3835,245 @@ const CampaignView: React.FC = () => {
                   }}
                 >
                   ✨ Create & Add to Inventory
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image Crop/Position Modal */}
+        {showImageCropModal && imageToCrop && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.98) 0%, rgba(17, 17, 17, 0.98) 100%)',
+              borderRadius: '16px',
+              padding: '2rem',
+              maxWidth: '600px',
+              width: '90%',
+              border: '2px solid rgba(212, 193, 156, 0.3)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
+            }}>
+              <h3 style={{ 
+                color: 'var(--text-gold)', 
+                marginBottom: '1.5rem',
+                textAlign: 'center',
+                fontSize: '1.5rem'
+              }}>
+                📷 Position Your Character Image
+              </h3>
+
+              {/* Preview Container */}
+              <div style={{
+                position: 'relative',
+                width: '400px',
+                height: '400px',
+                margin: '0 auto 1.5rem',
+                border: '3px solid rgba(212, 193, 156, 0.4)',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                backgroundColor: 'rgba(0, 0, 0, 0.3)'
+              }}>
+                <img 
+                  src={imageToCrop.url}
+                  alt="Preview"
+                  style={{
+                    position: 'absolute',
+                    width: `${imageScale}%`,
+                    height: 'auto',
+                    left: `${imagePosition.x}%`,
+                    top: `${imagePosition.y}%`,
+                    transform: 'translate(-50%, -50%)',
+                    pointerEvents: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Controls */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  color: 'var(--text-gold)', 
+                  marginBottom: '0.5rem',
+                  fontSize: '0.9rem'
+                }}>
+                  Horizontal Position
+                </label>
+                <input 
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={imagePosition.x}
+                  onChange={(e) => setImagePosition({ ...imagePosition, x: parseInt(e.target.value) })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  color: 'var(--text-gold)', 
+                  marginBottom: '0.5rem',
+                  fontSize: '0.9rem'
+                }}>
+                  Vertical Position
+                </label>
+                <input 
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={imagePosition.y}
+                  onChange={(e) => setImagePosition({ ...imagePosition, y: parseInt(e.target.value) })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  color: 'var(--text-gold)', 
+                  marginBottom: '0.5rem',
+                  fontSize: '0.9rem'
+                }}>
+                  Zoom ({imageScale}%)
+                </label>
+                <input 
+                  type="range"
+                  min="50"
+                  max="200"
+                  value={imageScale}
+                  onChange={(e) => setImageScale(parseInt(e.target.value))}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                <button
+                  onClick={() => {
+                    setShowImageCropModal(false);
+                    URL.revokeObjectURL(imageToCrop.url);
+                    setImageToCrop(null);
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '8px',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      // Create a canvas to crop the image
+                      const canvas = document.createElement('canvas');
+                      const ctx = canvas.getContext('2d');
+                      canvas.width = 400;
+                      canvas.height = 400;
+
+                      const img = new Image();
+                      img.src = imageToCrop.url;
+                      
+                      await new Promise((resolve) => {
+                        img.onload = resolve;
+                      });
+
+                      if (ctx) {
+                        // Clear canvas with black background
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        
+                        // Calculate dimensions based on scale
+                        // We need to maintain aspect ratio and scale properly
+                        const scale = imageScale / 100;
+                        
+                        // Calculate what the image width would be to fill the container at this scale
+                        const containerWidth = 400;
+                        const scaledWidth = containerWidth * (scale);
+                        const scaledHeight = (img.height / img.width) * scaledWidth;
+                        
+                        // Calculate position in pixels (center point)
+                        const centerX = (imagePosition.x / 100) * canvas.width;
+                        const centerY = (imagePosition.y / 100) * canvas.height;
+                        
+                        // Calculate top-left corner from center point
+                        const x = centerX - scaledWidth / 2;
+                        const y = centerY - scaledHeight / 2;
+                        
+                        // Draw the image
+                        ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+                        
+                        // Convert canvas to blob
+                        canvas.toBlob(async (blob) => {
+                          if (blob) {
+                            // Create a new file from the blob
+                            const croppedFile = new File([blob], imageToCrop.file.name, { type: 'image/jpeg' });
+                            
+                            // Upload the cropped image
+                            await characterAPI.uploadCharacterImage(imageToCrop.characterId, croppedFile);
+                            
+                            // Reload campaign to refresh character data
+                            if (campaignName) {
+                              await loadCampaign(campaignName);
+                            }
+                            
+                            // Close modal and cleanup
+                            setShowImageCropModal(false);
+                            URL.revokeObjectURL(imageToCrop.url);
+                            setImageToCrop(null);
+                          }
+                        }, 'image/jpeg', 0.9);
+                      }
+                    } catch (error) {
+                      console.error('Error uploading image:', error);
+                      alert('Failed to upload image. Please try again.');
+                    }
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)',
+                    border: '2px solid var(--primary-gold)',
+                    borderRadius: '8px',
+                    color: 'var(--text-gold)',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(212, 193, 156, 0.4) 0%, rgba(212, 193, 156, 0.3) 100%)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(212, 193, 156, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  Upload Image
                 </button>
               </div>
             </div>

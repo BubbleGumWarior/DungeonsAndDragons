@@ -19,7 +19,8 @@ const PORT = process.env.PORT || 5000;
 
 // Security middleware
 app.use(helmet({
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // Rate limiting
@@ -79,6 +80,14 @@ app.use((req, res, next) => {
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve uploaded files statically with CORS headers
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || 'http://localhost:3000');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -236,6 +245,24 @@ const startServer = async () => {
           console.log(`🎒 Inventory update: ${action} ${itemName} for character ${characterId}${isCustom ? ' (custom item)' : ''}`);
         } catch (error) {
           console.error('Error handling inventory update:', error);
+        }
+      });
+      
+      // Handle real-time character movement on map
+      socket.on('characterMove', (data) => {
+        try {
+          const { campaignId, characterId, characterName, x, y } = data;
+          // Broadcast to all users in the campaign except sender
+          socket.to(`campaign_${campaignId}`).emit('characterMoved', {
+            characterId,
+            characterName,
+            x,
+            y,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🗺️ Character moved: ${characterName} to (${x.toFixed(2)}, ${y.toFixed(2)}) in campaign ${campaignId}`);
+        } catch (error) {
+          console.error('Error handling character movement:', error);
         }
       });
       

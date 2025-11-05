@@ -198,6 +198,45 @@ const runMigrations = async () => {
       console.log('✅ limb_armor_class column already exists');
     }
     
+    // Migration 3: Add image_url column to characters table if it doesn't exist
+    const checkImageUrlColumn = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'characters' 
+      AND column_name = 'image_url'
+    `);
+    
+    if (checkImageUrlColumn.rows.length === 0) {
+      console.log('Adding image_url column to characters table...');
+      await pool.query(`
+        ALTER TABLE characters 
+        ADD COLUMN image_url VARCHAR(500)
+      `);
+      console.log('✅ image_url column added successfully');
+    } else {
+      console.log('✅ image_url column already exists');
+    }
+    
+    // Migration 4: Add map position columns to characters table if they don't exist
+    const checkMapPositionColumns = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'characters' 
+      AND column_name IN ('map_position_x', 'map_position_y')
+    `);
+    
+    if (checkMapPositionColumns.rows.length < 2) {
+      console.log('Adding map_position_x and map_position_y columns to characters table...');
+      await pool.query(`
+        ALTER TABLE characters 
+        ADD COLUMN IF NOT EXISTS map_position_x DECIMAL(5,2) DEFAULT 50.00,
+        ADD COLUMN IF NOT EXISTS map_position_y DECIMAL(5,2) DEFAULT 50.00
+      `);
+      console.log('✅ map position columns added successfully');
+    } else {
+      console.log('✅ map position columns already exist');
+    }
+    
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running database migrations:', error);
