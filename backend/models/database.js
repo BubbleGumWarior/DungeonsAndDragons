@@ -322,6 +322,48 @@ const runMigrations = async () => {
       console.log('✅ monsters table already exists');
     }
     
+    // Migration 8: Create monster_instances table for tracking individual monster instances in combat
+    const checkMonsterInstancesTable = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'monster_instances'
+      );
+    `);
+    
+    if (!checkMonsterInstancesTable.rows[0].exists) {
+      console.log('Creating monster_instances table...');
+      await pool.query(`
+        CREATE TABLE monster_instances (
+          id SERIAL PRIMARY KEY,
+          monster_id INTEGER NOT NULL REFERENCES monsters(id) ON DELETE CASCADE,
+          campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+          instance_number INTEGER NOT NULL,
+          current_limb_health JSONB NOT NULL,
+          in_combat BOOLEAN DEFAULT TRUE,
+          initiative INTEGER DEFAULT 0,
+          battle_position_x DECIMAL(5,2) DEFAULT 50.00,
+          battle_position_y DECIMAL(5,2) DEFAULT 50.00,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(monster_id, campaign_id, instance_number)
+        );
+      `);
+      
+      // Create index for faster lookups
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_monster_instances_monster ON monster_instances(monster_id);
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_monster_instances_campaign ON monster_instances(campaign_id);
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_monster_instances_in_combat ON monster_instances(in_combat);
+      `);
+      
+      console.log('✅ monster_instances table created successfully');
+    } else {
+      console.log('✅ monster_instances table already exists');
+    }
+    
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running database migrations:', error);

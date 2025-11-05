@@ -157,6 +157,26 @@ export interface Monster {
   updated_at: string;
 }
 
+export interface MonsterInstance {
+  id: number;
+  monster_id: number;
+  campaign_id: number;
+  instance_number: number;
+  current_limb_health: {
+    head: number;
+    chest: number;
+    left_arm: number;
+    right_arm: number;
+    left_leg: number;
+    right_leg: number;
+  };
+  in_combat: boolean;
+  initiative: number;
+  battle_position_x: number;
+  battle_position_y: number;
+  created_at: string;
+}
+
 export interface D5eReferenceData {
   races: Array<{
     name: string;
@@ -410,6 +430,28 @@ export const monsterAPI = {
 
   deleteMonster: async (monsterId: number): Promise<{ message: string }> => {
     const response = await api.delete(`/monsters/${monsterId}`);
+    return response.data;
+  }
+};
+
+export const monsterInstanceAPI = {
+  getCampaignInstances: async (campaignId: number): Promise<MonsterInstance[]> => {
+    const response = await api.get(`/monster-instances/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  getActiveInstances: async (campaignId: number): Promise<MonsterInstance[]> => {
+    const response = await api.get(`/monster-instances/campaign/${campaignId}/active`);
+    return response.data;
+  },
+
+  updateHealth: async (instanceId: number, limbHealth: any): Promise<MonsterInstance> => {
+    const response = await api.patch(`/monster-instances/${instanceId}/health`, { limbHealth });
+    return response.data;
+  },
+
+  removeFromCombat: async (instanceId: number): Promise<MonsterInstance> => {
+    const response = await api.patch(`/monster-instances/${instanceId}/remove-from-combat`);
     return response.data;
   }
 };

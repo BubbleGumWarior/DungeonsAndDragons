@@ -14,6 +14,7 @@ const authRoutes = require('./routes/auth');
 const campaignRoutes = require('./routes/campaigns');
 const characterRoutes = require('./routes/characters');
 const monsterRoutes = require('./routes/monsters');
+const monsterInstanceRoutes = require('./routes/monsterInstances');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -97,6 +98,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/monsters', monsterRoutes);
+app.use('/api/monster-instances', monsterInstanceRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -334,24 +336,39 @@ const startServer = async () => {
 
             // Fetch monster details
             const Monster = require('./models/Monster');
+            const MonsterInstance = require('./models/MonsterInstance');
             const monster = await Monster.findById(characterId);
             if (!monster) {
               console.warn(`Monster ${characterId} not found for combat`);
               return;
             }
 
+            // Get next instance number for this monster type in this campaign
+            const instanceNumber = await MonsterInstance.getNextInstanceNumber(monster.id, campaignId);
+
             // Roll initiative for monster (d20 + 0 for now; can be enhanced later)
             const roll = Math.floor(Math.random() * 20) + 1;
             const initiative = roll;
 
-            // Add to combatants list
+            // Create a new monster instance with its own health pool
+            const monsterInstance = await MonsterInstance.create({
+              monster_id: monster.id,
+              campaign_id: campaignId,
+              instance_number: instanceNumber,
+              current_limb_health: monster.limb_health,
+              initiative: initiative
+            });
+
+            // Add to combatants list using the instance ID
             battleCombatState[campaignId].combatants.push({
-              characterId: monster.id,
+              characterId: monsterInstance.id, // Use instance ID, not monster template ID
+              monsterId: monster.id, // Keep reference to monster template
               playerId: targetPlayerId, // DM's ID
-              name: monster.name,
+              name: `${monster.name} #${instanceNumber}`,
               initiative,
               movement_speed: 30, // Default monster speed
-              isMonster: true
+              isMonster: true,
+              instanceNumber: instanceNumber
             });
 
             // Re-sort initiative order
@@ -371,7 +388,7 @@ const startServer = async () => {
               currentTurnIndex: battleCombatState[campaignId].currentTurnIndex
             });
 
-            console.log(`🐉 Monster ${monster.name} added to combat in campaign ${campaignId} (initiative: ${initiative})`);
+            console.log(`🐉 Monster ${monster.name} #${instanceNumber} (instance ID: ${monsterInstance.id}) added to combat in campaign ${campaignId} (initiative: ${initiative})`);
           } else {
             // Regular player character invite
             io.to(`campaign_${campaignId}`).emit('combatInvite', {
@@ -463,8 +480,15 @@ const startServer = async () => {
             return;
           }
 
-          // Advance index
-          state.currentTurnIndex = (state.currentTurnIndex + 1) % state.initiativeOrder.length;
+          // If combat hasn't started yet (currentTurnIndex is -1), start it
+          if (state.currentTurnIndex === -1) {
+            state.currentTurnIndex = 0;
+            console.log(`⚔️ Starting combat in campaign ${campaignId}`);
+          } else {
+            // Advance to next turn
+            state.currentTurnIndex = (state.currentTurnIndex + 1) % state.initiativeOrder.length;
+          }
+          
           const currentCharacterId = state.initiativeOrder[state.currentTurnIndex];
 
           // Reset only the current character's movement to their movement_speed
@@ -484,7 +508,7 @@ const startServer = async () => {
             timestamp: new Date().toISOString()
           });
 
-          console.log(`➡️ Advanced turn in campaign ${campaignId} to character ${currentCharacterId}`);
+          console.log(`➡️ Advanced turn in campaign ${campaignId} to character ${currentCharacterId} (index: ${state.currentTurnIndex})`);
         } catch (error) {
           console.error('Error advancing turn:', error);
         }
@@ -507,6 +531,10 @@ const startServer = async () => {
           
           // Set all characters' combat_active to false in database
           await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0 WHERE campaign_id = $1', [campaignId]);
+          
+          // Remove all monster instances from combat
+          const MonsterInstance = require('./models/MonsterInstance');
+          await MonsterInstance.removeAllFromCombat(campaignId);
           
           // Broadcast combat reset to all users in campaign
           io.to(`campaign_${campaignId}`).emit('combatReset', {

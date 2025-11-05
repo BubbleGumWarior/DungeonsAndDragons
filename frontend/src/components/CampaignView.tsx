@@ -80,7 +80,16 @@ const CampaignView: React.FC = () => {
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
   const [showCombatInviteModal, setShowCombatInviteModal] = useState(false);
   const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string } | null>(null);
-  const [combatants, setCombatants] = useState<Array<{ characterId: number; playerId: number; name: string; initiative: number; movement_speed: number }>>([]);
+  const [combatants, setCombatants] = useState<Array<{ 
+    characterId: number; 
+    playerId: number; 
+    name: string; 
+    initiative: number; 
+    movement_speed: number;
+    isMonster?: boolean;
+    monsterId?: number;
+    instanceNumber?: number;
+  }>>([]);
   const [initiativeOrder, setInitiativeOrder] = useState<number[]>([]);
   const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(-1);
 
@@ -737,7 +746,16 @@ const CampaignView: React.FC = () => {
 
       // Listen for combatants updated (new combatant added or initiative changed)
       newSocket.on('combatantsUpdated', (data: {
-        combatants: Array<{ characterId: number; playerId: number; name: string; initiative: number; movement_speed: number }>;
+        combatants: Array<{ 
+          characterId: number; 
+          playerId: number; 
+          name: string; 
+          initiative: number; 
+          movement_speed: number;
+          isMonster?: boolean;
+          monsterId?: number;
+          instanceNumber?: number;
+        }>;
         initiativeOrder: number[];
         currentTurnIndex: number;
         timestamp: string;
@@ -2131,13 +2149,17 @@ const CampaignView: React.FC = () => {
                                 socket.emit('nextTurn', {
                                   campaignId: currentCampaign.campaign.id
                                 });
-                                console.log('🔄 Next turn emitted');
+                                console.log(currentTurnIndex === -1 ? '⚔️ Starting combat' : '🔄 Next turn emitted');
                               }
                             }}
                             style={{
                               padding: '0.5rem 1rem',
-                              background: 'linear-gradient(135deg, #c9a961, #b8935a)',
-                              border: '2px solid var(--text-gold)',
+                              background: currentTurnIndex === -1 
+                                ? 'linear-gradient(135deg, #61c961, #5ab85a)'
+                                : 'linear-gradient(135deg, #c9a961, #b8935a)',
+                              border: currentTurnIndex === -1
+                                ? '2px solid #4a4'
+                                : '2px solid var(--text-gold)',
                               borderRadius: '0.5rem',
                               color: '#000',
                               fontWeight: 'bold',
@@ -2145,7 +2167,7 @@ const CampaignView: React.FC = () => {
                               fontSize: '0.9rem'
                             }}
                           >
-                            🔄 Next Turn
+                            {currentTurnIndex === -1 ? '⚔️ Start Combat' : '🔄 Next Turn'}
                           </button>
                           <button
                             onClick={() => {
@@ -2187,15 +2209,23 @@ const CampaignView: React.FC = () => {
                     <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span>🎲</span>
                       <span>Initiative Order</span>
-                      {currentTurnIndex >= 0 && initiativeOrder.length > 0 && (
+                      {currentTurnIndex >= 0 && initiativeOrder.length > 0 ? (
                         <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#999' }}>
                           Turn {currentTurnIndex + 1} of {initiativeOrder.length}
+                        </span>
+                      ) : (
+                        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#f4a261' }}>
+                          ⏸️ Waiting to start
                         </span>
                       )}
                     </h6>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {combatants.map((combatant, index) => {
-                        const isCurrentTurn = currentTurnIndex >= 0 && initiativeOrder[currentTurnIndex] === combatant.characterId;
+                      {/* Sort combatants by initiative order for display */}
+                      {initiativeOrder.map((combatantId, orderIndex) => {
+                        const combatant = combatants.find(c => c.characterId === combatantId);
+                        if (!combatant) return null;
+                        
+                        const isCurrentTurn = currentTurnIndex >= 0 && currentTurnIndex === orderIndex;
                         return (
                           <div
                             key={combatant.characterId}
@@ -2471,19 +2501,27 @@ const CampaignView: React.FC = () => {
                     // Check if it's this token's turn (in combat)
                     const isTheirTurn = currentTurnIndex >= 0 && initiativeOrder.length > 0
                       ? initiativeOrder[currentTurnIndex] === combatant.characterId
-                      : true;
+                      : false; // Changed from true - no one's turn if combat hasn't started
                     
-                    // Find if this is a character or monster
+                    // Find if this is a character or monster instance
                     const character = currentCampaign?.characters.find((c: any) => c.id === combatant.characterId);
-                    const monster = monsters.find((m: Monster) => m.id === combatant.characterId);
-                    const isMonster = !character && monster;
                     
-                    // Can move if: (DM always can) OR (is owner AND it's their turn)
+                    // For monsters, characterId is actually the instance ID
+                    // We need to find the monster template using the monsterId field
+                    let monsterTemplate = null;
+                    let isMonster = false;
+                    if (!character && combatant.monsterId) {
+                      monsterTemplate = monsters.find((m: any) => m.id === combatant.monsterId);
+                      isMonster = true;
+                    }
+                    
+                    // Can move if: (DM always can) OR (combat started AND is owner AND it's their turn)
                     const isOwner = character ? character.player_id === user?.id : false;
-                    const canMove = isDM || (isOwner && isTheirTurn);
+                    const combatStarted = currentTurnIndex >= 0;
+                    const canMove = isDM || (combatStarted && isOwner && isTheirTurn);
                     
-                    const imageUrl = (character?.image_url || monster?.image_url)
-                      ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${character?.image_url || monster?.image_url}`
+                    const imageUrl = (character?.image_url || monsterTemplate?.image_url)
+                      ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${character?.image_url || monsterTemplate?.image_url}`
                       : null;
                     
                     const name = combatant.name;
@@ -2544,7 +2582,7 @@ const CampaignView: React.FC = () => {
                             transition: 'all 0.3s ease',
                             opacity: isDM ? 1 : (canMove && remaining > 0 ? 1 : 0.5)
                           }}
-                          title={`${displayName} - ${remaining.toFixed(1)}ft remaining${!isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? ' (Monster)' : ''}`}
+                          title={`${displayName} - ${remaining.toFixed(1)}ft remaining${!combatStarted ? ' (Combat not started - DM only)' : !isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? ' (Monster)' : ''}`}
                         >
                           {!imageUrl && name.charAt(0).toUpperCase()}
                         </div>
