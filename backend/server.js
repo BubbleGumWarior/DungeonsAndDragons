@@ -376,10 +376,8 @@ const startServer = async () => {
               .sort((a, b) => b.initiative - a.initiative)
               .map(c => c.characterId);
 
-            // If this is the first combatant, set current turn
-            if (battleCombatState[campaignId].currentTurnIndex === -1) {
-              battleCombatState[campaignId].currentTurnIndex = 0;
-            }
+            // Don't auto-start combat - let DM click "Start Combat" button
+            // currentTurnIndex stays at -1 until nextTurn is clicked
 
             // Broadcast updated combatants
             io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
@@ -451,12 +449,10 @@ const startServer = async () => {
           const sorted = [...battleCombatState[campaignId].combatants].sort((a, b) => b.initiative - a.initiative);
           battleCombatState[campaignId].initiativeOrder = sorted.map(c => c.characterId);
 
-          // If no currentTurnIndex, set to 0
-          if (battleCombatState[campaignId].currentTurnIndex === -1) {
-            battleCombatState[campaignId].currentTurnIndex = 0;
-          }
+          // Don't auto-start combat - let DM click "Start Combat" button
+          // currentTurnIndex stays at -1 until nextTurn is clicked
 
-          // Broadcast updated combat state to campaign
+          // Broadcast updated combatants to all in campaign
           io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
             combatants: sorted,
             initiativeOrder: battleCombatState[campaignId].initiativeOrder,
