@@ -405,9 +405,10 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
     
     // Calculate limb-specific AC
     const limbAC = {
-      head: 0,     // Default AC 0 for unarmored head
+      head: 12,    // Head has base AC of 12 (harder to hit)
       chest: character.armor_class || 10,  // Only chest gets character's base AC
-      hands: 0,    // Default AC 0 for unarmored hands
+      main_hand: 0,    // Default AC 0 for main hand
+      off_hand: 0,     // Default AC 0 for off hand
       feet: 0      // Default AC 0 for unarmored feet
     };
     
@@ -416,7 +417,18 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
       if (item && item.limb_armor_class) {
         // Add AC from this item to the appropriate limbs
         for (const [limb, ac] of Object.entries(item.limb_armor_class)) {
-          if (limbAC.hasOwnProperty(limb)) {
+          // Special handling for shields and hand armor
+          if (limb === 'hands') {
+            // Apply shield/hand armor to the specific hand slot where it's equipped
+            if (slot === 'main_hand') {
+              limbAC.main_hand = ac;
+            } else if (slot === 'off_hand') {
+              limbAC.off_hand = ac;
+            }
+          } else if (limb === 'head') {
+            // Add helmet AC to the base head AC of 12
+            limbAC.head = 12 + ac;
+          } else if (limbAC.hasOwnProperty(limb)) {
             // For chest armor, replace the base AC; for other limbs, set the AC
             if (limb === 'chest') {
               limbAC[limb] = ac;
@@ -428,10 +440,20 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
       }
     }
     
+    // Convert to the expected format (both hands share the same keys for display)
+    const displayLimbAC = {
+      head: limbAC.head,
+      chest: limbAC.chest,
+      hands: Math.max(limbAC.main_hand, limbAC.off_hand), // Show the higher AC for display
+      main_hand: limbAC.main_hand,
+      off_hand: limbAC.off_hand,
+      feet: limbAC.feet
+    };
+    
     res.json({
       character_id: character.id,
       equipped_items: equippedWithSlots,
-      limb_ac: limbAC
+      limb_ac: displayLimbAC
     });
   } catch (error) {
     console.error('Error fetching equipped items:', error);

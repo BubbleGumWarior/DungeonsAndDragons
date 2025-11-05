@@ -31,7 +31,7 @@ const CampaignView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip'>('board');
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
-  const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; feet: number } }>({});
+  const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
   const [socket, setSocket] = useState<any>(null);
   const [draggedItem, setDraggedItem] = useState<{ item: InventoryItem; fromSlot?: string } | null>(null);
   const [showUnequipZone, setShowUnequipZone] = useState(false);
@@ -1836,23 +1836,25 @@ const CampaignView: React.FC = () => {
                           // Calculate limb health ratios
                           const limbHealthRatios = {
                             head: Math.min(1.0, 0.25 + conBonus), // 25% base, up to 100% with high CON
-                            torso: 1.0, // Always 100% of hit points
+                            torso: Math.min(2.0, 1.0 + conBonus), // 100% base, up to 200% with high CON
                             hands: Math.min(1.0, 0.15 + conBonus), // 15% base, up to 100% with high CON
                             legs: Math.min(1.0, 0.4 + conBonus) // 40% base, up to 100% with high CON
                           };
                           
                           const limbHealths = {
                             head: Math.floor(baseHitPoints * limbHealthRatios.head),
-                            torso: baseHitPoints,
+                            torso: Math.floor(baseHitPoints * limbHealthRatios.torso),
                             hands: Math.floor(baseHitPoints * limbHealthRatios.hands),
                             legs: Math.floor(baseHitPoints * limbHealthRatios.legs)
                           };
                           
                           // Get limb AC from equipped items
                           const characterLimbAC = limbAC[selectedCharacterData.id] || {
-                            head: 0,
+                            head: 12,  // Head has base AC of 12
                             chest: selectedCharacterData.armor_class || 10,
                             hands: 0,
+                            main_hand: 0,
+                            off_hand: 0,
                             feet: 0
                           };
                           
@@ -1906,7 +1908,7 @@ const CampaignView: React.FC = () => {
                                 <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.chest}</div>
                               </div>
 
-                              {/* Left Hand Health & AC */}
+                              {/* Left Hand Health & AC (Main Hand) */}
                               <div style={{
                                 position: 'absolute',
                                 top: '32%',
@@ -1922,10 +1924,10 @@ const CampaignView: React.FC = () => {
                                 textAlign: 'center'
                               }}>
                                 <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.hands, limbHealths.hands) }}>{limbHealths.hands}/{limbHealths.hands}</div>
-                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.hands}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.main_hand}</div>
                               </div>
 
-                              {/* Right Hand Health & AC */}
+                              {/* Right Hand Health & AC (Off Hand) */}
                               <div style={{
                                 position: 'absolute',
                                 top: '32%',
@@ -1941,7 +1943,7 @@ const CampaignView: React.FC = () => {
                                 textAlign: 'center'
                               }}>
                                 <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.hands, limbHealths.hands) }}>{limbHealths.hands}/{limbHealths.hands}</div>
-                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.hands}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.off_hand}</div>
                               </div>
 
                               {/* Left Leg Health & AC */}
@@ -2058,8 +2060,12 @@ const CampaignView: React.FC = () => {
                         border: '2px solid rgba(220, 53, 69, 0.3)',
                         borderRadius: '12px',
                         padding: '1rem',
-                        textAlign: 'center'
-                      }}>
+                        textAlign: 'center',
+                        position: 'relative',
+                        cursor: 'help'
+                      }}
+                      title={`Limb Health System:\n\n• Head: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.25 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (25% base + CON bonus, max 100%)\n• Torso: ${Math.floor(selectedCharacterData.hit_points * Math.min(2.0, 1.0 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (100% base + CON bonus, max 200%)\n• Hands: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.15 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (15% base + CON bonus, max 100%)\n• Legs: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.4 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (40% base + CON bonus, max 100%)\n\nCON Modifier: ${Math.floor((selectedCharacterData.abilities.con - 10) / 2) >= 0 ? '+' : ''}${Math.floor((selectedCharacterData.abilities.con - 10) / 2)}\nEach +1 CON adds 10% more HP to all limbs\nTorso can reach up to 200% of base HP!`}
+                      >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Hit Points
                         </div>
@@ -2076,8 +2082,12 @@ const CampaignView: React.FC = () => {
                         border: '2px solid rgba(13, 110, 253, 0.3)',
                         borderRadius: '12px',
                         padding: '1rem',
-                        textAlign: 'center'
-                      }}>
+                        textAlign: 'center',
+                        position: 'relative',
+                        cursor: 'help'
+                      }}
+                      title={`Limb-Specific Armor Class:\n\n• Head: Base AC 12 + Helmet AC\n  Current: ${(limbAC[selectedCharacterData.id]?.head || 12)} (${(limbAC[selectedCharacterData.id]?.head || 12) > 12 ? `12 base + ${(limbAC[selectedCharacterData.id]?.head || 12) - 12} helmet` : '12 base, no helmet'})\n\n• Torso: Character Base AC or Chest Armor AC\n  Current: ${(limbAC[selectedCharacterData.id]?.chest || selectedCharacterData.armor_class || 10)}\n\n• Main Hand: Shield/Gauntlet AC only\n  Current: ${(limbAC[selectedCharacterData.id]?.main_hand || 0)} (${(limbAC[selectedCharacterData.id]?.main_hand || 0) === 0 ? 'Unprotected' : 'Protected'})\n\n• Off Hand: Shield/Gauntlet AC only\n  Current: ${(limbAC[selectedCharacterData.id]?.off_hand || 0)} (${(limbAC[selectedCharacterData.id]?.off_hand || 0) === 0 ? 'Unprotected' : 'Protected'})\n\n• Feet: Boot AC only\n  Current: ${(limbAC[selectedCharacterData.id]?.feet || 0)} (${(limbAC[selectedCharacterData.id]?.feet || 0) === 0 ? 'Unprotected' : 'Protected'})\n\nNote: Only the torso has base AC. All other limbs start at 0 (or 12 for head) and only gain AC from equipped armor.`}
+                      >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Armor Class
                         </div>
