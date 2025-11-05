@@ -11,7 +11,8 @@ class Inventory {
       
       return result.rows.map(item => ({
         ...item,
-        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties
+        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties,
+        limb_armor_class: typeof item.limb_armor_class === 'string' ? JSON.parse(item.limb_armor_class) : item.limb_armor_class
       }));
     } catch (error) {
       throw error;
@@ -29,7 +30,8 @@ class Inventory {
       
       return result.rows.map(item => ({
         ...item,
-        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties
+        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties,
+        limb_armor_class: typeof item.limb_armor_class === 'string' ? JSON.parse(item.limb_armor_class) : item.limb_armor_class
       }));
     } catch (error) {
       throw error;
@@ -49,7 +51,8 @@ class Inventory {
       const item = result.rows[0];
       return {
         ...item,
-        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties
+        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties,
+        limb_armor_class: typeof item.limb_armor_class === 'string' ? JSON.parse(item.limb_armor_class) : item.limb_armor_class
       };
     } catch (error) {
       throw error;
@@ -70,7 +73,8 @@ class Inventory {
       
       return result.rows.map(item => ({
         ...item,
-        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties
+        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties,
+        limb_armor_class: typeof item.limb_armor_class === 'string' ? JSON.parse(item.limb_armor_class) : item.limb_armor_class
       }));
     } catch (error) {
       throw error;
@@ -95,7 +99,8 @@ class Inventory {
       result.rows.forEach(item => {
         const parsedItem = {
           ...item,
-          properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties
+          properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties,
+          limb_armor_class: typeof item.limb_armor_class === 'string' ? JSON.parse(item.limb_armor_class) : item.limb_armor_class
         };
 
         switch (item.category) {
@@ -134,6 +139,7 @@ class Inventory {
       weight,
       cost_cp,
       armor_class,
+      limb_armor_class,
       strength_requirement,
       stealth_disadvantage,
       properties,
@@ -146,21 +152,22 @@ class Inventory {
         INSERT INTO inventory (
           item_name, category, subcategory, description, damage_dice,
           damage_type, range_normal, range_long, weight, cost_cp,
-          armor_class, strength_requirement, stealth_disadvantage,
+          armor_class, limb_armor_class, strength_requirement, stealth_disadvantage,
           properties, rarity, attunement_required
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING *
       `, [
         item_name, category, subcategory, description, damage_dice,
         damage_type, range_normal, range_long, weight, cost_cp,
-        armor_class, strength_requirement, stealth_disadvantage,
+        armor_class, JSON.stringify(limb_armor_class || {}), strength_requirement, stealth_disadvantage,
         JSON.stringify(properties), rarity, attunement_required
       ]);
 
       const item = result.rows[0];
       return {
         ...item,
-        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties
+        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties,
+        limb_armor_class: typeof item.limb_armor_class === 'string' ? JSON.parse(item.limb_armor_class) : item.limb_armor_class
       };
     } catch (error) {
       throw error;
@@ -176,7 +183,7 @@ class Inventory {
   static async updateItem(itemName, updateData) {
     const validFields = [
       'category', 'subcategory', 'description', 'damage_dice', 'damage_type',
-      'range_normal', 'range_long', 'weight', 'cost_cp', 'armor_class',
+      'range_normal', 'range_long', 'weight', 'cost_cp', 'armor_class', 'limb_armor_class',
       'strength_requirement', 'stealth_disadvantage', 'properties', 'rarity',
       'attunement_required'
     ];
@@ -188,7 +195,7 @@ class Inventory {
     Object.keys(updateData).forEach(key => {
       if (validFields.includes(key)) {
         updates.push(`${key} = $${paramCount}`);
-        if (key === 'properties') {
+        if (key === 'properties' || key === 'limb_armor_class') {
           values.push(JSON.stringify(updateData[key]));
         } else {
           values.push(updateData[key]);
@@ -214,7 +221,8 @@ class Inventory {
       const item = result.rows[0];
       return {
         ...item,
-        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties
+        properties: typeof item.properties === 'string' ? JSON.parse(item.properties) : item.properties,
+        limb_armor_class: typeof item.limb_armor_class === 'string' ? JSON.parse(item.limb_armor_class) : item.limb_armor_class
       };
     } catch (error) {
       throw error;

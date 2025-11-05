@@ -90,6 +90,7 @@ const initializeDB = async () => {
         weight DECIMAL(5,2),
         cost_cp INTEGER, -- Cost in copper pieces
         armor_class INTEGER,
+        limb_armor_class JSONB DEFAULT '{}'::jsonb, -- {head: 5, chest: 14, hands: 2, feet: 4}
         strength_requirement INTEGER,
         stealth_disadvantage BOOLEAN DEFAULT FALSE,
         properties JSONB DEFAULT '[]'::jsonb, -- Array of weapon/armor properties
@@ -173,9 +174,84 @@ const runMigrations = async () => {
       console.log('✅ equipped_items column already exists');
     }
     
+    // Migration 2: Add limb_armor_class column to inventory table if it doesn't exist
+    const checkLimbArmorColumn = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'inventory' 
+      AND column_name = 'limb_armor_class'
+    `);
+    
+    if (checkLimbArmorColumn.rows.length === 0) {
+      console.log('Adding limb_armor_class column to inventory table...');
+      await pool.query(`
+        ALTER TABLE inventory 
+        ADD COLUMN limb_armor_class JSONB DEFAULT '{}'::jsonb
+      `);
+      console.log('✅ limb_armor_class column added successfully');
+      
+      // Update existing armor items with appropriate limb AC values
+      console.log('Updating existing armor items with limb-specific AC...');
+      await updateExistingArmorWithLimbAC();
+      console.log('✅ Existing armor items updated');
+    } else {
+      console.log('✅ limb_armor_class column already exists');
+    }
+    
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running database migrations:', error);
+  }
+};
+
+// Update existing armor items with limb-specific AC
+const updateExistingArmorWithLimbAC = async () => {
+  try {
+    // Get all armor items
+    const armorItems = await pool.query(`
+      SELECT item_name, subcategory, armor_class 
+      FROM inventory 
+      WHERE category = 'Armor'
+    `);
+    
+    for (const item of armorItems.rows) {
+      const subcategory = (item.subcategory || '').toLowerCase();
+      const itemName = item.item_name.toLowerCase();
+      const ac = item.armor_class || 0;
+      let limbAC = {};
+      
+      // Determine which limb(s) this armor protects
+      if (subcategory.includes('shield') || itemName.includes('shield')) {
+        // Shields protect hands/off-hand
+        limbAC = { hands: ac };
+      } else if (subcategory.includes('helmet') || subcategory === 'helmet' || 
+                 itemName.includes('helmet') || itemName.includes('hat') || 
+                 itemName.includes('circlet') || itemName.includes('crown')) {
+        // Helmets protect head
+        limbAC = { head: ac };
+      } else if (subcategory.includes('boot') || subcategory.includes('shoe') || 
+                 itemName.includes('boot') || itemName.includes('shoe')) {
+        // Boots protect feet
+        limbAC = { feet: ac };
+      } else if (subcategory.includes('gauntlet') || subcategory.includes('glove') ||
+                 itemName.includes('gauntlet') || itemName.includes('glove')) {
+        // Gauntlets/gloves protect hands
+        limbAC = { hands: ac };
+      } else {
+        // All other armor (chest pieces) protects torso/chest
+        limbAC = { chest: ac };
+      }
+      
+      // Update the item
+      await pool.query(`
+        UPDATE inventory 
+        SET limb_armor_class = $1
+        WHERE item_name = $2
+      `, [JSON.stringify(limbAC), item.item_name]);
+    }
+  } catch (error) {
+    console.error('Error updating armor with limb AC:', error);
+    throw error;
   }
 };
 
@@ -301,6 +377,7 @@ const seedInventory = async () => {
         subcategory: 'Light Armor',
         description: 'Chest protection made from tough but flexible leather. Allows for good mobility.',
         armor_class: 11,
+        limb_armor_class: JSON.stringify({ chest: 11 }),
         weight: 10.0,
         cost_cp: 1000,
         properties: JSON.stringify([])
@@ -313,6 +390,7 @@ const seedInventory = async () => {
         subcategory: 'Medium Armor',
         description: 'Made of interlocking metal rings. Provides good protection with moderate mobility.',
         armor_class: 13,
+        limb_armor_class: JSON.stringify({ chest: 13 }),
         weight: 20.0,
         cost_cp: 7500,
         properties: JSON.stringify([])
@@ -323,6 +401,7 @@ const seedInventory = async () => {
         subcategory: 'Medium Armor',
         description: 'Consists of a coat of leather covered with overlapping pieces of metal.',
         armor_class: 14,
+        limb_armor_class: JSON.stringify({ chest: 14 }),
         weight: 45.0,
         cost_cp: 5000,
         stealth_disadvantage: true,
@@ -336,6 +415,7 @@ const seedInventory = async () => {
         subcategory: 'Heavy Armor',
         description: 'Plate consists of shaped, interlocking metal plates to cover the entire body.',
         armor_class: 18,
+        limb_armor_class: JSON.stringify({ chest: 18 }),
         weight: 65.0,
         cost_cp: 150000,
         strength_requirement: 15,
@@ -350,8 +430,44 @@ const seedInventory = async () => {
         subcategory: 'Shield',
         description: 'A shield is made from wood or metal and is carried in one hand.',
         armor_class: 2,
+        limb_armor_class: JSON.stringify({ hands: 2 }),
         weight: 6.0,
         cost_cp: 1000,
+        properties: JSON.stringify([])
+      },
+      
+      // Add some additional armor pieces for different limbs
+      {
+        item_name: 'Steel Helmet',
+        category: 'Armor',
+        subcategory: 'Helmet',
+        description: 'A sturdy metal helmet that protects the head from blows.',
+        armor_class: 5,
+        limb_armor_class: JSON.stringify({ head: 5 }),
+        weight: 3.0,
+        cost_cp: 2500,
+        properties: JSON.stringify([])
+      },
+      {
+        item_name: 'Leather Boots',
+        category: 'Armor',
+        subcategory: 'Light Armor',
+        description: 'Sturdy leather boots reinforced for protection.',
+        armor_class: 3,
+        limb_armor_class: JSON.stringify({ feet: 3 }),
+        weight: 2.0,
+        cost_cp: 500,
+        properties: JSON.stringify([])
+      },
+      {
+        item_name: 'Steel Boots',
+        category: 'Armor',
+        subcategory: 'Heavy Armor',
+        description: 'Metal-plated boots that provide excellent protection for the feet.',
+        armor_class: 6,
+        limb_armor_class: JSON.stringify({ feet: 6 }),
+        weight: 4.0,
+        cost_cp: 3000,
         properties: JSON.stringify([])
       },
       
@@ -456,14 +572,14 @@ const seedInventory = async () => {
         INSERT INTO inventory (
           item_name, category, subcategory, description, damage_dice, 
           damage_type, range_normal, range_long, weight, cost_cp, 
-          armor_class, strength_requirement, stealth_disadvantage, properties, rarity
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'Common')
+          armor_class, limb_armor_class, strength_requirement, stealth_disadvantage, properties, rarity
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'Common')
         ON CONFLICT (item_name) DO NOTHING
       `, [
         item.item_name, item.category, item.subcategory, item.description,
         item.damage_dice, item.damage_type, item.range_normal, item.range_long,
-        item.weight, item.cost_cp, item.armor_class, item.strength_requirement,
-        item.stealth_disadvantage, item.properties
+        item.weight, item.cost_cp, item.armor_class, item.limb_armor_class || '{}',
+        item.strength_requirement, item.stealth_disadvantage, item.properties
       ]);
     }
 

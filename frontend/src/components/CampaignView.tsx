@@ -31,6 +31,7 @@ const CampaignView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip'>('board');
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
+  const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; feet: number } }>({});
   const [socket, setSocket] = useState<any>(null);
   const [draggedItem, setDraggedItem] = useState<{ item: InventoryItem; fromSlot?: string } | null>(null);
   const [showUnequipZone, setShowUnequipZone] = useState(false);
@@ -393,6 +394,14 @@ const CampaignView: React.FC = () => {
         ...prev,
         [characterId]: equipped.equipped_items
       }));
+      
+      // Store limb AC if available
+      if (equipped.limb_ac) {
+        setLimbAC(prev => ({
+          ...prev,
+          [characterId]: equipped.limb_ac!
+        }));
+      }
     } catch (error) {
       console.error('Error loading equipped items:', error);
     }
@@ -1838,10 +1847,26 @@ const CampaignView: React.FC = () => {
                             hands: Math.floor(baseHitPoints * limbHealthRatios.hands),
                             legs: Math.floor(baseHitPoints * limbHealthRatios.legs)
                           };
+                          
+                          // Get limb AC from equipped items
+                          const characterLimbAC = limbAC[selectedCharacterData.id] || {
+                            head: 0,
+                            chest: selectedCharacterData.armor_class || 10,
+                            hands: 0,
+                            feet: 0
+                          };
+                          
+                          // Helper function to get health color based on percentage
+                          const getHealthColor = (current: number, max: number) => {
+                            const percentage = (current / max) * 100;
+                            if (percentage > 66) return '#4ade80'; // Green
+                            if (percentage > 33) return '#fbbf24'; // Yellow
+                            return '#ef4444'; // Red
+                          };
 
                           return (
                             <>
-                              {/* Head Health */}
+                              {/* Head Health & AC */}
                               <div style={{
                                 position: 'absolute',
                                 top: '8%',
@@ -1851,16 +1876,17 @@ const CampaignView: React.FC = () => {
                                 color: 'var(--text-gold)',
                                 padding: '0.25rem 0.5rem',
                                 borderRadius: '4px',
-                                fontSize: '0.75rem',
+                                fontSize: '0.7rem',
                                 fontWeight: 'bold',
                                 border: '1px solid var(--primary-gold)',
-                                minWidth: '45px',
+                                minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                {limbHealths.head}/{limbHealths.head}
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.head, limbHealths.head) }}>{limbHealths.head}/{limbHealths.head}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.head}</div>
                               </div>
 
-                              {/* Torso Health */}
+                              {/* Torso Health & AC */}
                               <div style={{
                                 position: 'absolute',
                                 top: '35%',
@@ -1870,16 +1896,17 @@ const CampaignView: React.FC = () => {
                                 color: 'var(--text-gold)',
                                 padding: '0.25rem 0.5rem',
                                 borderRadius: '4px',
-                                fontSize: '0.75rem',
+                                fontSize: '0.7rem',
                                 fontWeight: 'bold',
                                 border: '1px solid var(--primary-gold)',
-                                minWidth: '45px',
+                                minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                {limbHealths.torso}/{limbHealths.torso}
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.torso, limbHealths.torso) }}>{limbHealths.torso}/{limbHealths.torso}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.chest}</div>
                               </div>
 
-                              {/* Left Hand Health */}
+                              {/* Left Hand Health & AC */}
                               <div style={{
                                 position: 'absolute',
                                 top: '32%',
@@ -1888,16 +1915,17 @@ const CampaignView: React.FC = () => {
                                 color: 'var(--text-gold)',
                                 padding: '0.25rem 0.5rem',
                                 borderRadius: '4px',
-                                fontSize: '0.75rem',
+                                fontSize: '0.7rem',
                                 fontWeight: 'bold',
                                 border: '1px solid var(--primary-gold)',
-                                minWidth: '45px',
+                                minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                {limbHealths.hands}/{limbHealths.hands}
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.hands, limbHealths.hands) }}>{limbHealths.hands}/{limbHealths.hands}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.hands}</div>
                               </div>
 
-                              {/* Right Hand Health */}
+                              {/* Right Hand Health & AC */}
                               <div style={{
                                 position: 'absolute',
                                 top: '32%',
@@ -1906,16 +1934,17 @@ const CampaignView: React.FC = () => {
                                 color: 'var(--text-gold)',
                                 padding: '0.25rem 0.5rem',
                                 borderRadius: '4px',
-                                fontSize: '0.75rem',
+                                fontSize: '0.7rem',
                                 fontWeight: 'bold',
                                 border: '1px solid var(--primary-gold)',
-                                minWidth: '45px',
+                                minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                {limbHealths.hands}/{limbHealths.hands}
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.hands, limbHealths.hands) }}>{limbHealths.hands}/{limbHealths.hands}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.hands}</div>
                               </div>
 
-                              {/* Left Leg Health */}
+                              {/* Left Leg Health & AC */}
                               <div style={{
                                 position: 'absolute',
                                 bottom: '15%',
@@ -1924,16 +1953,17 @@ const CampaignView: React.FC = () => {
                                 color: 'var(--text-gold)',
                                 padding: '0.25rem 0.5rem',
                                 borderRadius: '4px',
-                                fontSize: '0.75rem',
+                                fontSize: '0.7rem',
                                 fontWeight: 'bold',
                                 border: '1px solid var(--primary-gold)',
-                                minWidth: '45px',
+                                minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                {limbHealths.legs}/{limbHealths.legs}
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.legs, limbHealths.legs) }}>{limbHealths.legs}/{limbHealths.legs}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.feet}</div>
                               </div>
 
-                              {/* Right Leg Health */}
+                              {/* Right Leg Health & AC */}
                               <div style={{
                                 position: 'absolute',
                                 bottom: '15%',
@@ -1942,13 +1972,14 @@ const CampaignView: React.FC = () => {
                                 color: 'var(--text-gold)',
                                 padding: '0.25rem 0.5rem',
                                 borderRadius: '4px',
-                                fontSize: '0.75rem',
+                                fontSize: '0.7rem',
                                 fontWeight: 'bold',
                                 border: '1px solid var(--primary-gold)',
-                                minWidth: '45px',
+                                minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                {limbHealths.legs}/{limbHealths.legs}
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.legs, limbHealths.legs) }}>{limbHealths.legs}/{limbHealths.legs}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.feet}</div>
                               </div>
                               
                               {/* Character Name Below Figure */}

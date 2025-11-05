@@ -267,7 +267,11 @@ export const characterAPI = {
     return response.data;
   },
 
-  getEquippedItems: async (characterId: number): Promise<{ character_id: number; equipped_items: Record<string, InventoryItem | null> }> => {
+  getEquippedItems: async (characterId: number): Promise<{ 
+    character_id: number; 
+    equipped_items: Record<string, InventoryItem | null>;
+    limb_ac?: { head: number; chest: number; hands: number; feet: number };
+  }> => {
     const response = await api.get(`/characters/${characterId}/equipped`);
     return response.data;
   },

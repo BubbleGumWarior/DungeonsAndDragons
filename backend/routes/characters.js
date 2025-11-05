@@ -403,9 +403,35 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
       }
     }
     
+    // Calculate limb-specific AC
+    const limbAC = {
+      head: 0,     // Default AC 0 for unarmored head
+      chest: character.armor_class || 10,  // Only chest gets character's base AC
+      hands: 0,    // Default AC 0 for unarmored hands
+      feet: 0      // Default AC 0 for unarmored feet
+    };
+    
+    // Apply armor bonuses from equipped items
+    for (const [slot, item] of Object.entries(equippedWithSlots)) {
+      if (item && item.limb_armor_class) {
+        // Add AC from this item to the appropriate limbs
+        for (const [limb, ac] of Object.entries(item.limb_armor_class)) {
+          if (limbAC.hasOwnProperty(limb)) {
+            // For chest armor, replace the base AC; for other limbs, set the AC
+            if (limb === 'chest') {
+              limbAC[limb] = ac;
+            } else {
+              limbAC[limb] = ac;
+            }
+          }
+        }
+      }
+    }
+    
     res.json({
       character_id: character.id,
-      equipped_items: equippedWithSlots
+      equipped_items: equippedWithSlots,
+      limb_ac: limbAC
     });
   } catch (error) {
     console.error('Error fetching equipped items:', error);
