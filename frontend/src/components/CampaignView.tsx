@@ -78,6 +78,7 @@ const CampaignView: React.FC = () => {
 
   // Combat state
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
+  const [showResetCombatModal, setShowResetCombatModal] = useState(false);
   const [showCombatInviteModal, setShowCombatInviteModal] = useState(false);
   const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string } | null>(null);
   const [combatants, setCombatants] = useState<Array<{ 
@@ -230,6 +231,15 @@ const CampaignView: React.FC = () => {
       });
     }
   }, [campaignName, loadCampaign]);
+
+  // Refresh campaign data when switching to map or battle tabs to ensure fresh positions
+  useEffect(() => {
+    if (campaignName && (campaignTab === 'map' || campaignTab === 'battle')) {
+      loadCampaign(campaignName).catch(() => {
+        // Error is handled by the context
+      });
+    }
+  }, [campaignTab, campaignName, loadCampaign]);
 
   // Initialize character positions from campaign data
   useEffect(() => {
@@ -715,6 +725,27 @@ const CampaignView: React.FC = () => {
       }) => {
         console.log('📊 Battle movement sync received:', data);
         setRemainingMovement(data.movementState);
+      });
+
+      // Listen for battle combat sync (server sends combat state on join)
+      newSocket.on('battleCombatSync', (data: {
+        combatants: Array<{ 
+          characterId: number; 
+          playerId: number; 
+          name: string; 
+          initiative: number; 
+          movement_speed: number;
+          isMonster?: boolean;
+          monsterId?: number;
+          instanceNumber?: number;
+        }>;
+        initiativeOrder: number[];
+        currentTurnIndex: number;
+      }) => {
+        console.log('⚔️ Battle combat sync received:', data);
+        setCombatants(data.combatants);
+        setInitiativeOrder(data.initiativeOrder);
+        setCurrentTurnIndex(data.currentTurnIndex);
       });
 
       // Listen for next turn event (DM resets all movement)
@@ -2170,14 +2201,7 @@ const CampaignView: React.FC = () => {
                             {currentTurnIndex === -1 ? '⚔️ Start Combat' : '🔄 Next Turn'}
                           </button>
                           <button
-                            onClick={() => {
-                              if (socket && currentCampaign && window.confirm('Reset combat? This will clear all combatants and initiative order.')) {
-                                socket.emit('resetCombat', {
-                                  campaignId: currentCampaign.campaign.id
-                                });
-                                console.log('🔄 Combat reset emitted');
-                              }
-                            }}
+                            onClick={() => setShowResetCombatModal(true)}
                             style={{
                               padding: '0.5rem 1rem',
                               background: 'linear-gradient(135deg, #d9534f, #c9302c)',
@@ -2345,7 +2369,8 @@ const CampaignView: React.FC = () => {
                     }));
                     
                     // Decrease remaining movement (can go negative if DM overrides)
-                    const newRemaining = currentRemaining - distanceFeet;
+                    // Don't consume movement if combat hasn't started yet (waiting phase)
+                    const newRemaining = currentTurnIndex === -1 ? currentRemaining : currentRemaining - distanceFeet;
                     setRemainingMovement(prev => ({
                       ...prev,
                       [draggedCharacter]: newRemaining
@@ -4953,6 +4978,26 @@ const CampaignView: React.FC = () => {
           cancelText="Cancel"
           onConfirm={confirmDeleteCharacter}
           onClose={() => setDeleteModal({ isOpen: false, characterId: null, characterName: '' })}
+          isDangerous={true}
+        />
+
+        {/* Reset Combat Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={showResetCombatModal}
+          title="Reset Combat"
+          message="Are you sure you want to reset combat? This will clear all combatants and initiative order."
+          confirmText="Reset Combat"
+          cancelText="Cancel"
+          onConfirm={() => {
+            if (socket && currentCampaign) {
+              socket.emit('resetCombat', {
+                campaignId: currentCampaign.campaign.id
+              });
+              console.log('🔄 Combat reset emitted');
+            }
+            setShowResetCombatModal(false);
+          }}
+          onClose={() => setShowResetCombatModal(false)}
           isDangerous={true}
         />
 

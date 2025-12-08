@@ -224,6 +224,16 @@ const startServer = async () => {
             });
             console.log(`📊 Sent movement state to user ${socket.id} for campaign ${campaignId}`);
           }
+          
+          // Send current combat state for this campaign (combatants, initiative order, current turn)
+          if (battleCombatState[campaignId]) {
+            socket.emit('battleCombatSync', {
+              combatants: battleCombatState[campaignId].combatants,
+              initiativeOrder: battleCombatState[campaignId].initiativeOrder,
+              currentTurnIndex: battleCombatState[campaignId].currentTurnIndex
+            });
+            console.log(`⚔️ Sent combat state to user ${socket.id} for campaign ${campaignId}`);
+          }
         } catch (error) {
           console.error(`Error joining campaign ${campaignId}:`, error);
         }
