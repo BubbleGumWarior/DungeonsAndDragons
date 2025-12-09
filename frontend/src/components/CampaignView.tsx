@@ -644,7 +644,6 @@ const CampaignView: React.FC = () => {
     terrain_description: ''
   });
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false);
-  const [showBattlefieldGoals, setShowBattlefieldGoals] = useState(true);
   const [selectedGoalCategory, setSelectedGoalCategory] = useState<string>('Command');
   const [battleSummary, setBattleSummary] = useState<{
     battleName: string;
@@ -658,6 +657,8 @@ const CampaignView: React.FC = () => {
   const [showInvitePlayersModal, setShowInvitePlayersModal] = useState(false);
   const [showBattleInvitationsModal, setShowBattleInvitationsModal] = useState(false);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
+  const [showBattlefieldGoals, setShowBattlefieldGoals] = useState(false);
+  const [showBattlefieldParticipants, setShowBattlefieldParticipants] = useState(false);
   const [selectedPlayersToInvite, setSelectedPlayersToInvite] = useState<number[]>([]);
   const [inviteTeamName, setInviteTeamName] = useState<string>('');
   const [inviteTeamColor, setInviteTeamColor] = useState<string>('#3b82f6');
@@ -1393,6 +1394,29 @@ const CampaignView: React.FC = () => {
         movementState: Record<number, number>;
       }) => {
         setRemainingMovement(data.movementState);
+      });
+
+      // Listen for battlefield army/participant movement
+      newSocket.on('battlefieldParticipantMoved', (data: {
+        battleId: number;
+        participantId: number;
+        x: number;
+        y: number;
+        timestamp: string;
+      }) => {
+        console.log('📍 Received battlefield participant movement:', data);
+        // Update the active battle state if it matches
+        setActiveBattle(prev => {
+          if (!prev || prev.id !== data.battleId || !prev.participants) return prev;
+          return {
+            ...prev,
+            participants: prev.participants.map(p =>
+              p.id === data.participantId
+                ? { ...p, position_x: data.x, position_y: data.y }
+                : p
+            )
+          };
+        });
       });
 
       // Listen for battle combat sync (server sends combat state on join)
@@ -3723,20 +3747,78 @@ const CampaignView: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Battle Map - Always Visible */}
-                    <div style={{ marginBottom: '1.5rem' }}>
-                      <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>🗺️ Battlefield Map</h6>
+                    {/* Battle Map with Overlay Controls */}
+                    <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
+                      {/* Map Container */}
                       <div style={{
                         position: 'relative',
                         width: '100%',
-                        height: '700px',
-                        backgroundImage: `url(${BattleMapImage})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
+                        minHeight: '600px',
                         border: '3px solid var(--border-gold)',
                         borderRadius: '0.75rem',
-                        overflow: 'hidden'
-                      }}>
+                        overflow: 'hidden',
+                        background: 'rgba(0, 0, 0, 0.3)'
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const participantId = parseInt(e.dataTransfer.getData('participantId'));
+                        if (!participantId) return;
+                        
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = ((e.clientX - rect.left) / rect.width) * 100;
+                        const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+                        // Update local state immediately for smooth UX
+                        setActiveBattle(prev => {
+                          if (!prev || !prev.participants) return prev;
+                          return {
+                            ...prev,
+                            participants: prev.participants.map(p =>
+                              p.id === participantId
+                                ? { ...p, position_x: x, position_y: y }
+                                : p
+                            )
+                          };
+                        });
+
+                        // Emit to other users via Socket.IO
+                        if (socket && currentCampaign) {
+                          socket.emit('battlefieldParticipantMove', {
+                            campaignId: currentCampaign.campaign.id,
+                            battleId: activeBattle.id,
+                            participantId,
+                            x,
+                            y
+                          });
+                        }
+
+                        // Update position in backend (async)
+                        try {
+                          await battleAPI.updateParticipantPosition(participantId, x, y);
+                        } catch (error) {
+                          console.error('Error updating position:', error);
+                          // Refresh from server on error
+                          const updated = await battleAPI.getBattle(activeBattle.id);
+                          setActiveBattle(updated);
+                        }
+                      }}
+                      >
+                          <img 
+                            src={BattleMapImage} 
+                            alt="Battlefield Map" 
+                            style={{ 
+                              width: '100%', 
+                              height: 'auto',
+                              display: 'block',
+                              userSelect: 'none',
+                              pointerEvents: 'none'
+                            }} 
+                          />
+                          
                           {/* Grid overlay */}
                           <div style={{
                             position: 'absolute',
@@ -3842,53 +3924,98 @@ const CampaignView: React.FC = () => {
                             </div>
                           );})}
 
-                          {/* Drop zone overlay */}
-                          <div
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              e.dataTransfer.dropEffect = 'move';
-                            }}
-                            onDrop={async (e) => {
-                              e.preventDefault();
-                              const participantId = parseInt(e.dataTransfer.getData('participantId'));
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              const x = ((e.clientX - rect.left) / rect.width) * 100;
-                              const y = ((e.clientY - rect.top) / rect.height) * 100;
-
-                              try {
-                                await battleAPI.updateParticipantPosition(participantId, x, y);
-                                const updated = await battleAPI.getBattle(activeBattle.id);
-                                setActiveBattle(updated);
-                              } catch (error) {
-                                console.error('Error updating position:', error);
-                              }
-                            }}
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              bottom: 0
-                            }}
-                          />
-                        </div>
+                        {/* Overlay Control Buttons */}
                         <div style={{
-                          marginTop: '0.5rem',
-                          fontSize: '0.8rem',
-                          color: 'var(--text-secondary)',
-                          textAlign: 'center',
-                          fontStyle: 'italic'
+                          position: 'absolute',
+                          top: '1rem',
+                          right: '1rem',
+                          display: 'flex',
+                          gap: '0.5rem',
+                          zIndex: 10
                         }}>
-                          {user?.role === 'Dungeon Master' 
-                            ? '🖱️ Drag any army to reposition on the battlefield'
-                            : '🖱️ Drag your armies to position them'}
+                          {activeBattle.participants && activeBattle.participants.length > 0 && (
+                            <button
+                              onClick={() => setShowBattlefieldParticipants(!showBattlefieldParticipants)}
+                              style={{
+                                padding: '0.75rem 1rem',
+                                background: showBattlefieldParticipants 
+                                  ? 'rgba(212, 193, 156, 0.9)' 
+                                  : 'rgba(0, 0, 0, 0.8)',
+                                border: '2px solid var(--border-gold)',
+                                borderRadius: '0.5rem',
+                                color: showBattlefieldParticipants ? '#000' : 'var(--text-gold)',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                              }}
+                            >
+                              ⚔️ Participants
+                            </button>
+                          )}
+                          {activeBattle.status !== 'planning' && (
+                            <button
+                              onClick={() => setShowBattlefieldGoals(!showBattlefieldGoals)}
+                              style={{
+                                padding: '0.75rem 1rem',
+                                background: showBattlefieldGoals 
+                                  ? 'rgba(212, 193, 156, 0.9)' 
+                                  : 'rgba(0, 0, 0, 0.8)',
+                                border: '2px solid var(--border-gold)',
+                                borderRadius: '0.5rem',
+                                color: showBattlefieldGoals ? '#000' : 'var(--text-gold)',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                              }}
+                            >
+                              🎯 Goals {activeBattle.current_goals && activeBattle.current_goals.length > 0 ? `(${activeBattle.current_goals.length})` : ''}
+                            </button>
+                          )}
                         </div>
                       </div>
+                    </div>
 
-                    {/* Participants List - Grouped by Team */}
-                    {activeBattle.participants && activeBattle.participants.length > 0 && (
-                      <div style={{ marginBottom: '1.5rem' }}>
-                        <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>⚔️ Battle Participants</h6>
+                    {/* Participants Overlay Panel */}
+                    {showBattlefieldParticipants && activeBattle.participants && activeBattle.participants.length > 0 && (
+                      <div style={{
+                        position: 'fixed',
+                        top: '50%',
+                        left: showBattlefieldGoals ? '5%' : '50%',
+                        transform: showBattlefieldGoals ? 'translate(0, -50%)' : 'translate(-50%, -50%)',
+                        maxWidth: '90vw',
+                        maxHeight: '80vh',
+                        overflowY: 'auto',
+                        background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
+                        border: '3px solid var(--border-gold)',
+                        borderRadius: '1rem',
+                        padding: '2rem',
+                        zIndex: 1000,
+                        backdropFilter: 'blur(20px)',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+                        transition: 'left 0.4s ease-in-out, transform 0.4s ease-in-out'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                          <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Battle Participants</h5>
+                          <button
+                            onClick={() => setShowBattlefieldParticipants(false)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '2px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#f87171',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            ✕ Close
+                          </button>
+                        </div>
                         {(() => {
                           // Group participants by team
                           const teamGroups = (activeBattle.participants || []).reduce((acc, p) => {
@@ -4020,6 +4147,48 @@ const CampaignView: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Goals Overlay Panel */}
+                    {showBattlefieldGoals && (activeBattle.status === 'goal_selection' || activeBattle.status === 'resolution') && (
+                      <div style={{
+                        position: 'fixed',
+                        top: '50%',
+                        right: showBattlefieldParticipants ? '5%' : 'auto',
+                        left: showBattlefieldParticipants ? 'auto' : '50%',
+                        transform: showBattlefieldParticipants ? 'translate(0, -50%)' : 'translate(-50%, -50%)',
+                        width: showBattlefieldParticipants ? '48%' : 'auto',
+                        maxWidth: showBattlefieldParticipants ? '48vw' : '90vw',
+                        maxHeight: '85vh',
+                        overflowY: 'auto',
+                        background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
+                        border: '3px solid var(--border-gold)',
+                        borderRadius: '1rem',
+                        padding: '2rem',
+                        zIndex: 1000,
+                        backdropFilter: 'blur(20px)',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+                        transition: 'left 0.4s ease-in-out, right 0.4s ease-in-out, transform 0.4s ease-in-out, width 0.4s ease-in-out, max-width 0.4s ease-in-out'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                          <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>
+                            {activeBattle.status === 'goal_selection' ? '🎯 Goal Selection' : '📊 Goal Resolution'}
+                          </h5>
+                          <button
+                            onClick={() => setShowBattlefieldGoals(false)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '2px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#f87171',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            ✕ Close
+                          </button>
+                        </div>
+                      <div>
                     {/* Goal Selection Phase */}
                     {activeBattle.status === 'goal_selection' && (
                       <div>
@@ -4085,20 +4254,6 @@ const CampaignView: React.FC = () => {
                               Each team selects 1 goal per round (5 goals total). Any member of the current team can select.
                             </div>
                           </div>
-                          <button
-                            onClick={() => setShowBattlefieldGoals(!showBattlefieldGoals)}
-                            style={{
-                              padding: '0.5rem 1rem',
-                              background: 'rgba(245, 158, 11, 0.2)',
-                              border: '1px solid rgba(245, 158, 11, 0.4)',
-                              borderRadius: '0.5rem',
-                              color: '#fbbf24',
-                              cursor: 'pointer',
-                              fontSize: '0.9rem'
-                            }}
-                          >
-                            {showBattlefieldGoals ? '▼ Hide Goals' : '▶ Show Goals'}
-                          </button>
                         </div>
 
                         {showBattlefieldGoals && (
@@ -4772,6 +4927,9 @@ const CampaignView: React.FC = () => {
                         ))}
                       </div>
                     )}
+                      </div>
+                    </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -5037,9 +5195,9 @@ const CampaignView: React.FC = () => {
           </div>
         )}
 
-            {/* Character Content (existing) */}
-            {mainView === 'character' && (
-              <div>
+        {/* Character Content (existing) */}
+        {mainView === 'character' && (
+          <div>
           {/* Character Details Panel */}
           {selectedCharacterData ? (
               <div>
@@ -6405,13 +6563,11 @@ const CampaignView: React.FC = () => {
             )}
           </div>
         )}
-            {/* End of Character View */}
 
-          </div>
         </div>
-        {/* End of Main Content Area */}
+      </div>
 
-        {/* Toast Notification */}
+      {/* Toast Notification */}
         {toastMessage && (
           <div style={{
             position: 'fixed',

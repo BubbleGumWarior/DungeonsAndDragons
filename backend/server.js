@@ -347,6 +347,25 @@ const startServer = async () => {
         }
       });
 
+      // Handle real-time battlefield participant movement (armies on battlefield map)
+      socket.on('battlefieldParticipantMove', (data) => {
+        try {
+          const { campaignId, battleId, participantId, x, y } = data;
+
+          // Broadcast to all users in the campaign except sender
+          socket.to(`campaign_${campaignId}`).emit('battlefieldParticipantMoved', {
+            battleId,
+            participantId,
+            x,
+            y,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🗺️ Battlefield participant ${participantId} moved to (${x.toFixed(2)}, ${y.toFixed(2)}) in battle ${battleId}, campaign ${campaignId}`);
+        } catch (error) {
+          console.error('Error handling battlefield participant movement:', error);
+        }
+      });
+
       // Invite a player/character to join combat (DM action)
       socket.on('inviteToCombat', async (data) => {
         try {
