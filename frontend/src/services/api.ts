@@ -456,4 +456,243 @@ export const monsterInstanceAPI = {
   }
 };
 
+// Army types
+export interface Army {
+  id: number;
+  player_id: number;
+  campaign_id: number;
+  name: string;
+  numbers: number;
+  equipment: number;
+  discipline: number;
+  morale: number;
+  command: number;
+  logistics: number;
+  created_at: string;
+  updated_at: string;
+  player_name?: string;
+  owner_name?: string;
+  battle_history?: ArmyBattleHistory[];
+}
+
+export interface ArmyBattleHistory {
+  id: number;
+  army_id: number;
+  battle_name: string;
+  start_score: number;
+  end_score: number;
+  enemy_name: string;
+  enemy_start_score: number;
+  enemy_end_score: number;
+  result: 'victory' | 'defeat' | 'stalemate';
+  goals_chosen: any[];
+  battle_date: string;
+}
+
+export interface Battle {
+  id: number;
+  campaign_id: number;
+  battle_name: string;
+  terrain_description: string;
+  status: 'planning' | 'goal_selection' | 'resolution' | 'completed' | 'cancelled';
+  current_round: number;
+  created_at: string;
+  updated_at: string;
+  participants?: BattleParticipant[];
+  current_goals?: BattleGoal[];
+}
+
+export interface BattleParticipant {
+  id: number;
+  battle_id: number;
+  army_id: number | null;
+  team_name: string;
+  faction_color?: string;
+  is_temporary: boolean;
+  temp_army_name?: string;
+  temp_army_stats?: {
+    numbers: number;
+    equipment: number;
+    discipline: number;
+    morale: number;
+    command: number;
+    logistics: number;
+  };
+  current_score: number;
+  base_score: number;
+  position_x: number;
+  position_y: number;
+  has_selected_goal?: boolean;
+  army_name?: string;
+  player_name?: string;
+  user_id?: number;
+  numbers?: number;
+  equipment?: number;
+  discipline?: number;
+  morale?: number;
+  command?: number;
+  logistics?: number;
+}
+
+export interface BattleGoal {
+  id: number;
+  battle_id: number;
+  round_number: number;
+  participant_id: number;
+  goal_name: string;
+  target_participant_id: number | null;
+  test_type: string;
+  character_modifier: number;
+  army_stat_modifier: number;
+  dice_roll: number | null;
+  dc_required: number | null;
+  success: boolean | null;
+  modifier_applied: number;
+  locked_in: boolean;
+  created_at: string;
+  team_name?: string;
+  target_team_name?: string;
+}
+
+// Army API
+export const armyAPI = {
+  getPlayerArmies: async (campaignId: number, playerId: number): Promise<Army[]> => {
+    const response = await api.get(`/armies/campaign/${campaignId}/player/${playerId}`);
+    return response.data;
+  },
+
+  getCampaignArmies: async (campaignId: number): Promise<Army[]> => {
+    const response = await api.get(`/armies/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  createArmy: async (armyData: Partial<Army>): Promise<Army> => {
+    const response = await api.post('/armies', armyData);
+    return response.data;
+  },
+
+  updateArmy: async (armyId: number, stats: Partial<Army>): Promise<Army> => {
+    const response = await api.put(`/armies/${armyId}`, stats);
+    return response.data;
+  },
+
+  deleteArmy: async (armyId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/armies/${armyId}`);
+    return response.data;
+  },
+
+  getBattleHistory: async (armyId: number): Promise<ArmyBattleHistory[]> => {
+    const response = await api.get(`/armies/${armyId}/history`);
+    return response.data;
+  }
+};
+
+// Battle API
+export const battleAPI = {
+  createBattle: async (battleData: Partial<Battle>): Promise<Battle> => {
+    const response = await api.post('/armies/battles', battleData);
+    return response.data;
+  },
+
+  getActiveBattle: async (campaignId: number): Promise<Battle | null> => {
+    const response = await api.get(`/armies/battles/campaign/${campaignId}/active`);
+    return response.data;
+  },
+
+  getBattle: async (battleId: number): Promise<Battle> => {
+    const response = await api.get(`/armies/battles/${battleId}`);
+    return response.data;
+  },
+
+  updateStatus: async (battleId: number, status: string): Promise<Battle> => {
+    const response = await api.put(`/armies/battles/${battleId}/status`, { status });
+    return response.data;
+  },
+
+  advanceRound: async (battleId: number): Promise<Battle> => {
+    const response = await api.post(`/armies/battles/${battleId}/advance-round`);
+    return response.data;
+  },
+
+  addParticipant: async (battleId: number, participantData: Partial<BattleParticipant>): Promise<BattleParticipant> => {
+    const response = await api.post(`/armies/battles/${battleId}/participants`, participantData);
+    return response.data;
+  },
+
+  updateParticipantPosition: async (participantId: number, x: number, y: number): Promise<void> => {
+    await api.put(`/armies/battles/participants/${participantId}/position`, { x, y });
+  },
+
+  calculateBaseScores: async (battleId: number): Promise<Battle> => {
+    const response = await api.post(`/armies/battles/${battleId}/calculate-base-scores`);
+    return response.data;
+  },
+
+  setGoal: async (battleId: number, goalData: Partial<BattleGoal>): Promise<BattleGoal> => {
+    const response = await api.post(`/armies/battles/${battleId}/goals`, goalData);
+    return response.data;
+  },
+
+  lockGoal: async (goalId: number, locked: boolean): Promise<BattleGoal> => {
+    const response = await api.put(`/armies/battles/goals/${goalId}/lock`, { locked });
+    return response.data;
+  },
+
+  updateGoalRoll: async (goalId: number, diceRoll: number): Promise<BattleGoal> => {
+    const response = await api.put(`/armies/battles/goals/${goalId}/roll`, { dice_roll: diceRoll });
+    return response.data;
+  },
+
+  resolveGoal: async (goalId: number, dcRequired: number, success: boolean, modifierApplied: number): Promise<BattleGoal> => {
+    const response = await api.put(`/armies/battles/goals/${goalId}/resolve`, {
+      dc_required: dcRequired,
+      success,
+      modifier_applied: modifierApplied
+    });
+    return response.data;
+  },
+
+  applyModifiers: async (battleId: number, roundNumber: number): Promise<Battle> => {
+    const response = await api.post(`/armies/battles/${battleId}/apply-modifiers`, { round_number: roundNumber });
+    return response.data;
+  },
+
+  completeBattle: async (battleId: number): Promise<{ message: string; results: BattleParticipant[] }> => {
+    const response = await api.post(`/armies/battles/${battleId}/complete`);
+    return response.data;
+  },
+
+  // Battle invitations
+  invitePlayers: async (battleId: number, playerIds: number[], teamName: string, factionColor: string = '#808080'): Promise<any[]> => {
+    const response = await api.post(`/armies/battles/${battleId}/invite`, {
+      player_ids: playerIds,
+      team_name: teamName,
+      faction_color: factionColor
+    });
+    return response.data;
+  },
+
+  getPlayerInvitations: async (playerId: number, campaignId: number): Promise<any[]> => {
+    const response = await api.get(`/armies/battles/invitations/player/${playerId}/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  getBattleInvitations: async (battleId: number): Promise<any[]> => {
+    const response = await api.get(`/armies/battles/${battleId}/invitations`);
+    return response.data;
+  },
+
+  acceptInvitation: async (invitationId: number, armyIds: number[]): Promise<any> => {
+    const response = await api.post(`/armies/battles/invitations/${invitationId}/accept`, {
+      army_ids: armyIds
+    });
+    return response.data;
+  },
+
+  declineInvitation: async (invitationId: number): Promise<any> => {
+    const response = await api.post(`/armies/battles/invitations/${invitationId}/decline`);
+    return response.data;
+  }
+};
+
 export default api;

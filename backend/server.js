@@ -15,6 +15,7 @@ const campaignRoutes = require('./routes/campaigns');
 const characterRoutes = require('./routes/characters');
 const monsterRoutes = require('./routes/monsters');
 const monsterInstanceRoutes = require('./routes/monsterInstances');
+const armyRoutes = require('./routes/armies');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -98,6 +99,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/monsters', monsterRoutes);
+app.use('/api/armies', armyRoutes);
 app.use('/api/monster-instances', monsterInstanceRoutes);
 
 // Health check endpoint
@@ -202,6 +204,9 @@ const startServer = async () => {
   // }
   const battleCombatState = {};
 
+  // Map user IDs to socket IDs for targeted notifications
+  const userSocketMap = new Map();
+
     // Socket.IO connection handling
     io.on('connection', (socket) => {
       console.log(`👤 User connected: ${socket.id}`);
@@ -209,6 +214,16 @@ const startServer = async () => {
       // Add error handler for this socket
       socket.on('error', (error) => {
         console.error(`Socket error for ${socket.id}:`, error);
+      });
+      
+      // Register user ID with socket
+      socket.on('registerUser', (userId) => {
+        try {
+          userSocketMap.set(userId, socket.id);
+          console.log(`🔗 Registered user ${userId} with socket ${socket.id}`);
+        } catch (error) {
+          console.error(`Error registering user ${userId}:`, error);
+        }
       });
       
       // Join campaign room for real-time updates
@@ -552,9 +567,107 @@ const startServer = async () => {
           console.error('Error resetting combat:', error);
         }
       });
+
+      // ===== BATTLEFIELD / ARMY BATTLE EVENTS =====
+
+      // Participant position update (DM moving armies during planning phase)
+      socket.on('battlefieldParticipantMove', (data) => {
+        try {
+          const { campaignId, participantId, x, y } = data;
+          // Broadcast to all users in the campaign
+          socket.to(`campaign_${campaignId}`).emit('battlefieldParticipantMoved', {
+            participantId,
+            x,
+            y,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🗺️ Battlefield participant ${participantId} moved to (${x}, ${y}) in campaign ${campaignId}`);
+        } catch (error) {
+          console.error('Error handling battlefield participant movement:', error);
+        }
+      });
+
+      // Player locks in their battle goal
+      socket.on('battleGoalLocked', (data) => {
+        try {
+          const { campaignId, goalId, participantId, goalName } = data;
+          // Broadcast to all users that this goal is locked
+          io.to(`campaign_${campaignId}`).emit('battleGoalLockedUpdate', {
+            goalId,
+            participantId,
+            goalName,
+            locked: true,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🔒 Battle goal ${goalName} locked for participant ${participantId}`);
+        } catch (error) {
+          console.error('Error handling battle goal lock:', error);
+        }
+      });
+
+      // Player rolls dice for their goal
+      socket.on('battleGoalRolled', (data) => {
+        try {
+          const { campaignId, goalId, participantId, diceRoll, totalModifier } = data;
+          // Broadcast the roll to everyone (DM needs to see it)
+          io.to(`campaign_${campaignId}`).emit('battleGoalRollUpdate', {
+            goalId,
+            participantId,
+            diceRoll,
+            totalModifier,
+            total: diceRoll + totalModifier,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🎲 Battle goal roll: ${diceRoll} + ${totalModifier} = ${diceRoll + totalModifier}`);
+        } catch (error) {
+          console.error('Error handling battle goal roll:', error);
+        }
+      });
+
+      // DM resolves a goal (sets DC and success/fail)
+      socket.on('battleGoalResolved', (data) => {
+        try {
+          const { campaignId, goalId, dc, success, modifierApplied } = data;
+          // Broadcast resolution to everyone (but not the full results yet)
+          io.to(`campaign_${campaignId}`).emit('battleGoalResolutionUpdate', {
+            goalId,
+            dc,
+            success,
+            modifierApplied,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`✅ Battle goal ${goalId} resolved: DC ${dc}, ${success ? 'Success' : 'Fail'}, modifier: ${modifierApplied}`);
+        } catch (error) {
+          console.error('Error handling battle goal resolution:', error);
+        }
+      });
+
+      // DM sends round results (all goals resolved, scores updated)
+      // This is handled by the API route's socket emit, but we can add a refresh trigger
+      socket.on('requestBattleUpdate', (data) => {
+        try {
+          const { campaignId, battleId } = data;
+          // Trigger all clients to refresh battle state
+          io.to(`campaign_${campaignId}`).emit('battleStateRefresh', {
+            battleId,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🔄 Battle state refresh requested for battle ${battleId}`);
+        } catch (error) {
+          console.error('Error handling battle update request:', error);
+        }
+      });
       
       socket.on('disconnect', (reason) => {
         console.log(`👋 User disconnected: ${socket.id}, reason: ${reason}`);
+        // Remove from user socket map
+        for (const [userId, socketId] of userSocketMap.entries()) {
+          if (socketId === socket.id) {
+            userSocketMap.delete(userId);
+            console.log(`🗑️ Removed user ${userId} from socket map`);
+            break;
+          }
+        }
       });
     });
 
@@ -563,8 +676,9 @@ const startServer = async () => {
       console.error('Socket.IO server error:', error);
     });
 
-    // Make io available to routes
+    // Make io and userSocketMap available to routes
     app.set('io', io);
+    app.set('userSocketMap', userSocketMap);
     
     server.listen(PORT, () => {
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);

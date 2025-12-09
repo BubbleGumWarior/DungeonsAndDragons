@@ -2,12 +2,273 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
 import FigureImage from '../assets/images/Board/Figure.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
 import BattleMapImage from '../assets/images/Campaign/BattleMap.jpg';
 import io from 'socket.io-client';
+
+// Battle Goals Data Structure
+interface BattleGoalDefinition {
+  name: string;
+  category: 'Command' | 'Strategy' | 'Combat' | 'Misc';
+  requirement: string;
+  test_type: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | 'Attack' | 'Saving Throw';
+  army_stat: 'numbers' | 'equipment' | 'discipline' | 'morale' | 'command' | 'logistics';
+  targets_enemy: boolean;
+  reward: string;
+  fail: string;
+  description: string;
+}
+
+const BATTLE_GOALS: BattleGoalDefinition[] = [
+  // Command Goals (4)
+  {
+    name: 'Rally the Troops',
+    category: 'Command',
+    requirement: 'Command ≥ 5',
+    test_type: 'CHA',
+    army_stat: 'command',
+    targets_enemy: false,
+    reward: '+2 to your team\'s total score',
+    fail: '-1 to your team\'s total score',
+    description: 'Inspire your forces with a rousing speech or strategic command.'
+  },
+  {
+    name: 'Coordinate Attack',
+    category: 'Command',
+    requirement: 'Command ≥ 6',
+    test_type: 'INT',
+    army_stat: 'command',
+    targets_enemy: false,
+    reward: '+3 to your team\'s total score',
+    fail: 'No effect',
+    description: 'Synchronize your units for a devastating combined assault.'
+  },
+  {
+    name: 'Disrupt Enemy Commands',
+    category: 'Command',
+    requirement: 'Command ≥ 7',
+    test_type: 'WIS',
+    army_stat: 'command',
+    targets_enemy: true,
+    reward: '-3 to target enemy\'s total score',
+    fail: '-1 to your team\'s total score',
+    description: 'Interfere with enemy communications and sow confusion in their ranks.'
+  },
+  {
+    name: 'Tactical Retreat',
+    category: 'Command',
+    requirement: 'Morale ≤ 4',
+    test_type: 'WIS',
+    army_stat: 'command',
+    targets_enemy: false,
+    reward: '+2 to your team, negate up to -2 penalties',
+    fail: '-2 to your team\'s total score',
+    description: 'Execute an organized withdrawal to regroup and minimize casualties.'
+  },
+
+  // Strategy Goals (5)
+  {
+    name: 'Flank Maneuver',
+    category: 'Strategy',
+    requirement: 'Discipline ≥ 5',
+    test_type: 'DEX',
+    army_stat: 'discipline',
+    targets_enemy: true,
+    reward: '-2 to target enemy, +1 to your team',
+    fail: 'No effect',
+    description: 'Position units to attack the enemy from an unexpected angle.'
+  },
+  {
+    name: 'Hold the Line',
+    category: 'Strategy',
+    requirement: 'Discipline ≥ 6',
+    test_type: 'CON',
+    army_stat: 'discipline',
+    targets_enemy: false,
+    reward: '+3 to your team, resist 1 enemy penalty this round',
+    fail: '-1 to your team\'s total score',
+    description: 'Maintain defensive positions against overwhelming odds.'
+  },
+  {
+    name: 'Feint and Strike',
+    category: 'Strategy',
+    requirement: 'Equipment ≥ 5',
+    test_type: 'DEX',
+    army_stat: 'discipline',
+    targets_enemy: true,
+    reward: '-4 to target enemy\'s total score',
+    fail: '-2 to your team\'s total score',
+    description: 'Fake a retreat to draw enemies into a trap, then counterattack.'
+  },
+  {
+    name: 'Siege Tactics',
+    category: 'Strategy',
+    requirement: 'Equipment ≥ 7, Numbers ≥ 6',
+    test_type: 'INT',
+    army_stat: 'equipment',
+    targets_enemy: true,
+    reward: '-3 to target enemy, +1 to your team',
+    fail: '-1 to your team\'s total score',
+    description: 'Employ siege weapons and engineering to breach enemy defenses.'
+  },
+  {
+    name: 'Rapid Deployment',
+    category: 'Strategy',
+    requirement: 'Logistics ≥ 6',
+    test_type: 'DEX',
+    army_stat: 'logistics',
+    targets_enemy: false,
+    reward: '+2 to your team, go first next round',
+    fail: 'No effect',
+    description: 'Quickly move troops to critical positions on the battlefield.'
+  },
+
+  // Combat Goals (7)
+  {
+    name: 'Charge!',
+    category: 'Combat',
+    requirement: 'Numbers ≥ 5',
+    test_type: 'STR',
+    army_stat: 'numbers',
+    targets_enemy: true,
+    reward: '-3 to target enemy\'s total score',
+    fail: '-1 to your team\'s total score',
+    description: 'Launch a full-scale frontal assault on enemy positions.'
+  },
+  {
+    name: 'Concentrated Fire',
+    category: 'Combat',
+    requirement: 'Equipment ≥ 6',
+    test_type: 'Attack',
+    army_stat: 'equipment',
+    targets_enemy: true,
+    reward: '-4 to target enemy\'s total score',
+    fail: '-1 to your team\'s total score',
+    description: 'Focus all ranged attacks on a single enemy unit.'
+  },
+  {
+    name: 'Berserker Rage',
+    category: 'Combat',
+    requirement: 'Morale ≥ 7',
+    test_type: 'STR',
+    army_stat: 'morale',
+    targets_enemy: true,
+    reward: '-5 to target enemy, -1 to your own team',
+    fail: '-3 to your team\'s total score',
+    description: 'Unleash unbridled fury, sacrificing safety for devastating power.'
+  },
+  {
+    name: 'Defensive Formation',
+    category: 'Combat',
+    requirement: 'Discipline ≥ 5',
+    test_type: 'CON',
+    army_stat: 'discipline',
+    targets_enemy: false,
+    reward: '+2 to your team, reduce next enemy penalty by 2',
+    fail: 'No effect',
+    description: 'Form shields and create a wall to protect your forces.'
+  },
+  {
+    name: 'Ambush',
+    category: 'Combat',
+    requirement: 'Discipline ≥ 6, Equipment ≥ 5',
+    test_type: 'DEX',
+    army_stat: 'discipline',
+    targets_enemy: true,
+    reward: '-4 to target enemy, +1 to your team',
+    fail: '-2 to your team\'s total score',
+    description: 'Set up a hidden trap and strike when the enemy is vulnerable.'
+  },
+  {
+    name: 'Cavalry Charge',
+    category: 'Combat',
+    requirement: 'Equipment ≥ 7, Numbers ≥ 5',
+    test_type: 'STR',
+    army_stat: 'equipment',
+    targets_enemy: true,
+    reward: '-5 to target enemy\'s total score',
+    fail: '-2 to your team\'s total score',
+    description: 'Mounted units crash into enemy lines with overwhelming force.'
+  },
+  {
+    name: 'Guerrilla Tactics',
+    category: 'Combat',
+    requirement: 'Numbers ≤ 6',
+    test_type: 'DEX',
+    army_stat: 'equipment',
+    targets_enemy: true,
+    reward: '-3 to target enemy, can\'t be targeted next round',
+    fail: '-1 to your team\'s total score',
+    description: 'Use hit-and-run attacks to harass superior enemy forces.'
+  },
+
+  // Miscellaneous Goals (4)
+  {
+    name: 'Supply Line Raid',
+    category: 'Misc',
+    requirement: 'Logistics ≥ 5',
+    test_type: 'DEX',
+    army_stat: 'logistics',
+    targets_enemy: true,
+    reward: '-2 to target enemy, +1 to your team',
+    fail: 'No effect',
+    description: 'Disrupt enemy supply chains to weaken their combat effectiveness.'
+  },
+  {
+    name: 'Fortify Position',
+    category: 'Misc',
+    requirement: 'Logistics ≥ 6',
+    test_type: 'INT',
+    army_stat: 'logistics',
+    targets_enemy: false,
+    reward: '+3 to your team, +1 permanent defense bonus',
+    fail: 'No effect',
+    description: 'Construct defensive works to strengthen your position.'
+  },
+  {
+    name: 'Inspire Fear',
+    category: 'Misc',
+    requirement: 'Morale ≥ 6',
+    test_type: 'CHA',
+    army_stat: 'morale',
+    targets_enemy: true,
+    reward: '-2 to all enemies this round',
+    fail: '-1 to your team\'s total score',
+    description: 'Display overwhelming power to demoralize all enemy forces.'
+  },
+  {
+    name: 'Desperate Gambit',
+    category: 'Misc',
+    requirement: 'Your team is losing by 10+',
+    test_type: 'Saving Throw',
+    army_stat: 'morale',
+    targets_enemy: true,
+    reward: '-6 to target enemy, +3 to your team',
+    fail: '-4 to your team\'s total score',
+    description: 'Risk everything on a daring, all-or-nothing maneuver.'
+  }
+];
+
+// Helper function to parse goal reward/fail text and extract modifier value
+const parseGoalModifier = (text: string): number => {
+  // Match patterns like "+2", "-3", "+4 to", "-1 to your"
+  const match = text.match(/([+-]\d+)/);
+  return match ? parseInt(match[1]) : 0;
+};
+
+// Helper function to get color based on modifier value
+const getModifierColor = (modifier: number): string => {
+  if (modifier >= 4) return '#22c55e'; // Strong green
+  if (modifier >= 2) return '#4ade80'; // Green
+  if (modifier >= 1) return '#86efac'; // Light green
+  if (modifier === 0) return '#ffffff'; // White
+  if (modifier >= -1) return '#fca5a5'; // Light red
+  if (modifier >= -2) return '#f87171'; // Red
+  return '#ef4444'; // Strong red
+};
 
 const CampaignView: React.FC = () => {
   const { campaignName } = useParams<{ campaignName: string }>();
@@ -30,9 +291,9 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies'>('board');
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
-  const [campaignTab, setCampaignTab] = useState<'map' | 'battle' | 'news' | 'journal' | 'encyclopedia'>('map');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia'>('map');
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
@@ -105,6 +366,78 @@ const CampaignView: React.FC = () => {
   });
   const [monsterImageFile, setMonsterImageFile] = useState<File | null>(null);
   const [viewImageModal, setViewImageModal] = useState<{ imageUrl: string; name: string } | null>(null);
+
+  // Army and Battlefield state
+  const [armies, setArmies] = useState<Army[]>([]);
+  const [activeBattle, setActiveBattle] = useState<Battle | null>(null);
+  const [showAddArmyModal, setShowAddArmyModal] = useState(false);
+  const [newArmyData, setNewArmyData] = useState<{
+    name: string;
+    numbers: number;
+    equipment: number;
+    discipline: number;
+    morale: number;
+    command: number;
+    logistics: number;
+  }>({
+    name: '',
+    numbers: 5,
+    equipment: 5,
+    discipline: 5,
+    morale: 5,
+    command: 5,
+    logistics: 5
+  });
+  const [showCreateBattleModal, setShowCreateBattleModal] = useState(false);
+  const [newBattleData, setNewBattleData] = useState({
+    name: '',
+    terrain_description: ''
+  });
+  const [showAddParticipantModal, setShowAddParticipantModal] = useState(false);
+  const [participantType, setParticipantType] = useState<'player' | 'custom'>('player');
+  const [selectedPlayerForBattle, setSelectedPlayerForBattle] = useState<number | null>(null);
+  const [tempArmyStats, setTempArmyStats] = useState({
+    name: '',
+    numbers: 5,
+    equipment: 5,
+    discipline: 5,
+    morale: 5,
+    command: 5,
+    logistics: 5,
+    team: ''
+  });
+  const [showBattlefieldGoals, setShowBattlefieldGoals] = useState(true);
+  const [selectedGoalCategory, setSelectedGoalCategory] = useState<string>('Command');
+  const [battleSummary, setBattleSummary] = useState<{
+    battleName: string;
+    results: any[];
+    timestamp: string;
+  } | null>(null);
+  const [showBattleSetupModal, setShowBattleSetupModal] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState<BattleGoalDefinition | null>(null);
+  const [selectedTargetParticipant, setSelectedTargetParticipant] = useState<number | null>(null);
+  const [showGoalConfirmModal, setShowGoalConfirmModal] = useState(false);
+  const [showInvitePlayersModal, setShowInvitePlayersModal] = useState(false);
+  const [showBattleInvitationsModal, setShowBattleInvitationsModal] = useState(false);
+  const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
+  const [selectedPlayersToInvite, setSelectedPlayersToInvite] = useState<number[]>([]);
+  const [inviteTeamName, setInviteTeamName] = useState<string>('');
+  const [inviteTeamColor, setInviteTeamColor] = useState<string>('#3b82f6');
+  const [newParticipantData, setNewParticipantData] = useState({
+    type: 'player' as 'player' | 'dm',
+    team: '',
+    faction_color: '#ef4444',
+    selectedPlayerArmies: [] as number[],
+    tempArmyName: '',
+    tempArmyStats: {
+      numbers: 5,
+      equipment: 5,
+      discipline: 5,
+      morale: 5,
+      command: 5,
+      logistics: 5
+    }
+  });
 
   // Helper functions for category-specific options
   const getSubcategoryOptions = (category: string) => {
@@ -234,7 +567,7 @@ const CampaignView: React.FC = () => {
 
   // Refresh campaign data when switching to map or battle tabs to ensure fresh positions
   useEffect(() => {
-    if (campaignName && (campaignTab === 'map' || campaignTab === 'battle')) {
+    if (campaignName && (campaignTab === 'map' || campaignTab === 'combat')) {
       loadCampaign(campaignName).catch(() => {
         // Error is handled by the context
       });
@@ -304,11 +637,89 @@ const CampaignView: React.FC = () => {
     loadMonsters();
   }, [currentCampaign]);
 
+  // Load armies when selected character changes
+  useEffect(() => {
+    const loadArmies = async () => {
+      if (selectedCharacter && currentCampaign) {
+        const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
+        if (character) {
+          try {
+            const fetchedArmies = await armyAPI.getPlayerArmies(currentCampaign.campaign.id, character.player_id);
+            setArmies(fetchedArmies);
+          } catch (error) {
+            console.error('Error loading armies:', error);
+          }
+        }
+      }
+    };
+    loadArmies();
+  }, [selectedCharacter, currentCampaign]);
+
+  // Load active battle when switching to battlefield tab
+  useEffect(() => {
+    const loadActiveBattle = async () => {
+      if (campaignTab === 'battlefield' && currentCampaign) {
+        try {
+          const battle = await battleAPI.getActiveBattle(currentCampaign.campaign.id);
+          setActiveBattle(battle);
+        } catch (error) {
+          console.error('Error loading active battle:', error);
+        }
+      }
+    };
+    loadActiveBattle();
+  }, [campaignTab, currentCampaign]);
+
+  // Load pending battle invitations for player
+  useEffect(() => {
+    const loadInvitations = async () => {
+      if (currentCampaign && selectedCharacter && user) {
+        const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
+        if (character) {
+          try {
+            const invites = await battleAPI.getPlayerInvitations(character.player_id, currentCampaign.campaign.id);
+            setPendingInvitations(invites);
+          } catch (error) {
+            console.error('Error loading invitations:', error);
+          }
+        }
+      }
+    };
+    loadInvitations();
+  }, [currentCampaign, selectedCharacter, user]);
+
   // Reset backstory page when character changes
   useEffect(() => {
     setBackstoryPage(0);
     setPageDirection(null);
   }, [selectedCharacter]);
+
+  // Battle Setup Handlers
+  const handleCreateBattle = async () => {
+    if (!newBattleData.name.trim() || !currentCampaign) return;
+
+    try {
+      const createdBattle = await battleAPI.createBattle({
+        campaign_id: currentCampaign.campaign.id,
+        battle_name: newBattleData.name,
+        terrain_description: newBattleData.terrain_description
+      });
+
+      setActiveBattle(createdBattle);
+      setShowBattleSetupModal(false);
+      setNewBattleData({
+        name: '',
+        terrain_description: ''
+      });
+      setToastMessage(`Battle "${createdBattle.battle_name}" created!`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error creating battle:', error);
+      alert('Failed to create battle');
+    }
+  };
+
+
 
   // Helper function to calculate total character health from limbs
   const calculateCharacterHealth = (character: any) => {
@@ -574,10 +985,30 @@ const CampaignView: React.FC = () => {
     }
   }, []);
 
+  // Helper function to refresh active battle (uses ref to avoid closure issues)
+  const refreshActiveBattle = useCallback(async (battleId: number) => {
+    try {
+      const updatedBattle = await battleAPI.getBattle(battleId);
+      // Don't set cancelled or completed battles as active
+      if (updatedBattle.status === 'cancelled' || updatedBattle.status === 'completed') {
+        setActiveBattle(null);
+      } else {
+        setActiveBattle(updatedBattle);
+      }
+    } catch (error) {
+      console.error('Error refreshing battle:', error);
+    }
+  }, []);
+
   // Socket connection for real-time updates
   useEffect(() => {
     if (currentCampaign) {
       const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+      
+      // Register user ID for targeted notifications
+      if (user) {
+        newSocket.emit('registerUser', user.id);
+      }
       
       // Join campaign room
       newSocket.emit('joinCampaign', currentCampaign.campaign.id);
@@ -706,7 +1137,6 @@ const CampaignView: React.FC = () => {
         remainingMovement: number;
         timestamp: string;
       }) => {
-        console.log('📍 Received battle map character movement:', data);
         // Update character battle position in state
         setBattlePositions(prev => ({
           ...prev,
@@ -723,7 +1153,6 @@ const CampaignView: React.FC = () => {
       newSocket.on('battleMovementSync', (data: {
         movementState: Record<number, number>;
       }) => {
-        console.log('📊 Battle movement sync received:', data);
         setRemainingMovement(data.movementState);
       });
 
@@ -742,7 +1171,6 @@ const CampaignView: React.FC = () => {
         initiativeOrder: number[];
         currentTurnIndex: number;
       }) => {
-        console.log('⚔️ Battle combat sync received:', data);
         setCombatants(data.combatants);
         setInitiativeOrder(data.initiativeOrder);
         setCurrentTurnIndex(data.currentTurnIndex);
@@ -753,7 +1181,6 @@ const CampaignView: React.FC = () => {
         resetMovement: Record<number, number>;
         timestamp: string;
       }) => {
-        console.log('🔄 Turn reset received:', data);
         setRemainingMovement(data.resetMovement);
       });
 
@@ -764,7 +1191,6 @@ const CampaignView: React.FC = () => {
         targetPlayerId: number;
         timestamp: string;
       }) => {
-        console.log('📣 Combat invite received:', data);
         // Check if this invite is for the current user
         if (user && data.targetPlayerId === user.id) {
           const character = currentCampaign.characters.find((c: any) => c.id === data.characterId);
@@ -791,7 +1217,6 @@ const CampaignView: React.FC = () => {
         currentTurnIndex: number;
         timestamp: string;
       }) => {
-        console.log('🛡️ Combatants updated:', data);
         setCombatants(data.combatants);
         setInitiativeOrder(data.initiativeOrder);
         setCurrentTurnIndex(data.currentTurnIndex);
@@ -810,7 +1235,6 @@ const CampaignView: React.FC = () => {
         movementSpeed: number;
         timestamp: string;
       }) => {
-        console.log('➡️ Turn advanced:', data);
         setInitiativeOrder(data.initiativeOrder);
         setCurrentTurnIndex(data.currentTurnIndex);
         // Reset movement only for the current character (works for both characters and monsters)
@@ -824,7 +1248,6 @@ const CampaignView: React.FC = () => {
       newSocket.on('combatReset', (data: {
         timestamp: string;
       }) => {
-        console.log('🔄 Combat reset received:', data);
         // Clear all combat state
         setCombatants([]);
         setInitiativeOrder([]);
@@ -833,6 +1256,122 @@ const CampaignView: React.FC = () => {
         if (campaignName) {
           loadCampaign(campaignName);
         }
+      });
+
+      // Listen for army created
+      newSocket.on('armyCreated', (data: { army: Army; timestamp: string }) => {
+        // Reload armies if viewing the affected character
+        if (selectedCharacter && currentCampaign) {
+          const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
+          if (character && character.player_id === data.army.player_id) {
+            armyAPI.getPlayerArmies(currentCampaign.campaign.id, character.player_id)
+              .then(setArmies)
+              .catch(console.error);
+          }
+        }
+      });
+
+      // Listen for army updated
+      newSocket.on('armyUpdated', (data: { army: Army; timestamp: string }) => {
+        setArmies(prev => prev.map(a => a.id === data.army.id ? { ...data.army, battle_history: a.battle_history } : a));
+      });
+
+      // Listen for army deleted
+      newSocket.on('armyDeleted', (data: { armyId: number; timestamp: string }) => {
+        setArmies(prev => prev.filter(a => a.id !== data.armyId));
+      });
+
+      // Listen for battle created
+      newSocket.on('battleCreated', (data: { battle: Battle; timestamp: string }) => {
+        if (campaignTab === 'battlefield') {
+          setActiveBattle(data.battle);
+        }
+      });
+
+      // Listen for battle status updated
+      newSocket.on('battleStatusUpdated', (data: { battleId: number; status: string; timestamp: string }) => {
+        if (data.status === 'cancelled') {
+          setActiveBattle(null);
+          setToastMessage('Battle was cancelled by the DM.');
+          setTimeout(() => setToastMessage(null), 3000);
+        } else {
+          refreshActiveBattle(data.battleId);
+        }
+      });
+
+      // Listen for battle participant added
+      newSocket.on('battleParticipantAdded', (data: { battleId: number; participant: BattleParticipant; timestamp: string }) => {
+        // Always refresh the battle to show new participant
+        refreshActiveBattle(data.battleId);
+      });
+
+      // Listen for battle goal locked
+      newSocket.on('battleGoalLocked', (data: { battleId: number; goal: BattleGoal; timestamp: string }) => {
+        refreshActiveBattle(data.battleId);
+      });
+
+      // Listen for battle goal rolled
+      newSocket.on('battleGoalRolled', (data: { battleId: number; goalId: number; roll: number; timestamp: string }) => {
+        if (activeBattle && activeBattle.id === data.battleId) {
+          battleAPI.getBattle(data.battleId)
+            .then(setActiveBattle)
+            .catch(console.error);
+        }
+      });
+
+      // Listen for battle goal resolved
+      newSocket.on('battleGoalResolved', (data: { battleId: number; goalId: number; success: boolean; timestamp: string }) => {
+        if (activeBattle && activeBattle.id === data.battleId) {
+          battleAPI.getBattle(data.battleId)
+            .then(setActiveBattle)
+            .catch(console.error);
+        }
+      });
+
+      // Listen for battle completed
+      newSocket.on('battleCompleted', (data: { battleId: number; battleName: string; results: any; timestamp: string }) => {
+        setTimeout(() => {
+          setActiveBattle(null);
+          setBattleSummary({
+            battleName: data.battleName,
+            results: data.results,
+            timestamp: data.timestamp
+          });
+        }, 0);
+      });
+
+      // Listen for battle invitation sent
+      newSocket.on('battleInvitationSent', (data: { battleId: number; invitations: any[]; timestamp: string }) => {
+        if (currentCampaign && selectedCharacter) {
+          const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
+          if (character) {
+            battleAPI.getPlayerInvitations(character.player_id, currentCampaign.campaign.id)
+              .then(setPendingInvitations)
+              .catch(console.error);
+          }
+        }
+      });
+
+      // Listen for invitation accepted
+      newSocket.on('battleInvitationAccepted', (data: { battleId: number; playerId: number; timestamp: string }) => {
+        // Refresh the battle to show new participants
+        refreshActiveBattle(data.battleId);
+        
+        // Also reload armies list to update invitation status
+        if (currentCampaign?.campaign.id && user?.id) {
+          armyAPI.getPlayerArmies(currentCampaign.campaign.id, user.id)
+            .then(setArmies)
+            .catch(console.error);
+        }
+      });
+
+      // Listen for invitation declined
+      newSocket.on('battleInvitationDeclined', (data: { battleId: number; playerId: number; timestamp: string }) => {
+      });
+      
+      // Listen for goal selected
+      newSocket.on('battleGoalSelected', (data: { battleId: number; goal: any; timestamp: string }) => {
+        refreshActiveBattle(data.battleId);
       });
       
       setSocket(newSocket);
@@ -1953,10 +2492,43 @@ const CampaignView: React.FC = () => {
         {/* Campaign Content */}
         {mainView === 'campaign' && (
           <div>
+            {/* Global Battle Invitations Notification */}
+            {pendingInvitations.length > 0 && (
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+                <button
+                  onClick={() => setShowBattleInvitationsModal(true)}
+                  style={{
+                    padding: '0.875rem 1.5rem',
+                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                    border: '3px solid rgba(255, 255, 255, 0.4)',
+                    borderRadius: '50px',
+                    color: 'white',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.5)',
+                    animation: 'pulse 2s infinite',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                >
+                  📨 {pendingInvitations.length} Battle Invitation{pendingInvitations.length !== 1 ? 's' : ''}
+                </button>
+              </div>
+            )}
+
             {/* Campaign Tab Navigation */}
             <div className="glass-panel" style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                {(['map', 'battle', 'encyclopedia', 'news', 'journal'] as const).map((tab) => (
+                {(['map', 'combat', 'battlefield', 'news', 'journal', 'encyclopedia'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setCampaignTab(tab)}
@@ -1992,10 +2564,30 @@ const CampaignView: React.FC = () => {
                     }}
                   >
                     {tab === 'map' ? '🗺️ Campaign Map' : 
-                     tab === 'battle' ? '⚔️ Battle Area' :
+                     tab === 'combat' ? '⚔️ Combat Area' :
+                     tab === 'battlefield' ? '🏰 Battlefield' :
                      tab === 'encyclopedia' ? '📚 Encyclopedia' :
                      tab === 'news' ? '📰 Campaign News' : 
                      '📖 Campaign Journal'}
+                    {tab === 'battlefield' && pendingInvitations.length > 0 && (
+                      <span style={{
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.7rem',
+                        fontWeight: 'bold',
+                        marginLeft: '0.25rem',
+                        border: '2px solid rgba(255, 255, 255, 0.3)',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)'
+                      }}>
+                        {pendingInvitations.length}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -2039,7 +2631,6 @@ const CampaignView: React.FC = () => {
                         x,
                         y
                       };
-                      console.log('🎯 Emitting character movement:', moveData);
                       socket.emit('characterMove', moveData);
                     }
                     
@@ -2150,10 +2741,10 @@ const CampaignView: React.FC = () => {
               </div>
             )}
 
-            {campaignTab === 'battle' && (
+            {campaignTab === 'combat' && (
               <div className="glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Battle Area</h5>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Combat Area</h5>
                   {user?.role === 'Dungeon Master' && (
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
                       <button
@@ -2180,7 +2771,6 @@ const CampaignView: React.FC = () => {
                                 socket.emit('nextTurn', {
                                   campaignId: currentCampaign.campaign.id
                                 });
-                                console.log(currentTurnIndex === -1 ? '⚔️ Starting combat' : '🔄 Next turn emitted');
                               }
                             }}
                             style={{
@@ -2386,7 +2976,6 @@ const CampaignView: React.FC = () => {
                         y,
                         remainingMovement: newRemaining
                       };
-                      console.log('🎯 Emitting battle character movement:', moveData);
                       socket.emit('characterBattleMove', moveData);
                     }
                     
@@ -2570,14 +3159,12 @@ const CampaignView: React.FC = () => {
                           draggable={canMove && (isDM || remaining > 0)}
                           onDragStart={() => {
                             if (canMove && (isDM || remaining > 0)) {
-                              console.log('🎯 Drag started for:', name, 'at position:', position);
                               setDraggedCharacter(combatant.characterId);
                               setDragStartPosition({ x: position.x, y: position.y });
                               setCurrentDragPosition(null);
                             }
                           }}
                           onDragEnd={() => {
-                            console.log('🎯 Drag ended');
                             setDraggedCharacter(null);
                             setDragStartPosition(null);
                             setCurrentDragPosition(null);
@@ -2629,6 +3216,1276 @@ const CampaignView: React.FC = () => {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* BATTLEFIELD TAB - Mass Combat System */}
+            {campaignTab === 'battlefield' && (
+              <div className="glass-panel" style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🏰 Battlefield - Mass Combat</h5>
+                  {user?.role === 'Dungeon Master' && !activeBattle && (
+                    <button
+                      onClick={() => setShowBattleSetupModal(true)}
+                      className="btn btn-primary"
+                      style={{
+                        padding: '0.625rem 1.25rem',
+                        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.3))',
+                        border: '2px solid rgba(239, 68, 68, 0.5)',
+                        color: '#f87171',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ⚔️ Start New Battle
+                    </button>
+                  )}
+                </div>
+
+                {!activeBattle ? (
+                  <div style={{
+                    minHeight: '400px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '2px dashed rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    padding: '3rem'
+                  }}>
+                    <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>⚔️</div>
+                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Active Battle</h4>
+                    <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '600px' }}>
+                      {user?.role === 'Dungeon Master' 
+                        ? 'Click "Start New Battle" to initiate a mass combat encounter. You can invite players\' armies and add temporary enemy forces.'
+                        : 'The Dungeon Master hasn\'t started a battle yet. Once a battle begins, you\'ll be able to join with your armies and choose battle goals.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Battle Info Header */}
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.75rem',
+                      padding: '1.5rem',
+                      marginBottom: '1.5rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
+                        <div>
+                          <h4 style={{ color: 'var(--text-gold)', margin: 0, marginBottom: '0.5rem' }}>
+                            {activeBattle.battle_name}
+                          </h4>
+                          <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem' }}>
+                            {activeBattle.terrain_description || 'No terrain description'}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{
+                            padding: '0.5rem 1rem',
+                            background: activeBattle.status === 'planning' ? 'rgba(59, 130, 246, 0.2)' :
+                                       activeBattle.status === 'goal_selection' ? 'rgba(245, 158, 11, 0.2)' :
+                                       activeBattle.status === 'resolution' ? 'rgba(239, 68, 68, 0.2)' :
+                                       'rgba(34, 197, 94, 0.2)',
+                            border: `1px solid ${
+                              activeBattle.status === 'planning' ? 'rgba(59, 130, 246, 0.5)' :
+                              activeBattle.status === 'goal_selection' ? 'rgba(245, 158, 11, 0.5)' :
+                              activeBattle.status === 'resolution' ? 'rgba(239, 68, 68, 0.5)' :
+                              'rgba(34, 197, 94, 0.5)'}`,
+                            borderRadius: '0.5rem',
+                            color: activeBattle.status === 'planning' ? '#60a5fa' :
+                                   activeBattle.status === 'goal_selection' ? '#fbbf24' :
+                                   activeBattle.status === 'resolution' ? '#f87171' :
+                                   '#4ade80',
+                            fontSize: '0.85rem',
+                            fontWeight: 'bold',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.5rem'
+                          }}>
+                            {activeBattle.status.replace('_', ' ')}
+                          </div>
+                          <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                            Round {activeBattle.current_round} / 5
+                          </div>
+                        </div>
+                      </div>
+
+                      {user?.role === 'Dungeon Master' && (
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                          {/* End Battle Button - Always available for DM */}
+                          <button
+                            onClick={() => {
+                              if (window.confirm('⚠️ Are you sure you want to cancel this battle? All progress will be lost and participants will be removed.')) {
+                                battleAPI.updateStatus(activeBattle.id, 'cancelled')
+                                  .then(() => {
+                                    setActiveBattle(null);
+                                    setToastMessage('Battle cancelled successfully.');
+                                    setTimeout(() => setToastMessage(null), 3000);
+                                  })
+                                  .catch(error => {
+                                    console.error('Error cancelling battle:', error);
+                                    alert('Failed to cancel battle');
+                                  });
+                              }
+                            }}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'rgba(100, 100, 120, 0.2)',
+                              border: '1px solid rgba(150, 150, 170, 0.4)',
+                              borderRadius: '0.5rem',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                              marginLeft: 'auto'
+                            }}
+                          >
+                            🚫 End Battle
+                          </button>
+                          
+                          {activeBattle.status === 'planning' && (
+                            <>
+                              <button
+                                onClick={() => setShowInvitePlayersModal(true)}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  background: 'rgba(34, 197, 94, 0.2)',
+                                  border: '1px solid rgba(34, 197, 94, 0.4)',
+                                  borderRadius: '0.5rem',
+                                  color: '#4ade80',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                📨 Invite Players
+                              </button>
+                              <button
+                                onClick={() => setShowAddParticipantModal(true)}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  background: 'rgba(168, 85, 247, 0.2)',
+                                  border: '1px solid rgba(168, 85, 247, 0.4)',
+                                  borderRadius: '0.5rem',
+                                  color: '#a78bfa',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                🎭 Add AI Army
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await battleAPI.calculateBaseScores(activeBattle.id);
+                                    await battleAPI.updateStatus(activeBattle.id, 'goal_selection');
+                                    const updated = await battleAPI.getBattle(activeBattle.id);
+                                    setActiveBattle(updated);
+                                  } catch (error) {
+                                    console.error('Error starting battle:', error);
+                                  }
+                                }}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(217, 119, 6, 0.3))',
+                                  border: '2px solid rgba(245, 158, 11, 0.5)',
+                                  borderRadius: '0.5rem',
+                                  color: '#fbbf24',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                🎯 Start Battle (Calculate Scores)
+                              </button>
+                            </>
+                          )}
+                          {activeBattle.status === 'goal_selection' && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await battleAPI.updateStatus(activeBattle.id, 'resolution');
+                                  const updated = await battleAPI.getBattle(activeBattle.id);
+                                  setActiveBattle(updated);
+                                } catch (error) {
+                                  console.error('Error moving to resolution:', error);
+                                }
+                              }}
+                              style={{
+                                padding: '0.5rem 1rem',
+                                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.3))',
+                                border: '2px solid rgba(239, 68, 68, 0.5)',
+                                borderRadius: '0.5rem',
+                                color: '#f87171',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              ⏭️ Move to Resolution Phase
+                            </button>
+                          )}
+                          {activeBattle.status === 'resolution' && activeBattle.current_round < 5 && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await battleAPI.advanceRound(activeBattle.id);
+                                  await battleAPI.updateStatus(activeBattle.id, 'goal_selection');
+                                  const updated = await battleAPI.getBattle(activeBattle.id);
+                                  setActiveBattle(updated);
+                                } catch (error) {
+                                  console.error('Error advancing round:', error);
+                                }
+                              }}
+                              style={{
+                                padding: '0.5rem 1rem',
+                                background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                                border: '2px solid rgba(34, 197, 94, 0.5)',
+                                borderRadius: '0.5rem',
+                                color: '#4ade80',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              ▶️ Next Round
+                            </button>
+                          )}
+                          {activeBattle.status === 'resolution' && activeBattle.current_round >= 5 && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await battleAPI.completeBattle(activeBattle.id);
+                                  setActiveBattle(null);
+                                  setToastMessage('Battle completed! Results saved to army histories.');
+                                  setTimeout(() => setToastMessage(null), 4000);
+                                } catch (error) {
+                                  console.error('Error completing battle:', error);
+                                }
+                              }}
+                              style={{
+                                padding: '0.5rem 1rem',
+                                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
+                                border: '2px solid rgba(168, 85, 247, 0.5)',
+                                borderRadius: '0.5rem',
+                                color: '#c084fc',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              🏁 Complete Battle
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Battle Map - Always Visible */}
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>🗺️ Battlefield Map</h6>
+                      <div style={{
+                        position: 'relative',
+                        width: '100%',
+                        height: '700px',
+                        backgroundImage: `url(${BattleMapImage})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        border: '3px solid var(--border-gold)',
+                        borderRadius: '0.75rem',
+                        overflow: 'hidden'
+                      }}>
+                          {/* Grid overlay */}
+                          <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundImage: 'linear-gradient(rgba(212, 193, 156, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(212, 193, 156, 0.1) 1px, transparent 1px)',
+                            backgroundSize: '50px 50px',
+                            pointerEvents: 'none'
+                          }} />
+
+                          {/* Army positions */}
+                          {activeBattle.participants && activeBattle.participants.map((participant) => {
+                            const canDrag = user?.role === 'Dungeon Master' || (participant.user_id === user?.id && !participant.is_temporary);
+                            const factionColor = participant.faction_color || (participant.team_name === 'A' ? '#3b82f6' : '#ef4444');
+                            
+                            return (
+                            <div
+                              key={participant.id}
+                              draggable={canDrag}
+                              onDragStart={(e) => {
+                                if (!canDrag) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('participantId', participant.id.toString());
+                              }}
+                              style={{
+                                position: 'absolute',
+                                left: `${participant.position_x || 50}%`,
+                                top: `${participant.position_y || 50}%`,
+                                transform: 'translate(-50%, -50%)',
+                                width: '90px',
+                                height: '90px',
+                                background: `linear-gradient(135deg, ${factionColor}ee, ${factionColor}cc)`,
+                                border: `4px solid ${factionColor}`,
+                                borderRadius: '50%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: canDrag ? 'move' : 'default',
+                                boxShadow: `0 4px 12px ${factionColor}80, 0 0 20px ${factionColor}40`,
+                                transition: 'transform 0.2s',
+                                opacity: canDrag ? 1 : 0.7
+                              }}
+                              onMouseEnter={(e) => canDrag && (e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.15)')}
+                              onMouseLeave={(e) => canDrag && (e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)')}
+                            >
+                              {/* Team badge */}
+                              <div style={{
+                                position: 'absolute',
+                                top: '-8px',
+                                background: factionColor,
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontSize: '0.7rem',
+                                fontWeight: 'bold',
+                                color: 'white',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                                border: '2px solid white',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {participant.team_name}
+                              </div>
+                              
+                              <div style={{ fontSize: '1.8rem', marginBottom: '0.2rem' }}>
+                                {participant.is_temporary ? '🎭' : '👥'}
+                              </div>
+                              <div style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 'bold',
+                                color: 'white',
+                                textAlign: 'center',
+                                textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                                lineHeight: 1.2,
+                                maxWidth: '80px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {participant.temp_army_name || participant.army_name}
+                              </div>
+                            </div>
+                          );})}
+
+                          {/* Drop zone overlay */}
+                          <div
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = 'move';
+                            }}
+                            onDrop={async (e) => {
+                              e.preventDefault();
+                              const participantId = parseInt(e.dataTransfer.getData('participantId'));
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const x = ((e.clientX - rect.left) / rect.width) * 100;
+                              const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+                              try {
+                                await battleAPI.updateParticipantPosition(participantId, x, y);
+                                const updated = await battleAPI.getBattle(activeBattle.id);
+                                setActiveBattle(updated);
+                              } catch (error) {
+                                console.error('Error updating position:', error);
+                              }
+                            }}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0
+                            }}
+                          />
+                        </div>
+                        <div style={{
+                          marginTop: '0.5rem',
+                          fontSize: '0.8rem',
+                          color: 'var(--text-secondary)',
+                          textAlign: 'center',
+                          fontStyle: 'italic'
+                        }}>
+                          {user?.role === 'Dungeon Master' 
+                            ? '🖱️ Drag any army to reposition on the battlefield'
+                            : '🖱️ Drag your armies to position them'}
+                        </div>
+                      </div>
+
+                    {/* Participants List - Grouped by Team */}
+                    {activeBattle.participants && activeBattle.participants.length > 0 && (
+                      <div style={{ marginBottom: '1.5rem' }}>
+                        <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>⚔️ Battle Participants</h6>
+                        {(() => {
+                          // Group participants by team
+                          const teamGroups = (activeBattle.participants || []).reduce((acc, p) => {
+                            if (!acc[p.team_name]) acc[p.team_name] = [];
+                            acc[p.team_name].push(p);
+                            return acc;
+                          }, {} as Record<string, BattleParticipant[]>);
+
+                          return Object.entries(teamGroups).map(([teamName, participants]) => (
+                            <div key={teamName} style={{
+                              marginBottom: '1.5rem',
+                              padding: '1rem',
+                              background: 'rgba(0, 0, 0, 0.2)',
+                              border: `2px solid ${participants[0].faction_color || '#808080'}`,
+                              borderRadius: '0.75rem'
+                            }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                marginBottom: '1rem',
+                                paddingBottom: '0.5rem',
+                                borderBottom: `2px solid ${participants[0].faction_color || '#808080'}`
+                              }}>
+                                <div style={{
+                                  width: '1rem',
+                                  height: '1rem',
+                                  background: participants[0].faction_color || '#808080',
+                                  borderRadius: '50%',
+                                  boxShadow: `0 0 10px ${participants[0].faction_color || '#808080'}`
+                                }} />
+                                <h6 style={{ color: participants[0].faction_color || '#808080', margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                  {teamName}
+                                </h6>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                  ({participants.length} {participants.length === 1 ? 'army' : 'armies'})
+                                </span>
+                                {activeBattle.status !== 'planning' && (
+                                  <div style={{
+                                    marginLeft: 'auto',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.5rem 1rem',
+                                    background: 'rgba(0, 0, 0, 0.4)',
+                                    borderRadius: '0.5rem',
+                                    border: `2px solid ${participants[0].faction_color || '#808080'}`
+                                  }}>
+                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Total Score:</span>
+                                    <span style={{
+                                      fontSize: '1.3rem',
+                                      fontWeight: 'bold',
+                                      color: participants[0].faction_color || '#808080',
+                                      textShadow: `0 0 10px ${participants[0].faction_color || '#808080'}`
+                                    }}>
+                                      {participants.reduce((sum, p) => sum + (p.current_score || 0), 0)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                                {participants.map((participant) => (
+                            <div
+                              key={participant.id}
+                              style={{
+                                padding: '1rem',
+                                background: 'rgba(0, 0, 0, 0.3)',
+                                border: '2px solid rgba(212, 193, 156, 0.3)',
+                                borderRadius: '0.5rem'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
+                                <div>
+                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', fontSize: '1rem' }}>
+                                    {participant.temp_army_name || participant.army_name}
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                    Team: {participant.team_name}
+                                    {participant.player_name && ` (${participant.player_name})`}
+                                  </div>
+                                </div>
+                                {participant.is_temporary && (
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.25rem 0.5rem',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    borderRadius: '0.25rem',
+                                    color: '#f87171'
+                                  }}>
+                                    Temporary
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {activeBattle.status !== 'planning' && (
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '0.5rem' }}>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Base Score</div>
+                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#60a5fa' }}>
+                                      {participant.base_score || 0}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Current Score</div>
+                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#4ade80' }}>
+                                      {participant.current_score || 0}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Modifier</div>
+                                    <div style={{ 
+                                      fontSize: '1.1rem', 
+                                      fontWeight: 'bold', 
+                                      color: (participant.current_score - participant.base_score) >= 0 ? '#4ade80' : '#f87171'
+                                    }}>
+                                      {(participant.current_score - participant.base_score) >= 0 ? '+' : ''}
+                                      {participant.current_score - participant.base_score}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                                ))}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Goal Selection Phase */}
+                    {activeBattle.status === 'goal_selection' && (
+                      <div>
+                        {/* Current Selector Banner */}
+                        {(() => {
+                          // Find the first TEAM that hasn't selected a goal yet
+                          const teams = activeBattle.participants?.reduce((acc, p) => {
+                            if (!acc[p.team_name]) {
+                              acc[p.team_name] = {
+                                name: p.team_name,
+                                color: p.faction_color || '#808080',
+                                has_selected: p.has_selected_goal || false,
+                                participants: []
+                              };
+                            }
+                            acc[p.team_name].participants.push(p);
+                            return acc;
+                          }, {} as Record<string, {name: string; color: string; has_selected: boolean; participants: any[]}>);
+
+                          const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                          
+                          if (currentTeam) {
+                            return (
+                              <div style={{
+                                padding: '1.5rem',
+                                marginBottom: '1.5rem',
+                                background: `linear-gradient(135deg, ${currentTeam.color || '#808080'}20, ${currentTeam.color || '#808080'}40)`,
+                                border: `3px solid ${currentTeam.color || '#808080'}`,
+                                borderRadius: '0.75rem',
+                                textAlign: 'center',
+                                boxShadow: `0 0 20px ${currentTeam.color || '#808080'}40`
+                              }}>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: currentTeam.color || '#808080', marginBottom: '0.5rem' }}>
+                                  👑 Team: {currentTeam.name}
+                                </div>
+                                <div style={{ fontSize: '1rem', color: 'var(--text-gold)' }}>
+                                  {currentTeam.participants.map(p => p.temp_army_name || p.army_name).join(', ')}
+                                </div>
+                                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                                  is selecting their team's goal...
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                        
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '1.5rem',
+                          padding: '1rem',
+                          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2))',
+                          border: '2px solid rgba(245, 158, 11, 0.4)',
+                          borderRadius: '0.75rem'
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '1.2rem', color: '#fbbf24', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                              🎯 Goal Selection - Round {activeBattle.current_round} of 5
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                              Each team selects 1 goal per round (5 goals total). Any member of the current team can select.
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setShowBattlefieldGoals(!showBattlefieldGoals)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'rgba(245, 158, 11, 0.2)',
+                              border: '1px solid rgba(245, 158, 11, 0.4)',
+                              borderRadius: '0.5rem',
+                              color: '#fbbf24',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            {showBattlefieldGoals ? '▼ Hide Goals' : '▶ Show Goals'}
+                          </button>
+                        </div>
+
+                        {showBattlefieldGoals && (
+                          <div style={{
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            border: '1px solid rgba(212, 193, 156, 0.2)',
+                            borderRadius: '0.75rem',
+                            padding: '1.5rem',
+                            marginBottom: '1.5rem'
+                          }}>
+                            {/* Category Tabs */}
+                            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                              {['Command', 'Strategy', 'Combat', 'Misc'].map((category) => (
+                                <button
+                                  key={category}
+                                  onClick={() => setSelectedGoalCategory(category)}
+                                  style={{
+                                    padding: '0.75rem 1.5rem',
+                                    background: selectedGoalCategory === category
+                                      ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.3), rgba(212, 193, 156, 0.2))'
+                                      : 'rgba(212, 193, 156, 0.1)',
+                                    border: selectedGoalCategory === category
+                                      ? '2px solid rgba(212, 193, 156, 0.6)'
+                                      : '1px solid rgba(212, 193, 156, 0.3)',
+                                    borderRadius: '0.5rem',
+                                    color: selectedGoalCategory === category ? '#fbbf24' : 'var(--text-gold)',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: selectedGoalCategory === category ? 'bold' : 'normal',
+                                    transition: 'all 0.2s'
+                                  }}
+                                >
+                                  {category === 'Command' && '👑 '}
+                                  {category === 'Strategy' && '🧠 '}
+                                  {category === 'Combat' && '⚔️ '}
+                                  {category === 'Misc' && '🎲 '}
+                                  {category}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Goals by Category */}
+                            <div style={{
+                              background: 'rgba(0, 0, 0, 0.2)',
+                              padding: '1rem',
+                              borderRadius: '0.5rem',
+                              border: '1px solid rgba(212, 193, 156, 0.2)'
+                            }}>
+                              <h4 style={{
+                                color: selectedGoalCategory === 'Command' ? '#a78bfa' :
+                                       selectedGoalCategory === 'Strategy' ? '#60a5fa' :
+                                       selectedGoalCategory === 'Combat' ? '#f87171' : '#4ade80',
+                                marginTop: 0,
+                                marginBottom: '1rem',
+                                fontSize: '1.1rem'
+                              }}>
+                                {selectedGoalCategory === 'Command' && '👑 Command Goals'}
+                                {selectedGoalCategory === 'Strategy' && '🧠 Strategy Goals'}
+                                {selectedGoalCategory === 'Combat' && '⚔️ Combat Goals'}
+                                {selectedGoalCategory === 'Misc' && '🎲 Miscellaneous Goals'}
+                              </h4>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                                gap: '1rem'
+                              }}>
+                              {BATTLE_GOALS.filter(g => g.category === selectedGoalCategory).map((goal, index) => {
+                                // Find the current team that should be selecting
+                                const teams = activeBattle.participants?.reduce((acc, p) => {
+                                  if (!acc[p.team_name]) {
+                                    acc[p.team_name] = {
+                                      name: p.team_name,
+                                      has_selected: p.has_selected_goal || false,
+                                      participants: []
+                                    };
+                                  }
+                                  acc[p.team_name].participants.push(p);
+                                  return acc;
+                                }, {} as Record<string, {name: string; has_selected: boolean; participants: any[]}>);
+
+                                const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                                
+                                // Check if current user can select (DM can always select, or player must own member of current team)
+                                const userOwnsTeamMember = currentTeam?.participants.some(p => p.user_id === user?.id);
+                                const canSelect = user?.role === 'Dungeon Master' || userOwnsTeamMember;
+                                
+                                // Calculate the modifier for this goal based on current team's stats
+                                let calculatedModifier = 0;
+                                if (currentTeam) {
+                                  const teamRep = currentTeam.participants[0];
+                                  
+                                  // Get army stats
+                                  let armyStats;
+                                  if (teamRep.is_temporary && teamRep.temp_army_stats) {
+                                    armyStats = teamRep.temp_army_stats;
+                                  } else {
+                                    const participantArmy = armies.find(a => a.id === teamRep.army_id);
+                                    if (participantArmy) {
+                                      armyStats = {
+                                        numbers: participantArmy.numbers,
+                                        equipment: participantArmy.equipment,
+                                        discipline: participantArmy.discipline,
+                                        morale: participantArmy.morale,
+                                        command: participantArmy.command,
+                                        logistics: participantArmy.logistics
+                                      };
+                                    }
+                                  }
+                                  
+                                  if (armyStats) {
+                                    const armyStatValue = armyStats[goal.army_stat] || 5;
+                                    const armyStatModifier = armyStatValue - 5;
+                                    const characterModifier = 0; // Assume neutral for character stats
+                                    calculatedModifier = characterModifier + armyStatModifier;
+                                  }
+                                }
+
+                                return (
+                                  <div
+                                    key={index}
+                                    onClick={() => {
+                                      if (canSelect && currentTeam) {
+                                        setSelectedGoal(goal);
+                                        if (goal.targets_enemy) {
+                                          setShowGoalConfirmModal(true);
+                                        } else {
+                                          setShowGoalConfirmModal(true);
+                                        }
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '1rem',
+                                      background: canSelect
+                                        ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.1), rgba(255, 255, 255, 0.05))'
+                                        : 'rgba(100, 100, 120, 0.1)',
+                                      border: `2px solid ${canSelect ? 'rgba(212, 193, 156, 0.3)' : 'rgba(100, 100, 120, 0.2)'}`,
+                                      borderRadius: '0.5rem',
+                                      cursor: canSelect ? 'pointer' : 'not-allowed',
+                                      opacity: canSelect ? 1 : 0.5,
+                                      transition: 'all 0.2s'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                                      <div style={{
+                                        fontWeight: 'bold',
+                                        color: canSelect ? 'var(--text-gold)' : 'var(--text-muted)',
+                                        fontSize: '0.95rem'
+                                      }}>
+                                        {goal.name}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '0.7rem',
+                                        padding: '0.15rem 0.4rem',
+                                        background: 
+                                          goal.category === 'Command' ? 'rgba(168, 85, 247, 0.3)' :
+                                          goal.category === 'Strategy' ? 'rgba(59, 130, 246, 0.3)' :
+                                          goal.category === 'Combat' ? 'rgba(239, 68, 68, 0.3)' :
+                                          'rgba(34, 197, 94, 0.3)',
+                                        border: `1px solid ${
+                                          goal.category === 'Command' ? 'rgba(168, 85, 247, 0.5)' :
+                                          goal.category === 'Strategy' ? 'rgba(59, 130, 246, 0.5)' :
+                                          goal.category === 'Combat' ? 'rgba(239, 68, 68, 0.5)' :
+                                          'rgba(34, 197, 94, 0.5)'
+                                        }`,
+                                        borderRadius: '0.25rem',
+                                        color: 
+                                          goal.category === 'Command' ? '#a78bfa' :
+                                          goal.category === 'Strategy' ? '#60a5fa' :
+                                          goal.category === 'Combat' ? '#f87171' :
+                                          '#4ade80'
+                                      }}>
+                                        {goal.category}
+                                      </div>
+                                    </div>
+
+                                    <div style={{
+                                      fontSize: '0.75rem',
+                                      color: 'var(--text-secondary)',
+                                      marginBottom: '0.5rem',
+                                      fontStyle: 'italic'
+                                    }}>
+                                      {goal.description}
+                                    </div>
+
+                                    <div style={{
+                                      fontSize: '0.7rem',
+                                      color: 'var(--text-muted)',
+                                      marginBottom: '0.5rem',
+                                      paddingTop: '0.5rem',
+                                      borderTop: '1px solid rgba(212, 193, 156, 0.2)'
+                                    }}>
+                                      <div>📋 Requirement: {goal.requirement}</div>
+                                      <div>🎲 Test: {goal.test_type} + {goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}</div>
+                                      <div>🎯 Target: {goal.targets_enemy ? 'Enemy Team' : 'Your Team'}</div>
+                                      <div style={{
+                                        marginTop: '0.25rem',
+                                        padding: '0.25rem 0.5rem',
+                                        background: `${getModifierColor(calculatedModifier)}15`,
+                                        borderRadius: '0.25rem',
+                                        border: `1px solid ${getModifierColor(calculatedModifier)}40`,
+                                        display: 'inline-block'
+                                      }}>
+                                        ⚡ Your Modifier: <span style={{
+                                          fontWeight: 'bold',
+                                          color: getModifierColor(calculatedModifier)
+                                        }}>
+                                          {calculatedModifier >= 0 ? '+' : ''}{calculatedModifier}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div style={{
+                                      fontSize: '0.7rem',
+                                      paddingTop: '0.5rem',
+                                      borderTop: '1px solid rgba(212, 193, 156, 0.2)'
+                                    }}>
+                                      {(() => {
+                                        const successModifier = parseGoalModifier(goal.reward);
+                                        const failModifier = parseGoalModifier(goal.fail);
+                                        
+                                        return (
+                                          <>
+                                            <div style={{ 
+                                              marginBottom: '0.25rem',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.5rem'
+                                            }}>
+                                              <span style={{ 
+                                                color: getModifierColor(successModifier),
+                                                fontWeight: 'bold',
+                                                fontSize: '0.85rem',
+                                                minWidth: '2rem',
+                                                textAlign: 'center',
+                                                padding: '0.1rem 0.3rem',
+                                                background: `${getModifierColor(successModifier)}20`,
+                                                borderRadius: '0.25rem',
+                                                border: `1px solid ${getModifierColor(successModifier)}40`
+                                              }}>
+                                                {successModifier >= 0 ? '+' : ''}{successModifier}
+                                              </span>
+                                              <span style={{ color: '#4ade80' }}>
+                                                ✓ {goal.reward}
+                                              </span>
+                                            </div>
+                                            <div style={{ 
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.5rem'
+                                            }}>
+                                              <span style={{ 
+                                                color: getModifierColor(failModifier),
+                                                fontWeight: 'bold',
+                                                fontSize: '0.85rem',
+                                                minWidth: '2rem',
+                                                textAlign: 'center',
+                                                padding: '0.1rem 0.3rem',
+                                                background: `${getModifierColor(failModifier)}20`,
+                                                borderRadius: '0.25rem',
+                                                border: `1px solid ${getModifierColor(failModifier)}40`
+                                              }}>
+                                                {failModifier >= 0 ? '+' : ''}{failModifier}
+                                              </span>
+                                              <span style={{ color: '#f87171' }}>
+                                                ✗ {goal.fail}
+                                              </span>
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Current Round Goals */}
+                        {activeBattle.current_goals && activeBattle.current_goals.length > 0 && (
+                          <div style={{
+                            background: 'rgba(0, 0, 0, 0.4)',
+                            border: '2px solid rgba(212, 193, 156, 0.3)',
+                            borderRadius: '0.75rem',
+                            padding: '1.5rem',
+                            marginBottom: '1.5rem'
+                          }}>
+                            <h6 style={{ color: 'var(--text-gold)', marginTop: 0, marginBottom: '1rem' }}>
+                              📜 Goals Selected This Round
+                            </h6>
+                            <div style={{ display: 'grid', gap: '0.75rem' }}>
+                              {activeBattle.current_goals.map((goal) => (
+                                <div
+                                  key={goal.id}
+                                  style={{
+                                    padding: '0.75rem',
+                                    background: 'rgba(212, 193, 156, 0.05)',
+                                    border: '1px solid rgba(212, 193, 156, 0.2)',
+                                    borderRadius: '0.5rem',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
+                                      {goal.goal_name}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                      Team {goal.team_name} | Test: {goal.test_type}
+                                      {goal.target_participant_id && ` | Target: ${goal.target_team_name}`}
+                                    </div>
+                                  </div>
+                                  {goal.locked_in && (
+                                    <div style={{
+                                      padding: '0.25rem 0.75rem',
+                                      background: 'rgba(34, 197, 94, 0.2)',
+                                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                                      borderRadius: '0.25rem',
+                                      color: '#4ade80',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      🔒 Locked
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Resolution Phase */}
+                    {activeBattle.status === 'resolution' && (
+                      <div>
+                        <div style={{
+                          padding: '1.5rem',
+                          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.2))',
+                          border: '2px solid rgba(239, 68, 68, 0.4)',
+                          borderRadius: '0.75rem',
+                          marginBottom: '1.5rem'
+                        }}>
+                          <div style={{ fontSize: '1.2rem', color: '#f87171', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                            ⚖️ Resolution Phase - Round {activeBattle.current_round}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            Roll dice for each goal and apply modifiers. The DM sets the DC and determines success or failure.
+                          </div>
+                        </div>
+
+                        {/* Goals to Resolve */}
+                        {activeBattle.current_goals && activeBattle.current_goals.map((goal) => (
+                          <div
+                            key={goal.id}
+                            style={{
+                              padding: '1.5rem',
+                              background: 'rgba(0, 0, 0, 0.4)',
+                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              borderRadius: '0.75rem',
+                              marginBottom: '1rem'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
+                              <div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                                  {goal.goal_name}
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                  Team {goal.team_name} | Test: {goal.test_type}
+                                  {goal.target_participant_id && ` | Target: ${goal.target_team_name}`}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                              gap: '1rem',
+                              marginBottom: '1rem'
+                            }}>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                  Character Modifier
+                                </div>
+                                <div style={{
+                                  fontSize: '1.5rem',
+                                  fontWeight: 'bold',
+                                  color: goal.character_modifier >= 0 ? '#4ade80' : '#f87171'
+                                }}>
+                                  {goal.character_modifier >= 0 ? '+' : ''}{goal.character_modifier}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                  Army Stat Modifier
+                                </div>
+                                <div style={{
+                                  fontSize: '1.5rem',
+                                  fontWeight: 'bold',
+                                  color: goal.army_stat_modifier >= 0 ? '#4ade80' : '#f87171'
+                                }}>
+                                  {goal.army_stat_modifier >= 0 ? '+' : ''}{goal.army_stat_modifier}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                  Dice Roll (d20)
+                                </div>
+                                {goal.dice_roll !== null ? (
+                                  <div style={{
+                                    fontSize: '1.5rem',
+                                    fontWeight: 'bold',
+                                    color: 'var(--text-gold)'
+                                  }}>
+                                    {goal.dice_roll}
+                                  </div>
+                                ) : (() => {
+                                  // Check if current user can roll for this goal
+                                  const userOwnsTeamMember = activeBattle.participants?.some(
+                                    p => p.team_name === goal.team_name && p.user_id === user?.id
+                                  );
+                                  
+                                  // Check if this is an AI-controlled team (all participants have no user_id)
+                                  const teamParticipants = activeBattle.participants?.filter(
+                                    p => p.team_name === goal.team_name
+                                  ) || [];
+                                  const isAITeam = teamParticipants.length > 0 && teamParticipants.every(p => p.user_id === null);
+                                  
+                                  // DM can roll for AI teams, players can roll for their own teams
+                                  const isDM = user?.role === 'Dungeon Master';
+                                  const canRoll = userOwnsTeamMember || (isDM && isAITeam);
+
+                                  if (!canRoll) {
+                                    return (
+                                      <div style={{
+                                        fontSize: '0.85rem',
+                                        color: 'var(--text-muted)',
+                                        fontStyle: 'italic'
+                                      }}>
+                                        Waiting for roll...
+                                      </div>
+                                    );
+                                  }
+
+                                  if (isDM && isAITeam) {
+                                    // DM can manually input roll or auto-roll for AI teams only
+                                    return (
+                                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          max="20"
+                                          placeholder="1-20"
+                                          id={`manual-roll-${goal.id}`}
+                                          style={{
+                                            width: '60px',
+                                            padding: '0.5rem',
+                                            background: 'rgba(0, 0, 0, 0.4)',
+                                            border: '1px solid rgba(212, 193, 156, 0.3)',
+                                            borderRadius: '0.25rem',
+                                            color: 'white',
+                                            fontSize: '0.85rem'
+                                          }}
+                                        />
+                                        <button
+                                          onClick={async () => {
+                                            const input = document.getElementById(`manual-roll-${goal.id}`) as HTMLInputElement;
+                                            const manualRoll = input?.value ? parseInt(input.value) : null;
+                                            
+                                            if (manualRoll && (manualRoll < 1 || manualRoll > 20)) {
+                                              alert('Roll must be between 1 and 20');
+                                              return;
+                                            }
+
+                                            const roll = manualRoll || (Math.floor(Math.random() * 20) + 1);
+                                            try {
+                                              await battleAPI.updateGoalRoll(goal.id, roll);
+                                              const updated = await battleAPI.getBattle(activeBattle.id);
+                                              setActiveBattle(updated);
+                                            } catch (error) {
+                                              console.error('Error rolling dice:', error);
+                                            }
+                                          }}
+                                          style={{
+                                            padding: '0.5rem 1rem',
+                                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.3))',
+                                            border: '2px solid rgba(59, 130, 246, 0.5)',
+                                            borderRadius: '0.5rem',
+                                            color: '#60a5fa',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                        >
+                                          🎲 Set/Roll
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  // Player can only auto-roll
+                                  return (
+                                    <button
+                                      onClick={async () => {
+                                        const roll = Math.floor(Math.random() * 20) + 1;
+                                        try {
+                                          await battleAPI.updateGoalRoll(goal.id, roll);
+                                          const updated = await battleAPI.getBattle(activeBattle.id);
+                                          setActiveBattle(updated);
+                                        } catch (error) {
+                                          console.error('Error rolling dice:', error);
+                                        }
+                                      }}
+                                      style={{
+                                        padding: '0.5rem 1rem',
+                                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.3))',
+                                        border: '2px solid rgba(59, 130, 246, 0.5)',
+                                        borderRadius: '0.5rem',
+                                        color: '#60a5fa',
+                                        fontWeight: 'bold',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem'
+                                      }}
+                                    >
+                                      🎲 Roll
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                  Total
+                                </div>
+                                <div style={{
+                                  fontSize: '1.5rem',
+                                  fontWeight: 'bold',
+                                  color: '#fbbf24'
+                                }}>
+                                  {goal.dice_roll !== null 
+                                    ? goal.dice_roll + goal.character_modifier + goal.army_stat_modifier
+                                    : '—'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* DM Controls */}
+                            {user?.role === 'Dungeon Master' && goal.dice_roll !== null && (
+                              <div style={{
+                                padding: '1rem',
+                                background: 'rgba(168, 85, 247, 0.1)',
+                                border: '1px solid rgba(168, 85, 247, 0.3)',
+                                borderRadius: '0.5rem',
+                                marginTop: '1rem'
+                              }}>
+                                <div style={{ color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+                                  🎭 DM Resolution
+                                </div>
+                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'end' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                                      DC Required
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="30"
+                                      defaultValue={goal.dc_required || 15}
+                                      id={`dc-input-${goal.id}`}
+                                      style={{
+                                        width: '100%',
+                                        padding: '0.5rem',
+                                        background: 'rgba(0, 0, 0, 0.4)',
+                                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                                        borderRadius: '0.25rem',
+                                        color: 'white'
+                                      }}
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        const dcInput = document.getElementById(`dc-input-${goal.id}`) as HTMLInputElement;
+                                        const dc = parseInt(dcInput?.value || '15');
+                                        const total = (goal.dice_roll || 0) + goal.character_modifier + goal.army_stat_modifier;
+                                        const success = total >= dc;
+                                        
+                                        // Calculate modifier based on goal outcome (placeholder logic)
+                                        const modifier = success ? 2 : -1;
+                                        
+                                        await battleAPI.resolveGoal(goal.id, dc, success, modifier);
+                                        const updated = await battleAPI.getBattle(activeBattle.id);
+                                        setActiveBattle(updated);
+                                      } catch (error) {
+                                        console.error('Error resolving goal:', error);
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '0.5rem 1.5rem',
+                                      background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                                      border: '2px solid rgba(34, 197, 94, 0.5)',
+                                      borderRadius: '0.5rem',
+                                      color: '#4ade80',
+                                      fontWeight: 'bold',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem'
+                                    }}
+                                  >
+                                    ✓ Resolve
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Result Display */}
+                            {goal.success !== null && (
+                              <div style={{
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                background: goal.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                border: `2px solid ${goal.success ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                                borderRadius: '0.5rem'
+                              }}>
+                                <div style={{
+                                  fontSize: '1.1rem',
+                                  fontWeight: 'bold',
+                                  color: goal.success ? '#4ade80' : '#f87171',
+                                  marginBottom: '0.5rem'
+                                }}>
+                                  {goal.success ? '✓ SUCCESS' : '✗ FAILURE'}
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                  Modifier Applied: {goal.modifier_applied >= 0 ? '+' : ''}{goal.modifier_applied}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -2903,7 +4760,7 @@ const CampaignView: React.FC = () => {
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                     {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
                     {(canViewAllTabs(selectedCharacterData.id) 
-                      ? (['board', 'sheet', 'inventory', 'equip'] as const)
+                      ? (['board', 'sheet', 'inventory', 'equip', 'armies'] as const)
                       : (['board'] as const)
                     ).map((tab) => (
                       <button
@@ -2929,8 +4786,9 @@ const CampaignView: React.FC = () => {
                       >
                         {tab === 'board' ? '📋 Overview' : 
                          tab === 'sheet' ? '📊 Character Sheet' :
-                         tab === 'inventory' ? '🎒 Inventory' : 
-                         '⚔️ Equipment'}
+                         tab === 'inventory' ? '🎒 Inventory' :
+                         tab === 'armies' ? '⚔️ Armies' :
+                         '🛡️ Equipment'}
                       </button>
                     ))}
                     
@@ -3950,8 +5808,283 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'inventory' && canViewAllTabs(selectedCharacterData.id) && renderInventoryTab(selectedCharacterData)}
                 {activeTab === 'equip' && canViewAllTabs(selectedCharacterData.id) && renderEquipTab(selectedCharacterData)}
                 
+                {/* Armies Tab */}
+                {activeTab === 'armies' && canViewAllTabs(selectedCharacterData.id) && (
+                  <div className="glass-panel">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Armies</h5>
+                      {user?.role === 'Dungeon Master' && (
+                        <button
+                          onClick={() => setShowAddArmyModal(true)}
+                          className="btn btn-primary"
+                          style={{
+                            padding: '0.5rem 1rem',
+                            fontSize: '0.9rem',
+                            background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                            border: '2px solid rgba(34, 197, 94, 0.5)',
+                            color: '#4ade80'
+                          }}
+                        >
+                          ➕ Add New Army
+                        </button>
+                      )}
+                    </div>
+
+                    {armies.length > 0 ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '1.5rem' }}>
+                        {armies.map((army) => (
+                          <div
+                            key={army.id}
+                            className="glass-panel"
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              padding: '1.5rem',
+                              transition: 'all 0.3s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                              e.currentTarget.style.boxShadow = '0 8px 24px rgba(212, 193, 156, 0.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                              e.currentTarget.style.boxShadow = 'none';
+                            }}
+                          >
+                            {/* Army Header */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                              <h6 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.2rem' }}>
+                                {army.name}
+                              </h6>
+                              {user?.role === 'Dungeon Master' && (
+                                <button
+                                  onClick={async () => {
+                                    if (window.confirm(`Are you sure you want to delete the army "${army.name}"? This will also delete all battle history.`)) {
+                                      try {
+                                        await armyAPI.deleteArmy(army.id);
+                                        setArmies(armies.filter(a => a.id !== army.id));
+                                        setToastMessage(`Army "${army.name}" deleted`);
+                                        setTimeout(() => setToastMessage(null), 3000);
+                                      } catch (error) {
+                                        console.error('Error deleting army:', error);
+                                      }
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '0.25rem 0.5rem',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    borderRadius: '0.25rem',
+                                    color: '#ef4444',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem'
+                                  }}
+                                >
+                                  🗑️ Delete
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Army Stats */}
+                            <div style={{ display: 'grid', gap: '1rem', marginBottom: '1.5rem' }}>
+                              {[
+                                { key: 'numbers', label: 'Numbers', icon: '👥', color: '#8b5cf6' },
+                                { key: 'equipment', label: 'Equipment', icon: '⚔️', color: '#ef4444' },
+                                { key: 'discipline', label: 'Discipline', icon: '🛡️', color: '#3b82f6' },
+                                { key: 'morale', label: 'Morale', icon: '💪', color: '#10b981' },
+                                { key: 'command', label: 'Command', icon: '👑', color: '#f59e0b' },
+                                { key: 'logistics', label: 'Logistics', icon: '📦', color: '#06b6d4' }
+                              ].map((stat) => {
+                                const value = army[stat.key as keyof Army] as number;
+                                return (
+                                  <div key={stat.key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <span style={{ fontSize: '1.2rem' }}>{stat.icon}</span>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{stat.label}</span>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: stat.color }}>{value}/10</span>
+                                      </div>
+                                      <div style={{
+                                        height: '8px',
+                                        background: 'rgba(255, 255, 255, 0.1)',
+                                        borderRadius: '4px',
+                                        overflow: 'hidden',
+                                        position: 'relative'
+                                      }}>
+                                        <div style={{
+                                          width: `${(value / 10) * 100}%`,
+                                          height: '100%',
+                                          background: `linear-gradient(90deg, ${stat.color}dd, ${stat.color})`,
+                                          transition: 'width 0.3s ease',
+                                          boxShadow: `0 0 8px ${stat.color}88`
+                                        }} />
+                                      </div>
+                                    </div>
+                                    {user?.role === 'Dungeon Master' && (
+                                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                        <button
+                                          onClick={async () => {
+                                            if (value > 1) {
+                                              try {
+                                                const updated = await armyAPI.updateArmy(army.id, { [stat.key]: value - 1 });
+                                                setArmies(armies.map(a => a.id === army.id ? updated : a));
+                                              } catch (error) {
+                                                console.error('Error updating army:', error);
+                                              }
+                                            }
+                                          }}
+                                          disabled={value <= 1}
+                                          style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            padding: 0,
+                                            background: value <= 1 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(239, 68, 68, 0.2)',
+                                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                                            borderRadius: '4px',
+                                            color: value <= 1 ? '#666' : '#ef4444',
+                                            cursor: value <= 1 ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.9rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}
+                                        >
+                                          −
+                                        </button>
+                                        <button
+                                          onClick={async () => {
+                                            if (value < 10) {
+                                              try {
+                                                const updated = await armyAPI.updateArmy(army.id, { [stat.key]: value + 1 });
+                                                setArmies(armies.map(a => a.id === army.id ? updated : a));
+                                              } catch (error) {
+                                                console.error('Error updating army:', error);
+                                              }
+                                            }
+                                          }}
+                                          disabled={value >= 10}
+                                          style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            padding: 0,
+                                            background: value >= 10 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.2)',
+                                            border: '1px solid rgba(34, 197, 94, 0.4)',
+                                            borderRadius: '4px',
+                                            color: value >= 10 ? '#666' : '#4ade80',
+                                            cursor: value >= 10 ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.9rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Battle History */}
+                            {army.battle_history && army.battle_history.length > 0 && (
+                              <div style={{ borderTop: '1px solid rgba(212, 193, 156, 0.2)', paddingTop: '1rem' }}>
+                                <h6 style={{ color: 'var(--text-gold)', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
+                                  📜 Battle History ({army.battle_history.length})
+                                </h6>
+                                <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'grid', gap: '0.5rem' }}>
+                                  {army.battle_history.map((history) => {
+                                    const resultColor = 
+                                      history.result === 'victory' ? '#4ade80' :
+                                      history.result === 'defeat' ? '#ef4444' :
+                                      '#94a3b8';
+                                    const resultIcon = 
+                                      history.result === 'victory' ? '🏆' :
+                                      history.result === 'defeat' ? '💀' :
+                                      '🤝';
+                                    
+                                    return (
+                                      <div
+                                        key={history.id}
+                                        style={{
+                                          padding: '0.75rem',
+                                          background: 'rgba(0, 0, 0, 0.2)',
+                                          borderRadius: '0.5rem',
+                                          border: `1px solid ${resultColor}44`,
+                                          fontSize: '0.85rem'
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                          <span style={{ fontWeight: 'bold', color: 'var(--text-gold)' }}>
+                                            {resultIcon} {history.battle_name}
+                                          </span>
+                                          <span style={{ color: resultColor, textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                            {history.result}
+                                          </span>
+                                        </div>
+                                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                                          <div>vs {history.enemy_name}</div>
+                                          <div style={{ marginTop: '0.25rem' }}>
+                                            <span style={{ color: '#4ade80' }}>Your Score:</span> {history.start_score} → {history.end_score} 
+                                            <span style={{ marginLeft: '0.5rem', color: '#ef4444' }}>Enemy:</span> {history.enemy_start_score} → {history.enemy_end_score}
+                                          </div>
+                                          <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.7 }}>
+                                            {new Date(history.battle_date).toLocaleDateString()}
+                                          </div>
+                                          {history.goals_chosen && history.goals_chosen.length > 0 && (
+                                            <details style={{ marginTop: '0.5rem' }}>
+                                              <summary style={{ cursor: 'pointer', color: 'var(--text-gold)' }}>
+                                                Goals Used ({history.goals_chosen.length})
+                                              </summary>
+                                              <div style={{ marginTop: '0.5rem', paddingLeft: '1rem' }}>
+                                                {history.goals_chosen.map((goal: any, idx: number) => (
+                                                  <div key={idx} style={{ marginBottom: '0.25rem' }}>
+                                                    • {goal.goal_name} {goal.success ? '✅' : '❌'}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </details>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {(!army.battle_history || army.battle_history.length === 0) && (
+                              <div style={{ 
+                                borderTop: '1px solid rgba(212, 193, 156, 0.2)', 
+                                paddingTop: '1rem',
+                                textAlign: 'center',
+                                color: 'var(--text-muted)',
+                                fontSize: '0.85rem',
+                                fontStyle: 'italic'
+                              }}>
+                                No battles fought yet
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>⚔️</div>
+                        <h6>No Armies Yet</h6>
+                        <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                          {user?.role === 'Dungeon Master' 
+                            ? 'Click "Add New Army" to create an army for this character.'
+                            : 'The Dungeon Master hasn\'t assigned any armies to this character yet.'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
                 {/* Show access denied message for restricted tabs */}
-                {(activeTab === 'inventory' || activeTab === 'equip') && !canViewAllTabs(selectedCharacterData.id) && (
+                {(activeTab === 'inventory' || activeTab === 'equip' || activeTab === 'armies') && !canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
                       <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔒</div>
@@ -4993,7 +7126,6 @@ const CampaignView: React.FC = () => {
               socket.emit('resetCombat', {
                 campaignId: currentCampaign.campaign.id
               });
-              console.log('🔄 Combat reset emitted');
             }
             setShowResetCombatModal(false);
           }}
@@ -5045,7 +7177,6 @@ const CampaignView: React.FC = () => {
                               characterId: character.id,
                               targetPlayerId: character.player_id
                             });
-                            console.log(`📣 Invited ${character.name} to combat`);
                             setShowAddToCombatModal(false);
                           }
                         }}
@@ -5111,7 +7242,6 @@ const CampaignView: React.FC = () => {
                                 targetPlayerId: user?.id, // DM controls monsters
                                 isMonster: true
                               });
-                              console.log(`📣 Added ${monster.name} to combat`);
                               setShowAddToCombatModal(false);
                             }
                           }}
@@ -5233,12 +7363,11 @@ const CampaignView: React.FC = () => {
                         characterId: combatInvite.characterId,
                         playerId: user.id
                       });
-                      console.log(`🛡️ Accepted combat invite for ${combatInvite.characterName}`);
                       setShowCombatInviteModal(false);
                       setCombatInvite(null);
-                      // Navigate to campaign view and battle tab
+                      // Navigate to campaign view and combat tab
                       setMainView('campaign');
-                      setCampaignTab('battle');
+                      setCampaignTab('combat');
                     }
                   }}
                   style={{
@@ -5604,6 +7733,1581 @@ const CampaignView: React.FC = () => {
                   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
                 }}
               />
+            </div>
+          </div>
+        )}
+
+        {/* Add Army Modal */}
+        {showAddArmyModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.98) 0%, rgba(17, 17, 17, 0.98) 100%)',
+              borderRadius: '16px',
+              padding: '2rem',
+              maxWidth: '500px',
+              width: '90%',
+              border: '2px solid rgba(212, 193, 156, 0.3)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
+            }}>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
+                ⚔️ Create New Army
+              </h3>
+
+              {/* Army Name */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Army Name *
+                </label>
+                <input
+                  type="text"
+                  value={newArmyData.name || ''}
+                  onChange={(e) => setNewArmyData({ ...newArmyData, name: e.target.value })}
+                  placeholder="e.g., Royal Guard, Peasant Militia"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem'
+                  }}
+                />
+              </div>
+
+              {/* Army Stats (all default to 5) */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Initial Stats (1-10, default: 5)
+                </label>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem', fontStyle: 'italic' }}>
+                  You can adjust these stats after creation using the +/- buttons
+                </div>
+                {[
+                  { key: 'numbers', label: 'Numbers', icon: '👥' },
+                  { key: 'equipment', label: 'Equipment', icon: '⚔️' },
+                  { key: 'discipline', label: 'Discipline', icon: '🛡️' },
+                  { key: 'morale', label: 'Morale', icon: '💪' },
+                  { key: 'command', label: 'Command', icon: '👑' },
+                  { key: 'logistics', label: 'Logistics', icon: '📦' }
+                ].map((stat) => (
+                  <div key={stat.key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <span style={{ fontSize: '1.1rem', width: '24px' }}>{stat.icon}</span>
+                    <span style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{stat.label}</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={newArmyData[stat.key as keyof typeof newArmyData] as number || 5}
+                      onChange={(e) => setNewArmyData({ ...newArmyData, [stat.key]: parseInt(e.target.value) })}
+                      style={{ flex: 2 }}
+                    />
+                    <span style={{ 
+                      width: '32px', 
+                      textAlign: 'center', 
+                      fontWeight: 'bold', 
+                      color: 'var(--text-gold)' 
+                    }}>
+                      {newArmyData[stat.key as keyof typeof newArmyData] || 5}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => {
+                    setShowAddArmyModal(false);
+                    setNewArmyData({
+                      name: '',
+                      numbers: 5,
+                      equipment: 5,
+                      discipline: 5,
+                      morale: 5,
+                      command: 5,
+                      logistics: 5
+                    });
+                  }}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!newArmyData.name || !selectedCharacter || !currentCampaign) {
+                      alert('Please enter an army name');
+                      return;
+                    }
+
+                    const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
+                    if (!character) return;
+
+                    try {
+                      const createdArmy = await armyAPI.createArmy({
+                        ...newArmyData,
+                        player_id: character.player_id,
+                        campaign_id: currentCampaign.campaign.id
+                      });
+                      
+                      setArmies([...armies, { ...createdArmy, battle_history: [] }]);
+                      setShowAddArmyModal(false);
+                      setNewArmyData({
+                        name: '',
+                        numbers: 5,
+                        equipment: 5,
+                        discipline: 5,
+                        morale: 5,
+                        command: 5,
+                        logistics: 5
+                      });
+                      setToastMessage(`Army "${createdArmy.name}" created!`);
+                      setTimeout(() => setToastMessage(null), 3000);
+                    } catch (error) {
+                      console.error('Error creating army:', error);
+                      alert('Failed to create army');
+                    }
+                  }}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                    border: '2px solid rgba(34, 197, 94, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: '#4ade80',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✓ Create Army
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Battle Setup Modal */}
+        {showBattleSetupModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+            onClick={() => setShowBattleSetupModal(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98), rgba(35, 35, 60, 0.98))',
+                border: '2px solid var(--border-gold)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                width: '90%',
+                maxWidth: '600px',
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+              }}
+            >
+              <h2 style={{ 
+                marginTop: 0, 
+                marginBottom: '1.5rem', 
+                color: 'var(--text-gold)',
+                fontSize: '1.75rem',
+                textAlign: 'center',
+                borderBottom: '2px solid var(--border-gold)',
+                paddingBottom: '0.75rem'
+              }}>
+                ⚔️ Create New Battle
+              </h2>
+
+              {/* Battle Name */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Battle Name *
+                </label>
+                <input
+                  type="text"
+                  value={newBattleData.name}
+                  onChange={(e) => setNewBattleData({ ...newBattleData, name: e.target.value })}
+                  placeholder="e.g., Siege of Ironhold, Battle of the Blood Plains"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem'
+                  }}
+                />
+              </div>
+
+              {/* Terrain Description */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Terrain Description
+                </label>
+                <textarea
+                  value={newBattleData.terrain_description}
+                  onChange={(e) => setNewBattleData({ ...newBattleData, terrain_description: e.target.value })}
+                  placeholder="Describe the battlefield: fortifications, weather, obstacles, tactical advantages..."
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '0.95rem',
+                    resize: 'vertical',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+
+              {/* Info Box */}
+              <div style={{ 
+                background: 'rgba(59, 130, 246, 0.1)', 
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '0.5rem',
+                padding: '1rem',
+                marginBottom: '1.5rem',
+                fontSize: '0.85rem',
+                color: 'var(--text-secondary)'
+              }}>
+                <div style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>ℹ️ Battle Flow</div>
+                <div>1. <strong>Planning Phase:</strong> Add participants and set up teams</div>
+                <div>2. <strong>Goal Selection:</strong> Each team picks 1 goal per round (5 rounds)</div>
+                <div>3. <strong>Resolution:</strong> Roll dice, apply modifiers, DM judges outcomes</div>
+                <div>4. <strong>Completion:</strong> Final scores determine winner, history saved</div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => {
+                    setShowBattleSetupModal(false);
+                    setNewBattleData({
+                      name: '',
+                      terrain_description: ''
+                    });
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 120, 0.3)',
+                    border: '1px solid rgba(150, 150, 170, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateBattle}
+                  disabled={!newBattleData.name.trim()}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: newBattleData.name.trim() 
+                      ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))'
+                      : 'rgba(100, 100, 120, 0.2)',
+                    border: newBattleData.name.trim()
+                      ? '2px solid rgba(34, 197, 94, 0.5)'
+                      : '1px solid rgba(100, 100, 120, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: newBattleData.name.trim() ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+                    fontWeight: 'bold',
+                    cursor: newBattleData.name.trim() ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  ⚔️ Create Battle
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Goal Confirmation Modal */}
+        {showGoalConfirmModal && selectedGoal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+            onClick={() => {
+              setShowGoalConfirmModal(false);
+              setSelectedGoal(null);
+              setSelectedTargetParticipant(null);
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98), rgba(35, 35, 60, 0.98))',
+                border: '2px solid var(--border-gold)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                width: '90%',
+                maxWidth: '600px',
+                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+              }}
+            >
+              <h2 style={{
+                marginTop: 0,
+                marginBottom: '1.5rem',
+                color: 'var(--text-gold)',
+                fontSize: '1.5rem',
+                textAlign: 'center',
+                borderBottom: '2px solid var(--border-gold)',
+                paddingBottom: '0.75rem'
+              }}>
+                🎯 Confirm Goal Selection
+              </h2>
+
+              <div style={{
+                padding: '1.5rem',
+                background: 'rgba(212, 193, 156, 0.1)',
+                border: '2px solid rgba(212, 193, 156, 0.3)',
+                borderRadius: '0.75rem',
+                marginBottom: '1.5rem'
+              }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.75rem' }}>
+                  {selectedGoal.name}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', fontStyle: 'italic' }}>
+                  {selectedGoal.description}
+                </div>
+
+                <div style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--text-gold)' }}>Test:</strong>{' '}
+                  <span style={{ color: 'white' }}>{selectedGoal.test_type} + {selectedGoal.army_stat}</span>
+                </div>
+
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'rgba(34, 197, 94, 0.1)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  borderRadius: '0.5rem',
+                  marginBottom: '0.5rem'
+                }}>
+                  <div style={{ fontSize: '0.75rem', color: '#4ade80' }}>
+                    ✓ <strong>Success:</strong> {selectedGoal.reward}
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '0.5rem'
+                }}>
+                  <div style={{ fontSize: '0.75rem', color: '#f87171' }}>
+                    ✗ <strong>Failure:</strong> {selectedGoal.fail}
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Selection - Show for both enemy and ally targets */}
+              {activeBattle && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                    Select Target Army {selectedGoal.targets_enemy && '*'}
+                  </label>
+                  <div style={{
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    padding: '0.75rem',
+                    maxHeight: '200px',
+                    overflowY: 'auto'
+                  }}>
+                    {(() => {
+                      // Find the first team that hasn't selected
+                      const teams = activeBattle.participants?.reduce((acc, p) => {
+                        if (!acc[p.team_name]) {
+                          acc[p.team_name] = {
+                            name: p.team_name,
+                            has_selected: p.has_selected_goal || false,
+                            participants: []
+                          };
+                        }
+                        acc[p.team_name].participants.push(p);
+                        return acc;
+                      }, {} as Record<string, {name: string; has_selected: boolean; participants: any[]}>);
+
+                      const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                      
+                      // For enemy-targeting goals, show only enemies. For ally goals, show all participants
+                      const targetParticipants = selectedGoal.targets_enemy
+                        ? activeBattle.participants?.filter(p => currentTeam && p.team_name !== currentTeam.name) || []
+                        : activeBattle.participants || [];
+                      
+                      return targetParticipants.map(participant => {
+                        const isAlly = currentTeam && participant.team_name === currentTeam.name;
+                        const isSelf = false; // No longer checking individual participant
+                        
+                        return (
+                          <label
+                            key={participant.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.75rem',
+                              padding: '0.75rem',
+                              background: selectedTargetParticipant === participant.id
+                                ? (selectedGoal.targets_enemy ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)')
+                                : 'transparent',
+                              border: selectedTargetParticipant === participant.id
+                                ? (selectedGoal.targets_enemy ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(34, 197, 94, 0.4)')
+                                : '1px solid transparent',
+                              borderRadius: '0.5rem',
+                              marginBottom: '0.5rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <input
+                              type="radio"
+                              name="target"
+                              checked={selectedTargetParticipant === participant.id}
+                              onChange={() => setSelectedTargetParticipant(participant.id)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div style={{ color: 'white', fontWeight: 'bold' }}>
+                                  {participant.temp_army_name || participant.army_name || 'Unknown Army'}
+                                </div>
+                                {isSelf && (
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    padding: '0.15rem 0.4rem',
+                                    background: 'rgba(96, 165, 250, 0.3)',
+                                    border: '1px solid rgba(96, 165, 250, 0.5)',
+                                    borderRadius: '0.25rem',
+                                    color: '#60a5fa'
+                                  }}>
+                                    YOU
+                                  </span>
+                                )}
+                                {!isSelf && isAlly && (
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    padding: '0.15rem 0.4rem',
+                                    background: 'rgba(34, 197, 94, 0.3)',
+                                    border: '1px solid rgba(34, 197, 94, 0.5)',
+                                    borderRadius: '0.25rem',
+                                    color: '#4ade80'
+                                  }}>
+                                    ALLY
+                                  </span>
+                                )}
+                                {!isAlly && (
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    padding: '0.15rem 0.4rem',
+                                    background: 'rgba(239, 68, 68, 0.3)',
+                                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                                    borderRadius: '0.25rem',
+                                    color: '#f87171'
+                                  }}>
+                                    ENEMY
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                Team {participant.team_name} | Score: {participant.current_score}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => {
+                    setShowGoalConfirmModal(false);
+                    setSelectedGoal(null);
+                    setSelectedTargetParticipant(null);
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 120, 0.3)',
+                    border: '1px solid rgba(150, 150, 170, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!activeBattle || !currentCampaign) return;
+                    if (selectedGoal.targets_enemy && !selectedTargetParticipant) {
+                      alert('Please select a target army');
+                      return;
+                    }
+
+                    try {
+                      // Find the team that should be selecting (first team without a goal)
+                      const teams = activeBattle.participants?.reduce((acc, p) => {
+                        if (!acc[p.team_name]) {
+                          acc[p.team_name] = {
+                            name: p.team_name,
+                            has_selected: p.has_selected_goal || false,
+                            participants: []
+                          };
+                        }
+                        acc[p.team_name].participants.push(p);
+                        return acc;
+                      }, {} as Record<string, {name: string; has_selected: boolean; participants: any[]}>);
+
+                      const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                      
+                      if (!currentTeam) {
+                        alert('No team is currently selecting a goal');
+                        return;
+                      }
+
+                      // Check if current user is authorized (DM or owns ANY participant in this team)
+                      const userOwnsTeamMember = currentTeam.participants.some(p => p.user_id === user?.id);
+                      if (user?.role !== 'Dungeon Master' && !userOwnsTeamMember) {
+                        alert('You cannot select a goal for this team');
+                        return;
+                      }
+
+                      // Use the first participant in the team for the goal submission
+                      const teamRepresentative = currentTeam.participants[0];
+
+                      // Get army stats - either from temp_army_stats (custom army) or from armies array (regular army)
+                      let armyStats;
+                      if (teamRepresentative.is_temporary && teamRepresentative.temp_army_stats) {
+                        // Custom/temporary army - use temp_army_stats
+                        armyStats = teamRepresentative.temp_army_stats;
+                      } else {
+                        // Regular army - find in armies array
+                        const participantArmy = armies.find(a => a.id === teamRepresentative.army_id);
+                        if (!participantArmy) {
+                          alert('Army data not found');
+                          return;
+                        }
+                        armyStats = {
+                          numbers: participantArmy.numbers,
+                          equipment: participantArmy.equipment,
+                          discipline: participantArmy.discipline,
+                          morale: participantArmy.morale,
+                          command: participantArmy.command,
+                          logistics: participantArmy.logistics
+                        };
+                      }
+
+                      // Calculate modifiers
+                      const characterModifier = 0; // Assume neutral (0) for character stats like INT, CHA, etc.
+                      const armyStatValue = armyStats[selectedGoal.army_stat] || 5; // Default to 5 if stat not found
+                      const armyStatModifier = armyStatValue - 5; // Base stat modifier
+
+                      await battleAPI.setGoal(activeBattle.id, {
+                        round_number: activeBattle.current_round,
+                        participant_id: teamRepresentative.id,
+                        goal_name: selectedGoal.name,
+                        target_participant_id: selectedTargetParticipant,
+                        test_type: selectedGoal.test_type,
+                        character_modifier: characterModifier,
+                        army_stat_modifier: armyStatModifier
+                      });
+
+                      const updated = await battleAPI.getBattle(activeBattle.id);
+                      setActiveBattle(updated);
+
+                      setShowGoalConfirmModal(false);
+                      setSelectedGoal(null);
+                      setSelectedTargetParticipant(null);
+
+                      setToastMessage(`Goal "${selectedGoal.name}" selected!`);
+                      setTimeout(() => setToastMessage(null), 3000);
+                    } catch (error) {
+                      console.error('Error selecting goal:', error);
+                      alert('Failed to select goal');
+                    }
+                  }}
+                  disabled={selectedGoal.targets_enemy && !selectedTargetParticipant}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: (!selectedGoal.targets_enemy || selectedTargetParticipant)
+                      ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))'
+                      : 'rgba(100, 100, 120, 0.2)',
+                    border: (!selectedGoal.targets_enemy || selectedTargetParticipant)
+                      ? '2px solid rgba(34, 197, 94, 0.5)'
+                      : '1px solid rgba(100, 100, 120, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: (!selectedGoal.targets_enemy || selectedTargetParticipant) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+                    fontWeight: 'bold',
+                    cursor: (!selectedGoal.targets_enemy || selectedTargetParticipant) ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  ✓ Confirm Goal
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add AI Army Modal (DM only) */}
+        {showAddParticipantModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+            onClick={() => setShowAddParticipantModal(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98), rgba(35, 35, 60, 0.98))',
+                border: '2px solid var(--border-gold)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                width: '90%',
+                maxWidth: '600px',
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+              }}
+            >
+              <h2 style={{ 
+                marginTop: 0, 
+                marginBottom: '1.5rem', 
+                color: 'var(--text-gold)',
+                fontSize: '1.75rem',
+                textAlign: 'center',
+                borderBottom: '2px solid var(--border-gold)',
+                paddingBottom: '0.75rem'
+              }}>
+                🎭 Add AI/Temporary Army
+              </h2>
+
+              <div style={{
+                padding: '1rem',
+                background: 'rgba(168, 85, 247, 0.1)',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                borderRadius: '0.5rem',
+                marginBottom: '1.5rem',
+                fontSize: '0.85rem',
+                color: 'var(--text-secondary)'
+              }}>
+                <strong style={{ color: '#a78bfa' }}>Note:</strong> This creates a temporary enemy army controlled by the DM. It will not be saved after the battle ends.
+              </div>
+
+              {/* Team/Faction Configuration */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Team/Faction Name *
+                </label>
+                <input
+                  type="text"
+                  value={newParticipantData.team}
+                  onChange={(e) => setNewParticipantData({ ...newParticipantData, team: e.target.value })}
+                  placeholder="e.g., Enemies, Monsters, Team Red..."
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem',
+                    marginBottom: '0.75rem'
+                  }}
+                />
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Faction Color *
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                  {['#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#059669'].map(color => (
+                    <button
+                      key={color}
+                      onClick={() => setNewParticipantData({ ...newParticipantData, faction_color: color })}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '0.5rem',
+                        background: color,
+                        border: newParticipantData.faction_color === color ? '3px solid white' : '1px solid rgba(255,255,255,0.3)',
+                        cursor: 'pointer',
+                        boxShadow: newParticipantData.faction_color === color ? '0 0 10px rgba(255,255,255,0.5)' : 'none'
+                      }}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <label style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Custom:</label>
+                  <input
+                    type="color"
+                    value={newParticipantData.faction_color}
+                    onChange={(e) => setNewParticipantData({ ...newParticipantData, faction_color: e.target.value })}
+                    style={{
+                      width: '60px',
+                      height: '35px',
+                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      background: 'transparent'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Temporary DM Army Creation */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Army Name *
+                </label>
+                    <input
+                      type="text"
+                      value={newParticipantData.tempArmyName}
+                      onChange={(e) => setNewParticipantData({ ...newParticipantData, tempArmyName: e.target.value })}
+                      placeholder="e.g., Goblin Horde, Royal Guard"
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: 'white',
+                        fontSize: '1rem'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                      Temporary Army Stats (1-10, default: 5)
+                    </label>
+                    {[
+                      { key: 'numbers', label: 'Numbers', icon: '👥' },
+                      { key: 'equipment', label: 'Equipment', icon: '⚔️' },
+                      { key: 'discipline', label: 'Discipline', icon: '🛡️' },
+                      { key: 'morale', label: 'Morale', icon: '💪' },
+                      { key: 'command', label: 'Command', icon: '👑' },
+                      { key: 'logistics', label: 'Logistics', icon: '📦' }
+                    ].map((stat) => (
+                      <div key={stat.key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                        <span style={{ fontSize: '1.1rem', width: '24px' }}>{stat.icon}</span>
+                        <span style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{stat.label}</span>
+                        <input
+                          type="range"
+                          min="1"
+                          max="10"
+                          value={newParticipantData.tempArmyStats[stat.key as keyof typeof newParticipantData.tempArmyStats]}
+                          onChange={(e) => setNewParticipantData({ 
+                            ...newParticipantData, 
+                            tempArmyStats: {
+                              ...newParticipantData.tempArmyStats,
+                              [stat.key]: parseInt(e.target.value)
+                            }
+                          })}
+                          style={{ flex: 2 }}
+                        />
+                        <span style={{ 
+                          width: '32px', 
+                          textAlign: 'center', 
+                          fontWeight: 'bold', 
+                          color: 'var(--text-gold)' 
+                        }}>
+                          {newParticipantData.tempArmyStats[stat.key as keyof typeof newParticipantData.tempArmyStats]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => {
+                    setShowAddParticipantModal(false);
+                    setNewParticipantData({
+                      type: 'player',
+                      team: '',
+                      faction_color: '#ef4444',
+                      selectedPlayerArmies: [],
+                      tempArmyName: '',
+                      tempArmyStats: {
+                        numbers: 5,
+                        equipment: 5,
+                        discipline: 5,
+                        morale: 5,
+                        command: 5,
+                        logistics: 5
+                      }
+                    });
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 120, 0.3)',
+                    border: '1px solid rgba(150, 150, 170, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!activeBattle || !newParticipantData.tempArmyName.trim() || !newParticipantData.team.trim()) return;
+                    
+                    try {
+                      await battleAPI.addParticipant(activeBattle.id, {
+                        team_name: newParticipantData.team,
+                        faction_color: newParticipantData.faction_color,
+                        temp_army_name: newParticipantData.tempArmyName,
+                        temp_army_stats: newParticipantData.tempArmyStats,
+                        is_temporary: true
+                      });
+                      
+                      const updated = await battleAPI.getBattle(activeBattle.id);
+                      setActiveBattle(updated);
+                      
+                      setShowAddParticipantModal(false);
+                      setNewParticipantData({
+                        type: 'dm',
+                        team: '',
+                        faction_color: '#ef4444',
+                        selectedPlayerArmies: [],
+                        tempArmyName: '',
+                        tempArmyStats: { numbers: 5, equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 }
+                      });
+                      
+                      setToastMessage(`AI Army "${newParticipantData.tempArmyName}" added!`);
+                      setTimeout(() => setToastMessage(null), 3000);
+                    } catch (error) {
+                      console.error('Error adding AI army:', error);
+                      alert('Failed to add AI army');
+                    }
+                  }}
+                  disabled={!newParticipantData.tempArmyName.trim() || !newParticipantData.team.trim()}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: (newParticipantData.tempArmyName.trim() && newParticipantData.team.trim())
+                      ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))'
+                      : 'rgba(100, 100, 120, 0.2)',
+                    border: (newParticipantData.tempArmyName.trim() && newParticipantData.team.trim())
+                      ? '2px solid rgba(34, 197, 94, 0.5)'
+                      : '1px solid rgba(100, 100, 120, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: (newParticipantData.tempArmyName.trim() && newParticipantData.team.trim()) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+                    fontWeight: 'bold',
+                    cursor: (newParticipantData.tempArmyName.trim() && newParticipantData.team.trim()) ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  ✓ Add AI Army
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Invite Players Modal (DM only) */}
+        {showInvitePlayersModal && currentCampaign && activeBattle && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+            onClick={() => setShowInvitePlayersModal(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98), rgba(35, 35, 60, 0.98))',
+                border: '2px solid var(--border-gold)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                width: '90%',
+                maxWidth: '600px',
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+              }}
+            >
+              <h2 style={{
+                marginTop: 0,
+                marginBottom: '1.5rem',
+                color: 'var(--text-gold)',
+                fontSize: '1.75rem',
+                textAlign: 'center',
+                borderBottom: '2px solid var(--border-gold)',
+                paddingBottom: '0.75rem'
+              }}>
+                📨 Invite Players to Battle
+              </h2>
+
+              <div style={{
+                padding: '1rem',
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '0.5rem',
+                marginBottom: '1.5rem',
+                fontSize: '0.85rem',
+                color: 'var(--text-secondary)'
+              }}>
+                <strong style={{ color: '#60a5fa' }}>How it works:</strong> Select players to invite. They'll receive a notification and can choose which of their armies to bring into battle.
+              </div>
+
+              {/* Team/Faction Configuration */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Team/Faction Name *
+                </label>
+                <input
+                  type="text"
+                  value={inviteTeamName}
+                  onChange={(e) => setInviteTeamName(e.target.value)}
+                  placeholder="e.g., Alliance, Horde, Red Team, Defenders..."
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem',
+                    marginBottom: '0.75rem'
+                  }}
+                />
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Faction Color *
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                  {['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'].map(color => (
+                    <button
+                      key={color}
+                      onClick={() => setInviteTeamColor(color)}
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '0.5rem',
+                        background: color,
+                        border: inviteTeamColor === color ? '3px solid white' : '1px solid rgba(255,255,255,0.3)',
+                        cursor: 'pointer',
+                        boxShadow: inviteTeamColor === color ? '0 0 10px rgba(255,255,255,0.5)' : 'none'
+                      }}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <label style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Custom:</label>
+                  <input
+                    type="color"
+                    value={inviteTeamColor}
+                    onChange={(e) => setInviteTeamColor(e.target.value)}
+                    style={{
+                      width: '60px',
+                      height: '35px',
+                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      background: 'transparent'
+                    }}
+                  />
+                  <div style={{
+                    padding: '0.5rem 1rem',
+                    background: inviteTeamColor,
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: '0.9rem',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+                  }}>
+                    {inviteTeamName || 'Preview'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Player Selection */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Select Players to Invite *
+                </label>
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  maxHeight: '300px',
+                  overflowY: 'auto'
+                }}>
+                  {currentCampaign.characters.length === 0 ? (
+                    <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '1rem' }}>
+                      No players in this campaign
+                    </div>
+                  ) : (
+                    currentCampaign.characters
+                      .filter((char, index, self) => 
+                        index === self.findIndex(c => c.player_id === char.player_id)
+                      )
+                      .map(character => (
+                        <label
+                          key={character.player_id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.75rem',
+                            background: selectedPlayersToInvite.includes(character.player_id)
+                              ? 'rgba(59, 130, 246, 0.2)'
+                              : 'transparent',
+                            border: selectedPlayersToInvite.includes(character.player_id)
+                              ? '1px solid rgba(59, 130, 246, 0.4)'
+                              : '1px solid transparent',
+                            borderRadius: '0.5rem',
+                            marginBottom: '0.5rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPlayersToInvite.includes(character.player_id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedPlayersToInvite([...selectedPlayersToInvite, character.player_id]);
+                              } else {
+                                setSelectedPlayersToInvite(selectedPlayersToInvite.filter(id => id !== character.player_id));
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: 'white', fontWeight: 'bold' }}>
+                              {character.name}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              Level {character.level} {character.race} {character.class}
+                            </div>
+                          </div>
+                        </label>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => {
+                    setShowInvitePlayersModal(false);
+                    setSelectedPlayersToInvite([]);
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 120, 0.3)',
+                    border: '1px solid rgba(150, 150, 170, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (selectedPlayersToInvite.length === 0 || !inviteTeamName.trim()) return;
+                    
+                    try {
+                      await battleAPI.invitePlayers(activeBattle.id, selectedPlayersToInvite, inviteTeamName.trim(), inviteTeamColor);
+                      
+                      setShowInvitePlayersModal(false);
+                      setSelectedPlayersToInvite([]);
+                      setInviteTeamName('');
+                      setInviteTeamColor('#3b82f6');
+                      
+                      setToastMessage(`Invited ${selectedPlayersToInvite.length} players to ${inviteTeamName}!`);
+                      setTimeout(() => setToastMessage(null), 3000);
+                    } catch (error) {
+                      console.error('Error inviting players:', error);
+                      alert('Failed to invite players');
+                    }
+                  }}
+                  disabled={selectedPlayersToInvite.length === 0 || !inviteTeamName.trim()}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: (selectedPlayersToInvite.length > 0 && inviteTeamName.trim())
+                      ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))'
+                      : 'rgba(100, 100, 120, 0.2)',
+                    border: (selectedPlayersToInvite.length > 0 && inviteTeamName.trim())
+                      ? '2px solid rgba(34, 197, 94, 0.5)'
+                      : '1px solid rgba(100, 100, 120, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: (selectedPlayersToInvite.length > 0 && inviteTeamName.trim()) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+                    fontWeight: 'bold',
+                    cursor: (selectedPlayersToInvite.length > 0 && inviteTeamName.trim()) ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  📨 Send Invitations
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Battle Invitations Modal (Player) */}
+        {showBattleInvitationsModal && pendingInvitations.length > 0 && currentCampaign && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+            onClick={() => setShowBattleInvitationsModal(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98), rgba(35, 35, 60, 0.98))',
+                border: '2px solid var(--border-gold)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                width: '90%',
+                maxWidth: '700px',
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+              }}
+            >
+              <h2 style={{
+                marginTop: 0,
+                marginBottom: '1.5rem',
+                color: 'var(--text-gold)',
+                fontSize: '1.75rem',
+                textAlign: 'center',
+                borderBottom: '2px solid var(--border-gold)',
+                paddingBottom: '0.75rem'
+              }}>
+                ⚔️ Battle Invitations
+              </h2>
+
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', textAlign: 'center' }}>
+                You have {pendingInvitations.length} pending battle invitation{pendingInvitations.length !== 1 ? 's' : ''}
+              </div>
+
+              {pendingInvitations.map((invitation, index) => (
+                <div
+                  key={invitation.id}
+                  style={{
+                    padding: '1.5rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.75rem',
+                    marginBottom: index < pendingInvitations.length - 1 ? '1rem' : 0
+                  }}
+                >
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                      {invitation.battle_name}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                      {invitation.terrain_description || 'No terrain description'}
+                    </div>
+                    <div style={{
+                      display: 'inline-block',
+                      padding: '0.25rem 0.75rem',
+                      background: invitation.team_name === 'A' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                      border: `1px solid ${invitation.team_name === 'A' ? 'rgba(59, 130, 246, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                      borderRadius: '0.5rem',
+                      color: invitation.team_name === 'A' ? '#60a5fa' : '#f87171',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold'
+                    }}>
+                      Team {invitation.team_name}
+                    </div>
+                  </div>
+
+                  {/* Army Selection */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.9rem' }}>
+                      Select Your Armies
+                    </label>
+                    <div style={{
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      border: '1px solid rgba(212, 193, 156, 0.2)',
+                      borderRadius: '0.5rem',
+                      padding: '0.75rem',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {armies.length === 0 ? (
+                        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '1rem', fontSize: '0.85rem' }}>
+                          You don't have any armies yet. Create one in the Armies tab!
+                        </div>
+                      ) : (
+                        armies.map(army => (
+                          <label
+                            key={army.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.75rem',
+                              padding: '0.75rem',
+                              background: (selectedPlayersToInvite as any)[invitation.id]?.includes(army.id)
+                                ? 'rgba(34, 197, 94, 0.2)'
+                                : 'transparent',
+                              border: (selectedPlayersToInvite as any)[invitation.id]?.includes(army.id)
+                                ? '1px solid rgba(34, 197, 94, 0.4)'
+                                : '1px solid transparent',
+                              borderRadius: '0.5rem',
+                              marginBottom: '0.5rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={(selectedPlayersToInvite as any)[invitation.id]?.includes(army.id) || false}
+                              onChange={(e) => {
+                                const inviteArmies = (selectedPlayersToInvite as any)[invitation.id] || [];
+                                if (e.target.checked) {
+                                  setSelectedPlayersToInvite({
+                                    ...selectedPlayersToInvite,
+                                    [invitation.id]: [...inviteArmies, army.id]
+                                  } as any);
+                                } else {
+                                  setSelectedPlayersToInvite({
+                                    ...selectedPlayersToInvite,
+                                    [invitation.id]: inviteArmies.filter((id: number) => id !== army.id)
+                                  } as any);
+                                }
+                              }}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                {army.name}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                Total Stats: {army.numbers + army.equipment + army.discipline + army.morale + army.command + army.logistics}
+                              </div>
+                            </div>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await battleAPI.declineInvitation(invitation.id);
+                          setPendingInvitations(pendingInvitations.filter(inv => inv.id !== invitation.id));
+                          setToastMessage('Invitation declined');
+                          setTimeout(() => setToastMessage(null), 3000);
+                        } catch (error) {
+                          console.error('Error declining invitation:', error);
+                        }
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                        borderRadius: '0.5rem',
+                        color: '#f87171',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      Decline
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const armyIds = (selectedPlayersToInvite as any)[invitation.id] || [];
+                        if (armyIds.length === 0) {
+                          alert('Please select at least one army');
+                          return;
+                        }
+                        
+                        try {
+                          await battleAPI.acceptInvitation(invitation.id, armyIds);
+                          setPendingInvitations(pendingInvitations.filter(inv => inv.id !== invitation.id));
+                          setToastMessage(`Joined battle with ${armyIds.length} army/armies!`);
+                          setTimeout(() => setToastMessage(null), 3000);
+                          
+                          // Navigate to battlefield
+                          setMainView('campaign');
+                          setCampaignTab('battlefield');
+                        } catch (error) {
+                          console.error('Error accepting invitation:', error);
+                          alert('Failed to join battle');
+                        }
+                      }}
+                      disabled={!((selectedPlayersToInvite as any)[invitation.id]?.length > 0)}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: ((selectedPlayersToInvite as any)[invitation.id]?.length > 0)
+                          ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))'
+                          : 'rgba(100, 100, 120, 0.2)',
+                        border: ((selectedPlayersToInvite as any)[invitation.id]?.length > 0)
+                          ? '2px solid rgba(34, 197, 94, 0.5)'
+                          : '1px solid rgba(100, 100, 120, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: ((selectedPlayersToInvite as any)[invitation.id]?.length > 0) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+                        fontWeight: 'bold',
+                        cursor: ((selectedPlayersToInvite as any)[invitation.id]?.length > 0) ? 'pointer' : 'not-allowed',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      ✓ Accept & Join
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                <button
+                  onClick={() => setShowBattleInvitationsModal(false)}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 120, 0.3)',
+                    border: '1px solid rgba(150, 150, 170, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Battle Summary Modal */}
+        {battleSummary && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '2rem'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 45, 0.98))',
+              border: '2px solid rgba(212, 193, 156, 0.4)',
+              borderRadius: '1rem',
+              padding: '2rem',
+              maxWidth: '800px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)'
+            }}>
+              <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🏆</div>
+                <h3 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                  {battleSummary.battleName} - Complete!
+                </h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Battle concluded at {new Date(battleSummary.timestamp).toLocaleTimeString()}
+                </p>
+              </div>
+
+              {/* Final Standings */}
+              <div style={{ marginBottom: '2rem' }}>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                  📊 Final Standings
+                </h5>
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  {battleSummary.results.map((participant: any, index: number) => {
+                    const scoreDiff = participant.current_score - participant.base_score;
+                    const isWinner = index === 0;
+                    
+                    return (
+                      <div
+                        key={participant.id}
+                        style={{
+                          padding: '1.5rem',
+                          background: isWinner 
+                            ? 'linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(255, 215, 0, 0.1))'
+                            : 'rgba(0, 0, 0, 0.3)',
+                          border: isWinner
+                            ? '2px solid rgba(212, 175, 55, 0.5)'
+                            : '1px solid rgba(212, 193, 156, 0.2)',
+                          borderRadius: '0.75rem',
+                          position: 'relative'
+                        }}
+                      >
+                        {isWinner && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '-12px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: 'linear-gradient(135deg, #d4af37, #ffd700)',
+                            color: '#000',
+                            padding: '0.25rem 1rem',
+                            borderRadius: '1rem',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            boxShadow: '0 4px 12px rgba(212, 175, 55, 0.4)'
+                          }}>
+                            👑 VICTORY
+                          </div>
+                        )}
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                          <div>
+                            <div style={{ 
+                              fontSize: '1.2rem', 
+                              fontWeight: 'bold', 
+                              color: isWinner ? '#ffd700' : 'var(--text-gold)',
+                              marginBottom: '0.25rem'
+                            }}>
+                              #{index + 1} {participant.temp_army_name || participant.army_name}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                              Team: {participant.team_name}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ 
+                              fontSize: '2rem', 
+                              fontWeight: 'bold',
+                              color: isWinner ? '#ffd700' : '#60a5fa'
+                            }}>
+                              {participant.current_score}
+                            </div>
+                            <div style={{ 
+                              fontSize: '0.85rem',
+                              color: scoreDiff >= 0 ? '#4ade80' : '#f87171'
+                            }}>
+                              {scoreDiff >= 0 ? '+' : ''}{scoreDiff}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Performance Breakdown */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gap: '0.75rem',
+                          marginTop: '1rem',
+                          paddingTop: '1rem',
+                          borderTop: '1px solid rgba(212, 193, 156, 0.2)'
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                              Starting Score
+                            </div>
+                            <div style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>
+                              {participant.base_score}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                              Points Gained
+                            </div>
+                            <div style={{ 
+                              fontSize: '1.1rem',
+                              color: scoreDiff >= 0 ? '#4ade80' : '#f87171',
+                              fontWeight: 'bold'
+                            }}>
+                              {scoreDiff >= 0 ? '+' : ''}{scoreDiff}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  onClick={() => setBattleSummary(null)}
+                  style={{
+                    padding: '0.75rem 2rem',
+                    background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                    border: '2px solid rgba(34, 197, 94, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: '#4ade80',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '1rem'
+                  }}
+                >
+                  Close Summary
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -363,6 +363,161 @@ const runMigrations = async () => {
     } else {
       console.log('✅ monster_instances table already exists');
     }
+
+    // Create armies table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS armies (
+        id SERIAL PRIMARY KEY,
+        player_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        numbers INTEGER DEFAULT 5 CHECK (numbers >= 1 AND numbers <= 10),
+        equipment INTEGER DEFAULT 5 CHECK (equipment >= 1 AND equipment <= 10),
+        discipline INTEGER DEFAULT 5 CHECK (discipline >= 1 AND discipline <= 10),
+        morale INTEGER DEFAULT 5 CHECK (morale >= 1 AND morale <= 10),
+        command INTEGER DEFAULT 5 CHECK (command >= 1 AND command <= 10),
+        logistics INTEGER DEFAULT 5 CHECK (logistics >= 1 AND logistics <= 10),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_armies_player ON armies(player_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_armies_campaign ON armies(campaign_id);
+    `);
+
+    console.log('✅ armies table created successfully');
+
+    // Create army_battle_history table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS army_battle_history (
+        id SERIAL PRIMARY KEY,
+        army_id INTEGER NOT NULL REFERENCES armies(id) ON DELETE CASCADE,
+        battle_name VARCHAR(255) NOT NULL,
+        start_score INTEGER NOT NULL,
+        end_score INTEGER NOT NULL,
+        enemy_name VARCHAR(255) NOT NULL,
+        enemy_start_score INTEGER NOT NULL,
+        enemy_end_score INTEGER NOT NULL,
+        result VARCHAR(50) NOT NULL CHECK (result IN ('victory', 'defeat', 'stalemate')),
+        goals_chosen JSONB DEFAULT '[]'::jsonb,
+        battle_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_army_battle_history_army ON army_battle_history(army_id);
+    `);
+
+    console.log('✅ army_battle_history table created successfully');
+
+    // Create battles table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS battles (
+        id SERIAL PRIMARY KEY,
+        campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        battle_name VARCHAR(255) NOT NULL,
+        terrain_description TEXT,
+        status VARCHAR(50) DEFAULT 'planning' CHECK (status IN ('planning', 'goal_selection', 'resolution', 'completed', 'cancelled')),
+        current_round INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battles_campaign ON battles(campaign_id);
+    `);
+
+    console.log('✅ battles table created successfully');
+
+    // Create battle_participants table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS battle_participants (
+        id SERIAL PRIMARY KEY,
+        battle_id INTEGER NOT NULL REFERENCES battles(id) ON DELETE CASCADE,
+        army_id INTEGER REFERENCES armies(id) ON DELETE CASCADE,
+        team_name VARCHAR(255) NOT NULL,
+        faction_color VARCHAR(7) DEFAULT '#808080',
+        is_temporary BOOLEAN DEFAULT FALSE,
+        temp_army_name VARCHAR(255),
+        temp_army_stats JSONB,
+        current_score INTEGER DEFAULT 0,
+        base_score INTEGER DEFAULT 0,
+        position_x DECIMAL(5,2) DEFAULT 50.00,
+        position_y DECIMAL(5,2) DEFAULT 50.00,
+        has_selected_goal BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battle_participants_battle ON battle_participants(battle_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battle_participants_army ON battle_participants(army_id);
+    `);
+
+    console.log('✅ battle_participants table created successfully');
+
+    // Create battle_invitations table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS battle_invitations (
+        id SERIAL PRIMARY KEY,
+        battle_id INTEGER NOT NULL REFERENCES battles(id) ON DELETE CASCADE,
+        player_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        team_name VARCHAR(255) NOT NULL,
+        faction_color VARCHAR(7) DEFAULT '#808080',
+        status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined')),
+        invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        responded_at TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battle_invitations_battle ON battle_invitations(battle_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battle_invitations_player ON battle_invitations(player_id);
+    `);
+
+    console.log('✅ battle_invitations table created successfully');
+
+    // Create battle_goals table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS battle_goals (
+        id SERIAL PRIMARY KEY,
+        battle_id INTEGER NOT NULL REFERENCES battles(id) ON DELETE CASCADE,
+        round_number INTEGER NOT NULL,
+        participant_id INTEGER NOT NULL REFERENCES battle_participants(id) ON DELETE CASCADE,
+        goal_name VARCHAR(255) NOT NULL,
+        target_participant_id INTEGER REFERENCES battle_participants(id) ON DELETE CASCADE,
+        test_type VARCHAR(100),
+        character_modifier INTEGER DEFAULT 0,
+        army_stat_modifier INTEGER DEFAULT 0,
+        dice_roll INTEGER,
+        dc_required INTEGER,
+        success BOOLEAN,
+        modifier_applied INTEGER DEFAULT 0,
+        locked_in BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battle_goals_battle ON battle_goals(battle_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battle_goals_participant ON battle_goals(participant_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_battle_goals_round ON battle_goals(battle_id, round_number);
+    `);
+
+    console.log('✅ battle_goals table created successfully');
     
     console.log('Database migrations completed successfully');
   } catch (error) {
