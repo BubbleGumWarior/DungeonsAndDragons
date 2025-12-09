@@ -7,6 +7,7 @@ class Army {
       player_id,
       campaign_id,
       name,
+      category = 'Swordsmen',
       numbers = 5,
       equipment = 5,
       discipline = 5,
@@ -18,10 +19,10 @@ class Army {
     try {
       const result = await pool.query(
         `INSERT INTO armies (
-          player_id, campaign_id, name, numbers, equipment, discipline, morale, command, logistics
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+          player_id, campaign_id, name, category, numbers, equipment, discipline, morale, command, logistics
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
         RETURNING *`,
-        [player_id, campaign_id, name, numbers, equipment, discipline, morale, command, logistics]
+        [player_id, campaign_id, name, category, numbers, equipment, discipline, morale, command, logistics]
       );
       
       return result.rows[0];

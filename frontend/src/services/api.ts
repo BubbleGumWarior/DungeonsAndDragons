@@ -462,6 +462,7 @@ export interface Army {
   player_id: number;
   campaign_id: number;
   name: string;
+  category: string;
   numbers: number;
   equipment: number;
   discipline: number;
@@ -510,6 +511,7 @@ export interface BattleParticipant {
   faction_color?: string;
   is_temporary: boolean;
   temp_army_name?: string;
+  temp_army_category?: string;
   temp_army_stats?: {
     numbers: number;
     equipment: number;

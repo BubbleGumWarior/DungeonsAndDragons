@@ -135,6 +135,7 @@ class Battle {
       faction_color = '#808080',
       is_temporary = false,
       temp_army_name,
+      temp_army_category = 'Swordsmen',
       temp_army_stats,
       position_x = 50,
       position_y = 50
@@ -143,10 +144,10 @@ class Battle {
     try {
       const result = await pool.query(
         `INSERT INTO battle_participants 
-         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_stats, position_x, position_y, base_score, current_score, has_selected_goal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, false)
+         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_stats, position_x, position_y, base_score, current_score, has_selected_goal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, false)
          RETURNING *`,
-        [battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, 
+        [battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category,
          temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y]
       );
       

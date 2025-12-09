@@ -270,6 +270,47 @@ const getModifierColor = (modifier: number): string => {
   return '#ef4444'; // Strong red
 };
 
+// Helper function to get army category icon
+const getArmyCategoryIcon = (category: string): string => {
+  const iconMap: Record<string, string> = {
+    // Elite
+    'Royal Guard': '👑',
+    // Infantry
+    'Swordsmen': '⚔️',
+    'Shield Wall': '🛡️',
+    'Spear Wall': '🗡️',
+    'Pikemen': '🔱',
+    'Heavy Infantry': '⚒️',
+    'Light Infantry': '🏃',
+    // Archers
+    'Longbowmen': '🏹',
+    'Crossbowmen': '🎯',
+    'Skirmishers': '🪃',
+    'Mounted Archers': '🏇',
+    // Cavalry
+    'Shock Cavalry': '🐎',
+    'Heavy Cavalry': '🛡️',
+    'Light Cavalry': '🐴',
+    'Lancers': '🎪',
+    // Artillery
+    'Catapults': '💣',
+    'Trebuchets': '🏰',
+    'Ballistae': '🎯',
+    'Siege Towers': '🗼',
+    'Bombards': '💥'
+  };
+  return iconMap[category] || '⚔️';
+};
+
+// Army categories organized by type
+const ARMY_CATEGORIES = {
+  'Elite': ['Royal Guard'],
+  'Infantry': ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry'],
+  'Archers': ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'],
+  'Cavalry': ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers'],
+  'Artillery': ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards']
+};
+
 const CampaignView: React.FC = () => {
   const { campaignName } = useParams<{ campaignName: string }>();
   const navigate = useNavigate();
@@ -373,6 +414,7 @@ const CampaignView: React.FC = () => {
   const [showAddArmyModal, setShowAddArmyModal] = useState(false);
   const [newArmyData, setNewArmyData] = useState<{
     name: string;
+    category: string;
     numbers: number;
     equipment: number;
     discipline: number;
@@ -381,6 +423,7 @@ const CampaignView: React.FC = () => {
     logistics: number;
   }>({
     name: '',
+    category: 'Swordsmen',
     numbers: 5,
     equipment: 5,
     discipline: 5,
@@ -388,24 +431,11 @@ const CampaignView: React.FC = () => {
     command: 5,
     logistics: 5
   });
-  const [showCreateBattleModal, setShowCreateBattleModal] = useState(false);
   const [newBattleData, setNewBattleData] = useState({
     name: '',
     terrain_description: ''
   });
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false);
-  const [participantType, setParticipantType] = useState<'player' | 'custom'>('player');
-  const [selectedPlayerForBattle, setSelectedPlayerForBattle] = useState<number | null>(null);
-  const [tempArmyStats, setTempArmyStats] = useState({
-    name: '',
-    numbers: 5,
-    equipment: 5,
-    discipline: 5,
-    morale: 5,
-    command: 5,
-    logistics: 5,
-    team: ''
-  });
   const [showBattlefieldGoals, setShowBattlefieldGoals] = useState(true);
   const [selectedGoalCategory, setSelectedGoalCategory] = useState<string>('Command');
   const [battleSummary, setBattleSummary] = useState<{
@@ -429,6 +459,7 @@ const CampaignView: React.FC = () => {
     faction_color: '#ef4444',
     selectedPlayerArmies: [] as number[],
     tempArmyName: '',
+    tempArmyCategory: 'Swordsmen' as string,
     tempArmyStats: {
       numbers: 5,
       equipment: 5,
@@ -3510,6 +3541,23 @@ const CampaignView: React.FC = () => {
                             const canDrag = user?.role === 'Dungeon Master' || (participant.user_id === user?.id && !participant.is_temporary);
                             const factionColor = participant.faction_color || (participant.team_name === 'A' ? '#3b82f6' : '#ef4444');
                             
+                            // Get the army category and icon
+                            let armyCategory = 'Swordsmen';
+                            let categoryIcon = '⚔️';
+                            
+                            if (participant.is_temporary) {
+                              // For temporary armies, check if temp_army_category exists
+                              armyCategory = (participant as any).temp_army_category || 'Swordsmen';
+                              categoryIcon = getArmyCategoryIcon(armyCategory);
+                            } else if (participant.army_id) {
+                              // For regular armies, find the army in the armies list
+                              const participantArmy = armies.find(a => a.id === participant.army_id);
+                              if (participantArmy) {
+                                armyCategory = participantArmy.category;
+                                categoryIcon = getArmyCategoryIcon(armyCategory);
+                              }
+                            }
+                            
                             return (
                             <div
                               key={participant.id}
@@ -3562,7 +3610,7 @@ const CampaignView: React.FC = () => {
                               </div>
                               
                               <div style={{ fontSize: '1.8rem', marginBottom: '0.2rem' }}>
-                                {participant.is_temporary ? '🎭' : '👥'}
+                                {categoryIcon}
                               </div>
                               <div style={{
                                 fontSize: '0.7rem',
@@ -5853,9 +5901,14 @@ const CampaignView: React.FC = () => {
                           >
                             {/* Army Header */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                              <h6 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.2rem' }}>
-                                {army.name}
-                              </h6>
+                              <div>
+                                <h6 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.2rem' }}>
+                                  {getArmyCategoryIcon(army.category)} {army.name}
+                                </h6>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                                  {army.category}
+                                </div>
+                              </div>
                               {user?.role === 'Dungeon Master' && (
                                 <button
                                   onClick={async () => {
@@ -7773,7 +7826,7 @@ const CampaignView: React.FC = () => {
                   type="text"
                   value={newArmyData.name || ''}
                   onChange={(e) => setNewArmyData({ ...newArmyData, name: e.target.value })}
-                  placeholder="e.g., Royal Guard, Peasant Militia"
+                  placeholder="e.g., King's Elite Guard, Red Banner Legion"
                   style={{
                     width: '100%',
                     padding: '0.75rem',
@@ -7784,6 +7837,38 @@ const CampaignView: React.FC = () => {
                     fontSize: '1rem'
                   }}
                 />
+              </div>
+
+              {/* Army Category */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Army Type *
+                </label>
+                <select
+                  value={newArmyData.category || 'Swordsmen'}
+                  onChange={(e) => setNewArmyData({ ...newArmyData, category: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.6)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem',
+                    cursor: 'pointer'
+                  }}
+                  className="army-category-select"
+                >
+                  {Object.entries(ARMY_CATEGORIES).map(([groupName, categories]) => (
+                    <optgroup key={groupName} label={groupName} style={{ background: '#1a1a1a', color: 'var(--text-gold)' }}>
+                      {categories.map((category) => (
+                        <option key={category} value={category} style={{ background: '#1a1a1a', color: 'white', padding: '0.5rem' }}>
+                          {getArmyCategoryIcon(category)} {category}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
 
               {/* Army Stats (all default to 5) */}
@@ -7832,6 +7917,7 @@ const CampaignView: React.FC = () => {
                     setShowAddArmyModal(false);
                     setNewArmyData({
                       name: '',
+                      category: 'Swordsmen',
                       numbers: 5,
                       equipment: 5,
                       discipline: 5,
@@ -7873,6 +7959,7 @@ const CampaignView: React.FC = () => {
                       setShowAddArmyModal(false);
                       setNewArmyData({
                         name: '',
+                        category: 'Swordsmen',
                         numbers: 5,
                         equipment: 5,
                         discipline: 5,
@@ -8529,6 +8616,38 @@ const CampaignView: React.FC = () => {
                     />
                   </div>
 
+              {/* Army Category */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Army Type *
+                </label>
+                <select
+                  value={newParticipantData.tempArmyCategory || 'Swordsmen'}
+                  onChange={(e) => setNewParticipantData({ ...newParticipantData, tempArmyCategory: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.6)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem',
+                    cursor: 'pointer'
+                  }}
+                  className="army-category-select"
+                >
+                  {Object.entries(ARMY_CATEGORIES).map(([groupName, categories]) => (
+                    <optgroup key={groupName} label={groupName} style={{ background: '#1a1a1a', color: 'var(--text-gold)' }}>
+                      {categories.map((category) => (
+                        <option key={category} value={category} style={{ background: '#1a1a1a', color: 'white', padding: '0.5rem' }}>
+                          {getArmyCategoryIcon(category)} {category}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
                   <div style={{ marginBottom: '1.5rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
                       Temporary Army Stats (1-10, default: 5)
@@ -8581,6 +8700,7 @@ const CampaignView: React.FC = () => {
                       faction_color: '#ef4444',
                       selectedPlayerArmies: [],
                       tempArmyName: '',
+                      tempArmyCategory: 'Swordsmen',
                       tempArmyStats: {
                         numbers: 5,
                         equipment: 5,
@@ -8611,6 +8731,7 @@ const CampaignView: React.FC = () => {
                         team_name: newParticipantData.team,
                         faction_color: newParticipantData.faction_color,
                         temp_army_name: newParticipantData.tempArmyName,
+                        temp_army_category: newParticipantData.tempArmyCategory,
                         temp_army_stats: newParticipantData.tempArmyStats,
                         is_temporary: true
                       });
@@ -8625,6 +8746,7 @@ const CampaignView: React.FC = () => {
                         faction_color: '#ef4444',
                         selectedPlayerArmies: [],
                         tempArmyName: '',
+                        tempArmyCategory: 'Swordsmen',
                         tempArmyStats: { numbers: 5, equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 }
                       });
                       

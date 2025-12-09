@@ -371,6 +371,12 @@ const runMigrations = async () => {
         player_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
+        category VARCHAR(50) DEFAULT 'Swordsmen' CHECK (category IN (
+          'Royal Guard', 'Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry',
+          'Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers',
+          'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers',
+          'Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'
+        )),
         numbers INTEGER DEFAULT 5 CHECK (numbers >= 1 AND numbers <= 10),
         equipment INTEGER DEFAULT 5 CHECK (equipment >= 1 AND equipment <= 10),
         discipline INTEGER DEFAULT 5 CHECK (discipline >= 1 AND discipline <= 10),
@@ -444,6 +450,7 @@ const runMigrations = async () => {
         faction_color VARCHAR(7) DEFAULT '#808080',
         is_temporary BOOLEAN DEFAULT FALSE,
         temp_army_name VARCHAR(255),
+        temp_army_category VARCHAR(50) DEFAULT 'Swordsmen',
         temp_army_stats JSONB,
         current_score INTEGER DEFAULT 0,
         base_score INTEGER DEFAULT 0,

@@ -1385,3 +1385,27 @@ label:has(input[type="checkbox"]:disabled) {
     opacity: 1;
   }
 }
+
+/* Army category select dropdown styling */
+.army-category-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(212, 193, 156)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  padding-right: 2.5rem;
+}
+
+.army-category-select option {
+  background-color: #1a1a1a;
+  color: white;
+  padding: 0.5rem;
+}
+
+.army-category-select optgroup {
+  background-color: #0f0f0f;
+  color: var(--text-gold);
+  font-weight: bold;
+}
