@@ -38,7 +38,15 @@ app.use(limiter);
 
 // CORS configuration - Simplified and more robust for development
 const corsOptions = {
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001'],
+  origin: [
+    'http://localhost:3000', 
+    'http://127.0.0.1:3000', 
+    'http://localhost:3001',
+    'http://dungeonlair.ddns.net',
+    'http://dungeonlair.ddns.net:3000',
+    'https://dungeonlair.ddns.net',
+    'https://dungeonlair.ddns.net:3000'
+  ],
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -94,6 +102,11 @@ app.use('/uploads', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
+// Serve static frontend files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/build')));
+}
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
@@ -115,10 +128,24 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+// In production, serve React app for any non-API routes
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    // Only serve React app for non-API routes
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+      res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
+    } else {
+      res.status(404).json({ error: 'Route not found' });
+    }
+  });
+}
+
+// 404 handler for development
+if (process.env.NODE_ENV !== 'production') {
+  app.use('*', (req, res) => {
+    res.status(404).json({ error: 'Route not found' });
+  });
+}
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -157,20 +184,18 @@ const startServer = async () => {
     // Initialize database
     await initializeDB();
     
-    // Check if SSL certificates exist
-    const sslCertPath = path.resolve(__dirname, process.env.SSL_CERT_PATH || '../Certs/cert.pem');
-    const sslKeyPath = path.resolve(__dirname, process.env.SSL_KEY_PATH || '../Certs/key.pem');
+    // Load SSL certificates with ABSOLUTE paths (following DungeonLair working example)
+    const privateKey = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-key.pem', 'utf8');
+    const certificate = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-crt.pem', 'utf8');
+    const ca = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-chain-only.pem', 'utf8');
+    
+    const credentials = { key: privateKey, cert: certificate, ca: ca };
     
     let server;
     
-    if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath) && process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production') {
       // HTTPS server with SSL certificates (production only)
-      const options = {
-        cert: fs.readFileSync(sslCertPath),
-        key: fs.readFileSync(sslKeyPath)
-      };
-      
-      server = https.createServer(options, app);
+      server = https.createServer(credentials, app);
       console.log(`🚀 HTTPS Server running on port ${PORT}`);
       console.log(`🔒 SSL certificates loaded successfully`);
     } else {
@@ -699,8 +724,9 @@ const startServer = async () => {
     app.set('io', io);
     app.set('userSocketMap', userSocketMap);
     
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
       console.log(`🔌 WebSocket server initialized`);
     });
   } catch (error) {
