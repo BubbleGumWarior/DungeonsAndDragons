@@ -5296,7 +5296,7 @@ const CampaignView: React.FC = () => {
                     }}>
                       {selectedCharacterData.image_url ? (
                         <img 
-                          src={`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${selectedCharacterData.image_url}`}
+                          src={process.env.NODE_ENV === 'production' ? selectedCharacterData.image_url : `http://localhost:5000${selectedCharacterData.image_url}`}
                           alt={selectedCharacterData.name}
                           style={{
                             width: '250px',
