@@ -35,16 +35,19 @@ class Battle {
       
       const battle = battleResult.rows[0];
       
-      // Get participants
+      // Get participants with character abilities
       const participantsResult = await pool.query(
         `SELECT bp.*, a.name as army_name, a.numbers, a.equipment, a.discipline, 
-                a.morale, a.command, a.logistics, u.username as player_name, u.id as user_id
+                a.morale, a.command, a.logistics, a.player_id, 
+                u.username as player_name, u.id as user_id,
+                ch.abilities as character_abilities
          FROM battle_participants bp
          LEFT JOIN armies a ON bp.army_id = a.id
          LEFT JOIN users u ON a.player_id = u.id
+         LEFT JOIN characters ch ON ch.player_id = a.player_id AND ch.campaign_id = $2
          WHERE bp.battle_id = $1
          ORDER BY bp.team_name, bp.id`,
-        [battleId]
+        [battleId, battle.campaign_id]
       );
       
       battle.participants = participantsResult.rows;
@@ -172,6 +175,15 @@ class Battle {
   // Calculate and update base scores for all participants
   static async calculateBaseScores(battleId) {
     try {
+      // Get the current round to determine if this is the first scoring
+      const battleResult = await pool.query(
+        `SELECT current_round FROM battles WHERE id = $1`,
+        [battleId]
+      );
+      
+      const currentRound = battleResult.rows[0].current_round;
+      const isFirstRound = currentRound <= 1;
+      
       const participants = await pool.query(
         `SELECT bp.*, a.numbers, a.equipment, a.discipline, a.morale, a.command, a.logistics
          FROM battle_participants bp
@@ -196,16 +208,25 @@ class Battle {
           };
         }
         
-        // Calculate base score: sum of stats + 1d10
-        const statSum = (stats.numbers || 0) + (stats.equipment || 0) + (stats.discipline || 0) + 
-                       (stats.morale || 0) + (stats.command || 0) + (stats.logistics || 0);
         const diceRoll = Math.floor(Math.random() * 10) + 1; // 1d10
-        const baseScore = statSum + diceRoll;
         
-        await pool.query(
-          `UPDATE battle_participants SET base_score = $2, current_score = $2 WHERE id = $1`,
-          [participant.id, baseScore]
-        );
+        if (isFirstRound) {
+          // First round: Calculate base score from stats + dice roll
+          const statSum = (stats.numbers || 0) + (stats.equipment || 0) + (stats.discipline || 0) + 
+                         (stats.morale || 0) + (stats.command || 0) + (stats.logistics || 0);
+          const baseScore = statSum + diceRoll;
+          
+          await pool.query(
+            `UPDATE battle_participants SET base_score = $2, current_score = $2 WHERE id = $1`,
+            [participant.id, baseScore]
+          );
+        } else {
+          // Subsequent rounds: Add new dice roll to current score (preserving modifiers)
+          await pool.query(
+            `UPDATE battle_participants SET current_score = current_score + $2 WHERE id = $1`,
+            [participant.id, diceRoll]
+          );
+        }
       }
     } catch (error) {
       throw error;
@@ -396,9 +417,11 @@ class Battle {
   static async getBattleResults(battleId) {
     try {
       const participants = await pool.query(
-        `SELECT bp.*, a.name as army_name, a.id as army_id
+        `SELECT bp.*, a.name as army_name, a.id as army_id, a.player_id,
+                u.id as user_id, u.username as player_name
          FROM battle_participants bp
          LEFT JOIN armies a ON bp.army_id = a.id
+         LEFT JOIN users u ON a.player_id = u.id
          WHERE bp.battle_id = $1
          ORDER BY bp.current_score DESC`,
         [battleId]

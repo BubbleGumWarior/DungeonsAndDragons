@@ -408,7 +408,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     name: 'Desperate Gambit',
     category: 'Misc',
     requirement: 'None',
-    test_type: 'Saving Throw',
+    test_type: 'DEX',
     uses_character_stat: true,
     uses_army_stat: false,
     targets_enemy: true,
@@ -1243,7 +1243,10 @@ const CampaignView: React.FC = () => {
   // Socket connection for real-time updates
   useEffect(() => {
     if (currentCampaign) {
-      const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+      const socketUrl = process.env.NODE_ENV === 'production' 
+        ? window.location.origin 
+        : 'http://localhost:5000';
+      const newSocket = io(socketUrl);
       
       // Register user ID for targeted notifications
       if (user) {
@@ -1575,9 +1578,19 @@ const CampaignView: React.FC = () => {
 
       // Listen for battle goal rolled
       newSocket.on('battleGoalRolled', (data: { battleId: number; goalId: number; roll: number; timestamp: string }) => {
+        // Refresh battle if we're viewing it
         if (activeBattle && activeBattle.id === data.battleId) {
           battleAPI.getBattle(data.battleId)
             .then(setActiveBattle)
+            .catch(console.error);
+        } else if (!activeBattle && currentCampaign) {
+          // DM might not have activeBattle set, check if this is the campaign's active battle
+          battleAPI.getActiveBattle(currentCampaign.campaign.id)
+            .then(battle => {
+              if (battle && battle.id === data.battleId) {
+                setActiveBattle(battle);
+              }
+            })
             .catch(console.error);
         }
       });
@@ -2665,9 +2678,6 @@ const CampaignView: React.FC = () => {
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                       Lvl {character.level} {character.race} {character.class}
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      {character.player_name}
-                    </div>
                     
                     {/* Health Bar and Status */}
                     {(() => {
@@ -2958,7 +2968,7 @@ const CampaignView: React.FC = () => {
                             background: 'rgba(0, 0, 0, 0.3)'
                           }}>
                             <img 
-                              src={`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${character.image_url}`}
+                              src={process.env.NODE_ENV === 'production' ? character.image_url : `http://localhost:5000${character.image_url}`}
                               alt={character.name}
                               style={{
                                 width: '100%',
@@ -3403,7 +3413,7 @@ const CampaignView: React.FC = () => {
                     const canMove = isDM || (combatStarted && isOwner && isTheirTurn);
                     
                     const imageUrl = (character?.image_url || monsterTemplate?.image_url)
-                      ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${character?.image_url || monsterTemplate?.image_url}`
+                      ? (process.env.NODE_ENV === 'production' ? (character?.image_url || monsterTemplate?.image_url) : `http://localhost:5000${character?.image_url || monsterTemplate?.image_url}`)
                       : null;
                     
                     const name = combatant.name;
@@ -4499,8 +4509,7 @@ const CampaignView: React.FC = () => {
                                       borderTop: '1px solid rgba(212, 193, 156, 0.2)'
                                     }}>
                                       <div>🎲 Test: {goal.test_type}
-                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && ` + Character + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
-                                        {goal.uses_character_stat && !goal.uses_army_stat && ' + Character Ability'}
+                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && ` + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
                                         {!goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && ` + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
                                       </div>
                                       <div>🎯 Target: {goal.targets_enemy ? 'Enemy Team' : 'Your Team'}</div>
@@ -4518,11 +4527,60 @@ const CampaignView: React.FC = () => {
                                         }}>
                                           {calculatedModifier >= 0 ? '+' : ''}{calculatedModifier}
                                         </span>
-                                        {goal.uses_character_stat && goal.uses_army_stat && (
-                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
-                                            (Char + Army)
-                                          </span>
-                                        )}
+                                        {goal.uses_character_stat && goal.uses_army_stat && (() => {
+                                          // Calculate individual modifiers to show breakdown
+                                          let charMod = 0;
+                                          let armyMod = 0;
+                                          
+                                          if (userParticipant) {
+                                            // Get character modifier
+                                            const character = characters.find(c => c.player_id === user?.id);
+                                            if (character && character.abilities) {
+                                              let abilityScore = 10;
+                                              switch(goal.test_type) {
+                                                case 'STR': abilityScore = character.abilities.str || 10; break;
+                                                case 'DEX': abilityScore = character.abilities.dex || 10; break;
+                                                case 'CON': abilityScore = character.abilities.con || 10; break;
+                                                case 'INT': abilityScore = character.abilities.int || 10; break;
+                                                case 'WIS': abilityScore = character.abilities.wis || 10; break;
+                                                case 'CHA': abilityScore = character.abilities.cha || 10; break;
+                                                case 'Attack': abilityScore = character.abilities.str || 10; break;
+                                                case 'Saving Throw': abilityScore = character.abilities.wis || 10; break;
+                                              }
+                                              charMod = Math.floor((abilityScore - 10) / 2);
+                                            }
+                                            
+                                            // Get army modifier
+                                            if (goal.army_stat) {
+                                              let armyStats;
+                                              if (userParticipant.is_temporary && userParticipant.temp_army_stats) {
+                                                armyStats = userParticipant.temp_army_stats;
+                                              } else {
+                                                const participantArmy = armies.find(a => a.id === userParticipant.army_id);
+                                                if (participantArmy) {
+                                                  armyStats = {
+                                                    numbers: participantArmy.numbers,
+                                                    equipment: participantArmy.equipment,
+                                                    discipline: participantArmy.discipline,
+                                                    morale: participantArmy.morale,
+                                                    command: participantArmy.command,
+                                                    logistics: participantArmy.logistics
+                                                  };
+                                                }
+                                              }
+                                              if (armyStats) {
+                                                const armyStatValue = armyStats[goal.army_stat] || 1;
+                                                armyMod = armyStatValue - 5;
+                                              }
+                                            }
+                                          }
+                                          
+                                          return (
+                                            <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
+                                              ({charMod >= 0 ? '+' : ''}{charMod} {armyMod >= 0 ? '+' : ''}{armyMod})
+                                            </span>
+                                          );
+                                        })()}
                                         {goal.uses_character_stat && !goal.uses_army_stat && (
                                           <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
                                             (Character)
@@ -5015,7 +5073,7 @@ const CampaignView: React.FC = () => {
                       const isDM = user?.role === 'Dungeon Master';
                       const showDetails = isDM || monster.visible_to_players;
                       const imageUrl = monster.image_url 
-                        ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${monster.image_url}`
+                        ? (process.env.NODE_ENV === 'production' ? monster.image_url : `http://localhost:5000${monster.image_url}`)
                         : null;
 
                       return (
@@ -7676,7 +7734,7 @@ const CampaignView: React.FC = () => {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {monsters.map((monster: Monster) => {
                       const imageUrl = monster.image_url 
-                        ? `${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000'}${monster.image_url}`
+                        ? (process.env.NODE_ENV === 'production' ? monster.image_url : `http://localhost:5000${monster.image_url}`)
                         : null;
                       
                       return (
@@ -8617,7 +8675,10 @@ const CampaignView: React.FC = () => {
 
                 <div style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
                   <strong style={{ color: 'var(--text-gold)' }}>Test:</strong>{' '}
-                  <span style={{ color: 'white' }}>{selectedGoal.test_type} + {selectedGoal.army_stat}</span>
+                  <span style={{ color: 'white' }}>
+                    {selectedGoal.test_type}
+                    {selectedGoal.army_stat && ` + ${selectedGoal.army_stat.charAt(0).toUpperCase() + selectedGoal.army_stat.slice(1)}`}
+                  </span>
                 </div>
 
                 <div style={{
@@ -8829,7 +8890,12 @@ const CampaignView: React.FC = () => {
                         // Regular army - find in armies array
                         const participantArmy = armies.find(a => a.id === teamRepresentative.army_id);
                         if (!participantArmy) {
-                          alert('Army data not found');
+                          // Check if user owns the team representative
+                          if (teamRepresentative.user_id !== user?.id) {
+                            alert('You are not the team commander. Only the first player who joined this faction can select goals for the team.');
+                          } else {
+                            alert('Army data not found. Please contact the Dungeon Master.');
+                          }
                           return;
                         }
                         armyStats = {
@@ -8843,9 +8909,31 @@ const CampaignView: React.FC = () => {
                       }
 
                       // Calculate modifiers
-                      const characterModifier = 0; // Assume neutral (0) for character stats like INT, CHA, etc.
+                      let characterModifier = 0;
+                      
+                      // If goal uses character stat, get it from character abilities
+                      if (selectedGoal.uses_character_stat) {
+                        if (teamRepresentative.character_abilities) {
+                          // Parse if it's a string
+                          const abilities = typeof teamRepresentative.character_abilities === 'string' 
+                            ? JSON.parse(teamRepresentative.character_abilities)
+                            : teamRepresentative.character_abilities;
+                          
+                          const testType = selectedGoal.test_type.toLowerCase(); // 'CHA', 'STR', etc.
+                          
+                          // Map test type to ability score
+                          const abilityScore = abilities[testType] || 10; // Default to 10 if not found
+                          
+                          // Calculate D&D 5e ability modifier: (score - 10) / 2, rounded down
+                          characterModifier = Math.floor((abilityScore - 10) / 2);
+                        } else {
+                          // No character linked (AI army or temp army), use neutral modifier
+                          characterModifier = 0;
+                        }
+                      }
+                      
                       const armyStatValue = selectedGoal.army_stat ? (armyStats[selectedGoal.army_stat] || 5) : 5; // Default to 5 if stat not found
-                      const armyStatModifier = armyStatValue - 5; // Base stat modifier
+                      const armyStatModifier = selectedGoal.uses_army_stat ? (armyStatValue - 5) : 0; // Only apply if goal uses army stat
 
                       await battleAPI.setGoal(activeBattle.id, {
                         round_number: activeBattle.current_round,
@@ -9681,14 +9769,42 @@ const CampaignView: React.FC = () => {
         )}
 
         {/* Battle Summary Modal */}
-        {battleSummary && (
+        {battleSummary && (() => {
+          // Calculate team scores
+          const teamScores: Record<string, number> = {};
+          battleSummary.results.forEach((p: any) => {
+            if (!teamScores[p.team_name]) {
+              teamScores[p.team_name] = 0;
+            }
+            teamScores[p.team_name] += p.current_score;
+          });
+          
+          // Determine winning team
+          const sortedTeams = Object.entries(teamScores).sort((a, b) => b[1] - a[1]);
+          const winningTeam = sortedTeams[0][0];
+          
+          // Check if player's team won (or if DM, default to neutral/victory view)
+          let playerWon = false;
+          
+          if (user?.role === 'Dungeon Master') {
+            // DM always sees victory screen (neutral perspective)
+            playerWon = true;
+          } else {
+            // Find if current player has an army on the winning team
+            const playerParticipant = battleSummary.results.find((p: any) => p.user_id === user?.id);
+            playerWon = playerParticipant && playerParticipant.team_name === winningTeam;
+          }
+          
+          return (
           <div style={{
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.85)',
+            background: playerWon 
+              ? 'rgba(212, 175, 55, 0.3)' 
+              : 'rgba(239, 68, 68, 0.3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -9696,64 +9812,92 @@ const CampaignView: React.FC = () => {
             padding: '2rem'
           }}>
             <div style={{
-              background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 45, 0.98))',
-              border: '2px solid rgba(212, 193, 156, 0.4)',
+              background: playerWon
+                ? 'linear-gradient(135deg, rgba(212, 175, 55, 0.98), rgba(255, 215, 0, 0.98))'
+                : 'linear-gradient(135deg, rgba(220, 38, 38, 0.98), rgba(239, 68, 68, 0.98))',
+              border: playerWon
+                ? '3px solid rgba(255, 215, 0, 0.8)'
+                : '3px solid rgba(239, 68, 68, 0.8)',
               borderRadius: '1rem',
               padding: '2rem',
               maxWidth: '800px',
               width: '100%',
               maxHeight: '80vh',
               overflowY: 'auto',
-              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)'
+              boxShadow: playerWon
+                ? '0 20px 60px rgba(212, 175, 55, 0.6)'
+                : '0 20px 60px rgba(239, 68, 68, 0.6)'
             }}>
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🏆</div>
-                <h3 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
-                  {battleSummary.battleName} - Complete!
+                <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>
+                  {playerWon ? '🏆' : '💀'}
+                </div>
+                <h3 style={{ 
+                  color: playerWon ? '#1a1a1a' : '#fff', 
+                  marginBottom: '0.5rem',
+                  fontSize: '2rem'
+                }}>
+                  {playerWon ? 'VICTORY!' : 'DEFEAT'}
                 </h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                <h4 style={{ 
+                  color: playerWon ? '#2a2a2a' : '#fee', 
+                  marginBottom: '0.5rem' 
+                }}>
+                  {battleSummary.battleName}
+                </h4>
+                <p style={{ 
+                  color: playerWon ? '#3a3a3a' : '#fdd', 
+                  fontSize: '0.9rem' 
+                }}>
                   Battle concluded at {new Date(battleSummary.timestamp).toLocaleTimeString()}
                 </p>
               </div>
 
-              {/* Final Standings */}
+              {/* Team Scores */}
               <div style={{ marginBottom: '2rem' }}>
-                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                <h5 style={{ 
+                  color: playerWon ? '#1a1a1a' : '#fff', 
+                  marginBottom: '1rem', 
+                  fontSize: '1.3rem',
+                  textAlign: 'center'
+                }}>
                   📊 Final Standings
                 </h5>
                 <div style={{ display: 'grid', gap: '1rem' }}>
-                  {battleSummary.results.map((participant: any, index: number) => {
-                    const scoreDiff = participant.current_score - participant.base_score;
-                    const isWinner = index === 0;
+                  {sortedTeams.map(([teamName, score], index) => {
+                    const isWinningTeam = teamName === winningTeam;
+                    const teamParticipants = battleSummary.results.filter((p: any) => p.team_name === teamName);
+                    const teamStartingScore = teamParticipants.reduce((sum: number, p: any) => sum + p.base_score, 0);
+                    const scoreDiff = score - teamStartingScore;
                     
                     return (
                       <div
-                        key={participant.id}
+                        key={teamName}
                         style={{
                           padding: '1.5rem',
-                          background: isWinner 
-                            ? 'linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(255, 215, 0, 0.1))'
-                            : 'rgba(0, 0, 0, 0.3)',
-                          border: isWinner
-                            ? '2px solid rgba(212, 175, 55, 0.5)'
-                            : '1px solid rgba(212, 193, 156, 0.2)',
+                          background: isWinningTeam 
+                            ? 'rgba(0, 0, 0, 0.3)'
+                            : 'rgba(0, 0, 0, 0.2)',
+                          border: isWinningTeam
+                            ? '3px solid rgba(0, 0, 0, 0.6)'
+                            : '1px solid rgba(0, 0, 0, 0.3)',
                           borderRadius: '0.75rem',
                           position: 'relative'
                         }}
                       >
-                        {isWinner && (
+                        {isWinningTeam && (
                           <div style={{
                             position: 'absolute',
-                            top: '-12px',
+                            top: '-15px',
                             left: '50%',
                             transform: 'translateX(-50%)',
-                            background: 'linear-gradient(135deg, #d4af37, #ffd700)',
-                            color: '#000',
-                            padding: '0.25rem 1rem',
+                            background: playerWon ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.6)',
+                            color: playerWon ? '#1a1a1a' : '#fff',
+                            padding: '0.35rem 1.5rem',
                             borderRadius: '1rem',
-                            fontSize: '0.75rem',
+                            fontSize: '0.85rem',
                             fontWeight: 'bold',
-                            boxShadow: '0 4px 12px rgba(212, 175, 55, 0.4)'
+                            border: '2px solid rgba(0, 0, 0, 0.7)'
                           }}>
                             👑 VICTORY
                           </div>
@@ -9762,63 +9906,55 @@ const CampaignView: React.FC = () => {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                           <div>
                             <div style={{ 
-                              fontSize: '1.2rem', 
-                              fontWeight: 'bold', 
-                              color: isWinner ? '#ffd700' : 'var(--text-gold)',
-                              marginBottom: '0.25rem'
+                              fontSize: '1.5rem', 
+                              fontWeight: 'bold',
+                              color: playerWon ? '#1a1a1a' : '#fff',
+                              marginBottom: '0.5rem'
                             }}>
-                              #{index + 1} {participant.temp_army_name || participant.army_name}
+                              #{index + 1} Team {teamName}
                             </div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                              Team: {participant.team_name}
+                            <div style={{ fontSize: '0.85rem', color: playerWon ? '#3a3a3a' : '#ccc' }}>
+                              {teamParticipants.length} {teamParticipants.length === 1 ? 'Army' : 'Armies'}
                             </div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ 
-                              fontSize: '2rem', 
+                              fontSize: '2.5rem', 
                               fontWeight: 'bold',
-                              color: isWinner ? '#ffd700' : '#60a5fa'
+                              color: playerWon ? '#1a1a1a' : '#fff'
                             }}>
-                              {participant.current_score}
+                              {score}
                             </div>
                             <div style={{ 
-                              fontSize: '0.85rem',
-                              color: scoreDiff >= 0 ? '#4ade80' : '#f87171'
-                            }}>
-                              {scoreDiff >= 0 ? '+' : ''}{scoreDiff}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Performance Breakdown */}
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(2, 1fr)',
-                          gap: '0.75rem',
-                          marginTop: '1rem',
-                          paddingTop: '1rem',
-                          borderTop: '1px solid rgba(212, 193, 156, 0.2)'
-                        }}>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                              Starting Score
-                            </div>
-                            <div style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>
-                              {participant.base_score}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                              Points Gained
-                            </div>
-                            <div style={{ 
-                              fontSize: '1.1rem',
-                              color: scoreDiff >= 0 ? '#4ade80' : '#f87171',
+                              fontSize: '0.9rem',
+                              color: scoreDiff >= 0 
+                                ? (playerWon ? '#166534' : '#4ade80')
+                                : (playerWon ? '#7f1d1d' : '#f87171'),
                               fontWeight: 'bold'
                             }}>
                               {scoreDiff >= 0 ? '+' : ''}{scoreDiff}
                             </div>
                           </div>
+                        </div>
+                        
+                        {/* Army breakdown */}
+                        <div style={{ 
+                          paddingTop: '1rem',
+                          borderTop: `1px solid ${playerWon ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
+                          display: 'grid',
+                          gap: '0.5rem'
+                        }}>
+                          {teamParticipants.map((p: any) => (
+                            <div key={p.id} style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between',
+                              fontSize: '0.85rem',
+                              color: playerWon ? '#2a2a2a' : '#ddd'
+                            }}>
+                              <span>{p.temp_army_name || p.army_name}</span>
+                              <span style={{ fontWeight: 'bold' }}>{p.current_score}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
@@ -9831,21 +9967,26 @@ const CampaignView: React.FC = () => {
                   onClick={() => setBattleSummary(null)}
                   style={{
                     padding: '0.75rem 2rem',
-                    background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
-                    border: '2px solid rgba(34, 197, 94, 0.5)',
+                    background: playerWon
+                      ? 'rgba(0, 0, 0, 0.3)'
+                      : 'rgba(0, 0, 0, 0.4)',
+                    border: playerWon
+                      ? '2px solid rgba(0, 0, 0, 0.5)'
+                      : '2px solid rgba(0, 0, 0, 0.6)',
                     borderRadius: '0.5rem',
-                    color: '#4ade80',
+                    color: playerWon ? '#1a1a1a' : '#fff',
                     fontWeight: 'bold',
                     cursor: 'pointer',
                     fontSize: '1rem'
                   }}
                 >
-                  Close Summary
+                  Close
                 </button>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

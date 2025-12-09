@@ -5,6 +5,7 @@ const Battle = require('../models/Battle');
 const Campaign = require('../models/Campaign');
 const Character = require('../models/Character');
 const { authenticateToken } = require('../middleware/auth');
+const { pool } = require('../models/database');
 
 // Get all armies for a player in a campaign
 router.get('/campaign/:campaignId/player/:playerId', authenticateToken, async (req, res) => {
@@ -602,6 +603,8 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const goalData = req.body;
     
+    console.log('Setting battle goal:', { battleId: id, goalData });
+    
     const battle = await Battle.findById(id);
     if (!battle) {
       return res.status(404).json({ error: 'Battle not found' });
@@ -609,6 +612,8 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
     
     goalData.battle_id = id;
     const goal = await Battle.setGoal(goalData);
+    
+    console.log('Goal set successfully:', goal);
     
     // Emit socket event to notify all users in the campaign
     const io = req.app.get('io');
@@ -623,7 +628,25 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
     res.status(201).json(goal);
   } catch (error) {
     console.error('Error setting battle goal:', error);
-    res.status(500).json({ error: 'Failed to set battle goal' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to set battle goal', details: error.message });
+  }
+});
+
+// Get all goals for a battle
+router.get('/battles/:id/goals', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const battle = await Battle.findById(id);
+    if (!battle) {
+      return res.status(404).json({ error: 'Battle not found' });
+    }
+    
+    res.json(battle.current_goals || []);
+  } catch (error) {
+    console.error('Error fetching battle goals:', error);
+    res.status(500).json({ error: 'Failed to fetch battle goals', details: error.message });
   }
 });
 
@@ -692,6 +715,24 @@ router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res)
     
     const goal = await Battle.resolveGoal(goalId, dc_required, success, modifier_applied);
     
+    // Immediately apply the modifier for this goal
+    await pool.query(
+      `UPDATE battle_participants 
+       SET current_score = current_score + $2
+       WHERE id = $1`,
+      [goal.participant_id, goal.modifier_applied]
+    );
+    
+    // Apply negative modifier to target if applicable
+    if (goal.target_participant_id && goal.modifier_applied !== 0) {
+      await pool.query(
+        `UPDATE battle_participants 
+         SET current_score = current_score - $2
+         WHERE id = $1`,
+        [goal.target_participant_id, goal.modifier_applied]
+      );
+    }
+    
     // Get battle to find campaign_id for socket emission
     const battle = await Battle.findById(goal.battle_id);
     const io = req.app.get('io');
@@ -700,6 +741,14 @@ router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res)
         battleId: goal.battle_id,
         goalId: goal.id,
         success: success,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also emit score update
+      const updatedBattle = await Battle.findById(goal.battle_id);
+      io.to(`campaign_${battle.campaign_id}`).emit('battleScoresUpdated', {
+        battleId: goal.battle_id,
+        participants: updatedBattle.participants,
         timestamp: new Date().toISOString()
       });
     }
@@ -773,6 +822,20 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
     // Get final results
     const participants = await Battle.getBattleResults(id);
     
+    // Calculate team scores
+    const teamScores = {};
+    participants.forEach(p => {
+      if (!teamScores[p.team_name]) {
+        teamScores[p.team_name] = 0;
+      }
+      teamScores[p.team_name] += p.current_score;
+    });
+    
+    // Determine winning team
+    const sortedTeams = Object.entries(teamScores).sort((a, b) => b[1] - a[1]);
+    const winningTeam = sortedTeams[0][0];
+    const winningScore = sortedTeams[0][1];
+    
     // Save battle history for each army
     for (const participant of participants) {
       if (!participant.is_temporary && participant.army_id) {
@@ -780,18 +843,30 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
         const goalsResult = await Battle.findById(id);
         const participantGoals = goalsResult.current_goals.filter(g => g.participant_id === participant.id);
         
-        // Determine opponents (simplified: compare against highest scoring opponent)
-        const opponents = participants.filter(p => p.team_name !== participant.team_name);
-        const topOpponent = opponents.sort((a, b) => b.current_score - a.current_score)[0];
+        // Determine result based on team victory
+        const participantTeamScore = teamScores[participant.team_name];
+        let result = 'stalemate';
+        
+        if (participant.team_name === winningTeam) {
+          result = 'victory';
+        } else {
+          result = 'defeat';
+        }
+        
+        // Find opponent team with highest score
+        const opponentTeams = Object.entries(teamScores)
+          .filter(([teamName]) => teamName !== participant.team_name)
+          .sort((a, b) => b[1] - a[1]);
+        
+        const topOpponentTeam = opponentTeams.length > 0 ? opponentTeams[0][0] : null;
+        const topOpponentScore = opponentTeams.length > 0 ? opponentTeams[0][1] : 0;
+        
+        // Get a representative opponent name
+        const topOpponent = topOpponentTeam 
+          ? participants.find(p => p.team_name === topOpponentTeam)
+          : null;
         
         if (topOpponent) {
-          const scoreDiff = participant.current_score - topOpponent.current_score;
-          let result = 'stalemate';
-          if (scoreDiff >= 10) result = 'victory';
-          else if (scoreDiff >= 1) result = 'victory';
-          else if (scoreDiff <= -10) result = 'defeat';
-          else if (scoreDiff < 0) result = 'defeat';
-          
           await Army.addBattleHistory({
             army_id: participant.army_id,
             battle_name: battle.battle_name,
