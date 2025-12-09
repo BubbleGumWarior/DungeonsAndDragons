@@ -66,7 +66,7 @@ router.get('/campaign/:campaignId', authenticateToken, async (req, res) => {
 // Create a new army (DM only)
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { player_id, campaign_id, name, numbers, equipment, discipline, morale, command, logistics } = req.body;
+    const { player_id, campaign_id, name, category, numbers, equipment, discipline, morale, command, logistics } = req.body;
     
     if (!player_id || !campaign_id || !name) {
       return res.status(400).json({ error: 'player_id, campaign_id, and name are required' });
@@ -86,6 +86,7 @@ router.post('/', authenticateToken, async (req, res) => {
       player_id,
       campaign_id,
       name,
+      category,
       numbers,
       equipment,
       discipline,

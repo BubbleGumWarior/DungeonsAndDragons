@@ -1377,7 +1377,13 @@ const CampaignView: React.FC = () => {
           const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
           if (character) {
             battleAPI.getPlayerInvitations(character.player_id, currentCampaign.campaign.id)
-              .then(setPendingInvitations)
+              .then((invitations) => {
+                setPendingInvitations(invitations);
+                // Auto-open modal when new invitation is received
+                if (invitations.length > 0) {
+                  setShowBattleInvitationsModal(true);
+                }
+              })
               .catch(console.error);
           }
         }
@@ -2523,22 +2529,21 @@ const CampaignView: React.FC = () => {
         {/* Campaign Content */}
         {mainView === 'campaign' && (
           <div>
-            {/* Global Battle Invitations Notification */}
-            {pendingInvitations.length > 0 && (
+            {/* Global Quick Actions for DM */}
+            {user?.role === 'Dungeon Master' && activeBattle && activeBattle.status === 'planning' && (
               <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
                 <button
-                  onClick={() => setShowBattleInvitationsModal(true)}
+                  onClick={() => setShowInvitePlayersModal(true)}
                   style={{
                     padding: '0.875rem 1.5rem',
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                    background: 'linear-gradient(135deg, #22c55e, #16a34a)',
                     border: '3px solid rgba(255, 255, 255, 0.4)',
                     borderRadius: '50px',
                     color: 'white',
                     fontSize: '1rem',
                     fontWeight: 'bold',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.5)',
-                    animation: 'pulse 2s infinite',
+                    boxShadow: '0 4px 15px rgba(34, 197, 94, 0.4)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
@@ -2551,7 +2556,7 @@ const CampaignView: React.FC = () => {
                     e.currentTarget.style.transform = 'scale(1)';
                   }}
                 >
-                  📨 {pendingInvitations.length} Battle Invitation{pendingInvitations.length !== 1 ? 's' : ''}
+                  📨 Invite Players to Battle
                 </button>
               </div>
             )}
