@@ -623,7 +623,7 @@ const CampaignView: React.FC = () => {
   const [newArmyData, setNewArmyData] = useState<{
     name: string;
     category: string;
-    numbers: number;
+    total_troops: number;
     equipment: number;
     discipline: number;
     morale: number;
@@ -632,7 +632,7 @@ const CampaignView: React.FC = () => {
   }>({
     name: '',
     category: 'Swordsmen',
-    numbers: 5,
+    total_troops: 100,
     equipment: 5,
     discipline: 5,
     morale: 5,
@@ -653,6 +653,7 @@ const CampaignView: React.FC = () => {
   const [showBattleSetupModal, setShowBattleSetupModal] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<BattleGoalDefinition | null>(null);
   const [selectedTargetParticipant, setSelectedTargetParticipant] = useState<number | null>(null);
+  const [selectedGoalExecutor, setSelectedGoalExecutor] = useState<number | null>(null);
   const [showGoalConfirmModal, setShowGoalConfirmModal] = useState(false);
   const [showInvitePlayersModal, setShowInvitePlayersModal] = useState(false);
   const [showBattleInvitationsModal, setShowBattleInvitationsModal] = useState(false);
@@ -669,8 +670,8 @@ const CampaignView: React.FC = () => {
     selectedPlayerArmies: [] as number[],
     tempArmyName: '',
     tempArmyCategory: 'Swordsmen' as string,
+    tempArmyTroops: 100,
     tempArmyStats: {
-      numbers: 5,
       equipment: 5,
       discipline: 5,
       morale: 5,
@@ -1597,11 +1598,26 @@ const CampaignView: React.FC = () => {
 
       // Listen for battle goal resolved
       newSocket.on('battleGoalResolved', (data: { battleId: number; goalId: number; success: boolean; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
-          battleAPI.getBattle(data.battleId)
-            .then(setActiveBattle)
-            .catch(console.error);
-        }
+        console.log('battleGoalResolved event received:', data);
+        // Refresh battle data for everyone, not just if activeBattle matches
+        battleAPI.getBattle(data.battleId)
+          .then(battle => {
+            console.log('Battle data refreshed after goal resolution:', battle);
+            setActiveBattle(battle);
+          })
+          .catch(console.error);
+      });
+
+      // Listen for battle scores updated (real-time participant updates)
+      newSocket.on('battleScoresUpdated', (data: { battleId: number; participants: any[]; timestamp: string }) => {
+        console.log('battleScoresUpdated event received:', data);
+        // Refresh full battle to get updated goals and participants
+        battleAPI.getBattle(data.battleId)
+          .then(battle => {
+            console.log('Battle data refreshed after scores update:', battle);
+            setActiveBattle(battle);
+          })
+          .catch(console.error);
       });
 
       // Listen for battle completed
@@ -3851,16 +3867,13 @@ const CampaignView: React.FC = () => {
                             let categoryIcon = '⚔️';
                             
                             if (participant.is_temporary) {
-                              // For temporary armies, check if temp_army_category exists
+                              // For temporary armies, use temp_army_category
                               armyCategory = (participant as any).temp_army_category || 'Swordsmen';
                               categoryIcon = getArmyCategoryIcon(armyCategory);
-                            } else if (participant.army_id) {
-                              // For regular armies, find the army in the armies list
-                              const participantArmy = armies.find(a => a.id === participant.army_id);
-                              if (participantArmy) {
-                                armyCategory = participantArmy.category;
-                                categoryIcon = getArmyCategoryIcon(armyCategory);
-                              }
+                            } else if ((participant as any).army_category) {
+                              // For regular armies, use army_category from participant data
+                              armyCategory = (participant as any).army_category;
+                              categoryIcon = getArmyCategoryIcon(armyCategory);
                             }
                             
                             return (
@@ -3931,6 +3944,17 @@ const CampaignView: React.FC = () => {
                               }}>
                                 {participant.temp_army_name || participant.army_name}
                               </div>
+                              {participant.current_troops !== undefined && (
+                                <div style={{
+                                  fontSize: '0.65rem',
+                                  color: participant.current_troops < (participant.army_total_troops || 0) * 0.5 ? '#ef4444' : '#4ade80',
+                                  textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                                  fontWeight: 'bold',
+                                  marginTop: '0.1rem'
+                                }}>
+                                  👥 {participant.current_troops.toLocaleString()}
+                                </div>
+                              )}
                             </div>
                           );})}
 
@@ -4081,7 +4105,7 @@ const CampaignView: React.FC = () => {
                                       color: participants[0].faction_color || '#808080',
                                       textShadow: `0 0 10px ${participants[0].faction_color || '#808080'}`
                                     }}>
-                                      {participants.reduce((sum, p) => sum + (p.current_score || 0), 0)}
+                                      {participants.reduce((sum, p) => sum + ((p.current_troops || 0) > 0 ? (p.current_score || 0) : 0), 0)}
                                     </span>
                                   </div>
                                 )}
@@ -4106,6 +4130,16 @@ const CampaignView: React.FC = () => {
                                     Team: {participant.team_name}
                                     {participant.player_name && ` (${participant.player_name})`}
                                   </div>
+                                  {participant.current_troops !== undefined && (
+                                    <div style={{ 
+                                      fontSize: '0.8rem', 
+                                      color: participant.current_troops < (participant.army_total_troops || 0) * 0.5 ? '#ef4444' : '#4ade80',
+                                      marginTop: '0.25rem',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      👥 Troops: {participant.current_troops.toLocaleString()} / {participant.army_total_troops?.toLocaleString() || 'N/A'}
+                                    </div>
+                                  )}
                                 </div>
                                 {participant.is_temporary && (
                                   <span style={{
@@ -4390,6 +4424,22 @@ const CampaignView: React.FC = () => {
                                     let armyStats;
                                     if (userParticipant.is_temporary && userParticipant.temp_army_stats) {
                                       armyStats = userParticipant.temp_army_stats;
+                                      // Calculate numbers stat from troop count for temporary armies
+                                      if (goal.army_stat === 'numbers' && userParticipant.current_troops !== undefined) {
+                                        const troopCount = userParticipant.current_troops;
+                                        let numbersStat = 1;
+                                        if (troopCount <= 20) numbersStat = 1;
+                                        else if (troopCount <= 50) numbersStat = 2;
+                                        else if (troopCount <= 100) numbersStat = 3;
+                                        else if (troopCount <= 200) numbersStat = 4;
+                                        else if (troopCount <= 400) numbersStat = 5;
+                                        else if (troopCount <= 800) numbersStat = 6;
+                                        else if (troopCount <= 1600) numbersStat = 7;
+                                        else if (troopCount <= 3200) numbersStat = 8;
+                                        else if (troopCount <= 6400) numbersStat = 9;
+                                        else numbersStat = 10;
+                                        armyStats = { ...armyStats, numbers: numbersStat };
+                                      }
                                     } else {
                                       const participantArmy = armies.find(a => a.id === userParticipant.army_id);
                                       if (participantArmy) {
@@ -4405,7 +4455,7 @@ const CampaignView: React.FC = () => {
                                     }
                                     
                                     if (armyStats) {
-                                      const armyStatValue = armyStats[goal.army_stat] || 1;
+                                      const armyStatValue = armyStats[goal.army_stat as keyof typeof armyStats] || 1;
                                       // Modifier is (stat - 5) since 5 is average/neutral
                                       // Stat 1 = -4, Stat 5 = 0, Stat 10 = +5
                                       armyModifier = armyStatValue - 5;
@@ -4555,6 +4605,22 @@ const CampaignView: React.FC = () => {
                                               let armyStats;
                                               if (userParticipant.is_temporary && userParticipant.temp_army_stats) {
                                                 armyStats = userParticipant.temp_army_stats;
+                                                // Calculate numbers stat from troop count for temporary armies
+                                                if (goal.army_stat === 'numbers' && userParticipant.current_troops !== undefined) {
+                                                  const troopCount = userParticipant.current_troops;
+                                                  let numbersStat = 1;
+                                                  if (troopCount <= 20) numbersStat = 1;
+                                                  else if (troopCount <= 50) numbersStat = 2;
+                                                  else if (troopCount <= 100) numbersStat = 3;
+                                                  else if (troopCount <= 200) numbersStat = 4;
+                                                  else if (troopCount <= 400) numbersStat = 5;
+                                                  else if (troopCount <= 800) numbersStat = 6;
+                                                  else if (troopCount <= 1600) numbersStat = 7;
+                                                  else if (troopCount <= 3200) numbersStat = 8;
+                                                  else if (troopCount <= 6400) numbersStat = 9;
+                                                  else numbersStat = 10;
+                                                  armyStats = { ...armyStats, numbers: numbersStat };
+                                                }
                                               } else {
                                                 const participantArmy = armies.find(a => a.id === userParticipant.army_id);
                                                 if (participantArmy) {
@@ -4569,7 +4635,7 @@ const CampaignView: React.FC = () => {
                                                 }
                                               }
                                               if (armyStats) {
-                                                const armyStatValue = armyStats[goal.army_stat] || 1;
+                                                const armyStatValue = armyStats[goal.army_stat as keyof typeof armyStats] || 1;
                                                 armyMod = armyStatValue - 5;
                                               }
                                             }
@@ -4935,7 +5001,7 @@ const CampaignView: React.FC = () => {
                                         // Calculate modifier based on goal outcome (placeholder logic)
                                         const modifier = success ? 2 : -1;
                                         
-                                        await battleAPI.resolveGoal(goal.id, dc, success, modifier);
+                                        await battleAPI.resolveGoal(goal.id, dc, success, modifier, total);
                                         const updated = await battleAPI.getBattle(activeBattle.id);
                                         setActiveBattle(updated);
                                       } catch (error) {
@@ -6396,8 +6462,112 @@ const CampaignView: React.FC = () => {
 
                             {/* Army Stats */}
                             <div style={{ display: 'grid', gap: '1rem', marginBottom: '1.5rem' }}>
+                              {/* Troop Count Display */}
+                              <div style={{ 
+                                padding: '1rem', 
+                                background: 'rgba(212, 193, 156, 0.1)', 
+                                borderRadius: '0.5rem',
+                                border: '2px solid rgba(212, 193, 156, 0.3)'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                                  <span style={{ fontSize: '1.5rem' }}>👥</span>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Troop Count</div>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
+                                      {army.total_troops?.toLocaleString() || 'N/A'}
+                                    </div>
+                                  </div>
+                                  {user?.role === 'Dungeon Master' && army.total_troops && (
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                      <button
+                                        onClick={async () => {
+                                          const change = -Math.min(10, army.total_troops || 0);
+                                          if (army.total_troops && army.total_troops > 1) {
+                                            try {
+                                              const updated = await armyAPI.updateTroops(army.id, change);
+                                              setArmies(armies.map(a => a.id === army.id ? updated : a));
+                                            } catch (error) {
+                                              console.error('Error updating troops:', error);
+                                            }
+                                          }
+                                        }}
+                                        disabled={!army.total_troops || army.total_troops <= 1}
+                                        style={{
+                                          padding: '0.5rem 0.75rem',
+                                          background: (!army.total_troops || army.total_troops <= 1) ? 'rgba(255, 255, 255, 0.05)' : 'rgba(239, 68, 68, 0.2)',
+                                          border: '1px solid rgba(239, 68, 68, 0.4)',
+                                          borderRadius: '0.25rem',
+                                          color: (!army.total_troops || army.total_troops <= 1) ? '#666' : '#ef4444',
+                                          cursor: (!army.total_troops || army.total_troops <= 1) ? 'not-allowed' : 'pointer',
+                                          fontSize: '0.9rem'
+                                        }}
+                                      >
+                                        -10
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            const updated = await armyAPI.updateTroops(army.id, 10);
+                                            setArmies(armies.map(a => a.id === army.id ? updated : a));
+                                          } catch (error) {
+                                            console.error('Error updating troops:', error);
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '0.5rem 0.75rem',
+                                          background: 'rgba(34, 197, 94, 0.2)',
+                                          border: '1px solid rgba(34, 197, 94, 0.4)',
+                                          borderRadius: '0.25rem',
+                                          color: '#4ade80',
+                                          cursor: 'pointer',
+                                          fontSize: '0.9rem'
+                                        }}
+                                      >
+                                        +10
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          const newValue = prompt(`Enter new troop count for ${army.name}:`, army.total_troops?.toString() || '100');
+                                          if (newValue !== null) {
+                                            const parsed = parseInt(newValue);
+                                            if (!isNaN(parsed) && parsed >= 1) {
+                                              const change = parsed - (army.total_troops || 0);
+                                              armyAPI.updateTroops(army.id, change)
+                                                .then(updated => {
+                                                  setArmies(armies.map(a => a.id === army.id ? updated : a));
+                                                })
+                                                .catch(error => {
+                                                  console.error('Error updating troops:', error);
+                                                  alert('Failed to update troop count');
+                                                });
+                                            } else {
+                                              alert('Please enter a valid number (minimum 1)');
+                                            }
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '0.5rem 0.75rem',
+                                          background: 'rgba(168, 85, 247, 0.2)',
+                                          border: '1px solid rgba(168, 85, 247, 0.4)',
+                                          borderRadius: '0.25rem',
+                                          color: '#a78bfa',
+                                          cursor: 'pointer',
+                                          fontSize: '0.9rem'
+                                        }}
+                                        title="Set exact troop count"
+                                      >
+                                        ✏️
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                  Numbers stat: {army.numbers}/10 (auto-calculated from troops)
+                                </div>
+                              </div>
+
+                              {/* Other Stats */}
                               {[
-                                { key: 'numbers', label: 'Numbers', icon: '👥', color: '#8b5cf6' },
                                 { key: 'equipment', label: 'Equipment', icon: '⚔️', color: '#ef4444' },
                                 { key: 'discipline', label: 'Discipline', icon: '🛡️', color: '#3b82f6' },
                                 { key: 'morale', label: 'Morale', icon: '💪', color: '#10b981' },
@@ -6538,6 +6708,11 @@ const CampaignView: React.FC = () => {
                                             <span style={{ color: '#4ade80' }}>Your Score:</span> {history.start_score} → {history.end_score} 
                                             <span style={{ marginLeft: '0.5rem', color: '#ef4444' }}>Enemy:</span> {history.enemy_start_score} → {history.enemy_end_score}
                                           </div>
+                                          {history.troops_lost !== undefined && history.troops_lost > 0 && (
+                                            <div style={{ marginTop: '0.25rem', color: '#ef4444', fontWeight: 'bold' }}>
+                                              💀 Casualties: {history.troops_lost.toLocaleString()} troops lost
+                                            </div>
+                                          )}
                                           <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.7 }}>
                                             {new Date(history.battle_date).toLocaleDateString()}
                                           </div>
@@ -8328,13 +8503,37 @@ const CampaignView: React.FC = () => {
               {/* Army Stats (all default to 5) */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Troop Count
+                </label>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', fontStyle: 'italic' }}>
+                  Numbers stat will be auto-calculated: 1-20=1, 21-50=2, 51-100=3, 101-200=4, 201-400=5, 401-800=6, 801-1600=7, 1601-3200=8, 3201-6400=9, 6400+=10
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="100000"
+                  value={newArmyData.total_troops || 100}
+                  onChange={(e) => setNewArmyData({ ...newArmyData, total_troops: parseInt(e.target.value) || 100 })}
+                  placeholder="Number of troops"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem',
+                    marginBottom: '1.5rem'
+                  }}
+                />
+                
+                <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
                   Initial Stats (1-10, default: 5)
                 </label>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem', fontStyle: 'italic' }}>
                   You can adjust these stats after creation using the +/- buttons
                 </div>
                 {[
-                  { key: 'numbers', label: 'Numbers', icon: '👥' },
                   { key: 'equipment', label: 'Equipment', icon: '⚔️' },
                   { key: 'discipline', label: 'Discipline', icon: '🛡️' },
                   { key: 'morale', label: 'Morale', icon: '💪' },
@@ -8372,7 +8571,7 @@ const CampaignView: React.FC = () => {
                     setNewArmyData({
                       name: '',
                       category: 'Swordsmen',
-                      numbers: 5,
+                      total_troops: 100,
                       equipment: 5,
                       discipline: 5,
                       morale: 5,
@@ -8414,7 +8613,7 @@ const CampaignView: React.FC = () => {
                       setNewArmyData({
                         name: '',
                         category: 'Swordsmen',
-                        numbers: 5,
+                        total_troops: 100,
                         equipment: 5,
                         discipline: 5,
                         morale: 5,
@@ -8616,6 +8815,7 @@ const CampaignView: React.FC = () => {
               setShowGoalConfirmModal(false);
               setSelectedGoal(null);
               setSelectedTargetParticipant(null);
+              setSelectedGoalExecutor(null);
             }}
           >
             <div
@@ -8627,6 +8827,8 @@ const CampaignView: React.FC = () => {
                 padding: '2rem',
                 width: '90%',
                 maxWidth: '600px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
                 boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
               }}
             >
@@ -8704,6 +8906,92 @@ const CampaignView: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Army Executor Selection - Which army from your team will perform this goal */}
+              {activeBattle && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                    Which Army Will Execute This Goal? *
+                  </label>
+                  <div style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '0.75rem',
+                    fontStyle: 'italic'
+                  }}>
+                    Select one army from your team to perform this action. Only this army's stats will be used for the roll.
+                  </div>
+                  <div style={{
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    padding: '0.75rem',
+                    maxHeight: '200px',
+                    overflowY: 'auto'
+                  }}>
+                    {(() => {
+                      const teams = activeBattle.participants?.reduce((acc, p) => {
+                        if (!acc[p.team_name]) {
+                          acc[p.team_name] = {
+                            name: p.team_name,
+                            has_selected: p.has_selected_goal || false,
+                            participants: []
+                          };
+                        }
+                        acc[p.team_name].participants.push(p);
+                        return acc;
+                      }, {} as Record<string, {name: string; has_selected: boolean; participants: any[]}>);
+
+                      const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                      if (!currentTeam) return <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No team available</div>;
+
+                      const teamArmies = currentTeam.participants;
+
+                      return teamArmies.map((participant: any) => (
+                        <label
+                          key={participant.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.75rem',
+                            background: selectedGoalExecutor === participant.id
+                              ? 'rgba(168, 85, 247, 0.2)'
+                              : 'transparent',
+                            border: selectedGoalExecutor === participant.id
+                              ? '1px solid rgba(168, 85, 247, 0.4)'
+                              : '1px solid transparent',
+                            borderRadius: '0.5rem',
+                            marginBottom: '0.5rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="executor"
+                            checked={selectedGoalExecutor === participant.id}
+                            onChange={() => setSelectedGoalExecutor(participant.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: 'white', fontWeight: 'bold' }}>
+                              {participant.temp_army_name || participant.army_name || 'Unknown Army'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              Score: {participant.current_score}
+                              {participant.current_troops !== undefined && (
+                                <span style={{ marginLeft: '0.5rem', color: '#4ade80' }}>
+                                  | 👥 {participant.current_troops.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </label>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
 
               {/* Target Selection - Show for both enemy and ally targets */}
               {activeBattle && (
@@ -8814,6 +9102,11 @@ const CampaignView: React.FC = () => {
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                                 Team {participant.team_name} | Score: {participant.current_score}
+                                {participant.current_troops !== undefined && (
+                                  <span style={{ marginLeft: '0.5rem', color: participant.current_troops < (participant.army_total_troops || 0) * 0.5 ? '#ef4444' : '#4ade80', fontWeight: 'bold' }}>
+                                    | 👥 {participant.current_troops.toLocaleString()}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </label>
@@ -8845,6 +9138,10 @@ const CampaignView: React.FC = () => {
                 <button
                   onClick={async () => {
                     if (!activeBattle || !currentCampaign) return;
+                    if (!selectedGoalExecutor) {
+                      alert('Please select which army will execute this goal');
+                      return;
+                    }
                     if (selectedGoal.targets_enemy && !selectedTargetParticipant) {
                       alert('Please select a target army');
                       return;
@@ -8878,14 +9175,34 @@ const CampaignView: React.FC = () => {
                         return;
                       }
 
-                      // Use the first participant in the team for the goal submission
-                      const teamRepresentative = currentTeam.participants[0];
+                      // Use the SELECTED executor army instead of the first participant
+                      const teamRepresentative = currentTeam.participants.find((p: any) => p.id === selectedGoalExecutor);
+                      if (!teamRepresentative) {
+                        alert('Selected executor not found');
+                        return;
+                      }
 
                       // Get army stats - either from temp_army_stats (custom army) or from armies array (regular army)
                       let armyStats;
                       if (teamRepresentative.is_temporary && teamRepresentative.temp_army_stats) {
                         // Custom/temporary army - use temp_army_stats
                         armyStats = teamRepresentative.temp_army_stats;
+                        // Calculate numbers stat from troop count for temporary armies
+                        if (selectedGoal.army_stat === 'numbers' && teamRepresentative.current_troops !== undefined) {
+                          const troopCount = teamRepresentative.current_troops;
+                          let numbersStat = 1;
+                          if (troopCount <= 20) numbersStat = 1;
+                          else if (troopCount <= 50) numbersStat = 2;
+                          else if (troopCount <= 100) numbersStat = 3;
+                          else if (troopCount <= 200) numbersStat = 4;
+                          else if (troopCount <= 400) numbersStat = 5;
+                          else if (troopCount <= 800) numbersStat = 6;
+                          else if (troopCount <= 1600) numbersStat = 7;
+                          else if (troopCount <= 3200) numbersStat = 8;
+                          else if (troopCount <= 6400) numbersStat = 9;
+                          else numbersStat = 10;
+                          armyStats = { ...armyStats, numbers: numbersStat };
+                        }
                       } else {
                         // Regular army - find in armies array
                         const participantArmy = armies.find(a => a.id === teamRepresentative.army_id);
@@ -8932,7 +9249,7 @@ const CampaignView: React.FC = () => {
                         }
                       }
                       
-                      const armyStatValue = selectedGoal.army_stat ? (armyStats[selectedGoal.army_stat] || 5) : 5; // Default to 5 if stat not found
+                      const armyStatValue = selectedGoal.army_stat ? (armyStats[selectedGoal.army_stat as keyof typeof armyStats] || 5) : 5; // Default to 5 if stat not found
                       const armyStatModifier = selectedGoal.uses_army_stat ? (armyStatValue - 5) : 0; // Only apply if goal uses army stat
 
                       await battleAPI.setGoal(activeBattle.id, {
@@ -8951,6 +9268,7 @@ const CampaignView: React.FC = () => {
                       setShowGoalConfirmModal(false);
                       setSelectedGoal(null);
                       setSelectedTargetParticipant(null);
+                      setSelectedGoalExecutor(null);
 
                       setToastMessage(`Goal "${selectedGoal.name}" selected!`);
                       setTimeout(() => setToastMessage(null), 3000);
@@ -8959,19 +9277,19 @@ const CampaignView: React.FC = () => {
                       alert('Failed to select goal');
                     }
                   }}
-                  disabled={selectedGoal.targets_enemy && !selectedTargetParticipant}
+                  disabled={!selectedGoalExecutor || (selectedGoal.targets_enemy && !selectedTargetParticipant)}
                   style={{
                     padding: '0.75rem 1.5rem',
-                    background: (!selectedGoal.targets_enemy || selectedTargetParticipant)
+                    background: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant))
                       ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))'
                       : 'rgba(100, 100, 120, 0.2)',
-                    border: (!selectedGoal.targets_enemy || selectedTargetParticipant)
+                    border: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant))
                       ? '2px solid rgba(34, 197, 94, 0.5)'
                       : '1px solid rgba(100, 100, 120, 0.3)',
                     borderRadius: '0.5rem',
-                    color: (!selectedGoal.targets_enemy || selectedTargetParticipant) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+                    color: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant)) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
                     fontWeight: 'bold',
-                    cursor: (!selectedGoal.targets_enemy || selectedTargetParticipant) ? 'pointer' : 'not-allowed'
+                    cursor: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant)) ? 'pointer' : 'not-allowed'
                   }}
                 >
                   ✓ Confirm Goal
@@ -9151,10 +9469,34 @@ const CampaignView: React.FC = () => {
 
                   <div style={{ marginBottom: '1.5rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                      Troop Count
+                    </label>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', fontStyle: 'italic' }}>
+                      Numbers stat will be auto-calculated from troop count
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100000"
+                      value={newParticipantData.tempArmyTroops || 100}
+                      onChange={(e) => setNewParticipantData({ ...newParticipantData, tempArmyTroops: parseInt(e.target.value) || 100 })}
+                      placeholder="Number of troops"
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: 'white',
+                        fontSize: '1rem',
+                        marginBottom: '1.5rem'
+                      }}
+                    />
+                    
+                    <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
                       Temporary Army Stats (1-10, default: 5)
                     </label>
                     {[
-                      { key: 'numbers', label: 'Numbers', icon: '👥' },
                       { key: 'equipment', label: 'Equipment', icon: '⚔️' },
                       { key: 'discipline', label: 'Discipline', icon: '🛡️' },
                       { key: 'morale', label: 'Morale', icon: '💪' },
@@ -9202,8 +9544,8 @@ const CampaignView: React.FC = () => {
                       selectedPlayerArmies: [],
                       tempArmyName: '',
                       tempArmyCategory: 'Swordsmen',
+                      tempArmyTroops: 100,
                       tempArmyStats: {
-                        numbers: 5,
                         equipment: 5,
                         discipline: 5,
                         morale: 5,
@@ -9233,6 +9575,7 @@ const CampaignView: React.FC = () => {
                         faction_color: newParticipantData.faction_color,
                         temp_army_name: newParticipantData.tempArmyName,
                         temp_army_category: newParticipantData.tempArmyCategory,
+                        temp_army_troops: newParticipantData.tempArmyTroops,
                         temp_army_stats: newParticipantData.tempArmyStats,
                         is_temporary: true
                       });
@@ -9248,7 +9591,8 @@ const CampaignView: React.FC = () => {
                         selectedPlayerArmies: [],
                         tempArmyName: '',
                         tempArmyCategory: 'Swordsmen',
-                        tempArmyStats: { numbers: 5, equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 }
+                        tempArmyTroops: 100,
+                        tempArmyStats: { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 }
                       });
                       
                       setToastMessage(`AI Army "${newParticipantData.tempArmyName}" added!`);
@@ -9770,13 +10114,16 @@ const CampaignView: React.FC = () => {
 
         {/* Battle Summary Modal */}
         {battleSummary && (() => {
-          // Calculate team scores
+          // Calculate team scores (exclude armies with 0 troops)
           const teamScores: Record<string, number> = {};
           battleSummary.results.forEach((p: any) => {
             if (!teamScores[p.team_name]) {
               teamScores[p.team_name] = 0;
             }
-            teamScores[p.team_name] += p.current_score;
+            // Only add score if army still has troops
+            if (p.current_troops > 0) {
+              teamScores[p.team_name] += p.current_score;
+            }
           });
           
           // Determine winning team
@@ -9942,19 +10289,85 @@ const CampaignView: React.FC = () => {
                           paddingTop: '1rem',
                           borderTop: `1px solid ${playerWon ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
                           display: 'grid',
-                          gap: '0.5rem'
+                          gap: '0.75rem'
                         }}>
-                          {teamParticipants.map((p: any) => (
-                            <div key={p.id} style={{ 
-                              display: 'flex', 
-                              justifyContent: 'space-between',
-                              fontSize: '0.85rem',
-                              color: playerWon ? '#2a2a2a' : '#ddd'
-                            }}>
-                              <span>{p.temp_army_name || p.army_name}</span>
-                              <span style={{ fontWeight: 'bold' }}>{p.current_score}</span>
-                            </div>
-                          ))}
+                          {teamParticipants.map((p: any) => {
+                            // Calculate troop casualties based on score difference
+                            const isVictory = teamName === winningTeam;
+                            const losingTeamScore = sortedTeams[sortedTeams.length - 1][1];
+                            const winningTeamScore = sortedTeams[0][1];
+                            const absoluteScoreDiff = Math.abs(winningTeamScore - losingTeamScore);
+                            
+                            let troopsLostPercent = 0;
+                            if (isVictory) {
+                              // Winners: aggressive casualties even for victors
+                              // Decisive victory (40+ gap): 15-25%
+                              // Moderate victory (25-39): 25-35%
+                              // Close victory (15-24): 35-45%
+                              // Narrow victory (0-14): 45-55%
+                              if (absoluteScoreDiff >= 40) {
+                                troopsLostPercent = Math.floor(Math.random() * 11) + 15; // 15-25%
+                              } else if (absoluteScoreDiff >= 25) {
+                                troopsLostPercent = Math.floor(Math.random() * 11) + 25; // 25-35%
+                              } else if (absoluteScoreDiff >= 15) {
+                                troopsLostPercent = Math.floor(Math.random() * 11) + 35; // 35-45%
+                              } else {
+                                troopsLostPercent = Math.floor(Math.random() * 11) + 45; // 45-55%
+                              }
+                            } else {
+                              // Losers: devastating casualties
+                              // Crushing defeat (40+ gap): 60-75%
+                              // Heavy defeat (25-39): 50-60%
+                              // Moderate defeat (15-24): 40-50%
+                              // Close defeat (0-14): 35-45%
+                              if (absoluteScoreDiff >= 40) {
+                                troopsLostPercent = Math.floor(Math.random() * 16) + 60; // 60-75%
+                              } else if (absoluteScoreDiff >= 25) {
+                                troopsLostPercent = Math.floor(Math.random() * 11) + 50; // 50-60%
+                              } else if (absoluteScoreDiff >= 15) {
+                                troopsLostPercent = Math.floor(Math.random() * 11) + 40; // 40-50%
+                              } else {
+                                troopsLostPercent = Math.floor(Math.random() * 11) + 35; // 35-45%
+                              }
+                            }
+                            
+                            const troopsLost = p.current_troops ? Math.floor(p.current_troops * (troopsLostPercent / 100)) : 0;
+                            const survivingTroops = (p.current_troops || 0) - troopsLost;
+                            
+                            return (
+                              <div key={p.id} style={{ 
+                                background: playerWon ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                                padding: '0.5rem',
+                                borderRadius: '0.375rem'
+                              }}>
+                                <div style={{ 
+                                  display: 'flex', 
+                                  justifyContent: 'space-between',
+                                  fontSize: '0.85rem',
+                                  color: playerWon ? '#2a2a2a' : '#ddd',
+                                  marginBottom: '0.25rem'
+                                }}>
+                                  <span style={{ fontWeight: 'bold' }}>{p.temp_army_name || p.army_name}</span>
+                                  <span style={{ fontWeight: 'bold' }}>Score: {p.current_score}</span>
+                                </div>
+                                {p.current_troops !== undefined && (
+                                  <div style={{ 
+                                    fontSize: '0.75rem',
+                                    color: playerWon ? '#3a3a3a' : '#bbb',
+                                    display: 'flex',
+                                    justifyContent: 'space-between'
+                                  }}>
+                                    <span>👥 Troops: {survivingTroops.toLocaleString()} / {(p.army_total_troops || p.current_troops)?.toLocaleString()}</span>
+                                    {troopsLost > 0 && (
+                                      <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                                        💀 -{troopsLost.toLocaleString()} ({troopsLostPercent}%)
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );

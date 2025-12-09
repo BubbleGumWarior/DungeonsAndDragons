@@ -469,6 +469,8 @@ export interface Army {
   morale: number;
   command: number;
   logistics: number;
+  total_troops?: number;
+  starting_troops?: number;
   created_at: string;
   updated_at: string;
   player_name?: string;
@@ -488,6 +490,7 @@ export interface ArmyBattleHistory {
   result: 'victory' | 'defeat' | 'stalemate';
   goals_chosen: any[];
   battle_date: string;
+  troops_lost?: number;
 }
 
 export interface Battle {
@@ -512,8 +515,8 @@ export interface BattleParticipant {
   is_temporary: boolean;
   temp_army_name?: string;
   temp_army_category?: string;
+  temp_army_troops?: number;
   temp_army_stats?: {
-    numbers: number;
     equipment: number;
     discipline: number;
     morale: number;
@@ -528,6 +531,8 @@ export interface BattleParticipant {
   army_name?: string;
   player_name?: string;
   user_id?: number;
+  current_troops?: number;
+  army_total_troops?: number;
   numbers?: number;
   equipment?: number;
   discipline?: number;
@@ -585,6 +590,11 @@ export const armyAPI = {
 
   getBattleHistory: async (armyId: number): Promise<ArmyBattleHistory[]> => {
     const response = await api.get(`/armies/${armyId}/history`);
+    return response.data;
+  },
+
+  updateTroops: async (armyId: number, troopChange: number): Promise<Army> => {
+    const response = await api.patch(`/armies/${armyId}/troops`, { troop_change: troopChange });
     return response.data;
   }
 };
@@ -645,11 +655,12 @@ export const battleAPI = {
     return response.data;
   },
 
-  resolveGoal: async (goalId: number, dcRequired: number, success: boolean, modifierApplied: number): Promise<BattleGoal> => {
+  resolveGoal: async (goalId: number, dcRequired: number, success: boolean, modifierApplied: number, rollTotal?: number): Promise<BattleGoal> => {
     const response = await api.put(`/armies/battles/goals/${goalId}/resolve`, {
       dc_required: dcRequired,
       success,
-      modifier_applied: modifierApplied
+      modifier_applied: modifierApplied,
+      roll_total: rollTotal
     });
     return response.data;
   },

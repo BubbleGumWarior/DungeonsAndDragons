@@ -1,4 +1,5 @@
 const { pool } = require('./database');
+const Army = require('./Army');
 
 class Battle {
   // Create a new battle
@@ -37,8 +38,8 @@ class Battle {
       
       // Get participants with character abilities
       const participantsResult = await pool.query(
-        `SELECT bp.*, a.name as army_name, a.numbers, a.equipment, a.discipline, 
-                a.morale, a.command, a.logistics, a.player_id, 
+        `SELECT bp.*, a.name as army_name, a.category as army_category, a.numbers, a.equipment, a.discipline, 
+                a.morale, a.command, a.logistics, a.player_id, a.total_troops as army_total_troops,
                 u.username as player_name, u.id as user_id,
                 ch.abilities as character_abilities
          FROM battle_participants bp
@@ -140,18 +141,28 @@ class Battle {
       temp_army_name,
       temp_army_category = 'Swordsmen',
       temp_army_stats,
+      temp_army_troops = 100,
       position_x = 50,
       position_y = 50
     } = participantData;
     
+    // Get troop count from army if not temporary
+    let current_troops = temp_army_troops;
+    if (!is_temporary && army_id) {
+      const armyResult = await pool.query('SELECT total_troops FROM armies WHERE id = $1', [army_id]);
+      if (armyResult.rows.length > 0) {
+        current_troops = armyResult.rows[0].total_troops;
+      }
+    }
+    
     try {
       const result = await pool.query(
         `INSERT INTO battle_participants 
-         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_stats, position_x, position_y, base_score, current_score, has_selected_goal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, false)
+         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_stats, position_x, position_y, base_score, current_score, current_troops, has_selected_goal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, $11, false)
          RETURNING *`,
         [battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category,
-         temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y]
+         temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y, current_troops]
       );
       
       return result.rows[0];
@@ -193,10 +204,22 @@ class Battle {
       );
       
       for (const participant of participants.rows) {
+        // Check if participant has 0 troops and zero out their score if so
+        if (participant.current_troops === 0) {
+          await pool.query(
+            `UPDATE battle_participants SET current_score = 0 WHERE id = $1`,
+            [participant.id]
+          );
+          continue; // Skip rolling for eliminated armies
+        }
+        
         let stats;
         
         if (participant.is_temporary) {
           stats = participant.temp_army_stats;
+          // Calculate numbers stat from temp_army_troops
+          const troopCount = participant.current_troops || 100;
+          stats.numbers = Army.calculateNumbersStat(troopCount);
         } else {
           stats = {
             numbers: participant.numbers,
@@ -212,7 +235,8 @@ class Battle {
         
         if (isFirstRound) {
           // First round: Calculate base score from stats + dice roll
-          const statSum = (stats.numbers || 0) + (stats.equipment || 0) + (stats.discipline || 0) + 
+          // Numbers stat applies 10x the normal rate
+          const statSum = ((stats.numbers || 0) * 10) + (stats.equipment || 0) + (stats.discipline || 0) + 
                          (stats.morale || 0) + (stats.command || 0) + (stats.logistics || 0);
           const baseScore = statSum + diceRoll;
           
@@ -417,7 +441,7 @@ class Battle {
   static async getBattleResults(battleId) {
     try {
       const participants = await pool.query(
-        `SELECT bp.*, a.name as army_name, a.id as army_id, a.player_id,
+        `SELECT bp.*, a.name as army_name, a.id as army_id, a.player_id, a.total_troops as army_total_troops,
                 u.id as user_id, u.username as player_name
          FROM battle_participants bp
          LEFT JOIN armies a ON bp.army_id = a.id
@@ -428,6 +452,53 @@ class Battle {
       );
       
       return participants.rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  // Apply troop casualties to a participant
+  static async applyTroopCasualties(participantId, casualties) {
+    try {
+      const result = await pool.query(
+        `UPDATE battle_participants 
+         SET current_troops = GREATEST(0, current_troops - $2)
+         WHERE id = $1
+         RETURNING *`,
+        [participantId, casualties]
+      );
+      
+      const participant = result.rows[0];
+      
+      // If troops dropped to 0, set current_score to 0 (remove from battle)
+      if (participant.current_troops === 0) {
+        await pool.query(
+          `UPDATE battle_participants 
+           SET current_score = 0
+           WHERE id = $1`,
+          [participantId]
+        );
+        participant.current_score = 0;
+      }
+      
+      return participant;
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  // Get active participants (troops > 0)
+  static async getActiveParticipants(battleId) {
+    try {
+      const result = await pool.query(
+        `SELECT bp.*, a.name as army_name 
+         FROM battle_participants bp
+         LEFT JOIN armies a ON bp.army_id = a.id
+         WHERE bp.battle_id = $1 AND bp.current_troops > 0`,
+        [battleId]
+      );
+      
+      return result.rows;
     } catch (error) {
       throw error;
     }
@@ -519,11 +590,15 @@ class Battle {
       // Add each army as a participant
       const participants = [];
       for (const armyId of armyIds) {
+        // Get army's total_troops
+        const armyResult = await pool.query('SELECT total_troops FROM armies WHERE id = $1', [armyId]);
+        const current_troops = armyResult.rows.length > 0 ? armyResult.rows[0].total_troops : 100;
+        
         const result = await pool.query(
-          `INSERT INTO battle_participants (battle_id, army_id, team_name, faction_color, is_temporary, has_selected_goal)
-           VALUES ($1, $2, $3, $4, FALSE, FALSE)
+          `INSERT INTO battle_participants (battle_id, army_id, team_name, faction_color, is_temporary, current_troops, has_selected_goal)
+           VALUES ($1, $2, $3, $4, FALSE, $5, FALSE)
            RETURNING *`,
-          [invitation.battle_id, armyId, invitation.team_name, invitation.faction_color]
+          [invitation.battle_id, armyId, invitation.team_name, invitation.faction_color, current_troops]
         );
         participants.push(result.rows[0]);
       }

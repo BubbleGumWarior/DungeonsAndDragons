@@ -1,6 +1,20 @@
 const { pool } = require('./database');
 
 class Army {
+  // Helper function to calculate numbers stat from troop count
+  static calculateNumbersStat(troopCount) {
+    if (troopCount <= 20) return 1;
+    if (troopCount <= 50) return 2;
+    if (troopCount <= 100) return 3;
+    if (troopCount <= 200) return 4;
+    if (troopCount <= 400) return 5;
+    if (troopCount <= 800) return 6;
+    if (troopCount <= 1600) return 7;
+    if (troopCount <= 3200) return 8;
+    if (troopCount <= 6400) return 9;
+    return 10;
+  }
+
   // Create a new army
   static async create(armyData) {
     const {
@@ -8,7 +22,7 @@ class Army {
       campaign_id,
       name,
       category = 'Swordsmen',
-      numbers = 5,
+      total_troops,
       equipment = 5,
       discipline = 5,
       morale = 5,
@@ -16,13 +30,19 @@ class Army {
       logistics = 5
     } = armyData;
     
+    // Calculate numbers stat from troop count
+    const numbers = this.calculateNumbersStat(total_troops);
+    const starting_troops = total_troops;
+    
     try {
       const result = await pool.query(
         `INSERT INTO armies (
-          player_id, campaign_id, name, category, numbers, equipment, discipline, morale, command, logistics
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+          player_id, campaign_id, name, category, numbers, total_troops, starting_troops,
+          equipment, discipline, morale, command, logistics
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
         RETURNING *`,
-        [player_id, campaign_id, name, category, numbers, equipment, discipline, morale, command, logistics]
+        [player_id, campaign_id, name, category, numbers, total_troops, starting_troops,
+         equipment, discipline, morale, command, logistics]
       );
       
       return result.rows[0];
@@ -86,7 +106,7 @@ class Army {
   static async updateStats(id, stats) {
     const {
       name,
-      numbers,
+      total_troops,
       equipment,
       discipline,
       morale,
@@ -94,20 +114,24 @@ class Army {
       logistics
     } = stats;
     
+    // Recalculate numbers stat if total_troops is provided
+    const numbers = total_troops !== undefined ? this.calculateNumbersStat(total_troops) : undefined;
+    
     try {
       const result = await pool.query(
         `UPDATE armies 
          SET name = COALESCE($2, name),
-             numbers = COALESCE($3, numbers),
-             equipment = COALESCE($4, equipment),
-             discipline = COALESCE($5, discipline),
-             morale = COALESCE($6, morale),
-             command = COALESCE($7, command),
-             logistics = COALESCE($8, logistics),
+             total_troops = COALESCE($3, total_troops),
+             numbers = COALESCE($4, numbers),
+             equipment = COALESCE($5, equipment),
+             discipline = COALESCE($6, discipline),
+             morale = COALESCE($7, morale),
+             command = COALESCE($8, command),
+             logistics = COALESCE($9, logistics),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1
          RETURNING *`,
-        [id, name, numbers, equipment, discipline, morale, command, logistics]
+        [id, name, total_troops, numbers, equipment, discipline, morale, command, logistics]
       );
       
       return result.rows[0];
@@ -153,7 +177,8 @@ class Army {
       enemy_start_score,
       enemy_end_score,
       result,
-      goals_chosen
+      goals_chosen,
+      troops_lost = 0
     } = historyData;
     
     try {
@@ -166,7 +191,46 @@ class Army {
         [army_id, battle_name, start_score, end_score, enemy_name, enemy_start_score, enemy_end_score, result, JSON.stringify(goals_chosen)]
       );
       
+      // Update army's current troop count
+      if (troops_lost > 0) {
+        await pool.query(
+          `UPDATE armies 
+           SET total_troops = GREATEST(0, total_troops - $2)
+           WHERE id = $1`,
+          [army_id, troops_lost]
+        );
+      }
+      
       return result_query.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  // Update troop count for an army
+  static async updateTroops(armyId, troopChange) {
+    try {
+      const result = await pool.query(
+        `UPDATE armies 
+         SET total_troops = GREATEST(0, total_troops + $2),
+             numbers = CASE 
+               WHEN (total_troops + $2) <= 20 THEN 1
+               WHEN (total_troops + $2) <= 50 THEN 2
+               WHEN (total_troops + $2) <= 100 THEN 3
+               WHEN (total_troops + $2) <= 200 THEN 4
+               WHEN (total_troops + $2) <= 400 THEN 5
+               WHEN (total_troops + $2) <= 800 THEN 6
+               WHEN (total_troops + $2) <= 1600 THEN 7
+               WHEN (total_troops + $2) <= 3200 THEN 8
+               WHEN (total_troops + $2) <= 6400 THEN 9
+               ELSE 10
+             END
+         WHERE id = $1
+         RETURNING *`,
+        [armyId, troopChange]
+      );
+      
+      return result.rows[0];
     } catch (error) {
       throw error;
     }

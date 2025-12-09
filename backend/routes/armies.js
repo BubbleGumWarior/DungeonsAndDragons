@@ -67,10 +67,14 @@ router.get('/campaign/:campaignId', authenticateToken, async (req, res) => {
 // Create a new army (DM only)
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { player_id, campaign_id, name, category, numbers, equipment, discipline, morale, command, logistics } = req.body;
+    const { player_id, campaign_id, name, category, total_troops, equipment, discipline, morale, command, logistics } = req.body;
     
     if (!player_id || !campaign_id || !name) {
       return res.status(400).json({ error: 'player_id, campaign_id, and name are required' });
+    }
+
+    if (!total_troops || total_troops < 1) {
+      return res.status(400).json({ error: 'total_troops is required and must be at least 1' });
     }
     
     const campaign = await Campaign.findById(campaign_id);
@@ -88,7 +92,7 @@ router.post('/', authenticateToken, async (req, res) => {
       campaign_id,
       name,
       category,
-      numbers,
+      total_troops,
       equipment,
       discipline,
       morale,
@@ -711,7 +715,7 @@ router.put('/battles/goals/:goalId/roll', authenticateToken, async (req, res) =>
 router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res) => {
   try {
     const { goalId } = req.params;
-    const { dc_required, success, modifier_applied } = req.body;
+    const { dc_required, success, modifier_applied, roll_total } = req.body;
     
     const goal = await Battle.resolveGoal(goalId, dc_required, success, modifier_applied);
     
@@ -723,6 +727,63 @@ router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res)
       [goal.participant_id, goal.modifier_applied]
     );
     
+    // Apply troop casualties based on margin of success/failure
+    let attackerCasualties = 0;
+    let defenderCasualties = 0;
+    
+    // Calculate margin (how much over/under the DC)
+    const margin = roll_total !== undefined ? Math.abs((roll_total || 0) - dc_required) : 5;
+    
+    if (success) {
+      // Successful attack - target loses troops based on margin
+      // Margin 0-2: 15-20% casualties (barely succeeded)
+      // Margin 3-5: 21-28% casualties
+      // Margin 6-9: 29-38% casualties
+      // Margin 10-14: 39-50% casualties
+      // Margin 15+: 51-70% casualties (crushing success)
+      if (margin <= 2) {
+        defenderCasualties = Math.floor(Math.random() * 6) + 15; // 15-20%
+      } else if (margin <= 5) {
+        defenderCasualties = Math.floor(Math.random() * 8) + 21; // 21-28%
+      } else if (margin <= 9) {
+        defenderCasualties = Math.floor(Math.random() * 10) + 29; // 29-38%
+      } else if (margin <= 14) {
+        defenderCasualties = Math.floor(Math.random() * 12) + 39; // 39-50%
+      } else {
+        defenderCasualties = Math.floor(Math.random() * 20) + 51; // 51-70%
+      }
+    } else {
+      // Failed attack - attacker loses troops based on margin
+      // Margin 0-2: 10-15% casualties (barely failed)
+      // Margin 3-5: 16-22% casualties
+      // Margin 6-9: 23-30% casualties
+      // Margin 10-14: 31-42% casualties
+      // Margin 15+: 43-60% casualties (terrible failure)
+      if (margin <= 2) {
+        attackerCasualties = Math.floor(Math.random() * 6) + 10; // 10-15%
+      } else if (margin <= 5) {
+        attackerCasualties = Math.floor(Math.random() * 7) + 16; // 16-22%
+      } else if (margin <= 9) {
+        attackerCasualties = Math.floor(Math.random() * 8) + 23; // 23-30%
+      } else if (margin <= 14) {
+        attackerCasualties = Math.floor(Math.random() * 12) + 31; // 31-42%
+      } else {
+        attackerCasualties = Math.floor(Math.random() * 18) + 43; // 43-60%
+      }
+    }
+    
+    // Apply casualties to attacker if they failed
+    if (attackerCasualties > 0) {
+      const participantResult = await pool.query('SELECT current_troops FROM battle_participants WHERE id = $1', [goal.participant_id]);
+      if (participantResult.rows.length > 0) {
+        const currentTroops = participantResult.rows[0].current_troops;
+        const actualCasualties = Math.max(1, Math.floor(currentTroops * (attackerCasualties / 100)));
+        if (actualCasualties > 0 && currentTroops > 0) {
+          await Battle.applyTroopCasualties(goal.participant_id, actualCasualties);
+        }
+      }
+    }
+    
     // Apply negative modifier to target if applicable
     if (goal.target_participant_id && goal.modifier_applied !== 0) {
       await pool.query(
@@ -731,6 +792,18 @@ router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res)
          WHERE id = $1`,
         [goal.target_participant_id, goal.modifier_applied]
       );
+      
+      // Apply casualties to defender if attack succeeded
+      if (defenderCasualties > 0) {
+        const targetResult = await pool.query('SELECT current_troops FROM battle_participants WHERE id = $1', [goal.target_participant_id]);
+        if (targetResult.rows.length > 0) {
+          const currentTroops = targetResult.rows[0].current_troops;
+          const actualCasualties = Math.max(1, Math.floor(currentTroops * (defenderCasualties / 100)));
+          if (actualCasualties > 0 && currentTroops > 0) {
+            await Battle.applyTroopCasualties(goal.target_participant_id, actualCasualties);
+          }
+        }
+      }
     }
     
     // Get battle to find campaign_id for socket emission
@@ -822,13 +895,16 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
     // Get final results
     const participants = await Battle.getBattleResults(id);
     
-    // Calculate team scores
+    // Calculate team scores (exclude armies with 0 troops)
     const teamScores = {};
     participants.forEach(p => {
       if (!teamScores[p.team_name]) {
         teamScores[p.team_name] = 0;
       }
-      teamScores[p.team_name] += p.current_score;
+      // Only add score if army still has troops
+      if (p.current_troops > 0) {
+        teamScores[p.team_name] += p.current_score;
+      }
     });
     
     // Determine winning team
@@ -861,6 +937,49 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
         const topOpponentTeam = opponentTeams.length > 0 ? opponentTeams[0][0] : null;
         const topOpponentScore = opponentTeams.length > 0 ? opponentTeams[0][1] : 0;
         
+        // Calculate troop casualties based on score difference
+        const winningScore = sortedTeams[0][1];
+        const losingScore = sortedTeams[sortedTeams.length - 1][1];
+        const absoluteScoreDiff = Math.abs(winningScore - losingScore);
+        let troopsLostPercent = 0;
+        
+        if (result === 'victory') {
+          // Winners: brutal casualties even for victors
+          // Decisive victory (40+ gap): 15-28%
+          // Moderate victory (25-39): 28-45%
+          // Close victory (15-24): 45-58%
+          // Narrow victory (0-14): 58-70%
+          if (absoluteScoreDiff >= 40) {
+            troopsLostPercent = Math.floor(Math.random() * 14) + 15; // 15-28%
+          } else if (absoluteScoreDiff >= 25) {
+            troopsLostPercent = Math.floor(Math.random() * 18) + 28; // 28-45%
+          } else if (absoluteScoreDiff >= 15) {
+            troopsLostPercent = Math.floor(Math.random() * 14) + 45; // 45-58%
+          } else {
+            troopsLostPercent = Math.floor(Math.random() * 13) + 58; // 58-70%
+          }
+        } else {
+          // Losers: catastrophic casualties
+          // Crushing defeat (40+ gap): 70-90%
+          // Heavy defeat (25-39): 60-75%
+          // Moderate defeat (15-24): 50-65%
+          // Close defeat (0-14): 45-60%
+          if (absoluteScoreDiff >= 40) {
+            troopsLostPercent = Math.floor(Math.random() * 21) + 70; // 70-90%
+          } else if (absoluteScoreDiff >= 25) {
+            troopsLostPercent = Math.floor(Math.random() * 16) + 60; // 60-75%
+          } else if (absoluteScoreDiff >= 15) {
+            troopsLostPercent = Math.floor(Math.random() * 16) + 50; // 50-65%
+          } else {
+            troopsLostPercent = Math.floor(Math.random() * 16) + 45; // 45-60%
+          }
+        }
+        
+        // Calculate actual troops lost from the army's total troops (not current_troops which may be 0)
+        // Use army_total_troops to ensure casualties are calculated even if troops hit 0 during battle
+        const originalTroops = participant.army_total_troops || participant.current_troops;
+        const troopsLost = Math.max(1, Math.floor(originalTroops * (troopsLostPercent / 100)));
+        
         // Get a representative opponent name
         const topOpponent = topOpponentTeam 
           ? participants.find(p => p.team_name === topOpponentTeam)
@@ -876,7 +995,8 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
             enemy_start_score: topOpponent.base_score,
             enemy_end_score: topOpponent.current_score,
             result,
-            goals_chosen: participantGoals
+            goals_chosen: participantGoals,
+            troops_lost: troopsLost
           });
         }
       }
@@ -900,6 +1020,31 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error completing battle:', error);
     res.status(500).json({ error: 'Failed to complete battle' });
+  }
+});
+
+// Update army troops (for manual adjustments)
+router.patch('/:id/troops', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { troop_change } = req.body;
+    
+    const army = await Army.findById(id);
+    if (!army) {
+      return res.status(404).json({ error: 'Army not found' });
+    }
+    
+    // Check if user owns this army or is DM
+    if (req.user.role !== 'Dungeon Master' && army.player_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    const updatedArmy = await Army.updateTroops(id, troop_change);
+    
+    res.json(updatedArmy);
+  } catch (error) {
+    console.error('Error updating troops:', error);
+    res.status(500).json({ error: 'Failed to update troops' });
   }
 });
 
