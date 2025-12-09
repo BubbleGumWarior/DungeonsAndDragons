@@ -12,262 +12,470 @@ import io from 'socket.io-client';
 // Battle Goals Data Structure
 interface BattleGoalDefinition {
   name: string;
-  category: 'Command' | 'Strategy' | 'Combat' | 'Misc';
+  category: 'Command' | 'Strategy' | 'Assault' | 'Combat' | 'Misc';
   requirement: string;
-  test_type: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | 'Attack' | 'Saving Throw';
-  army_stat: 'numbers' | 'equipment' | 'discipline' | 'morale' | 'command' | 'logistics';
+  test_type: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | 'Attack' | 'Saving Throw' | 'Combat';
+  army_stat?: 'numbers' | 'equipment' | 'discipline' | 'morale' | 'command' | 'logistics'; // Optional - some goals don't use army stats
+  uses_character_stat?: boolean; // Whether this goal uses character ability modifier
+  uses_army_stat?: boolean; // Whether this goal uses army stat modifier
   targets_enemy: boolean;
   reward: string;
   fail: string;
   description: string;
+  requires_combat?: boolean; // New field for goals requiring actual combat
 }
 
 const BATTLE_GOALS: BattleGoalDefinition[] = [
-  // Command Goals (4)
+  // Command Goals (6) - Mix of character-based and army-based leadership
   {
     name: 'Rally the Troops',
     category: 'Command',
-    requirement: 'Command ≥ 5',
+    requirement: 'None',
     test_type: 'CHA',
-    army_stat: 'command',
+    uses_character_stat: true,
+    uses_army_stat: false,
     targets_enemy: false,
     reward: '+2 to your team\'s total score',
-    fail: '-1 to your team\'s total score',
-    description: 'Inspire your forces with a rousing speech or strategic command.'
+    fail: 'No effect',
+    description: 'Use your personal charisma to inspire your forces with a rousing speech.'
   },
   {
     name: 'Coordinate Attack',
     category: 'Command',
-    requirement: 'Command ≥ 6',
+    requirement: 'None',
     test_type: 'INT',
     army_stat: 'command',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: false,
     reward: '+3 to your team\'s total score',
     fail: 'No effect',
-    description: 'Synchronize your units for a devastating combined assault.'
+    description: 'Use military command structure to synchronize units for a combined assault.'
   },
   {
     name: 'Disrupt Enemy Commands',
     category: 'Command',
-    requirement: 'Command ≥ 7',
+    requirement: 'None',
     test_type: 'WIS',
     army_stat: 'command',
+    uses_character_stat: true,
+    uses_army_stat: true,
     targets_enemy: true,
     reward: '-3 to target enemy\'s total score',
     fail: '-1 to your team\'s total score',
-    description: 'Interfere with enemy communications and sow confusion in their ranks.'
+    description: 'Combine tactical awareness with command expertise to interfere with enemy communications.'
   },
   {
     name: 'Tactical Retreat',
     category: 'Command',
-    requirement: 'Morale ≤ 4',
+    requirement: 'None',
     test_type: 'WIS',
-    army_stat: 'command',
+    army_stat: 'discipline',
+    uses_character_stat: true,
+    uses_army_stat: true,
     targets_enemy: false,
     reward: '+2 to your team, negate up to -2 penalties',
+    fail: 'No effect',
+    description: 'Use wisdom and army discipline to execute an organized withdrawal.'
+  },
+  {
+    name: 'Overwhelming Command',
+    category: 'Command',
+    requirement: 'None',
+    test_type: 'CHA',
+    army_stat: 'command',
+    uses_character_stat: true,
+    uses_army_stat: true,
+    targets_enemy: false,
+    reward: '+4 to your team\'s total score',
     fail: '-2 to your team\'s total score',
-    description: 'Execute an organized withdrawal to regroup and minimize casualties.'
+    description: 'Combine personal leadership with military authority for bold, decisive orders. High risk, high reward!'
+  },
+  {
+    name: 'Demoralize Enemy',
+    category: 'Command',
+    requirement: 'None',
+    test_type: 'CHA',
+    uses_character_stat: true,
+    uses_army_stat: false,
+    targets_enemy: true,
+    reward: '-4 to target enemy',
+    fail: '-1 to your team\'s total score',
+    description: 'Use personal intimidation to break the enemy\'s will to fight.'
   },
 
-  // Strategy Goals (5)
+  // Strategy Goals (7) - Mix of tactical planning
   {
     name: 'Flank Maneuver',
     category: 'Strategy',
-    requirement: 'Discipline ≥ 5',
+    requirement: 'None',
     test_type: 'DEX',
     army_stat: 'discipline',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: true,
     reward: '-2 to target enemy, +1 to your team',
     fail: 'No effect',
-    description: 'Position units to attack the enemy from an unexpected angle.'
+    description: 'Use army discipline to position units for a flanking attack.'
   },
   {
     name: 'Hold the Line',
     category: 'Strategy',
-    requirement: 'Discipline ≥ 6',
+    requirement: 'None',
     test_type: 'CON',
     army_stat: 'discipline',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: false,
-    reward: '+3 to your team, resist 1 enemy penalty this round',
-    fail: '-1 to your team\'s total score',
-    description: 'Maintain defensive positions against overwhelming odds.'
+    reward: '+2 to your team',
+    fail: 'No effect',
+    description: 'Army discipline maintains defensive positions against overwhelming odds.'
   },
   {
     name: 'Feint and Strike',
     category: 'Strategy',
-    requirement: 'Equipment ≥ 5',
+    requirement: 'None',
     test_type: 'DEX',
-    army_stat: 'discipline',
+    uses_character_stat: true,
+    uses_army_stat: false,
     targets_enemy: true,
     reward: '-4 to target enemy\'s total score',
     fail: '-2 to your team\'s total score',
-    description: 'Fake a retreat to draw enemies into a trap, then counterattack.'
+    description: 'Use your tactical cunning to fake a retreat and spring a trap.'
   },
   {
     name: 'Siege Tactics',
     category: 'Strategy',
-    requirement: 'Equipment ≥ 7, Numbers ≥ 6',
+    requirement: 'None',
     test_type: 'INT',
     army_stat: 'equipment',
+    uses_character_stat: true,
+    uses_army_stat: true,
     targets_enemy: true,
     reward: '-3 to target enemy, +1 to your team',
     fail: '-1 to your team\'s total score',
-    description: 'Employ siege weapons and engineering to breach enemy defenses.'
+    description: 'Combine engineering knowledge with siege equipment to breach defenses.'
   },
   {
     name: 'Rapid Deployment',
     category: 'Strategy',
-    requirement: 'Logistics ≥ 6',
+    requirement: 'None',
     test_type: 'DEX',
     army_stat: 'logistics',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: false,
-    reward: '+2 to your team, go first next round',
+    reward: '+2 to your team',
     fail: 'No effect',
-    description: 'Quickly move troops to critical positions on the battlefield.'
+    description: 'Army logistics quickly moves troops to critical positions.'
+  },
+  {
+    name: 'Fortified Defense',
+    category: 'Strategy',
+    requirement: 'None',
+    test_type: 'INT',
+    uses_character_stat: true,
+    uses_army_stat: false,
+    targets_enemy: false,
+    reward: '+3 to your team, reduce next enemy penalty by 1',
+    fail: 'No effect',
+    description: 'Use your intelligence to design strong defensive positions.'
+  },
+  {
+    name: 'Overwhelming Strategy',
+    category: 'Strategy',
+    requirement: 'None',
+    test_type: 'INT',
+    army_stat: 'command',
+    uses_character_stat: true,
+    uses_army_stat: true,
+    targets_enemy: true,
+    reward: '-5 to target enemy, +2 to your team',
+    fail: '-3 to your team\'s total score',
+    description: 'Execute a masterful tactical maneuver combining genius and military coordination. High risk, high reward!'
   },
 
-  // Combat Goals (7)
+  // Assault Goals (9) - Mix of army strength and personal prowess
   {
     name: 'Charge!',
-    category: 'Combat',
-    requirement: 'Numbers ≥ 5',
+    category: 'Assault',
+    requirement: 'None',
     test_type: 'STR',
     army_stat: 'numbers',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: true,
-    reward: '-3 to target enemy\'s total score',
-    fail: '-1 to your team\'s total score',
-    description: 'Launch a full-scale frontal assault on enemy positions.'
+    reward: '-2 to target enemy\'s total score',
+    fail: 'No effect',
+    description: 'Army numbers launch a frontal assault on enemy positions.'
   },
   {
     name: 'Concentrated Fire',
-    category: 'Combat',
-    requirement: 'Equipment ≥ 6',
+    category: 'Assault',
+    requirement: 'None',
     test_type: 'Attack',
     army_stat: 'equipment',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: true,
-    reward: '-4 to target enemy\'s total score',
-    fail: '-1 to your team\'s total score',
-    description: 'Focus all ranged attacks on a single enemy unit.'
+    reward: '-3 to target enemy\'s total score',
+    fail: 'No effect',
+    description: 'Army equipment focuses all ranged attacks on a single unit.'
   },
   {
     name: 'Berserker Rage',
-    category: 'Combat',
-    requirement: 'Morale ≥ 7',
+    category: 'Assault',
+    requirement: 'None',
     test_type: 'STR',
-    army_stat: 'morale',
+    uses_character_stat: true,
+    uses_army_stat: false,
     targets_enemy: true,
-    reward: '-5 to target enemy, -1 to your own team',
+    reward: '-6 to target enemy, -1 to your own team',
     fail: '-3 to your team\'s total score',
-    description: 'Unleash unbridled fury, sacrificing safety for devastating power.'
+    description: 'Lead your forces in unbridled fury, sacrificing safety for devastating power. High risk, high reward!'
   },
   {
     name: 'Defensive Formation',
-    category: 'Combat',
-    requirement: 'Discipline ≥ 5',
+    category: 'Assault',
+    requirement: 'None',
     test_type: 'CON',
     army_stat: 'discipline',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: false,
-    reward: '+2 to your team, reduce next enemy penalty by 2',
+    reward: '+2 to your team',
     fail: 'No effect',
-    description: 'Form shields and create a wall to protect your forces.'
+    description: 'Army discipline forms shields into a protective wall.'
   },
   {
     name: 'Ambush',
-    category: 'Combat',
-    requirement: 'Discipline ≥ 6, Equipment ≥ 5',
+    category: 'Assault',
+    requirement: 'None',
     test_type: 'DEX',
-    army_stat: 'discipline',
+    uses_character_stat: true,
+    uses_army_stat: false,
     targets_enemy: true,
     reward: '-4 to target enemy, +1 to your team',
-    fail: '-2 to your team\'s total score',
-    description: 'Set up a hidden trap and strike when the enemy is vulnerable.'
+    fail: '-1 to your team\'s total score',
+    description: 'Use your stealth to set up a hidden trap and strike when vulnerable.'
   },
   {
     name: 'Cavalry Charge',
-    category: 'Combat',
-    requirement: 'Equipment ≥ 7, Numbers ≥ 5',
+    category: 'Assault',
+    requirement: 'None',
     test_type: 'STR',
     army_stat: 'equipment',
+    uses_character_stat: true,
+    uses_army_stat: true,
     targets_enemy: true,
     reward: '-5 to target enemy\'s total score',
     fail: '-2 to your team\'s total score',
-    description: 'Mounted units crash into enemy lines with overwhelming force.'
+    description: 'Lead mounted units in a devastating charge combining personal might and cavalry equipment. High risk, high reward!'
   },
   {
     name: 'Guerrilla Tactics',
-    category: 'Combat',
-    requirement: 'Numbers ≤ 6',
+    category: 'Assault',
+    requirement: 'None',
     test_type: 'DEX',
-    army_stat: 'equipment',
+    uses_character_stat: true,
+    uses_army_stat: false,
     targets_enemy: true,
-    reward: '-3 to target enemy, can\'t be targeted next round',
-    fail: '-1 to your team\'s total score',
-    description: 'Use hit-and-run attacks to harass superior enemy forces.'
+    reward: '-3 to target enemy',
+    fail: 'No effect',
+    description: 'Use your agility to lead hit-and-run attacks harassing enemy forces.'
+  },
+  {
+    name: 'Shield Wall',
+    category: 'Assault',
+    requirement: 'None',
+    test_type: 'CON',
+    army_stat: 'equipment',
+    uses_character_stat: false,
+    uses_army_stat: true,
+    targets_enemy: false,
+    reward: '+3 to your team, resist 1 enemy penalty',
+    fail: 'No effect',
+    description: 'Army equipment forms an impenetrable defensive line with overlapping shields.'
+  },
+  {
+    name: 'All-Out Attack',
+    category: 'Assault',
+    requirement: 'None',
+    test_type: 'STR',
+    army_stat: 'numbers',
+    uses_character_stat: true,
+    uses_army_stat: true,
+    targets_enemy: true,
+    reward: '-7 to target enemy\'s total score',
+    fail: '-4 to your team\'s total score',
+    description: 'Lead everything in a devastating assault, leaving no reserves. Extremely high risk, extremely high reward!'
   },
 
-  // Miscellaneous Goals (4)
+  // Combat Goals (4) - Player character fights (character stats only)
+  {
+    name: 'Duel Enemy Commander',
+    category: 'Combat',
+    requirement: 'None',
+    test_type: 'Combat',
+    uses_character_stat: true,
+    uses_army_stat: false,
+    targets_enemy: true,
+    reward: '-6 to target enemy\'s total score',
+    fail: '-3 to your team\'s total score',
+    description: 'Challenge the enemy commander to single combat (1v1). Winner determined by actual combat in Combat Area.',
+    requires_combat: true
+  },
+  {
+    name: 'Fight Elite Guard',
+    category: 'Combat',
+    requirement: 'None',
+    test_type: 'Combat',
+    uses_character_stat: true,
+    uses_army_stat: false,
+    targets_enemy: true,
+    reward: '-5 to target enemy\'s total score',
+    fail: '-2 to your team\'s total score',
+    description: 'Engage the enemy\'s elite guards in squad combat (XvX). Winner determined by actual combat in Combat Area.',
+    requires_combat: true
+  },
+  {
+    name: 'Disable War Creature',
+    category: 'Combat',
+    requirement: 'None',
+    test_type: 'Combat',
+    uses_character_stat: true,
+    uses_army_stat: false,
+    targets_enemy: true,
+    reward: '-4 to target enemy, +2 to your team',
+    fail: '-1 to your team\'s total score',
+    description: 'Take down the enemy\'s war beast or siege creature (XvX). Winner determined by actual combat in Combat Area.',
+    requires_combat: true
+  },
+  {
+    name: 'Breach the Gates',
+    category: 'Combat',
+    requirement: 'None',
+    test_type: 'Combat',
+    uses_character_stat: true,
+    uses_army_stat: false,
+    targets_enemy: true,
+    reward: '-5 to target enemy, +1 to your team',
+    fail: '-1 to your team\'s total score',
+    description: 'Storm the enemy fortifications with a strike team (XvX). Winner determined by actual combat in Combat Area.',
+    requires_combat: true
+  },
+
+  // Miscellaneous Goals (6) - Mix of support actions
   {
     name: 'Supply Line Raid',
     category: 'Misc',
-    requirement: 'Logistics ≥ 5',
+    requirement: 'None',
     test_type: 'DEX',
-    army_stat: 'logistics',
+    uses_character_stat: true,
+    uses_army_stat: false,
     targets_enemy: true,
     reward: '-2 to target enemy, +1 to your team',
     fail: 'No effect',
-    description: 'Disrupt enemy supply chains to weaken their combat effectiveness.'
+    description: 'Use your stealth to personally raid enemy supply chains.'
   },
   {
     name: 'Fortify Position',
     category: 'Misc',
-    requirement: 'Logistics ≥ 6',
+    requirement: 'None',
     test_type: 'INT',
     army_stat: 'logistics',
+    uses_character_stat: false,
+    uses_army_stat: true,
     targets_enemy: false,
-    reward: '+3 to your team, +1 permanent defense bonus',
+    reward: '+3 to your team',
     fail: 'No effect',
-    description: 'Construct defensive works to strengthen your position.'
+    description: 'Army logistics constructs defensive works to strengthen positions.'
   },
   {
     name: 'Inspire Fear',
     category: 'Misc',
-    requirement: 'Morale ≥ 6',
+    requirement: 'None',
     test_type: 'CHA',
     army_stat: 'morale',
+    uses_character_stat: true,
+    uses_army_stat: true,
     targets_enemy: true,
     reward: '-2 to all enemies this round',
-    fail: '-1 to your team\'s total score',
-    description: 'Display overwhelming power to demoralize all enemy forces.'
+    fail: 'No effect',
+    description: 'Combine personal presence with army morale to demoralize all enemy forces.'
   },
   {
     name: 'Desperate Gambit',
     category: 'Misc',
-    requirement: 'Your team is losing by 10+',
+    requirement: 'None',
     test_type: 'Saving Throw',
-    army_stat: 'morale',
+    uses_character_stat: true,
+    uses_army_stat: false,
     targets_enemy: true,
-    reward: '-6 to target enemy, +3 to your team',
+    reward: '-7 to target enemy, +3 to your team',
     fail: '-4 to your team\'s total score',
-    description: 'Risk everything on a daring, all-or-nothing maneuver.'
+    description: 'Risk everything on a daring personal maneuver. Extremely high risk, extremely high reward!'
+  },
+  {
+    name: 'Scouting Report',
+    category: 'Misc',
+    requirement: 'None',
+    test_type: 'WIS',
+    uses_character_stat: true,
+    uses_army_stat: false,
+    targets_enemy: false,
+    reward: '+1 to your team, reveal enemy goal',
+    fail: 'No effect',
+    description: 'Use your perception to scout and gather intelligence on enemy movements.'
+  },
+  {
+    name: 'Sabotage',
+    category: 'Misc',
+    requirement: 'None',
+    test_type: 'DEX',
+    army_stat: 'discipline',
+    uses_character_stat: true,
+    uses_army_stat: true,
+    targets_enemy: true,
+    reward: '-3 to target enemy, +2 to your team',
+    fail: '-2 to your team\'s total score',
+    description: 'Lead operatives to damage enemy equipment and infrastructure.'
   }
 ];
 
-// Helper function to parse goal reward/fail text and extract modifier value
+// Helper function to parse goal reward/fail text and extract PRIMARY modifier value
 const parseGoalModifier = (text: string): number => {
-  // Match patterns like "+2", "-3", "+4 to", "-1 to your"
-  const match = text.match(/([+-]\d+)/);
-  return match ? parseInt(match[1]) : 0;
+  if (text === 'No effect') return 0;
+  
+  // Find all number patterns in the text
+  const matches = text.match(/([+-]\d+)/g);
+  if (!matches || matches.length === 0) return 0;
+  
+  // For rewards, prioritize positive bonuses to your team or negative penalties to enemies
+  // For failures, return the negative penalty
+  const numbers = matches.map(m => parseInt(m));
+  
+  // If there's only one number, use it
+  if (numbers.length === 1) return numbers[0];
+  
+  // If multiple numbers, use the one with the largest absolute value
+  // This represents the primary effect of the goal
+  return numbers.reduce((max, num) => 
+    Math.abs(num) > Math.abs(max) ? num : max
+  , numbers[0]);
 };
 
 // Helper function to get color based on modifier value
 const getModifierColor = (modifier: number): string => {
-  if (modifier >= 4) return '#22c55e'; // Strong green
+  if (modifier >= 5) return '#10b981'; // Very strong green
+  if (modifier >= 3) return '#22c55e'; // Strong green
   if (modifier >= 2) return '#4ade80'; // Green
   if (modifier >= 1) return '#86efac'; // Light green
-  if (modifier === 0) return '#ffffff'; // White
+  if (modifier === 0) return '#9ca3af'; // Gray for no effect
   if (modifier >= -1) return '#fca5a5'; // Light red
   if (modifier >= -2) return '#f87171'; // Red
-  return '#ef4444'; // Strong red
+  if (modifier >= -3) return '#ef4444'; // Strong red
+  return '#dc2626'; // Very strong red
 };
 
 // Helper function to get army category icon
@@ -2526,9 +2734,9 @@ const CampaignView: React.FC = () => {
           {/* Main Content Area */}
           <div style={{ flex: '1', minWidth: 0 }}>
 
-        {/* Campaign Content */}
-        {mainView === 'campaign' && (
-          <div>
+            {/* Campaign Content */}
+            {mainView === 'campaign' && (
+              <div>
             {/* Global Quick Actions for DM */}
             {user?.role === 'Dungeon Master' && activeBattle && activeBattle.status === 'planning' && (
               <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
@@ -3903,7 +4111,7 @@ const CampaignView: React.FC = () => {
                           }}>
                             {/* Category Tabs */}
                             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-                              {['Command', 'Strategy', 'Combat', 'Misc'].map((category) => (
+                              {['Command', 'Strategy', 'Assault', 'Combat', 'Misc'].map((category) => (
                                 <button
                                   key={category}
                                   onClick={() => setSelectedGoalCategory(category)}
@@ -3925,7 +4133,8 @@ const CampaignView: React.FC = () => {
                                 >
                                   {category === 'Command' && '👑 '}
                                   {category === 'Strategy' && '🧠 '}
-                                  {category === 'Combat' && '⚔️ '}
+                                  {category === 'Assault' && '⚔️ '}
+                                  {category === 'Combat' && '🎮 '}
                                   {category === 'Misc' && '🎲 '}
                                   {category}
                                 </button>
@@ -3942,14 +4151,16 @@ const CampaignView: React.FC = () => {
                               <h4 style={{
                                 color: selectedGoalCategory === 'Command' ? '#a78bfa' :
                                        selectedGoalCategory === 'Strategy' ? '#60a5fa' :
-                                       selectedGoalCategory === 'Combat' ? '#f87171' : '#4ade80',
+                                       selectedGoalCategory === 'Assault' ? '#f87171' :
+                                       selectedGoalCategory === 'Combat' ? '#a855f7' : '#4ade80',
                                 marginTop: 0,
                                 marginBottom: '1rem',
                                 fontSize: '1.1rem'
                               }}>
                                 {selectedGoalCategory === 'Command' && '👑 Command Goals'}
                                 {selectedGoalCategory === 'Strategy' && '🧠 Strategy Goals'}
-                                {selectedGoalCategory === 'Combat' && '⚔️ Combat Goals'}
+                                {selectedGoalCategory === 'Assault' && '⚔️ Assault Goals'}
+                                {selectedGoalCategory === 'Combat' && '🎮 Combat Goals (Player Fights)'}
                                 {selectedGoalCategory === 'Misc' && '🎲 Miscellaneous Goals'}
                               </h4>
                               <div style={{
@@ -3977,35 +4188,67 @@ const CampaignView: React.FC = () => {
                                 const userOwnsTeamMember = currentTeam?.participants.some(p => p.user_id === user?.id);
                                 const canSelect = user?.role === 'Dungeon Master' || userOwnsTeamMember;
                                 
-                                // Calculate the modifier for this goal based on current team's stats
+                                // Calculate the modifier for this goal based on user's stats
                                 let calculatedModifier = 0;
-                                if (currentTeam) {
-                                  const teamRep = currentTeam.participants[0];
+                                
+                                // Find the user's participant in this battle
+                                const userParticipant = activeBattle?.participants?.find(p => p.user_id === user?.id);
+                                
+                                if (userParticipant) {
+                                  let characterModifier = 0;
+                                  let armyModifier = 0;
                                   
-                                  // Get army stats
-                                  let armyStats;
-                                  if (teamRep.is_temporary && teamRep.temp_army_stats) {
-                                    armyStats = teamRep.temp_army_stats;
-                                  } else {
-                                    const participantArmy = armies.find(a => a.id === teamRep.army_id);
-                                    if (participantArmy) {
-                                      armyStats = {
-                                        numbers: participantArmy.numbers,
-                                        equipment: participantArmy.equipment,
-                                        discipline: participantArmy.discipline,
-                                        morale: participantArmy.morale,
-                                        command: participantArmy.command,
-                                        logistics: participantArmy.logistics
-                                      };
+                                  // Get character stats if this goal uses character stats
+                                  if (goal.uses_character_stat) {
+                                    // Find the character associated with this user in the campaign
+                                    const character = characters.find(c => c.player_id === user?.id);
+                                    if (character && character.abilities) {
+                                      // Get the ability modifier based on test_type
+                                      let abilityScore = 10; // Default
+                                      switch(goal.test_type) {
+                                        case 'STR': abilityScore = character.abilities.str || 10; break;
+                                        case 'DEX': abilityScore = character.abilities.dex || 10; break;
+                                        case 'CON': abilityScore = character.abilities.con || 10; break;
+                                        case 'INT': abilityScore = character.abilities.int || 10; break;
+                                        case 'WIS': abilityScore = character.abilities.wis || 10; break;
+                                        case 'CHA': abilityScore = character.abilities.cha || 10; break;
+                                        case 'Attack': abilityScore = character.abilities.str || 10; break; // Use STR for attacks
+                                        case 'Saving Throw': abilityScore = character.abilities.wis || 10; break; // Use WIS for saves
+                                      }
+                                      // D&D modifier calculation: (ability - 10) / 2, rounded down
+                                      characterModifier = Math.floor((abilityScore - 10) / 2);
                                     }
                                   }
                                   
-                                  if (armyStats) {
-                                    const armyStatValue = armyStats[goal.army_stat] || 5;
-                                    const armyStatModifier = armyStatValue - 5;
-                                    const characterModifier = 0; // Assume neutral for character stats
-                                    calculatedModifier = characterModifier + armyStatModifier;
+                                  // Get army stats if this goal uses army stats
+                                  if (goal.uses_army_stat && goal.army_stat) {
+                                    let armyStats;
+                                    if (userParticipant.is_temporary && userParticipant.temp_army_stats) {
+                                      armyStats = userParticipant.temp_army_stats;
+                                    } else {
+                                      const participantArmy = armies.find(a => a.id === userParticipant.army_id);
+                                      if (participantArmy) {
+                                        armyStats = {
+                                          numbers: participantArmy.numbers,
+                                          equipment: participantArmy.equipment,
+                                          discipline: participantArmy.discipline,
+                                          morale: participantArmy.morale,
+                                          command: participantArmy.command,
+                                          logistics: participantArmy.logistics
+                                        };
+                                      }
+                                    }
+                                    
+                                    if (armyStats) {
+                                      const armyStatValue = armyStats[goal.army_stat] || 1;
+                                      // Modifier is (stat - 5) since 5 is average/neutral
+                                      // Stat 1 = -4, Stat 5 = 0, Stat 10 = +5
+                                      armyModifier = armyStatValue - 5;
+                                    }
                                   }
+                                  
+                                  // Combine modifiers
+                                  calculatedModifier = characterModifier + armyModifier;
                                 }
 
                                 return (
@@ -4047,19 +4290,22 @@ const CampaignView: React.FC = () => {
                                         background: 
                                           goal.category === 'Command' ? 'rgba(168, 85, 247, 0.3)' :
                                           goal.category === 'Strategy' ? 'rgba(59, 130, 246, 0.3)' :
-                                          goal.category === 'Combat' ? 'rgba(239, 68, 68, 0.3)' :
+                                          goal.category === 'Assault' ? 'rgba(239, 68, 68, 0.3)' :
+                                          goal.category === 'Combat' ? 'rgba(168, 85, 247, 0.3)' :
                                           'rgba(34, 197, 94, 0.3)',
                                         border: `1px solid ${
                                           goal.category === 'Command' ? 'rgba(168, 85, 247, 0.5)' :
                                           goal.category === 'Strategy' ? 'rgba(59, 130, 246, 0.5)' :
-                                          goal.category === 'Combat' ? 'rgba(239, 68, 68, 0.5)' :
+                                          goal.category === 'Assault' ? 'rgba(239, 68, 68, 0.5)' :
+                                          goal.category === 'Combat' ? 'rgba(168, 85, 247, 0.5)' :
                                           'rgba(34, 197, 94, 0.5)'
                                         }`,
                                         borderRadius: '0.25rem',
                                         color: 
                                           goal.category === 'Command' ? '#a78bfa' :
                                           goal.category === 'Strategy' ? '#60a5fa' :
-                                          goal.category === 'Combat' ? '#f87171' :
+                                          goal.category === 'Assault' ? '#f87171' :
+                                          goal.category === 'Combat' ? '#a855f7' :
                                           '#4ade80'
                                       }}>
                                         {goal.category}
@@ -4075,6 +4321,21 @@ const CampaignView: React.FC = () => {
                                       {goal.description}
                                     </div>
 
+                                    {goal.requires_combat && (
+                                      <div style={{
+                                        fontSize: '0.7rem',
+                                        padding: '0.4rem 0.6rem',
+                                        background: 'rgba(168, 85, 247, 0.2)',
+                                        border: '1px solid rgba(168, 85, 247, 0.5)',
+                                        borderRadius: '0.35rem',
+                                        color: '#c4b5fd',
+                                        marginBottom: '0.5rem',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        🎮 Requires Player Combat
+                                      </div>
+                                    )}
+
                                     <div style={{
                                       fontSize: '0.7rem',
                                       color: 'var(--text-muted)',
@@ -4082,8 +4343,11 @@ const CampaignView: React.FC = () => {
                                       paddingTop: '0.5rem',
                                       borderTop: '1px solid rgba(212, 193, 156, 0.2)'
                                     }}>
-                                      <div>📋 Requirement: {goal.requirement}</div>
-                                      <div>🎲 Test: {goal.test_type} + {goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}</div>
+                                      <div>🎲 Test: {goal.test_type}
+                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && ` + Character + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
+                                        {goal.uses_character_stat && !goal.uses_army_stat && ' + Character Ability'}
+                                        {!goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && ` + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
+                                      </div>
                                       <div>🎯 Target: {goal.targets_enemy ? 'Enemy Team' : 'Your Team'}</div>
                                       <div style={{
                                         marginTop: '0.25rem',
@@ -4099,6 +4363,21 @@ const CampaignView: React.FC = () => {
                                         }}>
                                           {calculatedModifier >= 0 ? '+' : ''}{calculatedModifier}
                                         </span>
+                                        {goal.uses_character_stat && goal.uses_army_stat && (
+                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
+                                            (Char + Army)
+                                          </span>
+                                        )}
+                                        {goal.uses_character_stat && !goal.uses_army_stat && (
+                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
+                                            (Character)
+                                          </span>
+                                        )}
+                                        {!goal.uses_character_stat && goal.uses_army_stat && (
+                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
+                                            (Army)
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
 
@@ -4107,60 +4386,16 @@ const CampaignView: React.FC = () => {
                                       paddingTop: '0.5rem',
                                       borderTop: '1px solid rgba(212, 193, 156, 0.2)'
                                     }}>
-                                      {(() => {
-                                        const successModifier = parseGoalModifier(goal.reward);
-                                        const failModifier = parseGoalModifier(goal.fail);
-                                        
-                                        return (
-                                          <>
-                                            <div style={{ 
-                                              marginBottom: '0.25rem',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '0.5rem'
-                                            }}>
-                                              <span style={{ 
-                                                color: getModifierColor(successModifier),
-                                                fontWeight: 'bold',
-                                                fontSize: '0.85rem',
-                                                minWidth: '2rem',
-                                                textAlign: 'center',
-                                                padding: '0.1rem 0.3rem',
-                                                background: `${getModifierColor(successModifier)}20`,
-                                                borderRadius: '0.25rem',
-                                                border: `1px solid ${getModifierColor(successModifier)}40`
-                                              }}>
-                                                {successModifier >= 0 ? '+' : ''}{successModifier}
-                                              </span>
-                                              <span style={{ color: '#4ade80' }}>
-                                                ✓ {goal.reward}
-                                              </span>
-                                            </div>
-                                            <div style={{ 
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '0.5rem'
-                                            }}>
-                                              <span style={{ 
-                                                color: getModifierColor(failModifier),
-                                                fontWeight: 'bold',
-                                                fontSize: '0.85rem',
-                                                minWidth: '2rem',
-                                                textAlign: 'center',
-                                                padding: '0.1rem 0.3rem',
-                                                background: `${getModifierColor(failModifier)}20`,
-                                                borderRadius: '0.25rem',
-                                                border: `1px solid ${getModifierColor(failModifier)}40`
-                                              }}>
-                                                {failModifier >= 0 ? '+' : ''}{failModifier}
-                                              </span>
-                                              <span style={{ color: '#f87171' }}>
-                                                ✗ {goal.fail}
-                                              </span>
-                                            </div>
-                                          </>
-                                        );
-                                      })()}
+                                      <div style={{ marginBottom: '0.25rem' }}>
+                                        <span style={{ color: '#4ade80' }}>
+                                          ✓ {goal.reward}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span style={{ color: '#f87171' }}>
+                                          ✗ {goal.fail}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                 );
@@ -4802,9 +5037,9 @@ const CampaignView: React.FC = () => {
           </div>
         )}
 
-        {/* Character Content (existing) */}
-        {mainView === 'character' && (
-          <div>
+            {/* Character Content (existing) */}
+            {mainView === 'character' && (
+              <div>
           {/* Character Details Panel */}
           {selectedCharacterData ? (
               <div>
@@ -6170,7 +6405,7 @@ const CampaignView: React.FC = () => {
             )}
           </div>
         )}
-        {/* End of Character View */}
+            {/* End of Character View */}
 
           </div>
         </div>
@@ -8207,6 +8442,23 @@ const CampaignView: React.FC = () => {
                   {selectedGoal.description}
                 </div>
 
+                {selectedGoal.requires_combat && (
+                  <div style={{
+                    padding: '0.75rem',
+                    background: 'rgba(168, 85, 247, 0.2)',
+                    border: '2px solid rgba(168, 85, 247, 0.5)',
+                    borderRadius: '0.5rem',
+                    marginBottom: '1rem'
+                  }}>
+                    <div style={{ fontSize: '0.85rem', color: '#a855f7', fontWeight: 'bold' }}>
+                      🎮 <strong>REQUIRES PLAYER COMBAT!</strong>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#c4b5fd', marginTop: '0.5rem' }}>
+                      Players must fight in the Combat Area. DM will mark victory or defeat after combat concludes.
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
                   <strong style={{ color: 'var(--text-gold)' }}>Test:</strong>{' '}
                   <span style={{ color: 'white' }}>{selectedGoal.test_type} + {selectedGoal.army_stat}</span>
@@ -8436,7 +8688,7 @@ const CampaignView: React.FC = () => {
 
                       // Calculate modifiers
                       const characterModifier = 0; // Assume neutral (0) for character stats like INT, CHA, etc.
-                      const armyStatValue = armyStats[selectedGoal.army_stat] || 5; // Default to 5 if stat not found
+                      const armyStatValue = selectedGoal.army_stat ? (armyStats[selectedGoal.army_stat] || 5) : 5; // Default to 5 if stat not found
                       const armyStatModifier = armyStatValue - 5; // Base stat modifier
 
                       await battleAPI.setGoal(activeBattle.id, {
