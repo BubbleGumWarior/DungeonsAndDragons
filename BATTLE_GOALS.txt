@@ -109,11 +109,11 @@ STRATEGY GOALS (10)
    Category: Strategy
    Requirement: Spear
    Required Army Category: Royal Guard, Spear Wall, Pikemen
-   Test: CON + Discipline
+   Test: CON + Equipment
    Uses Character Stat: No
-   Uses Army Stat: Yes (discipline)
-   Targets Enemy: Yes
-   Reward: -4 to target enemy, +2 to your team
+   Uses Army Stat: Yes (equipment)
+   Targets Enemy: No
+   Reward: +4 to your team, resist 2 enemy penalties
    Fail: No effect
    Description: Elite spear or pike formation creates a wall of pointed death that repels enemy advances.
 
@@ -157,7 +157,7 @@ STRATEGY GOALS (10)
     Category: Strategy
     Requirement: Siege
     Required Army Category: Ballistae, Catapults, Trebuchets
-    Test: INT + Equipment
+    Test: INT or Equipment
     Uses Character Stat: Yes
     Uses Army Stat: Yes (equipment)
     Targets Enemy: Yes
@@ -169,7 +169,7 @@ STRATEGY GOALS (10)
     Category: Strategy
     Requirement: None
     Required Army Category: None
-    Test: DEX + Logistics
+    Test: DEX or Logistics
     Uses Character Stat: No
     Uses Army Stat: Yes (logistics)
     Targets Enemy: No
@@ -209,7 +209,7 @@ ASSAULT GOALS (7)
     Category: Assault
     Requirement: None
     Required Army Category: None
-    Test: STR + Numbers
+    Test: Numbers
     Uses Character Stat: No
     Uses Army Stat: Yes (numbers)
     Targets Enemy: Yes
@@ -221,7 +221,7 @@ ASSAULT GOALS (7)
     Category: Assault
     Requirement: Ranged
     Required Army Category: Longbowmen, Crossbowmen, Ballistae, Catapults
-    Test: Attack + Equipment
+    Test: Equipment
     Uses Character Stat: No
     Uses Army Stat: Yes (equipment)
     Targets Enemy: Yes
@@ -237,7 +237,7 @@ ASSAULT GOALS (7)
     Uses Character Stat: Yes
     Uses Army Stat: No
     Targets Enemy: Yes
-    Reward: -6 to target enemy, -1 to your own team
+    Reward: -8 to target enemy, -3 to your own team
     Fail: -3 to your team's total score
     Description: Lead your forces in unbridled fury, sacrificing safety for devastating power. High risk, high reward!
 
@@ -285,8 +285,8 @@ ASSAULT GOALS (7)
     Uses Character Stat: Yes
     Uses Army Stat: Yes (numbers)
     Targets Enemy: Yes
-    Reward: -7 to target enemy's total score
-    Fail: -4 to your team's total score
+    Reward: -8 to target enemy's total score
+    Fail: -5 to your team's total score
     Description: Lead everything in a devastating assault, leaving no reserves. Extremely high risk, extremely high reward!
 
 
@@ -301,8 +301,8 @@ COMBAT GOALS (4)
     Uses Character Stat: Yes
     Uses Army Stat: No
     Targets Enemy: Yes
-    Reward: -6 to target enemy's total score
-    Fail: -3 to your team's total score
+    Reward: -10 to target enemy's total score
+    Fail: -10 to your team's total score
     Requires Combat: Yes
     Description: Challenge the enemy commander to single combat (1v1). Winner determined by actual combat in Combat Area.
 
@@ -315,7 +315,7 @@ COMBAT GOALS (4)
     Uses Army Stat: No
     Targets Enemy: Yes
     Reward: -5 to target enemy's total score
-    Fail: -2 to your team's total score
+    Fail: -5 to your team's total score
     Requires Combat: Yes
     Description: Engage the enemy's elite guards in squad combat (XvX). Winner determined by actual combat in Combat Area.
 
@@ -328,7 +328,7 @@ COMBAT GOALS (4)
     Uses Army Stat: No
     Targets Enemy: Yes
     Reward: -4 to target enemy, +2 to your team
-    Fail: -1 to your team's total score
+    Fail: -2 to your team's total score
     Requires Combat: Yes
     Description: Take down the enemy's war beast or siege creature (XvX). Winner determined by actual combat in Combat Area.
 
@@ -341,7 +341,7 @@ COMBAT GOALS (4)
     Uses Army Stat: No
     Targets Enemy: Yes
     Reward: -5 to target enemy, +1 to your team
-    Fail: -1 to your team's total score
+    Fail: -2 to your team's total score
     Requires Combat: Yes
     Description: Storm the enemy fortifications with a strike team (XvX). Winner determined by actual combat in Combat Area.
 
@@ -357,7 +357,7 @@ MISCELLANEOUS GOALS (5)
     Uses Character Stat: Yes
     Uses Army Stat: No
     Targets Enemy: Yes
-    Reward: -2 to target enemy, +1 to your team
+    Reward: -3 to target enemy, +1 to your team
     Fail: No effect
     Description: Use your stealth to personally raid enemy supply chains.
 
@@ -382,7 +382,7 @@ MISCELLANEOUS GOALS (5)
     Uses Army Stat: No
     Targets Enemy: Yes
     Reward: -7 to target enemy, +3 to your team
-    Fail: -4 to your team's total score
+    Fail: -5 to your team's total score
     Description: Risk everything on a daring personal maneuver. Extremely high risk, extremely high reward!
 
 31. Scouting Report
@@ -393,7 +393,7 @@ MISCELLANEOUS GOALS (5)
     Uses Character Stat: Yes
     Uses Army Stat: No
     Targets Enemy: No
-    Reward: +1 to your team, reveal enemy goal
+    Reward: +2 to your team
     Fail: No effect
     Description: Use your perception to scout and gather intelligence on enemy movements.
 
@@ -405,7 +405,7 @@ MISCELLANEOUS GOALS (5)
     Uses Character Stat: Yes
     Uses Army Stat: Yes (discipline)
     Targets Enemy: Yes
-    Reward: -3 to target enemy, +2 to your team
+    Reward: -5 to target enemy
     Fail: -2 to your team's total score
     Description: Lead operatives to damage enemy equipment and infrastructure.
 

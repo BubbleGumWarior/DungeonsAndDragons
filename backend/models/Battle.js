@@ -7,15 +7,16 @@ class Battle {
     const {
       campaign_id,
       battle_name,
-      terrain_description = ''
+      terrain_description = '',
+      total_rounds = 5
     } = battleData;
     
     try {
       const result = await pool.query(
-        `INSERT INTO battles (campaign_id, battle_name, terrain_description, status, current_round)
-         VALUES ($1, $2, $3, 'planning', 0)
+        `INSERT INTO battles (campaign_id, battle_name, terrain_description, status, current_round, total_rounds)
+         VALUES ($1, $2, $3, 'planning', 0, $4)
          RETURNING *`,
-        [campaign_id, battle_name, terrain_description]
+        [campaign_id, battle_name, terrain_description, total_rounds]
       );
       
       return result.rows[0];
@@ -38,8 +39,11 @@ class Battle {
       
       // Get participants with character abilities
       const participantsResult = await pool.query(
-        `SELECT bp.*, a.name as army_name, a.category as army_category, a.numbers, a.equipment, a.discipline, 
-                a.morale, a.command, a.logistics, a.player_id, a.total_troops as army_total_troops,
+        `SELECT bp.*, a.name as army_name,
+                COALESCE(a.category, bp.temp_army_category, 'Swordsmen') as army_category,
+                a.numbers, a.equipment, a.discipline, 
+                a.morale, a.command, a.logistics, a.player_id, 
+                COALESCE(a.total_troops, bp.temp_army_troops) as army_total_troops,
                 u.username as player_name, u.id as user_id,
                 ch.abilities as character_abilities
          FROM battle_participants bp
@@ -158,11 +162,11 @@ class Battle {
     try {
       const result = await pool.query(
         `INSERT INTO battle_participants 
-         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_stats, position_x, position_y, base_score, current_score, current_troops, has_selected_goal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, $11, false)
+         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_troops, temp_army_stats, position_x, position_y, base_score, current_score, current_troops, has_selected_goal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, false)
          RETURNING *`,
         [battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category,
-         temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y, current_troops]
+         temp_army_troops, temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y, current_troops]
       );
       
       return result.rows[0];
@@ -369,33 +373,24 @@ class Battle {
       
       const goal = result.rows[0];
       
-      // Apply modifier to ALL participants in the team (team-based scoring)
-      if (goal.team_name && modifierApplied !== 0) {
+      // Apply positive modifier only to the army that executed the goal
+      if (goal.participant_id && modifierApplied !== 0) {
         await pool.query(
           `UPDATE battle_participants 
            SET current_score = current_score + $2
-           WHERE battle_id = $1 AND team_name = $3`,
-          [goal.battle_id, modifierApplied, goal.team_name]
+           WHERE id = $1`,
+          [goal.participant_id, modifierApplied]
         );
       }
       
-      // Apply negative modifier to target team if applicable
+      // Apply negative modifier to target army only (not entire team)
       if (goal.target_participant_id && modifierApplied !== 0) {
-        // Get the target's team name
-        const targetResult = await pool.query(
-          `SELECT team_name FROM battle_participants WHERE id = $1`,
-          [goal.target_participant_id]
+        await pool.query(
+          `UPDATE battle_participants 
+           SET current_score = current_score - $2
+           WHERE id = $1`,
+          [goal.target_participant_id, modifierApplied]
         );
-        
-        if (targetResult.rows.length > 0) {
-          const targetTeamName = targetResult.rows[0].team_name;
-          await pool.query(
-            `UPDATE battle_participants 
-             SET current_score = current_score - $2
-             WHERE battle_id = $1 AND team_name = $3`,
-            [goal.battle_id, modifierApplied, targetTeamName]
-          );
-        }
       }
       
       return goal;
@@ -414,15 +409,17 @@ class Battle {
       );
       
       for (const goal of goals.rows) {
-        // Apply modifier to the participant who chose the goal
-        await pool.query(
-          `UPDATE battle_participants 
-           SET current_score = current_score + $2
-           WHERE id = $1`,
-          [goal.participant_id, goal.modifier_applied]
-        );
+        // Apply positive modifier only to the army that executed the goal
+        if (goal.participant_id && goal.modifier_applied !== 0) {
+          await pool.query(
+            `UPDATE battle_participants 
+             SET current_score = current_score + $2
+             WHERE id = $1`,
+            [goal.participant_id, goal.modifier_applied]
+          );
+        }
         
-        // Apply negative modifier to target if applicable
+        // Apply negative modifier to target army only (not entire team)
         if (goal.target_participant_id && goal.modifier_applied !== 0) {
           await pool.query(
             `UPDATE battle_participants 

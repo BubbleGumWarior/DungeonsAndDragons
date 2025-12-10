@@ -373,10 +373,11 @@ const runMigrations = async () => {
         campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         category VARCHAR(50) DEFAULT 'Swordsmen' CHECK (category IN (
-          'Royal Guard', 'Knights', 'Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry',
+          'Royal Guard', 'Knights', 'Assassins', 'Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry',
           'Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers',
           'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers',
-          'Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'
+          'Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards',
+          'Scouts', 'Spies'
         )),
         numbers INTEGER DEFAULT 5 CHECK (numbers >= 1 AND numbers <= 10),
         equipment INTEGER DEFAULT 5 CHECK (equipment >= 1 AND equipment <= 10),
@@ -430,6 +431,7 @@ const runMigrations = async () => {
         terrain_description TEXT,
         status VARCHAR(50) DEFAULT 'planning' CHECK (status IN ('planning', 'goal_selection', 'resolution', 'completed', 'cancelled')),
         current_round INTEGER DEFAULT 0,
+        total_rounds INTEGER DEFAULT 5,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

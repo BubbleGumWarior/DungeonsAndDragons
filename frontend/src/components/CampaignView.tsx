@@ -15,15 +15,22 @@ interface BattleGoalDefinition {
   category: 'Command' | 'Strategy' | 'Assault' | 'Combat' | 'Misc';
   requirement: string;
   required_army_category?: string[]; // Optional - specific army categories required to use this goal
-  test_type: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | 'Attack' | 'Saving Throw' | 'Combat';
+  test_type: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | 'Attack' | 'Saving Throw' | 'Combat' | 'Numbers' | 'Equipment';
   army_stat?: 'numbers' | 'equipment' | 'discipline' | 'morale' | 'command' | 'logistics'; // Optional - some goals don't use army stats
   uses_character_stat?: boolean; // Whether this goal uses character ability modifier
   uses_army_stat?: boolean; // Whether this goal uses army stat modifier
+  use_highest_modifier?: boolean; // If true, takes the highest of character stat OR army stat (for "or" tests)
   targets_enemy: boolean;
   reward: string;
   fail: string;
   description: string;
   requires_combat?: boolean; // New field for goals requiring actual combat
+  min_round?: number; // Minimum round number this goal can be used (1-5)
+  max_round?: number; // Maximum round number this goal can be used (1-5)
+  only_when_losing?: boolean; // Can only be used when your team's score is not the highest
+  is_defensive?: boolean; // Defensive goal - gets bonus if targeted, penalty if not targeted
+  can_kill?: boolean; // Whether this goal can kill enemy troops
+  defensive_kill_only?: boolean; // For defensive goals - can only kill if targeted by an attack
 }
 
 const BATTLE_GOALS: BattleGoalDefinition[] = [
@@ -38,7 +45,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+2 to your team\'s total score',
     fail: 'No effect',
-    description: 'Use your personal charisma to inspire your forces with a rousing speech.'
+    description: 'Use your personal charisma to inspire your forces with a rousing speech.',
+    can_kill: false
   },
   {
     name: 'Disrupt Enemy Commands',
@@ -51,7 +59,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-3 to target enemy\'s total score',
     fail: '-1 to your team\'s total score',
-    description: 'Combine tactical awareness with command expertise to interfere with enemy communications.'
+    description: 'Combine tactical awareness with command expertise to interfere with enemy communications.',
+    can_kill: false
   },
   {
     name: 'Tactical Retreat',
@@ -64,7 +73,11 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+2 to your team, negate up to -2 penalties',
     fail: 'No effect',
-    description: 'Use wisdom and army discipline to execute an organized withdrawal.'
+    description: 'Use wisdom and army discipline to execute an organized withdrawal.',
+    min_round: 2,
+    is_defensive: true,
+    can_kill: true,
+    defensive_kill_only: true
   },
   {
     name: 'Overwhelming Command',
@@ -77,7 +90,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+4 to your team\'s total score',
     fail: '-2 to your team\'s total score',
-    description: 'Combine personal leadership with military authority for bold, decisive orders. High risk, high reward!'
+    description: 'Combine personal leadership with military authority for bold, decisive orders. High risk, high reward!',
+    can_kill: false
   },
   {
     name: 'Demoralize Enemy',
@@ -89,7 +103,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-4 to target enemy',
     fail: '-1 to your team\'s total score',
-    description: 'Use personal intimidation to break the enemy\'s will to fight.'
+    description: 'Use personal intimidation to break the enemy\'s will to fight.',
+    can_kill: false
   },
   {
     name: 'Elite Vanguard',
@@ -103,7 +118,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-6 to target enemy, +3 to your team',
     fail: '-1 to your team\'s total score',
-    description: 'Lead battle-hardened elite troops in a devastating coordinated strike that showcases their superior training and unbreakable resolve. Veterans of countless battles execute flawlessly.'
+    description: 'Lead battle-hardened elite troops in a devastating coordinated strike that showcases their superior training and unbreakable resolve. Veterans of countless battles execute flawlessly.',
+    can_kill: true
   },
 
   // Strategy Goals (9) - Mix of tactical planning
@@ -118,7 +134,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+3 to your team\'s total score',
     fail: 'No effect',
-    description: 'Use military command structure to synchronize units for a combined assault.'
+    description: 'Use military command structure to synchronize units for a combined assault.',
+    can_kill: false
   },
   {
     name: 'Shield Wall',
@@ -132,7 +149,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+4 to your team, resist 2 enemy penalties',
     fail: 'No effect',
-    description: 'Elite shield-equipped infantry forms an impenetrable defensive wall with overlapping shields.'
+    description: 'Elite shield-equipped infantry forms an impenetrable defensive wall with overlapping shields.',
+    is_defensive: true,
+    can_kill: true,
+    defensive_kill_only: true
   },
   {
     name: 'Spear Wall',
@@ -140,13 +160,16 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     requirement: 'Spear',
     required_army_category: ['Royal Guard', 'Spear Wall', 'Pikemen'],
     test_type: 'CON',
-    army_stat: 'discipline',
+    army_stat: 'equipment',
     uses_character_stat: false,
     uses_army_stat: true,
-    targets_enemy: true,
-    reward: '-4 to target enemy, +2 to your team',
+    targets_enemy: false,
+    reward: '+4 to your team, resist 2 enemy penalties',
     fail: 'No effect',
-    description: 'Elite spear or pike formation creates a wall of pointed death that repels enemy advances.'
+    description: 'Elite spear or pike formation creates a wall of pointed death that repels enemy advances.',
+    is_defensive: true,
+    can_kill: true,
+    defensive_kill_only: true
   },
   {
     name: 'Flank Maneuver',
@@ -159,7 +182,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-2 to target enemy, +1 to your team',
     fail: 'No effect',
-    description: 'Use army discipline to position units for a flanking attack.'
+    description: 'Use army discipline to position units for a flanking attack.',
+    can_kill: true
   },
   {
     name: 'Hold the Line',
@@ -172,7 +196,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+2 to your team',
     fail: 'No effect',
-    description: 'Army discipline maintains defensive positions against overwhelming odds.'
+    description: 'Army discipline maintains defensive positions against overwhelming odds.',
+    is_defensive: true,
+    can_kill: true,
+    defensive_kill_only: true
   },
   {
     name: 'Feint and Strike',
@@ -184,7 +211,9 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-4 to target enemy\'s total score',
     fail: '-2 to your team\'s total score',
-    description: 'Use your tactical cunning to fake a retreat and spring a trap.'
+    description: 'Use your tactical cunning to fake a retreat and spring a trap.',
+    min_round: 2,
+    can_kill: true
   },
   {
     name: 'Siege Tactics',
@@ -195,10 +224,12 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     army_stat: 'equipment',
     uses_character_stat: true,
     uses_army_stat: true,
+    use_highest_modifier: true,
     targets_enemy: true,
     reward: '-5 to target enemy, +2 to your team',
     fail: '-1 to your team\'s total score',
-    description: 'Combine engineering knowledge with siege equipment to shatter fortifications and enemy morale.'
+    description: 'Combine engineering knowledge with siege equipment to shatter fortifications and enemy morale.',
+    can_kill: true
   },
   {
     name: 'Rapid Deployment',
@@ -208,10 +239,12 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     army_stat: 'logistics',
     uses_character_stat: false,
     uses_army_stat: true,
+    use_highest_modifier: true,
     targets_enemy: false,
     reward: '+2 to your team',
     fail: 'No effect',
-    description: 'Army logistics quickly moves troops to critical positions.'
+    description: 'Army logistics quickly moves troops to critical positions.',
+    can_kill: false
   },
   {
     name: 'Fortified Defense',
@@ -223,7 +256,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+3 to your team, reduce next enemy penalty by 1',
     fail: 'No effect',
-    description: 'Use your intelligence to design strong defensive positions.'
+    description: 'Use your intelligence to design strong defensive positions.',
+    is_defensive: true,
+    can_kill: true,
+    defensive_kill_only: true
   },
   {
     name: 'Overwhelming Strategy',
@@ -236,7 +272,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-5 to target enemy, +2 to your team',
     fail: '-3 to your team\'s total score',
-    description: 'Execute a masterful tactical maneuver combining genius and military coordination. High risk, high reward!'
+    description: 'Execute a masterful tactical maneuver combining genius and military coordination. High risk, high reward!',
+    can_kill: false
   },
 
   // Assault Goals (7) - Mix of army strength and personal prowess
@@ -244,28 +281,30 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     name: 'Charge!',
     category: 'Assault',
     requirement: 'None',
-    test_type: 'STR',
+    test_type: 'Numbers',
     army_stat: 'numbers',
     uses_character_stat: false,
     uses_army_stat: true,
     targets_enemy: true,
     reward: '-2 to target enemy\'s total score',
     fail: 'No effect',
-    description: 'Army numbers launch a frontal assault on enemy positions.'
+    description: 'Army numbers launch a frontal assault on enemy positions.',
+    can_kill: true
   },
   {
     name: 'Concentrated Fire',
     category: 'Assault',
     requirement: 'Ranged',
     required_army_category: ['Longbowmen', 'Crossbowmen', 'Ballistae', 'Catapults'],
-    test_type: 'Attack',
+    test_type: 'Equipment',
     army_stat: 'equipment',
     uses_character_stat: false,
     uses_army_stat: true,
     targets_enemy: true,
     reward: '-5 to target enemy\'s total score',
     fail: 'No effect',
-    description: 'Ranged army focuses all projectiles on a single enemy unit with devastating precision.'
+    description: 'Ranged army focuses all projectiles on a single enemy unit with devastating precision.',
+    can_kill: true
   },
   {
     name: 'Berserker Rage',
@@ -275,9 +314,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_character_stat: true,
     uses_army_stat: false,
     targets_enemy: true,
-    reward: '-6 to target enemy, -1 to your own team',
+    reward: '-8 to target enemy, -3 to your own team',
     fail: '-3 to your team\'s total score',
-    description: 'Lead your forces in unbridled fury, sacrificing safety for devastating power. High risk, high reward!'
+    description: 'Lead your forces in unbridled fury, sacrificing safety for devastating power. High risk, high reward!',
+    can_kill: true
   },
   {
     name: 'Ambush',
@@ -289,7 +329,9 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-4 to target enemy, +1 to your team',
     fail: '-1 to your team\'s total score',
-    description: 'Use your stealth to set up a hidden trap and strike when vulnerable.'
+    description: 'Use your stealth to set up a hidden trap and strike when vulnerable.',
+    max_round: 1,
+    can_kill: true
   },
   {
     name: 'Cavalry Charge',
@@ -303,7 +345,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-7 to target enemy\'s total score',
     fail: '-2 to your team\'s total score',
-    description: 'Lead mounted cavalry in a devastating charge that shatters enemy lines. High risk, extremely high reward!'
+    description: 'Lead mounted cavalry in a devastating charge that shatters enemy lines. High risk, extremely high reward!',
+    can_kill: true
   },
   {
     name: 'Guerrilla Tactics',
@@ -315,7 +358,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: true,
     reward: '-3 to target enemy',
     fail: 'No effect',
-    description: 'Use your agility to lead hit-and-run attacks harassing enemy forces.'
+    description: 'Use your agility to lead hit-and-run attacks harassing enemy forces.',
+    can_kill: true
   },
   {
     name: 'All-Out Attack',
@@ -326,9 +370,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_character_stat: true,
     uses_army_stat: true,
     targets_enemy: true,
-    reward: '-7 to target enemy\'s total score',
-    fail: '-4 to your team\'s total score',
-    description: 'Lead everything in a devastating assault, leaving no reserves. Extremely high risk, extremely high reward!'
+    reward: '-8 to target enemy\'s total score',
+    fail: '-5 to your team\'s total score',
+    description: 'Lead everything in a devastating assault, leaving no reserves. Extremely high risk, extremely high reward!',
+    can_kill: true
   },
 
   // Combat Goals (4) - Player character fights (character stats only)
@@ -340,10 +385,11 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_character_stat: true,
     uses_army_stat: false,
     targets_enemy: true,
-    reward: '-6 to target enemy\'s total score',
-    fail: '-3 to your team\'s total score',
+    reward: '-10 to target enemy\'s total score',
+    fail: '-10 to your team\'s total score',
     description: 'Challenge the enemy commander to single combat (1v1). Winner determined by actual combat in Combat Area.',
-    requires_combat: true
+    requires_combat: true,
+    can_kill: true
   },
   {
     name: 'Fight Elite Guard',
@@ -354,9 +400,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: true,
     reward: '-5 to target enemy\'s total score',
-    fail: '-2 to your team\'s total score',
+    fail: '-5 to your team\'s total score',
     description: 'Engage the enemy\'s elite guards in squad combat (XvX). Winner determined by actual combat in Combat Area.',
-    requires_combat: true
+    requires_combat: true,
+    can_kill: true
   },
   {
     name: 'Disable War Creature',
@@ -367,9 +414,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: true,
     reward: '-4 to target enemy, +2 to your team',
-    fail: '-1 to your team\'s total score',
+    fail: '-2 to your team\'s total score',
     description: 'Take down the enemy\'s war beast or siege creature (XvX). Winner determined by actual combat in Combat Area.',
-    requires_combat: true
+    requires_combat: true,
+    can_kill: true
   },
   {
     name: 'Breach the Gates',
@@ -380,9 +428,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: true,
     reward: '-5 to target enemy, +1 to your team',
-    fail: '-1 to your team\'s total score',
+    fail: '-2 to your team\'s total score',
     description: 'Storm the enemy fortifications with a strike team (XvX). Winner determined by actual combat in Combat Area.',
-    requires_combat: true
+    requires_combat: true,
+    can_kill: true
   },
 
   // Miscellaneous Goals (5) - Mix of support actions
@@ -394,9 +443,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_character_stat: true,
     uses_army_stat: false,
     targets_enemy: true,
-    reward: '-2 to target enemy, +1 to your team',
+    reward: '-3 to target enemy, +1 to your team',
     fail: 'No effect',
-    description: 'Use your stealth to personally raid enemy supply chains.'
+    description: 'Use your stealth to personally raid enemy supply chains.',
+    can_kill: false
   },
   {
     name: 'Fortify Position',
@@ -409,7 +459,8 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     targets_enemy: false,
     reward: '+3 to your team',
     fail: 'No effect',
-    description: 'Army logistics constructs defensive works to strengthen positions.'
+    description: 'Army logistics constructs defensive works to strengthen positions.',
+    can_kill: false
   },
   {
     name: 'Desperate Gambit',
@@ -420,8 +471,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: true,
     reward: '-7 to target enemy, +3 to your team',
-    fail: '-4 to your team\'s total score',
-    description: 'Risk everything on a daring personal maneuver. Extremely high risk, extremely high reward!'
+    fail: '-5 to your team\'s total score',
+    description: 'Risk everything on a daring personal maneuver. Extremely high risk, extremely high reward!',
+    only_when_losing: true,
+    can_kill: true
   },
   {
     name: 'Scouting Report',
@@ -431,9 +484,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_character_stat: true,
     uses_army_stat: false,
     targets_enemy: false,
-    reward: '+1 to your team, reveal enemy goal',
+    reward: '+2 to your team',
     fail: 'No effect',
-    description: 'Use your perception to scout and gather intelligence on enemy movements.'
+    description: 'Use your perception to scout and gather intelligence on enemy movements.',
+    can_kill: false
   },
   {
     name: 'Sabotage',
@@ -444,9 +498,10 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_character_stat: true,
     uses_army_stat: true,
     targets_enemy: true,
-    reward: '-3 to target enemy, +2 to your team',
+    reward: '-5 to target enemy',
     fail: '-2 to your team\'s total score',
-    description: 'Lead operatives to damage enemy equipment and infrastructure.'
+    description: 'Lead operatives to damage enemy equipment and infrastructure.',
+    can_kill: false
   }
 ];
 
@@ -490,6 +545,7 @@ const getArmyCategoryIcon = (category: string): string => {
   const iconMap: Record<string, string> = {
     // Elite
     'Royal Guard': '👑',
+    'Assassins': '🗡️',
     // Infantry
     'Swordsmen': '⚔️',
     'Shield Wall': '🛡️',
@@ -512,18 +568,82 @@ const getArmyCategoryIcon = (category: string): string => {
     'Trebuchets': '🏰',
     'Ballistae': '🎯',
     'Siege Towers': '🗼',
-    'Bombards': '💥'
+    'Bombards': '💥',
+    // Specialists
+    'Scouts': '👁️',
+    'Spies': '🕵️'
   };
   return iconMap[category] || '⚔️';
 };
 
 // Army categories organized by type
 const ARMY_CATEGORIES = {
-  'Elite': ['Royal Guard', 'Knights'],
+  'Elite': ['Royal Guard', 'Knights', 'Assassins'],
   'Infantry': ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry'],
   'Archers': ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'],
   'Cavalry': ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers'],
-  'Artillery': ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards']
+  'Artillery': ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'],
+  'Specialists': ['Scouts', 'Spies']
+};
+
+// Stat presets for army categories (power scale: 1=weakest, 10=strongest)
+const getArmyCategoryPresets = (category: string): { equipment: number; discipline: number; morale: number; command: number; logistics: number } => {
+  const presets: Record<string, { equipment: number; discipline: number; morale: number; command: number; logistics: number }> = {
+    // Elite Units - Strongest (8-9)
+    'Royal Guard': { equipment: 9, discipline: 9, morale: 9, command: 8, logistics: 7 },
+    'Knights': { equipment: 9, discipline: 8, morale: 8, command: 7, logistics: 6 },
+    'Assassins': { equipment: 8, discipline: 9, morale: 7, command: 6, logistics: 8 },
+    
+    // Heavy Infantry - Strong (6-7)
+    'Swordsmen': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 5 },
+    'Shield Wall': { equipment: 7, discipline: 8, morale: 7, command: 6, logistics: 5 },
+    'Spear Wall': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
+    'Pikemen': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
+    'Heavy Infantry': { equipment: 7, discipline: 7, morale: 7, command: 5, logistics: 5 },
+    
+    // Light Infantry - Average (4-5)
+    'Light Infantry': { equipment: 4, discipline: 5, morale: 5, command: 4, logistics: 6 },
+    
+    // Archers - Medium (5-6)
+    'Longbowmen': { equipment: 6, discipline: 6, morale: 5, command: 5, logistics: 5 },
+    'Crossbowmen': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
+    'Skirmishers': { equipment: 4, discipline: 4, morale: 5, command: 4, logistics: 7 },
+    'Mounted Archers': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 6 },
+    
+    // Cavalry - Strong to Very Strong (6-8)
+    'Shock Cavalry': { equipment: 8, discipline: 7, morale: 8, command: 6, logistics: 5 },
+    'Heavy Cavalry': { equipment: 8, discipline: 7, morale: 7, command: 6, logistics: 5 },
+    'Light Cavalry': { equipment: 5, discipline: 6, morale: 6, command: 5, logistics: 7 },
+    'Lancers': { equipment: 7, discipline: 7, morale: 7, command: 6, logistics: 5 },
+    
+    // Artillery - Specialized (5-7)
+    'Catapults': { equipment: 7, discipline: 5, morale: 5, command: 6, logistics: 4 },
+    'Trebuchets': { equipment: 8, discipline: 6, morale: 5, command: 6, logistics: 4 },
+    'Ballistae': { equipment: 7, discipline: 6, morale: 5, command: 6, logistics: 5 },
+    'Siege Towers': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 4 },
+    'Bombards': { equipment: 8, discipline: 5, morale: 5, command: 6, logistics: 3 },
+    
+    // Specialists - Varied (4-7)
+    'Scouts': { equipment: 4, discipline: 6, morale: 6, command: 5, logistics: 8 },
+    'Spies': { equipment: 5, discipline: 7, morale: 6, command: 4, logistics: 7 }
+  };
+  
+  return presets[category] || { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
+};
+
+// Get army movement speed based on category (in feet for battlefield display)
+// Note: Battlefield distances are 10x combat (50ft on battlefield = 5ft in combat)
+const getArmyMovementSpeed = (category: string): number => {
+  // Artillery: 50ft per round
+  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
+  if (artilleryTypes.includes(category)) return 50;
+  
+  // Cavalry: 300ft per round
+  const cavalryTypes = ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Knights', 'Mounted Archers'];
+  if (cavalryTypes.includes(category)) return 300;
+  
+  // Infantry and others: 100ft per round
+  return 100;
 };
 
 const CampaignView: React.FC = () => {
@@ -589,7 +709,9 @@ const CampaignView: React.FC = () => {
   const [characterPositions, setCharacterPositions] = useState<Record<number, { x: number; y: number }>>({});
   const [battlePositions, setBattlePositions] = useState<Record<number, { x: number; y: number }>>({});
   const [remainingMovement, setRemainingMovement] = useState<Record<number, number>>({});
+  const [remainingArmyMovement, setRemainingArmyMovement] = useState<Record<number, number>>({});
   const [draggedCharacter, setDraggedCharacter] = useState<number | null>(null);
+  const [draggedArmyParticipant, setDraggedArmyParticipant] = useState<number | null>(null);
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
   const [currentDragPosition, setCurrentDragPosition] = useState<{ x: number; y: number } | null>(null);
 
@@ -648,7 +770,8 @@ const CampaignView: React.FC = () => {
   });
   const [newBattleData, setNewBattleData] = useState({
     name: '',
-    terrain_description: ''
+    terrain_description: '',
+    total_rounds: 5
   });
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false);
   const [selectedGoalCategory, setSelectedGoalCategory] = useState<string>('Command');
@@ -860,6 +983,24 @@ const CampaignView: React.FC = () => {
     }
   }, [currentCampaign]);
 
+  // Initialize army movement speeds when battle starts or participants change
+  useEffect(() => {
+    if (activeBattle && activeBattle.participants) {
+      // Only initialize if we don't have movement data for this battle's participants
+      const needsInit = activeBattle.participants.some(p => remainingArmyMovement[p.id] === undefined);
+      if (needsInit) {
+        const armyMovement: Record<number, number> = {};
+        activeBattle.participants.forEach(participant => {
+          const category = participant.temp_army_category || participant.army_category || 'Swordsmen';
+          const speed = getArmyMovementSpeed(category);
+          console.log(`Initializing movement for participant ${participant.id}: category="${category}", speed=${speed}ft`);
+          armyMovement[participant.id] = speed;
+        });
+        setRemainingArmyMovement(prev => ({ ...prev, ...armyMovement }));
+      }
+    }
+  }, [activeBattle?.id, activeBattle?.participants?.length]);
+
   // Auto-select character for players, first character for DMs
   useEffect(() => {
     if (currentCampaign) {
@@ -951,14 +1092,16 @@ const CampaignView: React.FC = () => {
       const createdBattle = await battleAPI.createBattle({
         campaign_id: currentCampaign.campaign.id,
         battle_name: newBattleData.name,
-        terrain_description: newBattleData.terrain_description
+        terrain_description: newBattleData.terrain_description,
+        total_rounds: newBattleData.total_rounds
       });
 
       setActiveBattle(createdBattle);
       setShowBattleSetupModal(false);
       setNewBattleData({
         name: '',
-        terrain_description: ''
+        terrain_description: '',
+        total_rounds: 5
       });
       setToastMessage(`Battle "${createdBattle.battle_name}" created!`);
       setTimeout(() => setToastMessage(null), 3000);
@@ -1414,6 +1557,7 @@ const CampaignView: React.FC = () => {
         participantId: number;
         x: number;
         y: number;
+        remainingMovement?: number;
         timestamp: string;
       }) => {
         console.log('📍 Received battlefield participant movement:', data);
@@ -1429,6 +1573,14 @@ const CampaignView: React.FC = () => {
             )
           };
         });
+        
+        // Update remaining movement if provided
+        if (data.remainingMovement !== undefined) {
+          setRemainingArmyMovement(prev => ({
+            ...prev,
+            [data.participantId]: data.remainingMovement!
+          }));
+        }
       });
 
       // Listen for battle combat sync (server sends combat state on join)
@@ -3607,7 +3759,7 @@ const CampaignView: React.FC = () => {
                             {activeBattle.status.replace('_', ' ')}
                           </div>
                           <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                            Round {activeBattle.current_round} / 5
+                            Round {activeBattle.current_round} / {activeBattle.total_rounds || 5}
                           </div>
                         </div>
                       </div>
@@ -3733,6 +3885,16 @@ const CampaignView: React.FC = () => {
                                   await battleAPI.updateStatus(activeBattle.id, 'goal_selection');
                                   const updated = await battleAPI.getBattle(activeBattle.id);
                                   setActiveBattle(updated);
+                                  
+                                  // Reset all army movement for the new round
+                                  const armyMovement: Record<number, number> = {};
+                                  updated.participants?.forEach(participant => {
+                                    const category = participant.temp_army_category || participant.army_category || 'Swordsmen';
+                                    const speed = getArmyMovementSpeed(category);
+                                    console.log(`Round ${updated.current_round} - Resetting movement for participant ${participant.id}: category="${category}", speed=${speed}ft`);
+                                    armyMovement[participant.id] = speed;
+                                  });
+                                  setRemainingArmyMovement(armyMovement);
                                 } catch (error) {
                                   console.error('Error advancing round:', error);
                                 }
@@ -3856,15 +4018,47 @@ const CampaignView: React.FC = () => {
                       onDragOver={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        
+                        // Update current drag position for line drawing
+                        if (draggedArmyParticipant !== null) {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = ((e.clientX - rect.left) / rect.width) * 100;
+                          const y = ((e.clientY - rect.top) / rect.height) * 100;
+                          setCurrentDragPosition({ x, y });
+                        }
                       }}
                       onDrop={async (e) => {
                         e.preventDefault();
                         const participantId = parseInt(e.dataTransfer.getData('participantId'));
-                        if (!participantId) return;
+                        const startX = parseFloat(e.dataTransfer.getData('startX'));
+                        const startY = parseFloat(e.dataTransfer.getData('startY'));
+                        
+                        if (!participantId || isNaN(startX) || isNaN(startY)) return;
                         
                         const rect = e.currentTarget.getBoundingClientRect();
                         const x = ((e.clientX - rect.left) / rect.width) * 100;
                         const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+                        // Calculate distance moved in percentage points
+                        const deltaX = x - startX;
+                        const deltaY = y - startY;
+                        const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                        
+                        // Convert percentage distance to feet
+                        // Battlefield map is 1000ft x 1000ft, so 1% = 10ft
+                        const distanceFeet = distancePercent * 10;
+                        
+                        const participant = activeBattle.participants?.find(p => p.id === participantId);
+                        if (!participant) return;
+                        
+                        const currentRemaining = remainingArmyMovement[participantId] ?? 0;
+                        const isDM = user?.role === 'Dungeon Master';
+                        
+                        // Check if army has enough movement (only enforce for non-DMs)
+                        // Just prevent the move without alert - visual feedback shows red indicator
+                        if (!isDM && distanceFeet > currentRemaining) {
+                          return;
+                        }
 
                         // Update local state immediately for smooth UX
                         setActiveBattle(prev => {
@@ -3879,6 +4073,13 @@ const CampaignView: React.FC = () => {
                           };
                         });
 
+                        // Decrease remaining movement (can go negative if DM overrides)
+                        const newRemaining = currentRemaining - distanceFeet;
+                        setRemainingArmyMovement(prev => ({
+                          ...prev,
+                          [participantId]: isDM ? currentRemaining : Math.max(0, newRemaining)
+                        }));
+
                         // Emit to other users via Socket.IO
                         if (socket && currentCampaign) {
                           socket.emit('battlefieldParticipantMove', {
@@ -3886,7 +4087,8 @@ const CampaignView: React.FC = () => {
                             battleId: activeBattle.id,
                             participantId,
                             x,
-                            y
+                            y,
+                            remainingMovement: isDM ? currentRemaining : Math.max(0, newRemaining)
                           });
                         }
 
@@ -3925,10 +4127,68 @@ const CampaignView: React.FC = () => {
                             pointerEvents: 'none'
                           }} />
 
+                          {/* Drag distance line */}
+                          {draggedArmyParticipant !== null && dragStartPosition && currentDragPosition && 
+                           !isNaN(dragStartPosition.x) && !isNaN(dragStartPosition.y) && 
+                           !isNaN(currentDragPosition.x) && !isNaN(currentDragPosition.y) && (() => {
+                            const deltaX = currentDragPosition.x - dragStartPosition.x;
+                            const deltaY = currentDragPosition.y - dragStartPosition.y;
+                            const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                            const distanceFeet = Math.round(distancePercent * 10);
+                            
+                            const participant = activeBattle.participants?.find(p => p.id === draggedArmyParticipant);
+                            const currentRemaining = remainingArmyMovement[draggedArmyParticipant] ?? 0;
+                            const isDM = user?.role === 'Dungeon Master';
+                            const hasEnoughMovement = isDM || distanceFeet <= currentRemaining;
+                            
+                            const midX = (dragStartPosition.x + currentDragPosition.x) / 2;
+                            const midY = (dragStartPosition.y + currentDragPosition.y) / 2;
+                            
+                            // Extra safety check
+                            if (isNaN(midX) || isNaN(midY)) return null;
+                            
+                            return (
+                              <svg style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                pointerEvents: 'none',
+                                zIndex: 1000
+                              }}>
+                                <line
+                                  x1={`${dragStartPosition.x}%`}
+                                  y1={`${dragStartPosition.y}%`}
+                                  x2={`${currentDragPosition.x}%`}
+                                  y2={`${currentDragPosition.y}%`}
+                                  stroke={hasEnoughMovement ? '#4ade80' : '#ef4444'}
+                                  strokeWidth="3"
+                                  strokeDasharray="5,5"
+                                />
+                                <text
+                                  x={`${midX}%`}
+                                  y={`${midY}%`}
+                                  fill={hasEnoughMovement ? '#4ade80' : '#ef4444'}
+                                  fontSize="16"
+                                  fontWeight="bold"
+                                  textAnchor="middle"
+                                  style={{
+                                    textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.9)'
+                                  }}
+                                >
+                                  {distanceFeet}ft
+                                </text>
+                              </svg>
+                            );
+                          })()}
+
                           {/* Army positions */}
                           {activeBattle.participants && activeBattle.participants.map((participant) => {
                             const canDrag = user?.role === 'Dungeon Master' || (participant.user_id === user?.id && !participant.is_temporary);
                             const factionColor = participant.faction_color || (participant.team_name === 'A' ? '#3b82f6' : '#ef4444');
+                            const hasMovement = (remainingArmyMovement[participant.id] ?? 0) > 0;
+                            const isDM = user?.role === 'Dungeon Master';
                             
                             // Get the army category and icon
                             let armyCategory = 'Swordsmen';
@@ -3955,6 +4215,20 @@ const CampaignView: React.FC = () => {
                                 }
                                 e.dataTransfer.effectAllowed = 'move';
                                 e.dataTransfer.setData('participantId', participant.id.toString());
+                                // Store starting position for distance calculation
+                                e.dataTransfer.setData('startX', (participant.position_x || 50).toString());
+                                e.dataTransfer.setData('startY', (participant.position_y || 50).toString());
+                                
+                                // Set drag state for line drawing
+                                setDraggedArmyParticipant(participant.id);
+                                setDragStartPosition({ x: participant.position_x || 50, y: participant.position_y || 50 });
+                                setCurrentDragPosition({ x: participant.position_x || 50, y: participant.position_y || 50 });
+                              }}
+                              onDragEnd={() => {
+                                // Clear drag state
+                                setDraggedArmyParticipant(null);
+                                setDragStartPosition(null);
+                                setCurrentDragPosition(null);
                               }}
                               style={{
                                 position: 'absolute',
@@ -3964,14 +4238,16 @@ const CampaignView: React.FC = () => {
                                 width: '90px',
                                 height: '90px',
                                 background: `linear-gradient(135deg, ${factionColor}ee, ${factionColor}cc)`,
-                                border: `4px solid ${factionColor}`,
+                                border: (!isDM && !hasMovement) ? '4px solid #ef4444' : `4px solid ${factionColor}`,
                                 borderRadius: '50%',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 cursor: canDrag ? 'move' : 'default',
-                                boxShadow: `0 4px 12px ${factionColor}80, 0 0 20px ${factionColor}40`,
+                                boxShadow: (!isDM && !hasMovement) 
+                                  ? '0 4px 12px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6)'
+                                  : `0 4px 12px ${factionColor}80, 0 0 20px ${factionColor}40`,
                                 transition: 'transform 0.2s',
                                 opacity: canDrag ? 1 : 0.7
                               }}
@@ -4023,6 +4299,25 @@ const CampaignView: React.FC = () => {
                                   👥 {participant.current_troops.toLocaleString()}
                                 </div>
                               )}
+                              
+                              {/* Movement indicator */}
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '-8px',
+                                background: remainingArmyMovement[participant.id] > 0 ? '#4ade80' : '#888',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontSize: '0.65rem',
+                                fontWeight: 'bold',
+                                color: 'white',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                                border: '2px solid white',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title={`Movement: ${(remainingArmyMovement[participant.id] || 0).toFixed(0)}ft remaining`}
+                              >
+                                🏃 {(remainingArmyMovement[participant.id] || 0).toFixed(0)}ft
+                              </div>
                             </div>
                           );})}
 
@@ -4495,6 +4790,8 @@ const CampaignView: React.FC = () => {
                                 // Check if goal is locked based on army category requirement
                                 let isLocked = false;
                                 let lockReason = '';
+                                
+                                // Check army category requirement
                                 if (goal.required_army_category && executorParticipant) {
                                   // Get the army category for the selected executor
                                   let armyCategory: string | undefined;
@@ -4509,6 +4806,37 @@ const CampaignView: React.FC = () => {
                                   if (!armyCategory || !goal.required_army_category.includes(armyCategory)) {
                                     isLocked = true;
                                     lockReason = `Requires ${goal.required_army_category.join(' or ')} army`;
+                                  }
+                                }
+                                
+                                // Check round restrictions
+                                if (!isLocked && activeBattle?.current_round) {
+                                  if (goal.min_round && activeBattle.current_round < goal.min_round) {
+                                    isLocked = true;
+                                    lockReason = `Only available from round ${goal.min_round} onwards`;
+                                  } else if (goal.max_round && activeBattle.current_round > goal.max_round) {
+                                    isLocked = true;
+                                    lockReason = `Only available in round ${goal.max_round}`;
+                                  }
+                                }
+                                
+                                // Check if losing requirement (only when your team's score is not the highest)
+                                if (!isLocked && goal.only_when_losing && currentTeam && activeBattle?.participants) {
+                                  // Calculate team scores
+                                  const teamScores: Record<string, number> = {};
+                                  activeBattle.participants.forEach(p => {
+                                    if (!teamScores[p.team_name]) {
+                                      teamScores[p.team_name] = 0;
+                                    }
+                                    teamScores[p.team_name] += p.current_score || 0;
+                                  });
+                                  
+                                  const currentTeamScore = teamScores[currentTeam.name] || 0;
+                                  const highestScore = Math.max(...Object.values(teamScores));
+                                  
+                                  if (currentTeamScore >= highestScore) {
+                                    isLocked = true;
+                                    lockReason = 'Only available when your team is losing';
                                   }
                                 }
                                 
@@ -4582,7 +4910,13 @@ const CampaignView: React.FC = () => {
                                   }
                                   
                                   // Combine modifiers
-                                  calculatedModifier = characterModifier + armyModifier;
+                                  // If use_highest_modifier is true, take the highest of character or army modifier
+                                  // Otherwise, add them together
+                                  if (goal.use_highest_modifier) {
+                                    calculatedModifier = Math.max(characterModifier, armyModifier);
+                                  } else {
+                                    calculatedModifier = characterModifier + armyModifier;
+                                  }
                                 }
 
                                 return (
@@ -4668,6 +5002,24 @@ const CampaignView: React.FC = () => {
                                       </div>
                                     )}
 
+                                    {/* Defensive Goal Badge */}
+                                    {goal.is_defensive && (
+                                      <div style={{
+                                        fontSize: '0.75rem',
+                                        padding: '0.5rem 0.75rem',
+                                        background: 'rgba(59, 130, 246, 0.2)',
+                                        border: '1px solid rgba(59, 130, 246, 0.5)',
+                                        borderRadius: '0.5rem',
+                                        color: '#60a5fa',
+                                        marginBottom: '1rem',
+                                        fontWeight: 'bold',
+                                        display: 'inline-block',
+                                        marginLeft: goal.requires_combat ? '0.5rem' : '0'
+                                      }}>
+                                        🛡️ Defensive Goal
+                                      </div>
+                                    )}
+
                                     {/* Army Category Requirement */}
                                     {goal.required_army_category && (
                                       <div style={{
@@ -4709,8 +5061,10 @@ const CampaignView: React.FC = () => {
                                         fontWeight: 'bold'
                                       }}>
                                         {goal.test_type}
-                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && 
+                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && !goal.use_highest_modifier && 
                                           ` + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
+                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && goal.use_highest_modifier && 
+                                          ` or ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
                                         {!goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && 
                                           ` (${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)})`}
                                       </div>
@@ -4876,7 +5230,7 @@ const CampaignView: React.FC = () => {
                                     </div>
 
                                     {/* Failure Effect */}
-                                    <div>
+                                    <div style={{ marginBottom: goal.is_defensive ? '0.75rem' : '0' }}>
                                       <div style={{
                                         fontSize: '0.75rem',
                                         color: 'var(--text-muted)',
@@ -4898,6 +5252,25 @@ const CampaignView: React.FC = () => {
                                         ✗ {goal.fail}
                                       </div>
                                     </div>
+
+                                    {/* Defensive Mechanic Explanation */}
+                                    {goal.is_defensive && (
+                                      <div style={{
+                                        padding: '0.75rem',
+                                        background: 'rgba(59, 130, 246, 0.1)',
+                                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                                        borderRadius: '0.5rem',
+                                        fontSize: '0.75rem',
+                                        color: '#93c5fd',
+                                        lineHeight: '1.5'
+                                      }}>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: '#60a5fa' }}>
+                                          🛡️ Defensive Goal Mechanic:
+                                        </div>
+                                        <div>• If an enemy targets you with an aggressive goal: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>+3 bonus</span> to your roll</div>
+                                        <div>• If no enemy targets you: <span style={{ color: '#fca5a5', fontWeight: 'bold' }}>-2 penalty</span> to your roll</div>
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -5220,8 +5593,21 @@ const CampaignView: React.FC = () => {
                                         const total = (goal.dice_roll || 0) + goal.character_modifier + goal.army_stat_modifier;
                                         const success = total >= dc;
                                         
-                                        // Calculate modifier based on goal outcome (placeholder logic)
-                                        const modifier = success ? 2 : -1;
+                                        // Find the goal definition to get reward/fail values
+                                        const goalDef = BATTLE_GOALS.find(g => g.name === goal.goal_name);
+                                        
+                                        // Calculate modifier based on success/failure
+                                        let modifier = 0;
+                                        if (goalDef) {
+                                          if (success) {
+                                            modifier = parseGoalModifier(goalDef.reward);
+                                          } else {
+                                            modifier = parseGoalModifier(goalDef.fail);
+                                          }
+                                        } else {
+                                          // Fallback if goal not found
+                                          modifier = success ? 2 : -1;
+                                        }
                                         
                                         await battleAPI.resolveGoal(goal.id, dc, success, modifier, total);
                                         const updated = await battleAPI.getBattle(activeBattle.id);
@@ -8697,7 +9083,10 @@ const CampaignView: React.FC = () => {
                 </label>
                 <select
                   value={newArmyData.category || 'Swordsmen'}
-                  onChange={(e) => setNewArmyData({ ...newArmyData, category: e.target.value })}
+                  onChange={(e) => {
+                    const presets = getArmyCategoryPresets(e.target.value);
+                    setNewArmyData({ ...newArmyData, category: e.target.value, ...presets });
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
@@ -8720,6 +9109,9 @@ const CampaignView: React.FC = () => {
                     </optgroup>
                   ))}
                 </select>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                  Stats are prefilled based on army type, but you can customize them below
+                </div>
               </div>
 
               {/* Army Stats (all default to 5) */}
@@ -8956,6 +9348,32 @@ const CampaignView: React.FC = () => {
                 />
               </div>
 
+              {/* Total Rounds */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Number of Rounds *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={newBattleData.total_rounds}
+                  onChange={(e) => setNewBattleData({ ...newBattleData, total_rounds: parseInt(e.target.value) || 5 })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'white',
+                    fontSize: '1rem'
+                  }}
+                />
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                  Each round, teams select goals and engage in combat. Default is 5 rounds.
+                </div>
+              </div>
+
               {/* Info Box */}
               <div style={{ 
                 background: 'rgba(59, 130, 246, 0.1)', 
@@ -8968,7 +9386,7 @@ const CampaignView: React.FC = () => {
               }}>
                 <div style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>ℹ️ Battle Flow</div>
                 <div>1. <strong>Planning Phase:</strong> Add participants and set up teams</div>
-                <div>2. <strong>Goal Selection:</strong> Each team picks 1 goal per round (5 rounds)</div>
+                <div>2. <strong>Goal Selection:</strong> Each team picks 1 goal per round</div>
                 <div>3. <strong>Resolution:</strong> Roll dice, apply modifiers, DM judges outcomes</div>
                 <div>4. <strong>Completion:</strong> Final scores determine winner, history saved</div>
               </div>
@@ -8980,7 +9398,8 @@ const CampaignView: React.FC = () => {
                     setShowBattleSetupModal(false);
                     setNewBattleData({
                       name: '',
-                      terrain_description: ''
+                      terrain_description: '',
+                      total_rounds: 5
                     });
                   }}
                   style={{
@@ -9787,7 +10206,14 @@ const CampaignView: React.FC = () => {
                 </label>
                 <select
                   value={newParticipantData.tempArmyCategory || 'Swordsmen'}
-                  onChange={(e) => setNewParticipantData({ ...newParticipantData, tempArmyCategory: e.target.value })}
+                  onChange={(e) => {
+                    const presets = getArmyCategoryPresets(e.target.value);
+                    setNewParticipantData({ 
+                      ...newParticipantData, 
+                      tempArmyCategory: e.target.value,
+                      tempArmyStats: presets
+                    });
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
@@ -9810,6 +10236,9 @@ const CampaignView: React.FC = () => {
                     </optgroup>
                   ))}
                 </select>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                  Stats are prefilled based on army type, but you can customize them below
+                </div>
               </div>
 
                   <div style={{ marginBottom: '1.5rem' }}>

@@ -500,6 +500,7 @@ export interface Battle {
   terrain_description: string;
   status: 'planning' | 'goal_selection' | 'resolution' | 'completed' | 'cancelled';
   current_round: number;
+  total_rounds?: number;
   created_at: string;
   updated_at: string;
   participants?: BattleParticipant[];
@@ -529,6 +530,7 @@ export interface BattleParticipant {
   position_y: number;
   has_selected_goal?: boolean;
   army_name?: string;
+  army_category?: string;
   player_name?: string;
   user_id?: number;
   current_troops?: number;

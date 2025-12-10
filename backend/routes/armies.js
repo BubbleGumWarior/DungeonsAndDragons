@@ -220,7 +220,7 @@ router.get('/:id/history', authenticateToken, async (req, res) => {
 // Create a new battle (DM only)
 router.post('/battles', authenticateToken, async (req, res) => {
   try {
-    const { campaign_id, battle_name, terrain_description } = req.body;
+    const { campaign_id, battle_name, terrain_description, total_rounds } = req.body;
     
     if (!campaign_id || !battle_name) {
       return res.status(400).json({ error: 'campaign_id and battle_name are required' });
@@ -239,7 +239,8 @@ router.post('/battles', authenticateToken, async (req, res) => {
     const battle = await Battle.create({
       campaign_id,
       battle_name,
-      terrain_description
+      terrain_description,
+      total_rounds: total_rounds || 5
     });
     
     // Emit socket event
@@ -719,14 +720,6 @@ router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res)
     
     const goal = await Battle.resolveGoal(goalId, dc_required, success, modifier_applied);
     
-    // Immediately apply the modifier for this goal
-    await pool.query(
-      `UPDATE battle_participants 
-       SET current_score = current_score + $2
-       WHERE id = $1`,
-      [goal.participant_id, goal.modifier_applied]
-    );
-    
     // Apply troop casualties based on margin of success/failure
     let attackerCasualties = 0;
     let defenderCasualties = 0;
@@ -774,34 +767,32 @@ router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res)
     
     // Apply casualties to attacker if they failed
     if (attackerCasualties > 0) {
-      const participantResult = await pool.query('SELECT current_troops FROM battle_participants WHERE id = $1', [goal.participant_id]);
+      const participantResult = await pool.query(
+        'SELECT current_troops, COALESCE(a.total_troops, bp.temp_army_troops) as max_troops FROM battle_participants bp LEFT JOIN armies a ON bp.army_id = a.id WHERE bp.id = $1', 
+        [goal.participant_id]
+      );
       if (participantResult.rows.length > 0) {
         const currentTroops = participantResult.rows[0].current_troops;
-        const actualCasualties = Math.max(1, Math.floor(currentTroops * (attackerCasualties / 100)));
+        const maxTroops = participantResult.rows[0].max_troops;
+        const actualCasualties = Math.max(1, Math.floor(maxTroops * (attackerCasualties / 100)));
         if (actualCasualties > 0 && currentTroops > 0) {
           await Battle.applyTroopCasualties(goal.participant_id, actualCasualties);
         }
       }
     }
     
-    // Apply negative modifier to target if applicable
-    if (goal.target_participant_id && goal.modifier_applied !== 0) {
-      await pool.query(
-        `UPDATE battle_participants 
-         SET current_score = current_score - $2
-         WHERE id = $1`,
-        [goal.target_participant_id, goal.modifier_applied]
+    // Apply casualties to defender if attack succeeded and there's a target
+    if (goal.target_participant_id && defenderCasualties > 0) {
+      const targetResult = await pool.query(
+        'SELECT current_troops, COALESCE(a.total_troops, bp.temp_army_troops) as max_troops FROM battle_participants bp LEFT JOIN armies a ON bp.army_id = a.id WHERE bp.id = $1',
+        [goal.target_participant_id]
       );
-      
-      // Apply casualties to defender if attack succeeded
-      if (defenderCasualties > 0) {
-        const targetResult = await pool.query('SELECT current_troops FROM battle_participants WHERE id = $1', [goal.target_participant_id]);
-        if (targetResult.rows.length > 0) {
-          const currentTroops = targetResult.rows[0].current_troops;
-          const actualCasualties = Math.max(1, Math.floor(currentTroops * (defenderCasualties / 100)));
-          if (actualCasualties > 0 && currentTroops > 0) {
-            await Battle.applyTroopCasualties(goal.target_participant_id, actualCasualties);
-          }
+      if (targetResult.rows.length > 0) {
+        const currentTroops = targetResult.rows[0].current_troops;
+        const maxTroops = targetResult.rows[0].max_troops;
+        const actualCasualties = Math.max(1, Math.floor(maxTroops * (defenderCasualties / 100)));
+        if (actualCasualties > 0 && currentTroops > 0) {
+          await Battle.applyTroopCasualties(goal.target_participant_id, actualCasualties);
         }
       }
     }

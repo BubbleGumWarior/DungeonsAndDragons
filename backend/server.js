@@ -398,7 +398,7 @@ const startServer = async () => {
       // Handle real-time battlefield participant movement (armies on battlefield map)
       socket.on('battlefieldParticipantMove', (data) => {
         try {
-          const { campaignId, battleId, participantId, x, y } = data;
+          const { campaignId, battleId, participantId, x, y, remainingMovement } = data;
 
           // Broadcast to all users in the campaign except sender
           socket.to(`campaign_${campaignId}`).emit('battlefieldParticipantMoved', {
@@ -406,9 +406,10 @@ const startServer = async () => {
             participantId,
             x,
             y,
+            remainingMovement,
             timestamp: new Date().toISOString()
           });
-          console.log(`🗺️ Battlefield participant ${participantId} moved to (${x.toFixed(2)}, ${y.toFixed(2)}) in battle ${battleId}, campaign ${campaignId}`);
+          console.log(`🗺️ Battlefield participant ${participantId} moved to (${x.toFixed(2)}, ${y.toFixed(2)}) - ${remainingMovement !== undefined ? remainingMovement.toFixed(0) + 'ft remaining' : 'unlimited'} in battle ${battleId}, campaign ${campaignId}`);
         } catch (error) {
           console.error('Error handling battlefield participant movement:', error);
         }
