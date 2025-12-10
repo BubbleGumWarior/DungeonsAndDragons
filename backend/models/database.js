@@ -373,7 +373,7 @@ const runMigrations = async () => {
         campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         category VARCHAR(50) DEFAULT 'Swordsmen' CHECK (category IN (
-          'Royal Guard', 'Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry',
+          'Royal Guard', 'Knights', 'Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry',
           'Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers',
           'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers',
           'Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'

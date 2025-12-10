@@ -14,6 +14,7 @@ interface BattleGoalDefinition {
   name: string;
   category: 'Command' | 'Strategy' | 'Assault' | 'Combat' | 'Misc';
   requirement: string;
+  required_army_category?: string[]; // Optional - specific army categories required to use this goal
   test_type: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | 'Attack' | 'Saving Throw' | 'Combat';
   army_stat?: 'numbers' | 'equipment' | 'discipline' | 'morale' | 'command' | 'logistics'; // Optional - some goals don't use army stats
   uses_character_stat?: boolean; // Whether this goal uses character ability modifier
@@ -26,7 +27,7 @@ interface BattleGoalDefinition {
 }
 
 const BATTLE_GOALS: BattleGoalDefinition[] = [
-  // Command Goals (6) - Mix of character-based and army-based leadership
+  // Command Goals (5) - Character-based leadership
   {
     name: 'Rally the Troops',
     category: 'Command',
@@ -38,19 +39,6 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     reward: '+2 to your team\'s total score',
     fail: 'No effect',
     description: 'Use your personal charisma to inspire your forces with a rousing speech.'
-  },
-  {
-    name: 'Coordinate Attack',
-    category: 'Command',
-    requirement: 'None',
-    test_type: 'INT',
-    army_stat: 'command',
-    uses_character_stat: false,
-    uses_army_stat: true,
-    targets_enemy: false,
-    reward: '+3 to your team\'s total score',
-    fail: 'No effect',
-    description: 'Use military command structure to synchronize units for a combined assault.'
   },
   {
     name: 'Disrupt Enemy Commands',
@@ -103,8 +91,63 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     fail: '-1 to your team\'s total score',
     description: 'Use personal intimidation to break the enemy\'s will to fight.'
   },
+  {
+    name: 'Elite Vanguard',
+    category: 'Command',
+    requirement: 'Elite',
+    required_army_category: ['Royal Guard', 'Knights'],
+    test_type: 'CHA',
+    army_stat: 'discipline',
+    uses_character_stat: true,
+    uses_army_stat: true,
+    targets_enemy: true,
+    reward: '-6 to target enemy, +3 to your team',
+    fail: '-1 to your team\'s total score',
+    description: 'Lead battle-hardened elite troops in a devastating coordinated strike that showcases their superior training and unbreakable resolve. Veterans of countless battles execute flawlessly.'
+  },
 
-  // Strategy Goals (7) - Mix of tactical planning
+  // Strategy Goals (9) - Mix of tactical planning
+  {
+    name: 'Coordinate Attack',
+    category: 'Strategy',
+    requirement: 'None',
+    test_type: 'INT',
+    army_stat: 'command',
+    uses_character_stat: false,
+    uses_army_stat: true,
+    targets_enemy: false,
+    reward: '+3 to your team\'s total score',
+    fail: 'No effect',
+    description: 'Use military command structure to synchronize units for a combined assault.'
+  },
+  {
+    name: 'Shield Wall',
+    category: 'Strategy',
+    requirement: 'Shield',
+    required_army_category: ['Royal Guard', 'Shield Wall'],
+    test_type: 'CON',
+    army_stat: 'equipment',
+    uses_character_stat: false,
+    uses_army_stat: true,
+    targets_enemy: false,
+    reward: '+4 to your team, resist 2 enemy penalties',
+    fail: 'No effect',
+    description: 'Elite shield-equipped infantry forms an impenetrable defensive wall with overlapping shields.'
+  },
+  {
+    name: 'Spear Wall',
+    category: 'Strategy',
+    requirement: 'Spear',
+    required_army_category: ['Royal Guard', 'Spear Wall', 'Pikemen'],
+    test_type: 'CON',
+    army_stat: 'discipline',
+    uses_character_stat: false,
+    uses_army_stat: true,
+    targets_enemy: true,
+    reward: '-4 to target enemy, +2 to your team',
+    fail: 'No effect',
+    description: 'Elite spear or pike formation creates a wall of pointed death that repels enemy advances.'
+  },
   {
     name: 'Flank Maneuver',
     category: 'Strategy',
@@ -146,15 +189,16 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
   {
     name: 'Siege Tactics',
     category: 'Strategy',
-    requirement: 'None',
+    requirement: 'Siege',
+    required_army_category: ['Ballistae', 'Catapults', 'Trebuchets'],
     test_type: 'INT',
     army_stat: 'equipment',
     uses_character_stat: true,
     uses_army_stat: true,
     targets_enemy: true,
-    reward: '-3 to target enemy, +1 to your team',
+    reward: '-5 to target enemy, +2 to your team',
     fail: '-1 to your team\'s total score',
-    description: 'Combine engineering knowledge with siege equipment to breach defenses.'
+    description: 'Combine engineering knowledge with siege equipment to shatter fortifications and enemy morale.'
   },
   {
     name: 'Rapid Deployment',
@@ -195,7 +239,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     description: 'Execute a masterful tactical maneuver combining genius and military coordination. High risk, high reward!'
   },
 
-  // Assault Goals (9) - Mix of army strength and personal prowess
+  // Assault Goals (7) - Mix of army strength and personal prowess
   {
     name: 'Charge!',
     category: 'Assault',
@@ -212,15 +256,16 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
   {
     name: 'Concentrated Fire',
     category: 'Assault',
-    requirement: 'None',
+    requirement: 'Ranged',
+    required_army_category: ['Longbowmen', 'Crossbowmen', 'Ballistae', 'Catapults'],
     test_type: 'Attack',
     army_stat: 'equipment',
     uses_character_stat: false,
     uses_army_stat: true,
     targets_enemy: true,
-    reward: '-3 to target enemy\'s total score',
+    reward: '-5 to target enemy\'s total score',
     fail: 'No effect',
-    description: 'Army equipment focuses all ranged attacks on a single unit.'
+    description: 'Ranged army focuses all projectiles on a single enemy unit with devastating precision.'
   },
   {
     name: 'Berserker Rage',
@@ -233,19 +278,6 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     reward: '-6 to target enemy, -1 to your own team',
     fail: '-3 to your team\'s total score',
     description: 'Lead your forces in unbridled fury, sacrificing safety for devastating power. High risk, high reward!'
-  },
-  {
-    name: 'Defensive Formation',
-    category: 'Assault',
-    requirement: 'None',
-    test_type: 'CON',
-    army_stat: 'discipline',
-    uses_character_stat: false,
-    uses_army_stat: true,
-    targets_enemy: false,
-    reward: '+2 to your team',
-    fail: 'No effect',
-    description: 'Army discipline forms shields into a protective wall.'
   },
   {
     name: 'Ambush',
@@ -262,15 +294,16 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
   {
     name: 'Cavalry Charge',
     category: 'Assault',
-    requirement: 'None',
+    requirement: 'Cavalry',
+    required_army_category: ['Light Cavalry', 'Heavy Cavalry', 'Knights', 'Lancers'],
     test_type: 'STR',
     army_stat: 'equipment',
     uses_character_stat: true,
     uses_army_stat: true,
     targets_enemy: true,
-    reward: '-5 to target enemy\'s total score',
+    reward: '-7 to target enemy\'s total score',
     fail: '-2 to your team\'s total score',
-    description: 'Lead mounted units in a devastating charge combining personal might and cavalry equipment. High risk, high reward!'
+    description: 'Lead mounted cavalry in a devastating charge that shatters enemy lines. High risk, extremely high reward!'
   },
   {
     name: 'Guerrilla Tactics',
@@ -283,19 +316,6 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     reward: '-3 to target enemy',
     fail: 'No effect',
     description: 'Use your agility to lead hit-and-run attacks harassing enemy forces.'
-  },
-  {
-    name: 'Shield Wall',
-    category: 'Assault',
-    requirement: 'None',
-    test_type: 'CON',
-    army_stat: 'equipment',
-    uses_character_stat: false,
-    uses_army_stat: true,
-    targets_enemy: false,
-    reward: '+3 to your team, resist 1 enemy penalty',
-    fail: 'No effect',
-    description: 'Army equipment forms an impenetrable defensive line with overlapping shields.'
   },
   {
     name: 'All-Out Attack',
@@ -365,7 +385,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     requires_combat: true
   },
 
-  // Miscellaneous Goals (6) - Mix of support actions
+  // Miscellaneous Goals (5) - Mix of support actions
   {
     name: 'Supply Line Raid',
     category: 'Misc',
@@ -390,19 +410,6 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     reward: '+3 to your team',
     fail: 'No effect',
     description: 'Army logistics constructs defensive works to strengthen positions.'
-  },
-  {
-    name: 'Inspire Fear',
-    category: 'Misc',
-    requirement: 'None',
-    test_type: 'CHA',
-    army_stat: 'morale',
-    uses_character_stat: true,
-    uses_army_stat: true,
-    targets_enemy: true,
-    reward: '-2 to all enemies this round',
-    fail: 'No effect',
-    description: 'Combine personal presence with army morale to demoralize all enemy forces.'
   },
   {
     name: 'Desperate Gambit',
@@ -512,7 +519,7 @@ const getArmyCategoryIcon = (category: string): string => {
 
 // Army categories organized by type
 const ARMY_CATEGORIES = {
-  'Elite': ['Royal Guard'],
+  'Elite': ['Royal Guard', 'Knights'],
   'Infantry': ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry'],
   'Archers': ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'],
   'Cavalry': ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers'],
@@ -655,6 +662,7 @@ const CampaignView: React.FC = () => {
   const [selectedTargetParticipant, setSelectedTargetParticipant] = useState<number | null>(null);
   const [selectedGoalExecutor, setSelectedGoalExecutor] = useState<number | null>(null);
   const [showGoalConfirmModal, setShowGoalConfirmModal] = useState(false);
+  const [showArmySelectionModal, setShowArmySelectionModal] = useState(false);
   const [showInvitePlayersModal, setShowInvitePlayersModal] = useState(false);
   const [showBattleInvitationsModal, setShowBattleInvitationsModal] = useState(false);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
@@ -3773,6 +3781,66 @@ const CampaignView: React.FC = () => {
                       )}
                     </div>
 
+                    {/* Current Team Selecting Banner - Always visible during goal selection */}
+                    {activeBattle.status === 'goal_selection' && (() => {
+                      // Find the first TEAM that hasn't selected a goal yet
+                      const teams = activeBattle.participants?.reduce((acc, p) => {
+                        if (!acc[p.team_name]) {
+                          acc[p.team_name] = {
+                            name: p.team_name,
+                            color: p.faction_color || '#808080',
+                            has_selected: p.has_selected_goal || false,
+                            participants: []
+                          };
+                        }
+                        acc[p.team_name].participants.push(p);
+                        return acc;
+                      }, {} as Record<string, {name: string; color: string; has_selected: boolean; participants: any[]}>);
+
+                      const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                      
+                      if (currentTeam) {
+                        return (
+                          <div style={{
+                            padding: '1.5rem',
+                            marginBottom: '1.5rem',
+                            background: `linear-gradient(135deg, ${currentTeam.color || '#808080'}20, ${currentTeam.color || '#808080'}40)`,
+                            border: `3px solid ${currentTeam.color || '#808080'}`,
+                            borderRadius: '0.75rem',
+                            textAlign: 'center',
+                            boxShadow: `0 0 20px ${currentTeam.color || '#808080'}40`,
+                            animation: 'pulse 2s ease-in-out infinite'
+                          }}>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: currentTeam.color || '#808080', marginBottom: '0.5rem' }}>
+                              👑 Current Turn: Team {currentTeam.name}
+                            </div>
+                            <div style={{ fontSize: '1rem', color: 'var(--text-gold)' }}>
+                              {currentTeam.participants.map(p => p.temp_army_name || p.army_name).join(', ')}
+                            </div>
+                            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                              is selecting their team's goal...
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // If all teams have selected, show completion message
+                      return (
+                        <div style={{
+                          padding: '1rem',
+                          marginBottom: '1.5rem',
+                          background: 'rgba(34, 197, 94, 0.2)',
+                          border: '2px solid rgba(34, 197, 94, 0.5)',
+                          borderRadius: '0.75rem',
+                          textAlign: 'center',
+                          color: '#4ade80',
+                          fontWeight: 'bold'
+                        }}>
+                          ✓ All teams have selected their goals! DM can move to Resolution Phase.
+                        </div>
+                      );
+                    })()}
+
                     {/* Battle Map with Overlay Controls */}
                     <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
                       {/* Map Container */}
@@ -4236,50 +4304,6 @@ const CampaignView: React.FC = () => {
                     {/* Goal Selection Phase */}
                     {activeBattle.status === 'goal_selection' && (
                       <div>
-                        {/* Current Selector Banner */}
-                        {(() => {
-                          // Find the first TEAM that hasn't selected a goal yet
-                          const teams = activeBattle.participants?.reduce((acc, p) => {
-                            if (!acc[p.team_name]) {
-                              acc[p.team_name] = {
-                                name: p.team_name,
-                                color: p.faction_color || '#808080',
-                                has_selected: p.has_selected_goal || false,
-                                participants: []
-                              };
-                            }
-                            acc[p.team_name].participants.push(p);
-                            return acc;
-                          }, {} as Record<string, {name: string; color: string; has_selected: boolean; participants: any[]}>);
-
-                          const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
-                          
-                          if (currentTeam) {
-                            return (
-                              <div style={{
-                                padding: '1.5rem',
-                                marginBottom: '1.5rem',
-                                background: `linear-gradient(135deg, ${currentTeam.color || '#808080'}20, ${currentTeam.color || '#808080'}40)`,
-                                border: `3px solid ${currentTeam.color || '#808080'}`,
-                                borderRadius: '0.75rem',
-                                textAlign: 'center',
-                                boxShadow: `0 0 20px ${currentTeam.color || '#808080'}40`
-                              }}>
-                                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: currentTeam.color || '#808080', marginBottom: '0.5rem' }}>
-                                  👑 Team: {currentTeam.name}
-                                </div>
-                                <div style={{ fontSize: '1rem', color: 'var(--text-gold)' }}>
-                                  {currentTeam.participants.map(p => p.temp_army_name || p.army_name).join(', ')}
-                                </div>
-                                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                                  is selecting their team's goal...
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                        
                         <div style={{
                           display: 'flex',
                           justifyContent: 'space-between',
@@ -4300,7 +4324,62 @@ const CampaignView: React.FC = () => {
                           </div>
                         </div>
 
-                        {showBattlefieldGoals && (
+                        {/* Select Army Button - First Step */}
+                        {!selectedGoalExecutor && (() => {
+                          const teams = activeBattle.participants?.reduce((acc, p) => {
+                            if (!acc[p.team_name]) {
+                              acc[p.team_name] = {
+                                name: p.team_name,
+                                has_selected: p.has_selected_goal || false,
+                                participants: []
+                              };
+                            }
+                            acc[p.team_name].participants.push(p);
+                            return acc;
+                          }, {} as Record<string, {name: string; has_selected: boolean; participants: any[]}>);
+
+                          const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                          const userOwnsTeamMember = currentTeam?.participants.some(p => p.user_id === user?.id);
+                          const canSelect = user?.role === 'Dungeon Master' || userOwnsTeamMember;
+
+                          if (!canSelect) return null;
+
+                          return (
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'center',
+                              marginBottom: '1.5rem'
+                            }}>
+                              <button
+                                onClick={() => setShowArmySelectionModal(true)}
+                                style={{
+                                  padding: '1rem 2rem',
+                                  background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(124, 58, 237, 0.3))',
+                                  border: '3px solid rgba(168, 85, 247, 0.6)',
+                                  borderRadius: '0.75rem',
+                                  color: '#a78bfa',
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                  fontSize: '1.1rem',
+                                  boxShadow: '0 4px 12px rgba(168, 85, 247, 0.3)',
+                                  transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1.05)';
+                                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(168, 85, 247, 0.5)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(168, 85, 247, 0.3)';
+                                }}
+                              >
+                                🎯 Select Army & Choose Goal
+                              </button>
+                            </div>
+                          );
+                        })()}
+
+                        {showBattlefieldGoals && selectedGoalExecutor && (
                           <div style={{
                             background: 'rgba(0, 0, 0, 0.3)',
                             border: '1px solid rgba(212, 193, 156, 0.2)',
@@ -4308,6 +4387,26 @@ const CampaignView: React.FC = () => {
                             padding: '1.5rem',
                             marginBottom: '1.5rem'
                           }}>
+                            {/* Change Army Button */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                              <button
+                                onClick={() => {
+                                  setSelectedGoalExecutor(null);
+                                }}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  background: 'rgba(59, 130, 246, 0.2)',
+                                  border: '1px solid rgba(59, 130, 246, 0.4)',
+                                  borderRadius: '0.5rem',
+                                  color: '#60a5fa',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                ← Change Army
+                              </button>
+                            </div>
                             {/* Category Tabs */}
                             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                               {['Command', 'Strategy', 'Assault', 'Combat', 'Misc'].map((category) => (
@@ -4387,13 +4486,33 @@ const CampaignView: React.FC = () => {
                                 const userOwnsTeamMember = currentTeam?.participants.some(p => p.user_id === user?.id);
                                 const canSelect = user?.role === 'Dungeon Master' || userOwnsTeamMember;
                                 
-                                // Calculate the modifier for this goal based on user's stats
+                                // Calculate the modifier for this goal based on SELECTED executor army's stats
                                 let calculatedModifier = 0;
                                 
-                                // Find the user's participant in this battle
-                                const userParticipant = activeBattle?.participants?.find(p => p.user_id === user?.id);
+                                // Find the selected executor participant
+                                const executorParticipant = activeBattle?.participants?.find(p => p.id === selectedGoalExecutor);
                                 
-                                if (userParticipant) {
+                                // Check if goal is locked based on army category requirement
+                                let isLocked = false;
+                                let lockReason = '';
+                                if (goal.required_army_category && executorParticipant) {
+                                  // Get the army category for the selected executor
+                                  let armyCategory: string | undefined;
+                                  if (executorParticipant.is_temporary) {
+                                    armyCategory = executorParticipant.temp_army_category;
+                                  } else {
+                                    const participantArmy = armies.find(a => a.id === executorParticipant.army_id);
+                                    armyCategory = participantArmy?.category;
+                                  }
+                                  
+                                  // Check if army category matches requirement
+                                  if (!armyCategory || !goal.required_army_category.includes(armyCategory)) {
+                                    isLocked = true;
+                                    lockReason = `Requires ${goal.required_army_category.join(' or ')} army`;
+                                  }
+                                }
+                                
+                                if (executorParticipant) {
                                   let characterModifier = 0;
                                   let armyModifier = 0;
                                   
@@ -4422,11 +4541,11 @@ const CampaignView: React.FC = () => {
                                   // Get army stats if this goal uses army stats
                                   if (goal.uses_army_stat && goal.army_stat) {
                                     let armyStats;
-                                    if (userParticipant.is_temporary && userParticipant.temp_army_stats) {
-                                      armyStats = userParticipant.temp_army_stats;
+                                    if (executorParticipant.is_temporary && executorParticipant.temp_army_stats) {
+                                      armyStats = executorParticipant.temp_army_stats;
                                       // Calculate numbers stat from troop count for temporary armies
-                                      if (goal.army_stat === 'numbers' && userParticipant.current_troops !== undefined) {
-                                        const troopCount = userParticipant.current_troops;
+                                      if (goal.army_stat === 'numbers' && executorParticipant.current_troops !== undefined) {
+                                        const troopCount = executorParticipant.current_troops;
                                         let numbersStat = 1;
                                         if (troopCount <= 20) numbersStat = 1;
                                         else if (troopCount <= 50) numbersStat = 2;
@@ -4441,7 +4560,7 @@ const CampaignView: React.FC = () => {
                                         armyStats = { ...armyStats, numbers: numbersStat };
                                       }
                                     } else {
-                                      const participantArmy = armies.find(a => a.id === userParticipant.army_id);
+                                      const participantArmy = armies.find(a => a.id === executorParticipant.army_id);
                                       if (participantArmy) {
                                         armyStats = {
                                           numbers: participantArmy.numbers,
@@ -4470,108 +4589,154 @@ const CampaignView: React.FC = () => {
                                   <div
                                     key={index}
                                     onClick={() => {
-                                      if (canSelect && currentTeam) {
+                                      if (canSelect && !isLocked && currentTeam) {
                                         setSelectedGoal(goal);
-                                        if (goal.targets_enemy) {
-                                          setShowGoalConfirmModal(true);
-                                        } else {
-                                          setShowGoalConfirmModal(true);
-                                        }
+                                        setShowGoalConfirmModal(true);
                                       }
                                     }}
                                     style={{
-                                      padding: '1rem',
-                                      background: canSelect
-                                        ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.1), rgba(255, 255, 255, 0.05))'
+                                      padding: '1.25rem',
+                                      background: (canSelect && !isLocked)
+                                        ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.12), rgba(255, 255, 255, 0.06))'
                                         : 'rgba(100, 100, 120, 0.1)',
-                                      border: `2px solid ${canSelect ? 'rgba(212, 193, 156, 0.3)' : 'rgba(100, 100, 120, 0.2)'}`,
-                                      borderRadius: '0.5rem',
-                                      cursor: canSelect ? 'pointer' : 'not-allowed',
-                                      opacity: canSelect ? 1 : 0.5,
-                                      transition: 'all 0.2s'
+                                      border: `2px solid ${(canSelect && !isLocked) ? 'rgba(212, 193, 156, 0.4)' : 'rgba(100, 100, 120, 0.2)'}`,
+                                      borderRadius: '0.75rem',
+                                      cursor: (canSelect && !isLocked) ? 'pointer' : 'not-allowed',
+                                      opacity: (canSelect && !isLocked) ? 1 : 0.5,
+                                      transition: 'all 0.2s',
+                                      position: 'relative'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (canSelect && !isLocked) {
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(212, 193, 156, 0.3)';
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.transform = 'translateY(0)';
+                                      e.currentTarget.style.boxShadow = 'none';
                                     }}
                                   >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                                    {/* Lock Icon */}
+                                    {isLocked && (
                                       <div style={{
-                                        fontWeight: 'bold',
-                                        color: canSelect ? 'var(--text-gold)' : 'var(--text-muted)',
-                                        fontSize: '0.95rem'
+                                        position: 'absolute',
+                                        top: '0.75rem',
+                                        right: '0.75rem',
+                                        fontSize: '1.5rem',
+                                        opacity: 0.6
                                       }}>
-                                        {goal.name}
+                                        🔒
                                       </div>
-                                      <div style={{
-                                        fontSize: '0.7rem',
-                                        padding: '0.15rem 0.4rem',
-                                        background: 
-                                          goal.category === 'Command' ? 'rgba(168, 85, 247, 0.3)' :
-                                          goal.category === 'Strategy' ? 'rgba(59, 130, 246, 0.3)' :
-                                          goal.category === 'Assault' ? 'rgba(239, 68, 68, 0.3)' :
-                                          goal.category === 'Combat' ? 'rgba(168, 85, 247, 0.3)' :
-                                          'rgba(34, 197, 94, 0.3)',
-                                        border: `1px solid ${
-                                          goal.category === 'Command' ? 'rgba(168, 85, 247, 0.5)' :
-                                          goal.category === 'Strategy' ? 'rgba(59, 130, 246, 0.5)' :
-                                          goal.category === 'Assault' ? 'rgba(239, 68, 68, 0.5)' :
-                                          goal.category === 'Combat' ? 'rgba(168, 85, 247, 0.5)' :
-                                          'rgba(34, 197, 94, 0.5)'
-                                        }`,
-                                        borderRadius: '0.25rem',
-                                        color: 
-                                          goal.category === 'Command' ? '#a78bfa' :
-                                          goal.category === 'Strategy' ? '#60a5fa' :
-                                          goal.category === 'Assault' ? '#f87171' :
-                                          goal.category === 'Combat' ? '#a855f7' :
-                                          '#4ade80'
-                                      }}>
-                                        {goal.category}
-                                      </div>
+                                    )}
+
+                                    {/* Goal Name */}
+                                    <div style={{
+                                      fontWeight: 'bold',
+                                      color: (canSelect && !isLocked) ? 'var(--text-gold)' : 'var(--text-muted)',
+                                      fontSize: '1.1rem',
+                                      marginBottom: '0.75rem',
+                                      paddingRight: isLocked ? '2rem' : '0'
+                                    }}>
+                                      {goal.name}
                                     </div>
 
+                                    {/* Goal Description */}
                                     <div style={{
-                                      fontSize: '0.75rem',
+                                      fontSize: '0.85rem',
                                       color: 'var(--text-secondary)',
-                                      marginBottom: '0.5rem',
-                                      fontStyle: 'italic'
+                                      marginBottom: '1rem',
+                                      fontStyle: 'italic',
+                                      lineHeight: '1.4'
                                     }}>
                                       {goal.description}
                                     </div>
 
                                     {goal.requires_combat && (
                                       <div style={{
-                                        fontSize: '0.7rem',
-                                        padding: '0.4rem 0.6rem',
+                                        fontSize: '0.75rem',
+                                        padding: '0.5rem 0.75rem',
                                         background: 'rgba(168, 85, 247, 0.2)',
                                         border: '1px solid rgba(168, 85, 247, 0.5)',
-                                        borderRadius: '0.35rem',
+                                        borderRadius: '0.5rem',
                                         color: '#c4b5fd',
-                                        marginBottom: '0.5rem',
-                                        fontWeight: 'bold'
+                                        marginBottom: '1rem',
+                                        fontWeight: 'bold',
+                                        display: 'inline-block'
                                       }}>
                                         🎮 Requires Player Combat
                                       </div>
                                     )}
 
-                                    <div style={{
-                                      fontSize: '0.7rem',
-                                      color: 'var(--text-muted)',
-                                      marginBottom: '0.5rem',
-                                      paddingTop: '0.5rem',
-                                      borderTop: '1px solid rgba(212, 193, 156, 0.2)'
-                                    }}>
-                                      <div>🎲 Test: {goal.test_type}
-                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && ` + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
-                                        {!goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && ` + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
-                                      </div>
-                                      <div>🎯 Target: {goal.targets_enemy ? 'Enemy Team' : 'Your Team'}</div>
+                                    {/* Army Category Requirement */}
+                                    {goal.required_army_category && (
                                       <div style={{
-                                        marginTop: '0.25rem',
-                                        padding: '0.25rem 0.5rem',
-                                        background: `${getModifierColor(calculatedModifier)}15`,
-                                        borderRadius: '0.25rem',
-                                        border: `1px solid ${getModifierColor(calculatedModifier)}40`,
+                                        fontSize: '0.75rem',
+                                        padding: '0.5rem 0.75rem',
+                                        background: isLocked ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                        border: `1px solid ${isLocked ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'}`,
+                                        borderRadius: '0.5rem',
+                                        color: isLocked ? '#fca5a5' : '#4ade80',
+                                        marginBottom: '1rem',
+                                        fontWeight: 'bold',
                                         display: 'inline-block'
                                       }}>
-                                        ⚡ Your Modifier: <span style={{
+                                        {isLocked ? '🔒' : '✓'} Requires: {goal.required_army_category.join(', ')}
+                                      </div>
+                                    )}
+
+                                    {/* Divider */}
+                                    <div style={{
+                                      borderTop: '1px solid rgba(212, 193, 156, 0.3)',
+                                      marginBottom: '0.75rem'
+                                    }} />
+
+                                    {/* Test Information */}
+                                    <div style={{ marginBottom: '0.75rem' }}>
+                                      <div style={{
+                                        fontSize: '0.75rem',
+                                        color: 'var(--text-muted)',
+                                        marginBottom: '0.25rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        Test
+                                      </div>
+                                      <div style={{
+                                        fontSize: '0.9rem',
+                                        color: '#60a5fa',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        {goal.test_type}
+                                        {goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && 
+                                          ` + ${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)}`}
+                                        {!goal.uses_character_stat && goal.uses_army_stat && goal.army_stat && 
+                                          ` (${goal.army_stat.charAt(0).toUpperCase() + goal.army_stat.slice(1)})`}
+                                      </div>
+                                    </div>
+
+                                    {/* Modifier */}
+                                    <div style={{ marginBottom: '0.75rem' }}>
+                                      <div style={{
+                                        fontSize: '0.75rem',
+                                        color: 'var(--text-muted)',
+                                        marginBottom: '0.25rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        Your Modifier
+                                      </div>
+                                      <div style={{
+                                        display: 'inline-block',
+                                        padding: '0.35rem 0.75rem',
+                                        background: `${getModifierColor(calculatedModifier)}20`,
+                                        borderRadius: '0.5rem',
+                                        border: `2px solid ${getModifierColor(calculatedModifier)}60`
+                                      }}>
+                                        <span style={{
+                                          fontSize: '1.2rem',
                                           fontWeight: 'bold',
                                           color: getModifierColor(calculatedModifier)
                                         }}>
@@ -4582,9 +4747,9 @@ const CampaignView: React.FC = () => {
                                           let charMod = 0;
                                           let armyMod = 0;
                                           
-                                          if (userParticipant) {
+                                          if (executorParticipant) {
                                             // Get character modifier
-                                            const character = characters.find(c => c.player_id === user?.id);
+                                            const character = characters.find(c => c.player_id === executorParticipant.user_id);
                                             if (character && character.abilities) {
                                               let abilityScore = 10;
                                               switch(goal.test_type) {
@@ -4603,11 +4768,11 @@ const CampaignView: React.FC = () => {
                                             // Get army modifier
                                             if (goal.army_stat) {
                                               let armyStats;
-                                              if (userParticipant.is_temporary && userParticipant.temp_army_stats) {
-                                                armyStats = userParticipant.temp_army_stats;
+                                              if (executorParticipant.is_temporary && executorParticipant.temp_army_stats) {
+                                                armyStats = executorParticipant.temp_army_stats;
                                                 // Calculate numbers stat from troop count for temporary armies
-                                                if (goal.army_stat === 'numbers' && userParticipant.current_troops !== undefined) {
-                                                  const troopCount = userParticipant.current_troops;
+                                                if (goal.army_stat === 'numbers' && executorParticipant.current_troops !== undefined) {
+                                                  const troopCount = executorParticipant.current_troops;
                                                   let numbersStat = 1;
                                                   if (troopCount <= 20) numbersStat = 1;
                                                   else if (troopCount <= 50) numbersStat = 2;
@@ -4622,7 +4787,7 @@ const CampaignView: React.FC = () => {
                                                   armyStats = { ...armyStats, numbers: numbersStat };
                                                 }
                                               } else {
-                                                const participantArmy = armies.find(a => a.id === userParticipant.army_id);
+                                                const participantArmy = armies.find(a => a.id === executorParticipant.army_id);
                                                 if (participantArmy) {
                                                   armyStats = {
                                                     numbers: participantArmy.numbers,
@@ -4642,38 +4807,95 @@ const CampaignView: React.FC = () => {
                                           }
                                           
                                           return (
-                                            <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
+                                            <span style={{ fontSize: '0.75rem', marginLeft: '0.5rem', color: 'var(--text-muted)' }}>
                                               ({charMod >= 0 ? '+' : ''}{charMod} {armyMod >= 0 ? '+' : ''}{armyMod})
                                             </span>
                                           );
                                         })()}
                                         {goal.uses_character_stat && !goal.uses_army_stat && (
-                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
+                                          <span style={{ fontSize: '0.75rem', marginLeft: '0.5rem', color: 'var(--text-muted)' }}>
                                             (Character)
                                           </span>
                                         )}
                                         {!goal.uses_character_stat && goal.uses_army_stat && (
-                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: 'var(--text-muted)' }}>
+                                          <span style={{ fontSize: '0.75rem', marginLeft: '0.5rem', color: 'var(--text-muted)' }}>
                                             (Army)
                                           </span>
                                         )}
                                       </div>
                                     </div>
 
-                                    <div style={{
-                                      fontSize: '0.7rem',
-                                      paddingTop: '0.5rem',
-                                      borderTop: '1px solid rgba(212, 193, 156, 0.2)'
-                                    }}>
-                                      <div style={{ marginBottom: '0.25rem' }}>
-                                        <span style={{ color: '#4ade80' }}>
-                                          ✓ {goal.reward}
-                                        </span>
+                                    {/* Target */}
+                                    <div style={{ marginBottom: '0.75rem' }}>
+                                      <div style={{
+                                        fontSize: '0.75rem',
+                                        color: 'var(--text-muted)',
+                                        marginBottom: '0.25rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        Target
                                       </div>
-                                      <div>
-                                        <span style={{ color: '#f87171' }}>
-                                          ✗ {goal.fail}
-                                        </span>
+                                      <div style={{
+                                        display: 'inline-block',
+                                        padding: '0.35rem 0.75rem',
+                                        background: goal.targets_enemy ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                                        borderRadius: '0.5rem',
+                                        border: `2px solid ${goal.targets_enemy ? 'rgba(239, 68, 68, 0.5)' : 'rgba(34, 197, 94, 0.5)'}`,
+                                        color: goal.targets_enemy ? '#f87171' : '#4ade80',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        {goal.targets_enemy ? '🎯 Enemy' : '🛡️ Ally'}
+                                      </div>
+                                    </div>
+
+                                    {/* Success Effect */}
+                                    <div style={{ marginBottom: '0.5rem' }}>
+                                      <div style={{
+                                        fontSize: '0.75rem',
+                                        color: 'var(--text-muted)',
+                                        marginBottom: '0.25rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        Success
+                                      </div>
+                                      <div style={{
+                                        padding: '0.5rem 0.75rem',
+                                        background: 'rgba(34, 197, 94, 0.15)',
+                                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                                        borderRadius: '0.5rem',
+                                        fontSize: '0.85rem',
+                                        color: '#4ade80'
+                                      }}>
+                                        ✓ {goal.reward}
+                                      </div>
+                                    </div>
+
+                                    {/* Failure Effect */}
+                                    <div>
+                                      <div style={{
+                                        fontSize: '0.75rem',
+                                        color: 'var(--text-muted)',
+                                        marginBottom: '0.25rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        Failure
+                                      </div>
+                                      <div style={{
+                                        padding: '0.5rem 0.75rem',
+                                        background: 'rgba(239, 68, 68, 0.15)',
+                                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                                        borderRadius: '0.5rem',
+                                        fontSize: '0.85rem',
+                                        color: '#f87171'
+                                      }}>
+                                        ✗ {goal.fail}
                                       </div>
                                     </div>
                                   </div>
@@ -8796,6 +9018,218 @@ const CampaignView: React.FC = () => {
           </div>
         )}
 
+        {/* Army Selection Modal - Step 1: Choose which army will perform the goal */}
+        {showArmySelectionModal && activeBattle && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+            onClick={() => {
+              setShowArmySelectionModal(false);
+              setSelectedGoalExecutor(null);
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98), rgba(35, 35, 60, 0.98))',
+                border: '2px solid var(--border-gold)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                width: '90%',
+                maxWidth: '600px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+              }}
+            >
+              <h2 style={{
+                marginTop: 0,
+                marginBottom: '1.5rem',
+                color: 'var(--text-gold)',
+                fontSize: '1.5rem',
+                textAlign: 'center',
+                borderBottom: '2px solid var(--border-gold)',
+                paddingBottom: '0.75rem'
+              }}>
+                ⚔️ Select Army to Execute Goal
+              </h2>
+
+              <div style={{
+                padding: '1rem',
+                background: 'rgba(168, 85, 247, 0.1)',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                borderRadius: '0.5rem',
+                marginBottom: '1.5rem',
+                fontSize: '0.85rem',
+                color: 'var(--text-secondary)'
+              }}>
+                <strong style={{ color: '#a78bfa' }}>Step 1 of 2:</strong> Choose which army from your team will perform the goal. Goal modifiers will be calculated using this army's stats and its commander's abilities.
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                  Select Your Army *
+                </label>
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.5rem',
+                  padding: '0.75rem',
+                  maxHeight: '400px',
+                  overflowY: 'auto'
+                }}>
+                  {(() => {
+                    const teams = activeBattle.participants?.reduce((acc, p) => {
+                      if (!acc[p.team_name]) {
+                        acc[p.team_name] = {
+                          name: p.team_name,
+                          color: p.faction_color || '#808080',
+                          has_selected: p.has_selected_goal || false,
+                          participants: []
+                        };
+                      }
+                      acc[p.team_name].participants.push(p);
+                      return acc;
+                    }, {} as Record<string, {name: string; color: string; has_selected: boolean; participants: any[]}>);
+
+                    const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
+                    if (!currentTeam) return <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No team available</div>;
+
+                    const teamArmies = currentTeam.participants;
+
+                    return teamArmies.map((participant: any) => {
+                      // Get army category for icon
+                      let armyCategory = 'Swordsmen';
+                      if (participant.is_temporary && participant.temp_army_category) {
+                        armyCategory = participant.temp_army_category;
+                      } else if (participant.army_id) {
+                        const army = armies.find(a => a.id === participant.army_id);
+                        if (army) armyCategory = army.category;
+                      }
+
+                      return (
+                        <label
+                          key={participant.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '1rem',
+                            background: selectedGoalExecutor === participant.id
+                              ? 'rgba(168, 85, 247, 0.2)'
+                              : 'transparent',
+                            border: selectedGoalExecutor === participant.id
+                              ? '2px solid rgba(168, 85, 247, 0.4)'
+                              : '1px solid rgba(212, 193, 156, 0.2)',
+                            borderRadius: '0.5rem',
+                            marginBottom: '0.75rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (selectedGoalExecutor !== participant.id) {
+                              e.currentTarget.style.background = 'rgba(212, 193, 156, 0.1)';
+                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedGoalExecutor !== participant.id) {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                            }
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="executor"
+                            checked={selectedGoalExecutor === participant.id}
+                            onChange={() => setSelectedGoalExecutor(participant.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                              <span style={{ fontSize: '1.2rem' }}>{getArmyCategoryIcon(armyCategory)}</span>
+                              <div style={{ color: 'white', fontWeight: 'bold', fontSize: '1rem' }}>
+                                {participant.temp_army_name || participant.army_name || 'Unknown Army'}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              Category: {armyCategory}
+                              {participant.current_troops !== undefined && (
+                                <span style={{ marginLeft: '0.5rem', color: '#4ade80' }}>
+                                  | 👥 {participant.current_troops.toLocaleString()} troops
+                                </span>
+                              )}
+                              <span style={{ marginLeft: '0.5rem', color: '#60a5fa' }}>
+                                | Score: {participant.current_score}
+                              </span>
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => {
+                    setShowArmySelectionModal(false);
+                    setSelectedGoalExecutor(null);
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(100, 100, 120, 0.3)',
+                    border: '1px solid rgba(150, 150, 170, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (!selectedGoalExecutor) {
+                      alert('Please select an army');
+                      return;
+                    }
+                    setShowArmySelectionModal(false);
+                    // Goals will now be shown with this army's modifiers
+                  }}
+                  disabled={!selectedGoalExecutor}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: selectedGoalExecutor
+                      ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(124, 58, 237, 0.3))'
+                      : 'rgba(100, 100, 120, 0.2)',
+                    border: selectedGoalExecutor
+                      ? '2px solid rgba(168, 85, 247, 0.5)'
+                      : '1px solid rgba(100, 100, 120, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: selectedGoalExecutor ? '#a78bfa' : 'rgba(255, 255, 255, 0.3)',
+                    fontWeight: 'bold',
+                    cursor: selectedGoalExecutor ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  ✓ Continue to Goal Selection
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Goal Confirmation Modal */}
         {showGoalConfirmModal && selectedGoal && (
           <div
@@ -8812,10 +9246,7 @@ const CampaignView: React.FC = () => {
               zIndex: 1000
             }}
             onClick={() => {
-              setShowGoalConfirmModal(false);
-              setSelectedGoal(null);
-              setSelectedTargetParticipant(null);
-              setSelectedGoalExecutor(null);
+              // Don't close modal on background click - user needs to select target
             }}
           >
             <div
@@ -8906,92 +9337,6 @@ const CampaignView: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Army Executor Selection - Which army from your team will perform this goal */}
-              {activeBattle && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
-                    Which Army Will Execute This Goal? *
-                  </label>
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--text-secondary)',
-                    marginBottom: '0.75rem',
-                    fontStyle: 'italic'
-                  }}>
-                    Select one army from your team to perform this action. Only this army's stats will be used for the roll.
-                  </div>
-                  <div style={{
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
-                    borderRadius: '0.5rem',
-                    padding: '0.75rem',
-                    maxHeight: '200px',
-                    overflowY: 'auto'
-                  }}>
-                    {(() => {
-                      const teams = activeBattle.participants?.reduce((acc, p) => {
-                        if (!acc[p.team_name]) {
-                          acc[p.team_name] = {
-                            name: p.team_name,
-                            has_selected: p.has_selected_goal || false,
-                            participants: []
-                          };
-                        }
-                        acc[p.team_name].participants.push(p);
-                        return acc;
-                      }, {} as Record<string, {name: string; has_selected: boolean; participants: any[]}>);
-
-                      const currentTeam = teams ? Object.values(teams).find(t => !t.has_selected) : null;
-                      if (!currentTeam) return <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No team available</div>;
-
-                      const teamArmies = currentTeam.participants;
-
-                      return teamArmies.map((participant: any) => (
-                        <label
-                          key={participant.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.75rem',
-                            padding: '0.75rem',
-                            background: selectedGoalExecutor === participant.id
-                              ? 'rgba(168, 85, 247, 0.2)'
-                              : 'transparent',
-                            border: selectedGoalExecutor === participant.id
-                              ? '1px solid rgba(168, 85, 247, 0.4)'
-                              : '1px solid transparent',
-                            borderRadius: '0.5rem',
-                            marginBottom: '0.5rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name="executor"
-                            checked={selectedGoalExecutor === participant.id}
-                            onChange={() => setSelectedGoalExecutor(participant.id)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ color: 'white', fontWeight: 'bold' }}>
-                              {participant.temp_army_name || participant.army_name || 'Unknown Army'}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              Score: {participant.current_score}
-                              {participant.current_troops !== undefined && (
-                                <span style={{ marginLeft: '0.5rem', color: '#4ade80' }}>
-                                  | 👥 {participant.current_troops.toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </label>
-                      ));
-                    })()}
-                  </div>
-                </div>
-              )}
 
               {/* Target Selection - Show for both enemy and ally targets */}
               {activeBattle && (
@@ -9139,7 +9484,7 @@ const CampaignView: React.FC = () => {
                   onClick={async () => {
                     if (!activeBattle || !currentCampaign) return;
                     if (!selectedGoalExecutor) {
-                      alert('Please select which army will execute this goal');
+                      alert('No army selected. Please go back and select an army.');
                       return;
                     }
                     if (selectedGoal.targets_enemy && !selectedTargetParticipant) {
@@ -9277,19 +9622,19 @@ const CampaignView: React.FC = () => {
                       alert('Failed to select goal');
                     }
                   }}
-                  disabled={!selectedGoalExecutor || (selectedGoal.targets_enemy && !selectedTargetParticipant)}
+                  disabled={selectedGoal.targets_enemy && !selectedTargetParticipant}
                   style={{
                     padding: '0.75rem 1.5rem',
-                    background: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant))
+                    background: (!selectedGoal.targets_enemy || selectedTargetParticipant)
                       ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))'
                       : 'rgba(100, 100, 120, 0.2)',
-                    border: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant))
+                    border: (!selectedGoal.targets_enemy || selectedTargetParticipant)
                       ? '2px solid rgba(34, 197, 94, 0.5)'
                       : '1px solid rgba(100, 100, 120, 0.3)',
                     borderRadius: '0.5rem',
-                    color: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant)) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+                    color: (!selectedGoal.targets_enemy || selectedTargetParticipant) ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
                     fontWeight: 'bold',
-                    cursor: (selectedGoalExecutor && (!selectedGoal.targets_enemy || selectedTargetParticipant)) ? 'pointer' : 'not-allowed'
+                    cursor: (!selectedGoal.targets_enemy || selectedTargetParticipant) ? 'pointer' : 'not-allowed'
                   }}
                 >
                   ✓ Confirm Goal

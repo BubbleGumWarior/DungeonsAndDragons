@@ -1,0 +1,421 @@
+===========================================
+BATTLE GOALS CONFIGURATION
+===========================================
+
+COMMAND GOALS (6)
+-----------------------------------------
+
+1. Rally the Troops
+   Category: Command
+   Requirement: None
+   Required Army Category: None
+   Test: CHA
+   Uses Character Stat: Yes
+   Uses Army Stat: No
+   Targets Enemy: No
+   Reward: +2 to your team's total score
+   Fail: No effect
+   Description: Use your personal charisma to inspire your forces with a rousing speech.
+
+2. Disrupt Enemy Commands
+   Category: Command
+   Requirement: None
+   Required Army Category: None
+   Test: WIS + Command
+   Uses Character Stat: Yes
+   Uses Army Stat: Yes (command)
+   Targets Enemy: Yes
+   Reward: -3 to target enemy's total score
+   Fail: -1 to your team's total score
+   Description: Combine tactical awareness with command expertise to interfere with enemy communications.
+
+3. Tactical Retreat
+   Category: Command
+   Requirement: None
+   Required Army Category: None
+   Test: WIS + Discipline
+   Uses Character Stat: Yes
+   Uses Army Stat: Yes (discipline)
+   Targets Enemy: No
+   Reward: +2 to your team, negate up to -2 penalties
+   Fail: No effect
+   Description: Use wisdom and army discipline to execute an organized withdrawal.
+
+4. Overwhelming Command
+   Category: Command
+   Requirement: None
+   Required Army Category: None
+   Test: CHA + Command
+   Uses Character Stat: Yes
+   Uses Army Stat: Yes (command)
+   Targets Enemy: No
+   Reward: +4 to your team's total score
+   Fail: -2 to your team's total score
+   Description: Combine personal leadership with military authority for bold, decisive orders. High risk, high reward!
+
+5. Demoralize Enemy
+   Category: Command
+   Requirement: None
+   Required Army Category: None
+   Test: CHA
+   Uses Character Stat: Yes
+   Uses Army Stat: No
+   Targets Enemy: Yes
+   Reward: -4 to target enemy
+   Fail: -1 to your team's total score
+   Description: Use personal intimidation to break the enemy's will to fight.
+
+6. Elite Vanguard
+   Category: Command
+   Requirement: Elite
+   Required Army Category: Royal Guard, Knights
+   Test: CHA + Discipline
+   Uses Character Stat: Yes
+   Uses Army Stat: Yes (discipline)
+   Targets Enemy: Yes
+   Reward: -6 to target enemy, +3 to your team
+   Fail: -1 to your team's total score
+   Description: Lead battle-hardened elite troops in a devastating coordinated strike that showcases their superior training and unbreakable resolve. Veterans of countless battles execute flawlessly.
+
+
+STRATEGY GOALS (10)
+-----------------------------------------
+
+7. Coordinate Attack
+   Category: Strategy
+   Requirement: None
+   Required Army Category: None
+   Test: Command (army only)
+   Uses Character Stat: No
+   Uses Army Stat: Yes (command)
+   Targets Enemy: No
+   Reward: +3 to your team's total score
+   Fail: No effect
+   Description: Use military command structure to synchronize units for a combined assault.
+
+8. Shield Wall
+   Category: Strategy
+   Requirement: Shield
+   Required Army Category: Royal Guard, Shield Wall
+   Test: CON + Equipment
+   Uses Character Stat: No
+   Uses Army Stat: Yes (equipment)
+   Targets Enemy: No
+   Reward: +4 to your team, resist 2 enemy penalties
+   Fail: No effect
+   Description: Elite shield-equipped infantry forms an impenetrable defensive wall with overlapping shields.
+
+9. Spear Wall
+   Category: Strategy
+   Requirement: Spear
+   Required Army Category: Royal Guard, Spear Wall, Pikemen
+   Test: CON + Discipline
+   Uses Character Stat: No
+   Uses Army Stat: Yes (discipline)
+   Targets Enemy: Yes
+   Reward: -4 to target enemy, +2 to your team
+   Fail: No effect
+   Description: Elite spear or pike formation creates a wall of pointed death that repels enemy advances.
+
+10. Flank Maneuver
+    Category: Strategy
+    Requirement: None
+    Required Army Category: None
+    Test: DEX + Discipline
+    Uses Character Stat: No
+    Uses Army Stat: Yes (discipline)
+    Targets Enemy: Yes
+    Reward: -2 to target enemy, +1 to your team
+    Fail: No effect
+    Description: Use army discipline to position units for a flanking attack.
+
+11. Hold the Line
+    Category: Strategy
+    Requirement: None
+    Required Army Category: None
+    Test: CON + Discipline
+    Uses Character Stat: No
+    Uses Army Stat: Yes (discipline)
+    Targets Enemy: No
+    Reward: +2 to your team
+    Fail: No effect
+    Description: Army discipline maintains defensive positions against overwhelming odds.
+
+12. Feint and Strike
+    Category: Strategy
+    Requirement: None
+    Required Army Category: None
+    Test: DEX
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -4 to target enemy's total score
+    Fail: -2 to your team's total score
+    Description: Use your tactical cunning to fake a retreat and spring a trap.
+
+13. Siege Tactics
+    Category: Strategy
+    Requirement: Siege
+    Required Army Category: Ballistae, Catapults, Trebuchets
+    Test: INT + Equipment
+    Uses Character Stat: Yes
+    Uses Army Stat: Yes (equipment)
+    Targets Enemy: Yes
+    Reward: -5 to target enemy, +2 to your team
+    Fail: -1 to your team's total score
+    Description: Combine engineering knowledge with siege equipment to shatter fortifications and enemy morale.
+
+14. Rapid Deployment
+    Category: Strategy
+    Requirement: None
+    Required Army Category: None
+    Test: DEX + Logistics
+    Uses Character Stat: No
+    Uses Army Stat: Yes (logistics)
+    Targets Enemy: No
+    Reward: +2 to your team
+    Fail: No effect
+    Description: Army logistics quickly moves troops to critical positions.
+
+15. Fortified Defense
+    Category: Strategy
+    Requirement: None
+    Required Army Category: None
+    Test: INT
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: No
+    Reward: +3 to your team, reduce next enemy penalty by 1
+    Fail: No effect
+    Description: Use your intelligence to design strong defensive positions.
+
+16. Overwhelming Strategy
+    Category: Strategy
+    Requirement: None
+    Required Army Category: None
+    Test: INT + Command
+    Uses Character Stat: Yes
+    Uses Army Stat: Yes (command)
+    Targets Enemy: Yes
+    Reward: -5 to target enemy, +2 to your team
+    Fail: -3 to your team's total score
+    Description: Execute a masterful tactical maneuver combining genius and military coordination. High risk, high reward!
+
+
+ASSAULT GOALS (7)
+-----------------------------------------
+
+17. Charge!
+    Category: Assault
+    Requirement: None
+    Required Army Category: None
+    Test: STR + Numbers
+    Uses Character Stat: No
+    Uses Army Stat: Yes (numbers)
+    Targets Enemy: Yes
+    Reward: -2 to target enemy's total score
+    Fail: No effect
+    Description: Army numbers launch a frontal assault on enemy positions.
+
+18. Concentrated Fire
+    Category: Assault
+    Requirement: Ranged
+    Required Army Category: Longbowmen, Crossbowmen, Ballistae, Catapults
+    Test: Attack + Equipment
+    Uses Character Stat: No
+    Uses Army Stat: Yes (equipment)
+    Targets Enemy: Yes
+    Reward: -5 to target enemy's total score
+    Fail: No effect
+    Description: Ranged army focuses all projectiles on a single enemy unit with devastating precision.
+
+19. Berserker Rage
+    Category: Assault
+    Requirement: None
+    Required Army Category: None
+    Test: STR
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -6 to target enemy, -1 to your own team
+    Fail: -3 to your team's total score
+    Description: Lead your forces in unbridled fury, sacrificing safety for devastating power. High risk, high reward!
+
+20. Ambush
+    Category: Assault
+    Requirement: None
+    Required Army Category: None
+    Test: DEX
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -4 to target enemy, +1 to your team
+    Fail: -1 to your team's total score
+    Description: Use your stealth to set up a hidden trap and strike when vulnerable.
+
+21. Cavalry Charge
+    Category: Assault
+    Requirement: Cavalry
+    Required Army Category: Light Cavalry, Heavy Cavalry, Knights, Lancers
+    Test: STR + Equipment
+    Uses Character Stat: Yes
+    Uses Army Stat: Yes (equipment)
+    Targets Enemy: Yes
+    Reward: -7 to target enemy's total score
+    Fail: -2 to your team's total score
+    Description: Lead mounted cavalry in a devastating charge that shatters enemy lines. High risk, extremely high reward!
+
+22. Guerrilla Tactics
+    Category: Assault
+    Requirement: None
+    Required Army Category: None
+    Test: DEX
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -3 to target enemy
+    Fail: No effect
+    Description: Use your agility to lead hit-and-run attacks harassing enemy forces.
+
+23. All-Out Attack
+    Category: Assault
+    Requirement: None
+    Required Army Category: None
+    Test: STR + Numbers
+    Uses Character Stat: Yes
+    Uses Army Stat: Yes (numbers)
+    Targets Enemy: Yes
+    Reward: -7 to target enemy's total score
+    Fail: -4 to your team's total score
+    Description: Lead everything in a devastating assault, leaving no reserves. Extremely high risk, extremely high reward!
+
+
+COMBAT GOALS (4)
+-----------------------------------------
+
+24. Duel Enemy Commander
+    Category: Combat
+    Requirement: None
+    Required Army Category: None
+    Test: Combat
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -6 to target enemy's total score
+    Fail: -3 to your team's total score
+    Requires Combat: Yes
+    Description: Challenge the enemy commander to single combat (1v1). Winner determined by actual combat in Combat Area.
+
+25. Fight Elite Guard
+    Category: Combat
+    Requirement: None
+    Required Army Category: None
+    Test: Combat
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -5 to target enemy's total score
+    Fail: -2 to your team's total score
+    Requires Combat: Yes
+    Description: Engage the enemy's elite guards in squad combat (XvX). Winner determined by actual combat in Combat Area.
+
+26. Disable War Creature
+    Category: Combat
+    Requirement: None
+    Required Army Category: None
+    Test: Combat
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -4 to target enemy, +2 to your team
+    Fail: -1 to your team's total score
+    Requires Combat: Yes
+    Description: Take down the enemy's war beast or siege creature (XvX). Winner determined by actual combat in Combat Area.
+
+27. Breach the Gates
+    Category: Combat
+    Requirement: None
+    Required Army Category: None
+    Test: Combat
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -5 to target enemy, +1 to your team
+    Fail: -1 to your team's total score
+    Requires Combat: Yes
+    Description: Storm the enemy fortifications with a strike team (XvX). Winner determined by actual combat in Combat Area.
+
+
+MISCELLANEOUS GOALS (5)
+-----------------------------------------
+
+28. Supply Line Raid
+    Category: Misc
+    Requirement: None
+    Required Army Category: None
+    Test: DEX
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -2 to target enemy, +1 to your team
+    Fail: No effect
+    Description: Use your stealth to personally raid enemy supply chains.
+
+29. Fortify Position
+    Category: Misc
+    Requirement: None
+    Required Army Category: None
+    Test: INT + Logistics
+    Uses Character Stat: No
+    Uses Army Stat: Yes (logistics)
+    Targets Enemy: No
+    Reward: +3 to your team
+    Fail: No effect
+    Description: Army logistics constructs defensive works to strengthen positions.
+
+30. Desperate Gambit
+    Category: Misc
+    Requirement: None
+    Required Army Category: None
+    Test: DEX
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: Yes
+    Reward: -7 to target enemy, +3 to your team
+    Fail: -4 to your team's total score
+    Description: Risk everything on a daring personal maneuver. Extremely high risk, extremely high reward!
+
+31. Scouting Report
+    Category: Misc
+    Requirement: None
+    Required Army Category: None
+    Test: WIS
+    Uses Character Stat: Yes
+    Uses Army Stat: No
+    Targets Enemy: No
+    Reward: +1 to your team, reveal enemy goal
+    Fail: No effect
+    Description: Use your perception to scout and gather intelligence on enemy movements.
+
+32. Sabotage
+    Category: Misc
+    Requirement: None
+    Required Army Category: None
+    Test: DEX + Discipline
+    Uses Character Stat: Yes
+    Uses Army Stat: Yes (discipline)
+    Targets Enemy: Yes
+    Reward: -3 to target enemy, +2 to your team
+    Fail: -2 to your team's total score
+    Description: Lead operatives to damage enemy equipment and infrastructure.
+
+
+===========================================
+TOTAL GOALS: 32
+===========================================
+Command: 6
+Strategy: 10
+Assault: 7
+Combat: 4
+Misc: 5
+===========================================
