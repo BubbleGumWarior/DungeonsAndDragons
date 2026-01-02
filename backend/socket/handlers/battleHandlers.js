@@ -4,6 +4,22 @@
  */
 
 module.exports = (socket, io) => {
+  // Team has selected their goal
+  socket.on('teamGoalSelected', (data) => {
+    try {
+      const { campaignId, battleId, teamName } = data;
+      // Broadcast to all clients that this team has selected
+      io.to(`campaign_${campaignId}`).emit('teamGoalSelected', {
+        battleId,
+        teamName,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`✅ Team ${teamName} selected goal for battle ${battleId}`);
+    } catch (error) {
+      console.error('Error handling team goal selection:', error);
+    }
+  });
+
   // Player rolls for a battle goal
   socket.on('battleGoalRolled', (data) => {
     try {

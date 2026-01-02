@@ -373,23 +373,14 @@ class Battle {
       
       const goal = result.rows[0];
       
-      // Apply positive modifier only to the army that executed the goal
+      // Apply modifier only to the executor (the army that executed the goal)
+      // Target score changes are handled separately via updateParticipantScore
       if (goal.participant_id && modifierApplied !== 0) {
         await pool.query(
           `UPDATE battle_participants 
            SET current_score = current_score + $2
            WHERE id = $1`,
           [goal.participant_id, modifierApplied]
-        );
-      }
-      
-      // Apply negative modifier to target army only (not entire team)
-      if (goal.target_participant_id && modifierApplied !== 0) {
-        await pool.query(
-          `UPDATE battle_participants 
-           SET current_score = current_score - $2
-           WHERE id = $1`,
-          [goal.target_participant_id, modifierApplied]
         );
       }
       
@@ -514,10 +505,18 @@ class Battle {
   // Create battle invitation
   static async invitePlayer(battleId, playerId, teamName, factionColor = '#808080') {
     try {
+      // First, update any existing pending invitations for this player/battle to 'superseded'
+      await pool.query(
+        `UPDATE battle_invitations 
+         SET status = 'superseded' 
+         WHERE battle_id = $1 AND player_id = $2 AND status = 'pending'`,
+        [battleId, playerId]
+      );
+      
+      // Then create the new invitation
       const result = await pool.query(
         `INSERT INTO battle_invitations (battle_id, player_id, team_name, faction_color, status)
          VALUES ($1, $2, $3, $4, 'pending')
-         ON CONFLICT DO NOTHING
          RETURNING *`,
         [battleId, playerId, teamName, factionColor]
       );
@@ -535,7 +534,8 @@ class Battle {
          FROM battle_invitations bi
          JOIN battles b ON bi.battle_id = b.id
          WHERE bi.player_id = $1 AND b.campaign_id = $2 AND bi.status = 'pending'
-         ORDER BY bi.invited_at DESC`,
+         ORDER BY bi.invited_at DESC
+         LIMIT 1`,
         [playerId, campaignId]
       );
       return result.rows;

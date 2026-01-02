@@ -443,6 +443,8 @@ router.post('/battles/:id/invite', authenticateToken, async (req, res) => {
             timestamp: new Date().toISOString()
           });
           console.log(`📨 Sent invitation to player ${playerId} via socket ${socketId}`);
+        } else {
+          console.log(`⚠️ Player ${playerId} not found in socket map - will receive on next page load`);
         }
       }
     }
@@ -560,6 +562,118 @@ router.put('/battles/participants/:participantId/position', authenticateToken, a
   } catch (error) {
     console.error('Error updating participant position:', error);
     res.status(500).json({ error: 'Failed to update participant position' });
+  }
+});
+
+// Update participant troops (casualties/reinforcements)
+router.put('/battles/participants/:participantId/troops', authenticateToken, async (req, res) => {
+  try {
+    const { participantId } = req.params;
+    const { troop_change } = req.body;
+    
+    if (troop_change === undefined) {
+      return res.status(400).json({ error: 'troop_change is required' });
+    }
+    
+    // Get the participant first
+    const db = require('../models/database');
+    const result = await db.pool.query(
+      'SELECT * FROM battle_participants WHERE id = $1',
+      [participantId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+    
+    const participant = result.rows[0];
+    const newTroopCount = Math.max(0, participant.current_troops + troop_change);
+    
+    // Update the troops
+    await db.pool.query(
+      'UPDATE battle_participants SET current_troops = $1 WHERE id = $2',
+      [newTroopCount, participantId]
+    );
+    
+    // Get updated participant
+    const updatedResult = await db.pool.query(
+      'SELECT * FROM battle_participants WHERE id = $1',
+      [participantId]
+    );
+    
+    // Emit socket event to notify all clients
+    const battle = await Battle.findById(participant.battle_id);
+    const io = req.app.get('io');
+    if (io && battle) {
+      io.to(`campaign_${battle.campaign_id}`).emit('participantTroopsUpdated', {
+        battleId: participant.battle_id,
+        participantId,
+        newTroopCount,
+        troopChange: troop_change,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    res.json(updatedResult.rows[0]);
+  } catch (error) {
+    console.error('Error updating participant troops:', error);
+    res.status(500).json({ error: 'Failed to update participant troops' });
+  }
+});
+
+// Update participant battle score
+router.put('/battles/participants/:participantId/score', authenticateToken, async (req, res) => {
+  try {
+    const { participantId } = req.params;
+    const { score_change } = req.body;
+    
+    if (score_change === undefined) {
+      return res.status(400).json({ error: 'score_change is required' });
+    }
+    
+    // Get the participant first
+    const db = require('../models/database');
+    const result = await db.pool.query(
+      'SELECT * FROM battle_participants WHERE id = $1',
+      [participantId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+    
+    const participant = result.rows[0];
+    const newScore = participant.current_score + score_change;
+    
+    // Update the score
+    await db.pool.query(
+      'UPDATE battle_participants SET current_score = $1 WHERE id = $2',
+      [newScore, participantId]
+    );
+    
+    // Get updated participant
+    const updatedResult = await db.pool.query(
+      'SELECT * FROM battle_participants WHERE id = $1',
+      [participantId]
+    );
+    
+    // Emit socket event to notify all clients
+    const battle = await Battle.findById(participant.battle_id);
+    const io = req.app.get('io');
+    if (io && battle) {
+      io.to(`campaign_${battle.campaign_id}`).emit('participantScoreUpdated', {
+        battleId: participant.battle_id,
+        participantId,
+        newScore,
+        scoreChange: score_change,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    res.json(updatedResult.rows[0]);
+  } catch (error) {
+    console.error('Error updating participant score:', error);
+    res.status(500).json({ error: 'Failed to update participant score' });
   }
 });
 
@@ -720,82 +834,8 @@ router.put('/battles/goals/:goalId/resolve', authenticateToken, async (req, res)
     
     const goal = await Battle.resolveGoal(goalId, dc_required, success, modifier_applied);
     
-    // Apply troop casualties based on margin of success/failure
-    let attackerCasualties = 0;
-    let defenderCasualties = 0;
-    
-    // Calculate margin (how much over/under the DC)
-    const margin = roll_total !== undefined ? Math.abs((roll_total || 0) - dc_required) : 5;
-    
-    if (success) {
-      // Successful attack - target loses troops based on margin
-      // Margin 0-2: 15-20% casualties (barely succeeded)
-      // Margin 3-5: 21-28% casualties
-      // Margin 6-9: 29-38% casualties
-      // Margin 10-14: 39-50% casualties
-      // Margin 15+: 51-70% casualties (crushing success)
-      if (margin <= 2) {
-        defenderCasualties = Math.floor(Math.random() * 6) + 15; // 15-20%
-      } else if (margin <= 5) {
-        defenderCasualties = Math.floor(Math.random() * 8) + 21; // 21-28%
-      } else if (margin <= 9) {
-        defenderCasualties = Math.floor(Math.random() * 10) + 29; // 29-38%
-      } else if (margin <= 14) {
-        defenderCasualties = Math.floor(Math.random() * 12) + 39; // 39-50%
-      } else {
-        defenderCasualties = Math.floor(Math.random() * 20) + 51; // 51-70%
-      }
-    } else {
-      // Failed attack - attacker loses troops based on margin
-      // Margin 0-2: 10-15% casualties (barely failed)
-      // Margin 3-5: 16-22% casualties
-      // Margin 6-9: 23-30% casualties
-      // Margin 10-14: 31-42% casualties
-      // Margin 15+: 43-60% casualties (terrible failure)
-      if (margin <= 2) {
-        attackerCasualties = Math.floor(Math.random() * 6) + 10; // 10-15%
-      } else if (margin <= 5) {
-        attackerCasualties = Math.floor(Math.random() * 7) + 16; // 16-22%
-      } else if (margin <= 9) {
-        attackerCasualties = Math.floor(Math.random() * 8) + 23; // 23-30%
-      } else if (margin <= 14) {
-        attackerCasualties = Math.floor(Math.random() * 12) + 31; // 31-42%
-      } else {
-        attackerCasualties = Math.floor(Math.random() * 18) + 43; // 43-60%
-      }
-    }
-    
-    // Apply casualties to attacker if they failed
-    if (attackerCasualties > 0) {
-      const participantResult = await pool.query(
-        'SELECT current_troops, COALESCE(a.total_troops, bp.temp_army_troops) as max_troops FROM battle_participants bp LEFT JOIN armies a ON bp.army_id = a.id WHERE bp.id = $1', 
-        [goal.participant_id]
-      );
-      if (participantResult.rows.length > 0) {
-        const currentTroops = participantResult.rows[0].current_troops;
-        const maxTroops = participantResult.rows[0].max_troops;
-        const actualCasualties = Math.max(1, Math.floor(maxTroops * (attackerCasualties / 100)));
-        if (actualCasualties > 0 && currentTroops > 0) {
-          await Battle.applyTroopCasualties(goal.participant_id, actualCasualties);
-        }
-      }
-    }
-    
-    // Apply casualties to defender if attack succeeded and there's a target
-    if (goal.target_participant_id && defenderCasualties > 0) {
-      const targetResult = await pool.query(
-        'SELECT current_troops, COALESCE(a.total_troops, bp.temp_army_troops) as max_troops FROM battle_participants bp LEFT JOIN armies a ON bp.army_id = a.id WHERE bp.id = $1',
-        [goal.target_participant_id]
-      );
-      if (targetResult.rows.length > 0) {
-        const currentTroops = targetResult.rows[0].current_troops;
-        const maxTroops = targetResult.rows[0].max_troops;
-        const actualCasualties = Math.max(1, Math.floor(maxTroops * (defenderCasualties / 100)));
-        if (actualCasualties > 0 && currentTroops > 0) {
-          await Battle.applyTroopCasualties(goal.target_participant_id, actualCasualties);
-        }
-      }
-    }
+    // NOTE: Casualties are now handled separately via the updateParticipantTroops endpoint
+    // The DM calculates and applies them manually from the frontend
     
     // Get battle to find campaign_id for socket emission
     const battle = await Battle.findById(goal.battle_id);

@@ -541,6 +541,7 @@ export interface BattleParticipant {
   morale?: number;
   command?: number;
   logistics?: number;
+  character_abilities?: any;
 }
 
 export interface BattleGoal {
@@ -635,6 +636,16 @@ export const battleAPI = {
 
   updateParticipantPosition: async (participantId: number, x: number, y: number): Promise<void> => {
     await api.put(`/armies/battles/participants/${participantId}/position`, { x, y });
+  },
+
+  updateParticipantTroops: async (participantId: number, troopChange: number): Promise<BattleParticipant> => {
+    const response = await api.put(`/armies/battles/participants/${participantId}/troops`, { troop_change: troopChange });
+    return response.data;
+  },
+
+  updateParticipantScore: async (participantId: number, scoreChange: number): Promise<BattleParticipant> => {
+    const response = await api.put(`/armies/battles/participants/${participantId}/score`, { score_change: scoreChange });
+    return response.data;
   },
 
   calculateBaseScores: async (battleId: number): Promise<Battle> => {
