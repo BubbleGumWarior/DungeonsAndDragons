@@ -303,6 +303,36 @@ const CharacterCreation: React.FC = () => {
         { level: 20, features: 'Perfect Self' }
       ]
     },
+    'Oathknight': {
+      description: 'The final evolution of the knightly ideal — oath given form. Oathknights are immovable guardians with unmatched durability, wielding Constitution as their core strength.',
+      features: ['Oathbound Vitality', 'Guarding Stance', 'Ascended Oath', 'Bulwark Aura'],
+      subclasses: [
+        { name: 'Oath of the Aegis', color: '#C0C0C0', description: 'Shield-focused ultimate defender' },
+        { name: 'Oath of the Vanguard', color: '#DC143C', description: 'Two-handed offensive juggernaut' }
+      ],
+      levelProgression: [
+        { level: 1, features: 'Oathbound Vitality, Martial Training' },
+        { level: 2, features: 'Guarding Stance' },
+        { level: 3, features: 'Ascended Oath, Unyielding Guard (Aegis) / Crusader Might (Vanguard)' },
+        { level: 4, features: 'Ability Score Improvement' },
+        { level: 5, features: 'Retributive Strike' },
+        { level: 6, features: 'Shield Mastery (Aegis) / Momentum Guard (Vanguard)' },
+        { level: 7, features: 'Iron Will' },
+        { level: 8, features: 'Ability Score Improvement' },
+        { level: 9, features: 'Bulwark Aura' },
+        { level: 10, features: 'Living Fortress (Aegis) / Wrath Unending (Vanguard)' },
+        { level: 11, features: 'Juggernaut Fortitude' },
+        { level: 12, features: 'Ability Score Improvement' },
+        { level: 13, features: 'Stoneheart' },
+        { level: 14, features: 'Reflective Aegis (Aegis) / Blood Warlord (Vanguard)' },
+        { level: 15, features: 'Adamant Resolve' },
+        { level: 16, features: 'Ability Score Improvement' },
+        { level: 17, features: 'Indestructible (Aegis) / Titan Ascension (Vanguard)' },
+        { level: 18, features: 'Immortal Guard' },
+        { level: 19, features: 'Ability Score Improvement' },
+        { level: 20, features: 'Avatar of the Oath, Avatar - Aegis (Aegis) / Avatar - Vanguard (Vanguard)' }
+      ]
+    },
     'Paladin': {
       description: 'A holy warrior bound to a sacred oath, wielding divine magic and martial prowess. Paladins are champions of justice and righteousness.',
       features: ['Divine Sense', 'Lay on Hands', 'Fighting Style', 'Spellcasting', 'Divine Smite'],
@@ -363,6 +393,37 @@ const CharacterCreation: React.FC = () => {
         { level: 18, features: 'Feral Senses' },
         { level: 19, features: 'Ability Score Improvement' },
         { level: 20, features: 'Foe Slayer' }
+      ]
+    },
+    'Reaver': {
+      description: 'Masters of thrown steel, spatial manipulation, and lethal precision. Reavers excel at ranged combat with throwing weapons, combining mobility with deadly accuracy.',
+      features: ['Blade Savant', 'Swift Draw', 'Recall Blades', 'Twin Throw'],
+      subclasses: [
+        { name: 'Whirlwind Path', color: '#00CED1', description: 'Become a storm of blades' },
+        { name: 'Phantom Path', color: '#8B008B', description: 'Phase through reality' },
+        { name: 'Sentinel Path', color: '#FF8C00', description: 'Protect allies with thrown steel' }
+      ],
+      levelProgression: [
+        { level: 1, features: 'Blade Savant, Swift Draw' },
+        { level: 2, features: 'Recall Blades' },
+        { level: 3, features: 'Reaver Path, Relentless Motion (Whirlwind), Dagger Step (Phantom), Guardian\'s Mark (Sentinel)' },
+        { level: 4, features: 'Ability Score Improvement' },
+        { level: 5, features: 'Twin Throw, Quickstep' },
+        { level: 6, features: 'Whirling Strikes (Whirlwind), Ethereal Blades (Phantom), Intercepting Throw (Sentinel)' },
+        { level: 7, features: 'Ricochet Strike' },
+        { level: 8, features: 'Ability Score Improvement' },
+        { level: 9, features: 'Blade Storm' },
+        { level: 10, features: 'Storm of Blades (Whirlwind), Shadow Walk (Phantom), Pinning Strike (Sentinel)' },
+        { level: 11, features: 'Unerring Precision' },
+        { level: 12, features: 'Ability Score Improvement' },
+        { level: 13, features: 'Dancing Death' },
+        { level: 14, features: 'Cyclone Strike (Whirlwind), Phantom Strike (Phantom), Blade Barrier (Sentinel)' },
+        { level: 15, features: 'Flow of Steel' },
+        { level: 16, features: 'Ability Score Improvement' },
+        { level: 17, features: 'Eye of the Storm (Whirlwind), Ghost in Steel (Phantom), Steel Sentinel (Sentinel)' },
+        { level: 18, features: 'Shadow Recall' },
+        { level: 19, features: 'Ability Score Improvement' },
+        { level: 20, features: 'Avatar of the Blade' }
       ]
     },
     'Rogue': {
@@ -488,37 +549,6 @@ const CharacterCreation: React.FC = () => {
         { level: 19, features: 'Ability Score Improvement' },
         { level: 20, features: 'Signature Spells' }
       ]
-    },
-    'Reaver': {
-      description: 'Masters of thrown steel, spatial manipulation, and lethal precision. Reavers excel at ranged combat with throwing weapons, combining mobility with deadly accuracy.',
-      features: ['Blade Savant', 'Swift Draw', 'Recall Blades', 'Twin Throw'],
-      subclasses: [
-        { name: 'Whirlwind Path', color: '#00CED1', description: 'Become a storm of blades' },
-        { name: 'Phantom Path', color: '#8B008B', description: 'Phase through reality' },
-        { name: 'Sentinel Path', color: '#FF8C00', description: 'Protect allies with thrown steel' }
-      ],
-      levelProgression: [
-        { level: 1, features: 'Blade Savant, Swift Draw' },
-        { level: 2, features: 'Recall Blades' },
-        { level: 3, features: 'Reaver Path, Relentless Motion (Whirlwind), Dagger Step (Phantom), Guardian\'s Mark (Sentinel)' },
-        { level: 4, features: 'Ability Score Improvement' },
-        { level: 5, features: 'Twin Throw, Quickstep' },
-        { level: 6, features: 'Whirling Strikes (Whirlwind), Ethereal Blades (Phantom), Intercepting Throw (Sentinel)' },
-        { level: 7, features: 'Ricochet Strike' },
-        { level: 8, features: 'Ability Score Improvement' },
-        { level: 9, features: 'Blade Storm' },
-        { level: 10, features: 'Storm of Blades (Whirlwind), Shadow Walk (Phantom), Pinning Strike (Sentinel)' },
-        { level: 11, features: 'Unerring Precision' },
-        { level: 12, features: 'Ability Score Improvement' },
-        { level: 13, features: 'Dancing Death' },
-        { level: 14, features: 'Cyclone Strike (Whirlwind), Phantom Strike (Phantom), Blade Barrier (Sentinel)' },
-        { level: 15, features: 'Flow of Steel' },
-        { level: 16, features: 'Ability Score Improvement' },
-        { level: 17, features: 'Eye of the Storm (Whirlwind), Ghost in Steel (Phantom), Steel Sentinel (Sentinel)' },
-        { level: 18, features: 'Shadow Recall' },
-        { level: 19, features: 'Ability Score Improvement' },
-        { level: 20, features: 'Avatar of the Blade' }
-      ]
     }
   };
 
@@ -533,12 +563,10 @@ const CharacterCreation: React.FC = () => {
         
         // Load skills
         const skillsResponse = await skillAPI.getAll();
-        console.log('Skills response:', skillsResponse);
         const skillsMap: Record<string, Skill> = {};
         skillsResponse.skills.forEach(skill => {
           skillsMap[skill.name] = skill;
         });
-        console.log('Loaded skills:', Object.keys(skillsMap));
         setSkillData(skillsMap);
         
         // Check for saved random classes in localStorage first
@@ -687,8 +715,6 @@ const CharacterCreation: React.FC = () => {
 
     // Sort skill names by length (longest first) to match multi-word skills first
     const sortedSkillNames = Object.keys(skillData).sort((a, b) => b.length - a.length);
-    
-    console.log('Rendering text:', text, 'Available skills:', sortedSkillNames.length);
 
     while (remainingText.length > 0) {
       let matched = false;
@@ -698,7 +724,7 @@ const CharacterCreation: React.FC = () => {
         'Primal Path', 'Bard College', 'Divine Domain', 'Druid Circle',
         'Martial Archetype', 'Monastic Tradition', 'Sacred Oath', 'Ranger Archetype',
         'Roguish Archetype', 'Sorcerous Origin', 'Otherworldly Patron', 'Arcane Tradition',
-        'Reaver Path'
+        'Reaver Path', 'Ascended Oath'
       ];
 
       for (const choice of subclassChoices) {
@@ -750,15 +776,40 @@ const CharacterCreation: React.FC = () => {
 
         if (subclassColor) {
           // This is a subclass-specific feature - color it with the subclass color
-          const fullSkillName = featureName + ' (' + subclassName + ')';
-          const skillInfo = skillData[fullSkillName];
+          // Clean the feature name by removing leading slashes and trimming
+          const cleanFeatureName = featureName.replace(/^\/\s*/, '').trim();
+          const fullSkillName = `${cleanFeatureName} (${subclassName})`;
+          // Try exact match first, then try with different spacing
+          let skillInfo = skillData[fullSkillName];
+          let matchedSkillName = fullSkillName;
+          
+          if (!skillInfo) {
+            // Try to find with normalized spacing
+            const normalizedName = `${cleanFeatureName.trim()} (${subclassName.trim()})`;
+            skillInfo = skillData[normalizedName];
+            if (skillInfo) {
+              matchedSkillName = normalizedName;
+            }
+          }
+          
+          // If still not found, try searching all skills for a partial match
+          if (!skillInfo) {
+            for (const skillName of Object.keys(skillData)) {
+              if (skillName.toLowerCase().includes(cleanFeatureName.toLowerCase()) && 
+                  skillName.toLowerCase().includes(subclassName.toLowerCase())) {
+                skillInfo = skillData[skillName];
+                matchedSkillName = skillName;
+                break;
+              }
+            }
+          }
           
           elements.push(
             <span
               key={`subclass-feature-${index}`}
               onMouseEnter={() => {
                 if (skillInfo) {
-                  setHoveredSkill(fullSkillName);
+                  setHoveredSkill(matchedSkillName);
                 }
               }}
               onMouseLeave={() => {
@@ -788,7 +839,6 @@ const CharacterCreation: React.FC = () => {
         
         if (skillNameRegex.test(remainingText)) {
           // Found a match!
-          console.log('Matched skill:', skillName);
           elements.push(
             <span
               key={`skill-${index}`}
