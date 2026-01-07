@@ -44,7 +44,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: false,
     reward: '+2 to your team\'s total score',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use your personal charisma to inspire your forces with a rousing speech.',
     can_kill: false
   },
@@ -72,7 +72,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: false,
     reward: '+2 to your team, negate up to -2 penalties',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use wisdom and army discipline to execute an organized withdrawal.',
     min_round: 2,
     is_defensive: true,
@@ -133,7 +133,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: false,
     reward: '+3 to your team\'s total score',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use military command structure to synchronize units for a combined assault.',
     can_kill: false
   },
@@ -148,7 +148,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: false,
     reward: '+4 to your team, resist 2 enemy penalties',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Elite shield-equipped infantry forms an impenetrable defensive wall with overlapping shields.',
     is_defensive: true,
     can_kill: true,
@@ -165,7 +165,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: false,
     reward: '+4 to your team, resist 2 enemy penalties',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Elite spear or pike formation creates a wall of pointed death that repels enemy advances.',
     is_defensive: true,
     can_kill: true,
@@ -181,7 +181,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: true,
     reward: '-2 to target enemy, +1 to your team',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use army discipline to position units for a flanking attack.',
     can_kill: true
   },
@@ -195,7 +195,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: false,
     reward: '+2 to your team',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Army discipline maintains defensive positions against overwhelming odds.',
     is_defensive: true,
     can_kill: true,
@@ -242,7 +242,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     use_highest_modifier: true,
     targets_enemy: false,
     reward: '+2 to your team',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Army logistics quickly moves troops to critical positions.',
     can_kill: false
   },
@@ -255,7 +255,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: false,
     reward: '+3 to your team, reduce next enemy penalty by 1',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use your intelligence to design strong defensive positions.',
     is_defensive: true,
     can_kill: true,
@@ -287,7 +287,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: true,
     reward: '-2 to target enemy\'s total score',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Army numbers launch a frontal assault on enemy positions.',
     can_kill: true
   },
@@ -302,7 +302,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: true,
     reward: '-5 to target enemy\'s total score',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Ranged army focuses all projectiles on a single enemy unit with devastating precision.',
     can_kill: true
   },
@@ -357,7 +357,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: true,
     reward: '-3 to target enemy',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use your agility to lead hit-and-run attacks harassing enemy forces.',
     can_kill: true
   },
@@ -444,7 +444,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: true,
     reward: '-3 to target enemy, +1 to your team',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use your stealth to personally raid enemy supply chains.',
     can_kill: false
   },
@@ -458,7 +458,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: true,
     targets_enemy: false,
     reward: '+3 to your team',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Army logistics constructs defensive works to strengthen positions.',
     can_kill: false
   },
@@ -485,7 +485,7 @@ const BATTLE_GOALS: BattleGoalDefinition[] = [
     uses_army_stat: false,
     targets_enemy: false,
     reward: '+2 to your team',
-    fail: 'No effect',
+    fail: '-1 to your team\'s total score',
     description: 'Use your perception to scout and gather intelligence on enemy movements.',
     can_kill: false
   },
@@ -748,6 +748,7 @@ const CampaignView: React.FC = () => {
   // Army and Battlefield state
   const [armies, setArmies] = useState<Army[]>([]);
   const [activeBattle, setActiveBattle] = useState<Battle | null>(null);
+  const [showBackstoryModal, setShowBackstoryModal] = useState(false);
   const [showAddArmyModal, setShowAddArmyModal] = useState(false);
   const [newArmyData, setNewArmyData] = useState<{
     name: string;
@@ -2714,21 +2715,31 @@ const CampaignView: React.FC = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <div>
               <h1 className="app-title">{campaign.name}</h1>
-              <p className="text-muted" style={{ margin: 0, fontSize: '1rem' }}>
-                {campaign.description || 'No description available'}
-              </p>
             </div>
-            <button 
-              onClick={handleBackToDashboard} 
-              className="btn btn-secondary"
-              style={{ 
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(212, 193, 156, 0.3)',
-                color: 'var(--text-secondary)'
-              }}
-            >
-              ← Back to Dashboard
-            </button>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button 
+                onClick={() => setShowBackstoryModal(true)} 
+                className="btn btn-secondary"
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                📜 Backstory
+              </button>
+              <button 
+                onClick={handleBackToDashboard} 
+                className="btn btn-secondary"
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                ← Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
 
@@ -5794,6 +5805,16 @@ const CampaignView: React.FC = () => {
                                               // Target takes minimal casualties
                                               if (targetParticipant?.current_troops) {
                                                 targetCasualties = Math.floor(targetParticipant.current_troops * (0.02 + Math.random() * 0.03)); // 2-5%
+                                              }
+                                            }
+                                            
+                                            // Ensure minimum penalty: at least -1 battle score OR 1 casualty
+                                            if (scoreChange === 0 && casualties === 0) {
+                                              // Prefer casualties for combat goals, score loss for others
+                                              if (isCombatGoal && executorParticipant?.current_troops && executorParticipant.current_troops > 0) {
+                                                casualties = 1;
+                                              } else {
+                                                scoreChange = -1;
                                               }
                                             }
                                           }
@@ -8882,6 +8903,54 @@ const CampaignView: React.FC = () => {
           onClose={() => setShowResetCombatModal(false)}
           isDangerous={true}
         />
+
+        {/* Backstory Modal */}
+        {showBackstoryModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setShowBackstoryModal(false)}
+          >
+            <div 
+              className="glass-panel"
+              style={{
+                maxWidth: '800px',
+                maxHeight: '80vh',
+                overflow: 'auto',
+                padding: '2rem',
+                margin: '2rem'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h2 className="text-gold" style={{ margin: 0 }}>{campaign.name}</h2>
+                <button
+                  onClick={() => setShowBackstoryModal(false)}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.5rem 1rem' }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-secondary" style={{ textAlign: 'left', lineHeight: '1.8' }}>
+                {campaign.description 
+                  ? campaign.description.split('\n').map((paragraph, index) => (
+                      paragraph.trim() && <p key={index} style={{ margin: '1rem 0' }}>{paragraph}</p>
+                    ))
+                  : 'No description available'}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add to Combat Modal (DM) */}
         {showAddToCombatModal && currentCampaign && (
