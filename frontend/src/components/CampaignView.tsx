@@ -9,6 +9,30 @@ import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
 import BattleMapImage from '../assets/images/Campaign/BattleMap.jpg';
 import io from 'socket.io-client';
 
+// Journal Entry Interface
+interface JournalEntry {
+  id: number;
+  campaign_id: number;
+  title: string;
+  description: string;
+  image_url?: string;
+  created_by: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+// Journal Entry Interface
+interface JournalEntry {
+  id: number;
+  campaign_id: number;
+  title: string;
+  description: string;
+  image_url?: string;
+  created_by: number;
+  created_at: string;
+  updated_at?: string;
+}
+
 // Battle Goals Data Structure
 interface BattleGoalDefinition {
   name: string;
@@ -895,6 +919,17 @@ const CampaignView: React.FC = () => {
   const [isKeyboardNavigating, setIsKeyboardNavigating] = useState(false);
   const [pageDirection, setPageDirection] = useState<'forward' | 'backward' | null>(null);
 
+  // Journal state
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [showAddJournalModal, setShowAddJournalModal] = useState(false);
+  const [showViewJournalModal, setShowViewJournalModal] = useState(false);
+  const [selectedJournalEntry, setSelectedJournalEntry] = useState<JournalEntry | null>(null);
+  const [newJournalData, setNewJournalData] = useState({
+    title: '',
+    description: '',
+    imageFile: null as File | null
+  });
+
   // Function to split backstory into pages with intelligent paragraph boundary detection
   const paginateBackstory = useCallback((text: string, wordsPerPage: number = 500): string[] => {
     if (!text || text.trim().length === 0) return [];
@@ -1057,6 +1092,30 @@ const CampaignView: React.FC = () => {
     loadArmies();
   }, [selectedCharacter, currentCampaign]);
 
+  // Load journal entries when campaign loads
+  useEffect(() => {
+    const loadJournalEntries = async () => {
+      if (currentCampaign) {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch(`/api/campaigns/${currentCampaign.campaign.id}/journals`, {
+            credentials: 'include',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (response.ok) {
+            const entries = await response.json();
+            setJournalEntries(entries);
+          }
+        } catch (error) {
+          console.error('Error loading journal entries:', error);
+        }
+      }
+    };
+    loadJournalEntries();
+  }, [currentCampaign]);
+
   // Load active battle when switching to battlefield tab
   useEffect(() => {
     const loadActiveBattle = async () => {
@@ -1137,6 +1196,119 @@ const CampaignView: React.FC = () => {
   };
 
 
+
+  // Journal Entry Handlers
+  const handleCreateJournalEntry = async () => {
+    if (!newJournalData.title.trim() || !currentCampaign) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('title', newJournalData.title);
+      formData.append('description', newJournalData.description);
+      formData.append('campaign_id', currentCampaign.campaign.id.toString());
+      
+      if (newJournalData.imageFile) {
+        formData.append('image', newJournalData.imageFile);
+      }
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/campaigns/${currentCampaign.campaign.id}/journals`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const createdEntry = await response.json();
+        // Don't add directly - let socket emission handle it for everyone including DM
+        setShowAddJournalModal(false);
+        setNewJournalData({ title: '', description: '', imageFile: null });
+        setToastMessage(`Journal entry "${createdEntry.title}" created!`);
+        setTimeout(() => setToastMessage(null), 3000);
+      } else {
+        alert('Failed to create journal entry');
+      }
+    } catch (error) {
+      console.error('Error creating journal entry:', error);
+      alert('Failed to create journal entry');
+    }
+  };
+
+  const handleDeleteJournalEntry = async (entryId: number) => {
+    if (!currentCampaign || !window.confirm('Are you sure you want to delete this journal entry?')) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/campaigns/${currentCampaign.campaign.id}/journals/${entryId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        setJournalEntries(prev => prev.filter(e => e.id !== entryId));
+        setShowViewJournalModal(false);
+        setSelectedJournalEntry(null);
+        setToastMessage('Journal entry deleted');
+        setTimeout(() => setToastMessage(null), 3000);
+      } else {
+        alert('Failed to delete journal entry');
+      }
+    } catch (error) {
+      console.error('Error deleting journal entry:', error);
+      alert('Failed to delete journal entry');
+    }
+  };
+
+  // Helper function to format journal entry text with bold and reference styling
+  const formatJournalText = (text: string) => {
+    if (!text) return null;
+    
+    const parts: React.ReactNode[] = [];
+    let currentIndex = 0;
+    let key = 0;
+    
+    // Regular expression to match **bold** or [[references]]
+    const regex = /(\*\*.*?\*\*|\[\[.*?\]\])/g;
+    let match;
+    
+    while ((match = regex.exec(text)) !== null) {
+      // Add text before the match
+      if (match.index > currentIndex) {
+        parts.push(text.substring(currentIndex, match.index));
+      }
+      
+      const matchedText = match[0];
+      
+      if (matchedText.startsWith('**') && matchedText.endsWith('**')) {
+        // Bold text
+        const boldText = matchedText.slice(2, -2);
+        parts.push(<strong key={key++}>{boldText}</strong>);
+      } else if (matchedText.startsWith('[[') && matchedText.endsWith(']]')) {
+        // Reference text (italic and gold)
+        const refText = matchedText.slice(2, -2);
+        parts.push(
+          <em key={key++} style={{ color: 'var(--text-gold)', fontStyle: 'italic' }}>
+            {refText}
+          </em>
+        );
+      }
+      
+      currentIndex = match.index + matchedText.length;
+    }
+    
+    // Add remaining text after last match
+    if (currentIndex < text.length) {
+      parts.push(text.substring(currentIndex));
+    }
+    
+    return parts.length > 0 ? parts : text;
+  };
 
   // Helper function to calculate total character health from limbs
   const calculateCharacterHealth = (character: any) => {
@@ -1875,6 +2047,21 @@ const CampaignView: React.FC = () => {
       // Listen for goal selected
       newSocket.on('battleGoalSelected', (data: { battleId: number; goal: any; timestamp: string }) => {
         refreshActiveBattle(data.battleId);
+      });
+      
+      // Listen for journal entry created
+      newSocket.on('journalEntryCreated', (data: { entry: JournalEntry; timestamp: string }) => {
+        setJournalEntries(prev => [data.entry, ...prev]);
+      });
+      
+      // Listen for journal entry updated
+      newSocket.on('journalEntryUpdated', (data: { entry: JournalEntry; timestamp: string }) => {
+        setJournalEntries(prev => prev.map(e => e.id === data.entry.id ? data.entry : e));
+      });
+      
+      // Listen for journal entry deleted
+      newSocket.on('journalEntryDeleted', (data: { entryId: number; timestamp: string }) => {
+        setJournalEntries(prev => prev.filter(e => e.id !== data.entryId));
       });
       
       setSocket(newSocket);
@@ -6384,25 +6571,118 @@ const CampaignView: React.FC = () => {
 
             {campaignTab === 'journal' && (
               <div className="glass-panel">
-                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📖 Campaign Journal</h5>
-                <div style={{
-                  minHeight: '400px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '2px dashed rgba(212, 193, 156, 0.3)',
-                  borderRadius: '0.75rem',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  padding: '3rem'
-                }}>
-                  <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>📖</div>
-                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Campaign Journal Coming Soon</h4>
-                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
-                    This area will contain the campaign's shared journal with session recaps, important discoveries,
-                    NPC notes, and a timeline of major events. Both players and DM can contribute entries.
-                  </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📖 Campaign Journal</h5>
+                  {user?.role === 'Dungeon Master' && (
+                    <button
+                      onClick={() => setShowAddJournalModal(true)}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#10b981',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                    >
+                      + Add Entry
+                    </button>
+                  )}
                 </div>
+
+                {journalEntries.length === 0 ? (
+                  <div style={{
+                    minHeight: '400px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '2px dashed rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    padding: '3rem'
+                  }}>
+                    <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>📖</div>
+                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Journal Entries Yet</h4>
+                    <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                      {user?.role === 'Dungeon Master' 
+                        ? 'Click "Add Entry" to create your first journal entry.'
+                        : 'The DM hasn\'t created any journal entries yet.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '1rem'
+                  }}>
+                    {journalEntries.map(entry => (
+                      <div
+                        key={entry.id}
+                        onClick={() => {
+                          setSelectedJournalEntry(entry);
+                          setShowViewJournalModal(true);
+                        }}
+                        style={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          border: '1px solid rgba(212, 193, 156, 0.2)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-4px)';
+                          e.currentTarget.style.borderColor = 'var(--text-gold)';
+                          e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        {entry.image_url && (
+                          <div style={{
+                            width: '100%',
+                            height: '150px',
+                            backgroundImage: `url(${entry.image_url})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                          }} />
+                        )}
+                        <div style={{ padding: '12px' }}>
+                          <h4 style={{
+                            margin: 0,
+                            fontSize: '16px',
+                            fontWeight: 'bold',
+                            color: 'var(--text-gold)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            minHeight: entry.image_url ? 'auto' : '100px'
+                          }}>
+                            {entry.title}
+                          </h4>
+                          <p style={{
+                            margin: '8px 0 0 0',
+                            fontSize: '11px',
+                            color: 'var(--text-muted)'
+                          }}>
+                            {new Date(entry.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -7888,6 +8168,263 @@ const CampaignView: React.FC = () => {
 
         </div>
       </div>
+
+      {/* Add Journal Entry Modal (DM) */}
+      {showAddJournalModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowAddJournalModal(false)}>
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(20, 20, 20, 0.98) 0%, rgba(30, 30, 30, 0.98) 100%)',
+            border: '2px solid var(--text-gold)',
+            borderRadius: '1rem',
+            padding: '2rem',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📖 Create Journal Entry</h3>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
+                Title *
+              </label>
+              <input
+                type="text"
+                value={newJournalData.title}
+                onChange={(e) => setNewJournalData({ ...newJournalData, title: e.target.value })}
+                placeholder="Enter journal entry title..."
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.5rem',
+                  color: '#fff',
+                  fontSize: '1rem'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
+                Description *
+              </label>
+              <textarea
+                value={newJournalData.description}
+                onChange={(e) => setNewJournalData({ ...newJournalData, description: e.target.value })}
+                placeholder="Enter journal entry description (paragraphs will be preserved)..."
+                rows={10}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.5rem',
+                  color: '#fff',
+                  fontSize: '1rem',
+                  resize: 'vertical',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
+                Image (Optional)
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setNewJournalData({ ...newJournalData, imageFile: file });
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.5rem',
+                  color: '#ccc',
+                  fontSize: '0.9rem'
+                }}
+              />
+              {newJournalData.imageFile && (
+                <p style={{ color: 'var(--text-gold)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                  📷 {newJournalData.imageFile.name}
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowAddJournalModal(false);
+                  setNewJournalData({ title: '', description: '', imageFile: null });
+                }}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: 'rgba(239, 68, 68, 0.2)',
+                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                  borderRadius: '0.5rem',
+                  color: '#ef4444',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateJournalEntry}
+                disabled={!newJournalData.title.trim()}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: newJournalData.title.trim() ? 'var(--text-gold)' : 'rgba(212, 193, 156, 0.3)',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  color: newJournalData.title.trim() ? '#1a1a1a' : '#666',
+                  cursor: newJournalData.title.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: '1rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                Create Entry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Journal Entry Modal */}
+      {showViewJournalModal && selectedJournalEntry && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '2rem'
+        }} onClick={() => {
+          setShowViewJournalModal(false);
+          setSelectedJournalEntry(null);
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(20, 20, 20, 0.98) 0%, rgba(30, 30, 30, 0.98) 100%)',
+            border: '2px solid var(--text-gold)',
+            borderRadius: '1rem',
+            padding: '2rem',
+            maxWidth: '800px',
+            width: '90%',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+              <div style={{ flex: 1 }}>
+                <h2 style={{ color: 'var(--text-gold)', margin: '0 0 0.5rem 0' }}>
+                  {selectedJournalEntry.title}
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
+                  {new Date(selectedJournalEntry.created_at).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </p>
+              </div>
+              {user?.role === 'Dungeon Master' && (
+                <button
+                  onClick={() => handleDeleteJournalEntry(selectedJournalEntry.id)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: 'rgba(239, 68, 68, 0.2)',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  🗑️ Delete
+                </button>
+              )}
+            </div>
+
+            {selectedJournalEntry.image_url && (
+              <div style={{
+                width: '100%',
+                maxHeight: '400px',
+                marginBottom: '1.5rem',
+                borderRadius: '0.5rem',
+                overflow: 'hidden'
+              }}>
+                <img 
+                  src={selectedJournalEntry.image_url} 
+                  alt={selectedJournalEntry.title}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block'
+                  }}
+                />
+              </div>
+            )}
+
+            <div style={{
+              color: '#ccc',
+              fontSize: '1rem',
+              lineHeight: '1.6',
+              whiteSpace: 'pre-wrap'
+            }}>
+              {selectedJournalEntry.description.split('\n').map((paragraph, idx) => (
+                <div key={idx} style={{ marginBottom: paragraph.trim() ? '1rem' : '0' }}>
+                  {formatJournalText(paragraph)}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '2rem', textAlign: 'right' }}>
+              <button
+                onClick={() => {
+                  setShowViewJournalModal(false);
+                  setSelectedJournalEntry(null);
+                }}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: 'var(--text-gold)',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  color: '#1a1a1a',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
         {toastMessage && (

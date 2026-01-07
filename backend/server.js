@@ -17,6 +17,7 @@ const monsterRoutes = require('./routes/monsters');
 const monsterInstanceRoutes = require('./routes/monsterInstances');
 const armyRoutes = require('./routes/armies');
 const skillRoutes = require('./routes/skills');
+const journalsRoutes = require('./routes/journals');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -133,6 +134,7 @@ if (process.env.NODE_ENV === 'production') {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/campaigns', journalsRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/monsters', monsterRoutes);
