@@ -16,6 +16,7 @@ const characterRoutes = require('./routes/characters');
 const monsterRoutes = require('./routes/monsters');
 const monsterInstanceRoutes = require('./routes/monsterInstances');
 const armyRoutes = require('./routes/armies');
+const skillRoutes = require('./routes/skills');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -137,6 +138,7 @@ app.use('/api/characters', characterRoutes);
 app.use('/api/monsters', monsterRoutes);
 app.use('/api/armies', armyRoutes);
 app.use('/api/monster-instances', monsterInstanceRoutes);
+app.use('/api/skills', skillRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -206,6 +208,12 @@ const startServer = async () => {
   try {
     // Initialize database
     await initializeDB();
+    
+    // Run migrations
+    console.log('Running database migrations...');
+    const createSkillsTable = require('./migrations/create_skills_table');
+    await createSkillsTable();
+    console.log('Database migrations completed');
     
     // Load SSL certificates with ABSOLUTE paths (following DungeonLair working example)
     const privateKey = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-key.pem', 'utf8');

@@ -721,4 +721,29 @@ export const battleAPI = {
   }
 };
 
+export interface Skill {
+  id: number;
+  name: string;
+  description: string;
+  damage_dice: string | null;
+  damage_type: string | null;
+  range_size: string;
+  usage_frequency: string;
+  level_requirement: number;
+  class_restriction: string;
+  created_at: string;
+}
+
+export const skillAPI = {
+  getAll: async (): Promise<{ skills: Skill[] }> => {
+    const response = await api.get('/skills');
+    return response.data;
+  },
+
+  getByName: async (name: string): Promise<{ skill: Skill }> => {
+    const response = await api.get(`/skills/name/${encodeURIComponent(name)}`);
+    return response.data;
+  }
+};
+
 export default api;
