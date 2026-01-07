@@ -321,7 +321,8 @@ router.get('/reference/data', async (req, res) => {
         { name: 'Druid', hitDie: 8, primaryAbility: ['wis'], savingThrows: ['int', 'wis'] },
         { name: 'Monk', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['str', 'dex'] },
         { name: 'Sorcerer', hitDie: 6, primaryAbility: ['cha'], savingThrows: ['con', 'cha'] },
-        { name: 'Warlock', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['wis', 'cha'] }
+        { name: 'Warlock', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['wis', 'cha'] },
+        { name: 'Reaver', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['dex', 'int'] }
       ],
       backgrounds: [
         'Acolyte', 'Criminal', 'Folk Hero', 'Noble', 'Sage', 'Soldier',
