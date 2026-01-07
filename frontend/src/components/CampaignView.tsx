@@ -1265,7 +1265,7 @@ const CampaignView: React.FC = () => {
     }
   };
 
-  // Helper function to format journal entry text with bold and reference styling
+  // Helper function to format journal entry text with bold, italic, and reference styling
   const formatJournalText = (text: string) => {
     if (!text) return null;
     
@@ -1273,8 +1273,8 @@ const CampaignView: React.FC = () => {
     let currentIndex = 0;
     let key = 0;
     
-    // Regular expression to match **bold** or [[references]]
-    const regex = /(\*\*.*?\*\*|\[\[.*?\]\])/g;
+    // Regular expression to match **bold**, _italic_, or [[references]]
+    const regex = /(\*\*.*?\*\*|_.*?_|\[\[.*?\]\])/g;
     let match;
     
     while ((match = regex.exec(text)) !== null) {
@@ -1289,6 +1289,10 @@ const CampaignView: React.FC = () => {
         // Bold text
         const boldText = matchedText.slice(2, -2);
         parts.push(<strong key={key++}>{boldText}</strong>);
+      } else if (matchedText.startsWith('_') && matchedText.endsWith('_')) {
+        // Italic text (regular italic, not gold)
+        const italicText = matchedText.slice(1, -1);
+        parts.push(<em key={key++}>{italicText}</em>);
       } else if (matchedText.startsWith('[[') && matchedText.endsWith(']]')) {
         // Reference text (italic and gold)
         const refText = matchedText.slice(2, -2);
