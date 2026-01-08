@@ -26,11 +26,10 @@ async function addExperiencePoints() {
     
     console.log('✓ character_skills table created successfully');
     
-    process.exit(0);
   } catch (error) {
-    console.error('Error:', error);
-    process.exit(1);
+    console.error('Error adding experience and skills:', error);
+    throw error;
   }
 }
 
-addExperiencePoints();
+module.exports = addExperiencePoints;

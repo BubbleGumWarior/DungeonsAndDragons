@@ -18,6 +18,7 @@ const monsterInstanceRoutes = require('./routes/monsterInstances');
 const armyRoutes = require('./routes/armies');
 const skillRoutes = require('./routes/skills');
 const journalsRoutes = require('./routes/journals');
+const beastRoutes = require('./routes/beasts');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -150,6 +151,7 @@ app.use('/api/monsters', monsterRoutes);
 app.use('/api/armies', armyRoutes);
 app.use('/api/monster-instances', monsterInstanceRoutes);
 app.use('/api/skills', skillRoutes);
+app.use('/api/beasts', beastRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -222,9 +224,38 @@ const startServer = async () => {
     
     // Run migrations
     console.log('Running database migrations...');
-    const createSkillsTable = require('./migrations/create_skills_table');
-    await createSkillsTable();
-    console.log('Database migrations completed');
+    
+    try {
+      // Core table migrations (must run first to create tables)
+      const createSkillsTable = require('./migrations/create_skills_table');
+      const createJournalTable = require('./migrations/create_journal_entries_table');
+      const addSubclassSystem = require('./migrations/add_subclass_system');
+      const addExperienceAndSkills = require('./migrations/add_experience_and_skills');
+      
+      // Class data migrations (require subclass tables to exist)
+      const populateAllClasses = require('./migrations/populate_all_classes_data');
+      const populateAllSubclasses = require('./migrations/populate_all_remaining_subclasses');
+      
+      // Specific class migrations (require all base tables)
+      const addPrimalBondClass = require('./migrations/add_primal_bond_class');
+      const addPrimalBondSkills = require('./migrations/add_primal_bond_skills');
+      
+      // Execute migrations in correct order
+      await createSkillsTable();
+      await createJournalTable();
+      await addSubclassSystem();
+      await addExperienceAndSkills();
+      await populateAllClasses();
+      await populateAllSubclasses();
+      await addPrimalBondClass();
+      await addPrimalBondSkills();
+      
+      console.log('Database migrations completed');
+    } catch (error) {
+      console.error('❌ Migration failed:', error.message);
+      console.error('Server startup aborted due to migration failure');
+      process.exit(1);
+    }
     
     // Load SSL certificates with ABSOLUTE paths (following DungeonLair working example)
     const privateKey = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-key.pem', 'utf8');

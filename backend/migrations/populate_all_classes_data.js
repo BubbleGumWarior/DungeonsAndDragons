@@ -208,8 +208,12 @@ async function populateAllClassesData() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-populateAllClassesData();
+module.exports = populateAllClassesData;
+
+// Auto-execute only if run directly
+if (require.main === module) {
+  populateAllClassesData();
+}

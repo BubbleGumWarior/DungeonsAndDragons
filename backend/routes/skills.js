@@ -220,6 +220,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       'Fighter': 10,
       'Paladin': 10,
       'Ranger': 10,
+      'Primal Bond': 10,
       'Reaver': 8,
       'Bard': 8,
       'Cleric': 8,
@@ -322,6 +323,81 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       subclassFeatures = subclassFeaturesResult.rows;
     }
     
+    // Check if this is a Primal Bond character leveling to beast arrival level
+    let needsBeastSelection = false;
+    let availableBeastTypes = [];
+    
+    if (character.class === 'Primal Bond') {
+      // Check if beast already exists
+      const existingBeastResult = await pool.query(`
+        SELECT id FROM character_beasts WHERE character_id = $1
+      `, [characterId]);
+      
+      const hasExistingBeast = existingBeastResult.rows.length > 0;
+      
+      // Determine if this level triggers beast selection
+      // For Agile Hunter: level 3, Packbound: level 6, Colossal Bond: level 10
+      let shouldGetBeast = false;
+      let determinedSubclass = null;
+      
+      if (character.subclass_id) {
+        // Already has subclass, get its name
+        const subclassResult = await pool.query(`
+          SELECT name FROM subclasses WHERE id = $1
+        `, [character.subclass_id]);
+        
+        if (subclassResult.rows.length > 0) {
+          determinedSubclass = subclassResult.rows[0].name;
+        }
+      } else if (subclassChoice && availableSubclasses.length > 0) {
+        // Will be selecting subclass this level - all Primal Bond subclasses get beast at level 3
+        // We'll show all possible beasts and determine which to show based on their choice
+        if (newLevel === 3) {
+          shouldGetBeast = true;
+          // Show beasts for all subclasses since we don't know which they'll pick yet
+          availableBeastTypes = [
+            { type: 'Cheetah', name: 'Cheetah', description: 'A swift predator focused on speed and precision', subclass: 'Agile Hunter' },
+            { type: 'Leopard', name: 'Leopard', description: 'A stealthy ambusher with deadly strikes', subclass: 'Agile Hunter' },
+            { type: 'AlphaWolf', name: 'Alpha Wolf', description: 'A commanding pack leader that inspires allies', subclass: 'Packbound' },
+            { type: 'OmegaWolf', name: 'Omega Wolf', description: 'A fierce lone hunter with relentless determination', subclass: 'Packbound' },
+            { type: 'Elephant', name: 'Elephant', description: 'A massive defender with incredible resilience', subclass: 'Colossal Bond' },
+            { type: 'Owlbear', name: 'Owlbear', description: 'A terrifying hybrid of raw power and aggression', subclass: 'Colossal Bond' }
+          ];
+          needsBeastSelection = !hasExistingBeast;
+        }
+      }
+      
+      // If we determined a subclass, check if this level gets a beast
+      if (determinedSubclass && !hasExistingBeast) {
+        let beastArrivalLevel = 0;
+        
+        if (determinedSubclass === 'Agile Hunter') {
+          beastArrivalLevel = 3;
+          availableBeastTypes = [
+            { type: 'Cheetah', name: 'Cheetah', description: 'A swift predator focused on speed and precision' },
+            { type: 'Leopard', name: 'Leopard', description: 'A stealthy ambusher with deadly strikes' }
+          ];
+        } else if (determinedSubclass === 'Packbound') {
+          beastArrivalLevel = 6;
+          availableBeastTypes = [
+            { type: 'AlphaWolf', name: 'Alpha Wolf', description: 'A commanding pack leader that inspires allies' },
+            { type: 'OmegaWolf', name: 'Omega Wolf', description: 'A fierce lone hunter with relentless determination' }
+          ];
+        } else if (determinedSubclass === 'Colossal Bond') {
+          beastArrivalLevel = 10;
+          availableBeastTypes = [
+            { type: 'Elephant', name: 'Elephant', description: 'A massive defender with incredible resilience' },
+            { type: 'Owlbear', name: 'Owlbear', description: 'A terrifying hybrid of raw power and aggression' }
+          ];
+        }
+        
+        // Check if character is leveling to the beast arrival level
+        if (newLevel === beastArrivalLevel) {
+          needsBeastSelection = true;
+        }
+      }
+    }
+    
     res.json({
       currentLevel: character.level,
       newLevel,
@@ -333,7 +409,9 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       availableSubclasses,
       subclassFeatures,
       skillGained: skillResult.rows[0] || null,
-      needsSubclass: !!subclassChoice && !character.subclass_id
+      needsSubclass: !!subclassChoice && !character.subclass_id,
+      needsBeastSelection,
+      availableBeastTypes
     });
   } catch (error) {
     console.error('Error getting level-up info:', error);
@@ -345,7 +423,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
 router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
   try {
     const { characterId } = req.params;
-    const { hpIncrease, subclassId, featureChoices } = req.body;
+    const { hpIncrease, subclassId, featureChoices, beastSelection } = req.body;
     
     // Get character details
     const charResult = await pool.query(`
@@ -474,6 +552,101 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       }
     }
     
+    // Create beast companion if beast was selected during level-up
+    let beastCreated = null;
+    if (beastSelection && beastSelection.beastType) {
+      // Define base stats for each beast type
+      const beastStats = {
+        'Cheetah': {
+          hit_points_max: 30,
+          armor_class: 15,
+          speed: 60,
+          attack_bonus: 5,
+          damage_dice: '1d6',
+          damage_type: 'slashing',
+          abilities: { str: 12, dex: 18, con: 14, int: 3, wis: 12, cha: 6 },
+          special_abilities: ['Sprint', 'Pounce']
+        },
+        'Leopard': {
+          hit_points_max: 28,
+          armor_class: 14,
+          speed: 50,
+          attack_bonus: 5,
+          damage_dice: '1d6',
+          damage_type: 'piercing',
+          abilities: { str: 14, dex: 16, con: 13, int: 3, wis: 14, cha: 6 },
+          special_abilities: ['Stealth', 'Ambush']
+        },
+        'AlphaWolf': {
+          hit_points_max: 45,
+          armor_class: 14,
+          speed: 50,
+          attack_bonus: 6,
+          damage_dice: '2d4',
+          damage_type: 'piercing',
+          abilities: { str: 14, dex: 15, con: 14, int: 4, wis: 12, cha: 10 },
+          special_abilities: ['Pack Tactics', 'Leadership']
+        },
+        'OmegaWolf': {
+          hit_points_max: 40,
+          armor_class: 15,
+          speed: 50,
+          attack_bonus: 6,
+          damage_dice: '2d4',
+          damage_type: 'piercing',
+          abilities: { str: 16, dex: 15, con: 14, int: 3, wis: 12, cha: 6 },
+          special_abilities: ['Lone Hunter', 'Relentless']
+        },
+        'Elephant': {
+          hit_points_max: 80,
+          armor_class: 13,
+          speed: 40,
+          attack_bonus: 8,
+          damage_dice: '3d8',
+          damage_type: 'bludgeoning',
+          abilities: { str: 20, dex: 9, con: 17, int: 3, wis: 11, cha: 6 },
+          special_abilities: ['Trample', 'Bulwark']
+        },
+        'Owlbear': {
+          hit_points_max: 70,
+          armor_class: 14,
+          speed: 40,
+          attack_bonus: 8,
+          damage_dice: '2d8',
+          damage_type: 'slashing',
+          abilities: { str: 18, dex: 12, con: 16, int: 3, wis: 12, cha: 7 },
+          special_abilities: ['Multiattack', 'Ferocity']
+        }
+      };
+      
+      const stats = beastStats[beastSelection.beastType];
+      if (stats) {
+        const beastResult = await pool.query(`
+          INSERT INTO character_beasts (
+            character_id, beast_type, beast_name, level_acquired,
+            hit_points_max, hit_points_current, armor_class,
+            abilities, speed, attack_bonus, damage_dice, damage_type, special_abilities
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          RETURNING *
+        `, [
+          characterId,
+          beastSelection.beastType,
+          beastSelection.beastName || beastSelection.beastType,
+          newLevel,
+          stats.hit_points_max,
+          stats.hit_points_max,
+          stats.armor_class,
+          JSON.stringify(stats.abilities),
+          stats.speed,
+          stats.attack_bonus,
+          stats.damage_dice,
+          stats.damage_type,
+          JSON.stringify(stats.special_abilities)
+        ]);
+        beastCreated = beastResult.rows[0];
+      }
+    }
+    
     // Emit socket event for real-time updates (EXP reset to 0, level increased)
     if (req.io) {
       req.io.to(`campaign_${character.campaign_id}`).emit('characterLeveledUp', {
@@ -482,6 +655,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         newHP,
         experiencePoints: 0,
         skillGained,
+        beastCreated,
         timestamp: new Date().toISOString()
       });
     }
@@ -490,7 +664,8 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       message: `Leveled up to ${newLevel}!`,
       newLevel,
       newHP,
-      skillGained
+      skillGained,
+      beastCreated
     });
   } catch (error) {
     console.error('Error leveling up character:', error);

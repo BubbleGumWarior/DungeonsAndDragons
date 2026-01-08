@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, LevelUpInfo, FeatureChoice } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, LevelUpInfo, FeatureChoice, beastAPI, Beast } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
 import FigureImage from '../assets/images/Board/Figure.png';
@@ -692,7 +692,8 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'levelup'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup'>('board');
+  const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
   const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia'>('map');
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
@@ -951,17 +952,19 @@ const CampaignView: React.FC = () => {
   // Level up state
   const [levelUpInfo, setLevelUpInfo] = useState<any | null>(null);
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
-  const [levelUpStep, setLevelUpStep] = useState<'hp' | 'subclass' | 'choices' | 'summary'>('hp');
+  const [levelUpStep, setLevelUpStep] = useState<'hp' | 'subclass' | 'beast' | 'choices' | 'summary'>('hp');
   const [levelUpData, setLevelUpData] = useState<{
     hpIncrease: number;
     hpRolled: number | null;
     subclassId: number | null;
     featureChoices: any[];
+    beastSelection: { beastType: string; beastName: string } | null;
   }>({
     hpIncrease: 0,
     hpRolled: null,
     subclassId: null,
-    featureChoices: []
+    featureChoices: [],
+    beastSelection: null
   });
 
   // Function to split backstory into pages with intelligent paragraph boundary detection
@@ -1367,6 +1370,16 @@ const CampaignView: React.FC = () => {
     }
   }, []);
 
+  const loadBeastCompanion = useCallback(async (characterId: number) => {
+    try {
+      const beast = await beastAPI.getBeast(characterId);
+      setCharacterBeasts(prev => ({ ...prev, [characterId]: beast }));
+    } catch (error) {
+      console.error('Error loading beast companion:', error);
+      setCharacterBeasts(prev => ({ ...prev, [characterId]: null }));
+    }
+  }, []);
+
   const handleAddSkillToCharacter = async (characterId: number, skillId: number) => {
     try {
       await skillAPI.addSkillToCharacter(characterId, skillId);
@@ -1443,7 +1456,8 @@ const CampaignView: React.FC = () => {
         hpIncrease: info.hitDieAverage,
         hpRolled: null,
         subclassId: null,
-        featureChoices: []
+        featureChoices: [],
+        beastSelection: null
       });
       setLevelUpStep('hp');
       setShowLevelUpModal(true);
@@ -1471,7 +1485,8 @@ const CampaignView: React.FC = () => {
       const result = await skillAPI.levelUp(selectedCharacter, {
         hpIncrease: levelUpData.hpIncrease,
         subclassId: levelUpData.subclassId || undefined,
-        featureChoices: levelUpData.featureChoices
+        featureChoices: levelUpData.featureChoices,
+        beastSelection: levelUpData.beastSelection || undefined
       });
       // Reload campaign to update character data
       await loadCampaign(campaignName!);
@@ -1479,7 +1494,13 @@ const CampaignView: React.FC = () => {
       setShowLevelUpModal(false);
       setLevelUpInfo(null);
       
-      if (result.skillGained) {
+      if (result.beastCreated) {
+        setToastMessage(`${result.message} Beast companion ${result.beastCreated.beast_name} joined!`);
+        // Load the new beast companion
+        if (selectedCharacter) {
+          loadBeastCompanion(selectedCharacter);
+        }
+      } else if (result.skillGained) {
         setToastMessage(`${result.message} Learned: ${result.skillGained.name}`);
       } else {
         setToastMessage(result.message);
@@ -1555,6 +1576,32 @@ const CampaignView: React.FC = () => {
     // Players can only see full details of their own character
     return currentCampaign.userCharacter?.id === characterId;
   }, [user, currentCampaign]);
+
+  // Helper function to check if companion tab should be visible
+  const shouldShowCompanionTab = useCallback((character: any): boolean => {
+    if (character.class !== 'Primal Bond') return false;
+    
+    const beast = characterBeasts[character.id];
+    if (!beast) return false;
+    
+    const level = character.level;
+    const beastType = beast.beast_type;
+    
+    // Agile Hunter (Cheetah/Leopard) gets beast at level 3
+    if (beastType === 'Cheetah' || beastType === 'Leopard') {
+      return level >= 3;
+    }
+    // Packbound (Alpha Wolf/Omega Wolf) gets beast at level 6
+    if (beastType === 'AlphaWolf' || beastType === 'OmegaWolf') {
+      return level >= 6;
+    }
+    // Colossal Bond (Elephant/Owlbear) gets beast at level 10
+    if (beastType === 'Elephant' || beastType === 'Owlbear') {
+      return level >= 10;
+    }
+    
+    return false;
+  }, [characterBeasts]);
 
   // Reset to overview tab when viewing another player's character
   useEffect(() => {
@@ -2294,8 +2341,17 @@ const CampaignView: React.FC = () => {
     if (selectedCharacter && currentCampaign) {
       loadEquippedItems(selectedCharacter);
       loadEquipmentDetails(selectedCharacter);
+      
+      // Only check for beast companion if character is Primal Bond and level 3+
+      const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
+      if (character && character.class === 'Primal Bond' && character.level >= 3) {
+        loadBeastCompanion(selectedCharacter);
+      } else {
+        // Clear beast data for non-Primal Bond or low level characters
+        setCharacterBeasts(prev => ({ ...prev, [selectedCharacter]: null }));
+      }
     }
-  }, [selectedCharacter, currentCampaign, loadEquippedItems, loadEquipmentDetails]);
+  }, [selectedCharacter, currentCampaign, loadEquippedItems, loadEquipmentDetails, loadBeastCompanion]);
 
   // Load all skills when component mounts
   useEffect(() => {
@@ -7035,7 +7091,9 @@ const CampaignView: React.FC = () => {
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                     {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
                     {(canViewAllTabs(selectedCharacterData.id) 
-                      ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies', ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])] as const)
+                      ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies', 
+                          ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
+                          ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])] as const)
                       : (['board'] as const)
                     ).map((tab) => (
                       <button
@@ -7064,6 +7122,7 @@ const CampaignView: React.FC = () => {
                          tab === 'inventory' ? '🎒 Inventory' :
                          tab === 'skills' ? '✨ Skills' :
                          tab === 'armies' ? '⚔️ Armies' :
+                         tab === 'companion' ? '🐾 Companion' :
                          tab === 'levelup' ? '⬆️ LEVEL UP!' :
                          '🛡️ Equipment'}
                       </button>
@@ -8208,6 +8267,251 @@ const CampaignView: React.FC = () => {
                         )}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Companion Tab - Only for Primal Bond class with beast at appropriate level */}
+                {activeTab === 'companion' && canViewAllTabs(selectedCharacterData.id) && shouldShowCompanionTab(selectedCharacterData) && (
+                  <div className="glass-panel">
+                    <h6 style={{ textAlign: 'center', marginBottom: '2rem' }}>🐾 Beast Companion</h6>
+                    
+                    {(() => {
+                      const beast = characterBeasts[selectedCharacterData.id];
+                      if (!beast) return <div>Loading beast companion...</div>;
+
+                      // Determine beast image based on type
+                      const beastImageMap: Record<string, string> = {
+                        'Cheetah': '/images/Beasts/Cheetah.jpg',
+                        'Leopard': '/images/Beasts/Leopard.jpg',
+                        'AlphaWolf': '/images/Beasts/AlphaWolf.jpg',
+                        'OmegaWolf': '/images/Beasts/OmegaWolf.jpg',
+                        'Elephant': '/images/Beasts/Elephant.jpg',
+                        'Owlbear': '/images/Beasts/Owlbear.jpg'
+                      };
+
+                      const beastImage = beastImageMap[beast.beast_type];
+                      const strMod = Math.floor((beast.abilities.str - 10) / 2);
+                      const dexMod = Math.floor((beast.abilities.dex - 10) / 2);
+                      const conMod = Math.floor((beast.abilities.con - 10) / 2);
+                      const intMod = Math.floor((beast.abilities.int - 10) / 2);
+                      const wisMod = Math.floor((beast.abilities.wis - 10) / 2);
+                      const chaMod = Math.floor((beast.abilities.cha - 10) / 2);
+
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                          {/* Left column: Beast image and basic info */}
+                          <div>
+                            <div style={{
+                              position: 'relative',
+                              width: '100%',
+                              paddingTop: '100%',
+                              borderRadius: '1rem',
+                              overflow: 'hidden',
+                              border: '3px solid var(--primary-gold)',
+                              marginBottom: '1.5rem',
+                              backgroundColor: '#000'
+                            }}>
+                              <img
+                                src={beastImage}
+                                alt={beast.beast_type}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'contain'
+                                }}
+                              />
+                            </div>
+
+                            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                              <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                                {beast.beast_name || beast.beast_type}
+                              </h4>
+                              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                {beast.beast_type} • Level {beast.level_acquired} Companion
+                              </div>
+                            </div>
+
+                            {/* HP Bar */}
+                            <div style={{ marginBottom: '1.5rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Health</span>
+                                <span style={{ fontSize: '0.9rem' }}>
+                                  {beast.hit_points_current} / {beast.hit_points_max} HP
+                                </span>
+                              </div>
+                              <div style={{
+                                width: '100%',
+                                height: '24px',
+                                background: 'rgba(0, 0, 0, 0.3)',
+                                borderRadius: '12px',
+                                overflow: 'hidden',
+                                border: '2px solid rgba(212, 193, 156, 0.3)'
+                              }}>
+                                <div style={{
+                                  width: `${(beast.hit_points_current / beast.hit_points_max) * 100}%`,
+                                  height: '100%',
+                                  background: beast.hit_points_current > beast.hit_points_max * 0.5 
+                                    ? 'linear-gradient(90deg, #10b981, #059669)'
+                                    : beast.hit_points_current > beast.hit_points_max * 0.25
+                                    ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                                    : 'linear-gradient(90deg, #ef4444, #dc2626)',
+                                  transition: 'width 0.3s ease'
+                                }} />
+                              </div>
+                              {user?.role === 'Dungeon Master' && (
+                                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                                  <input
+                                    type="number"
+                                    value={beast.hit_points_current}
+                                    onChange={(e) => {
+                                      const newHP = Math.min(Math.max(0, parseInt(e.target.value) || 0), beast.hit_points_max);
+                                      beastAPI.updateBeastHP(selectedCharacterData.id, newHP)
+                                        .then(() => loadBeastCompanion(selectedCharacterData.id))
+                                        .catch(err => console.error('Error updating beast HP:', err));
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      padding: '0.5rem',
+                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                                      borderRadius: '0.5rem',
+                                      color: 'var(--text-primary)',
+                                      fontSize: '0.9rem'
+                                    }}
+                                  />
+                                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
+                                    (DM can edit)
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right column: Stats */}
+                          <div>
+                            {/* Combat Stats */}
+                            <div style={{ marginBottom: '2rem' }}>
+                              <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1rem' }}>
+                                Combat Stats
+                              </h5>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div style={{
+                                  padding: '1rem',
+                                  background: 'rgba(255, 255, 255, 0.05)',
+                                  borderRadius: '0.5rem',
+                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                }}>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                    Armor Class
+                                  </div>
+                                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
+                                    {beast.armor_class}
+                                  </div>
+                                </div>
+                                <div style={{
+                                  padding: '1rem',
+                                  background: 'rgba(255, 255, 255, 0.05)',
+                                  borderRadius: '0.5rem',
+                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                }}>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                    Speed
+                                  </div>
+                                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
+                                    {beast.speed} ft
+                                  </div>
+                                </div>
+                                <div style={{
+                                  padding: '1rem',
+                                  background: 'rgba(255, 255, 255, 0.05)',
+                                  borderRadius: '0.5rem',
+                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                }}>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                    Attack Bonus
+                                  </div>
+                                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
+                                    +{beast.attack_bonus}
+                                  </div>
+                                </div>
+                                <div style={{
+                                  padding: '1rem',
+                                  background: 'rgba(255, 255, 255, 0.05)',
+                                  borderRadius: '0.5rem',
+                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                }}>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                    Damage
+                                  </div>
+                                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
+                                    {beast.damage_dice} {beast.damage_type}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Ability Scores */}
+                            <div style={{ marginBottom: '2rem' }}>
+                              <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1rem' }}>
+                                Ability Scores
+                              </h5>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                                {[
+                                  { name: 'STR', score: beast.abilities.str, mod: strMod },
+                                  { name: 'DEX', score: beast.abilities.dex, mod: dexMod },
+                                  { name: 'CON', score: beast.abilities.con, mod: conMod },
+                                  { name: 'INT', score: beast.abilities.int, mod: intMod },
+                                  { name: 'WIS', score: beast.abilities.wis, mod: wisMod },
+                                  { name: 'CHA', score: beast.abilities.cha, mod: chaMod }
+                                ].map(({ name, score, mod }) => (
+                                  <div key={name} style={{
+                                    padding: '0.75rem',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    borderRadius: '0.5rem',
+                                    border: '1px solid rgba(212, 193, 156, 0.2)',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                      {name}
+                                    </div>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                      {score}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: mod >= 0 ? '#10b981' : '#ef4444' }}>
+                                      {mod >= 0 ? '+' : ''}{mod}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Special Abilities */}
+                            {beast.special_abilities && (
+                              <div>
+                                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1rem' }}>
+                                  Special Abilities
+                                </h5>
+                                <div style={{
+                                  padding: '1rem',
+                                  background: 'rgba(255, 255, 255, 0.05)',
+                                  borderRadius: '0.5rem',
+                                  border: '1px solid rgba(212, 193, 156, 0.2)',
+                                  fontSize: '0.9rem',
+                                  lineHeight: '1.6',
+                                  color: 'var(--text-secondary)',
+                                  whiteSpace: 'pre-wrap'
+                                }}>
+                                  {beast.special_abilities}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -13306,10 +13610,11 @@ const CampaignView: React.FC = () => {
             
             {/* Progress Indicator */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
-              {['hp', 'subclass', 'choices', 'summary'].map((step, idx) => {
+              {['hp', 'subclass', 'beast', 'choices', 'summary'].map((step, idx) => {
                 const isActive = levelUpStep === step;
-                const stepNames = { hp: 'HP', subclass: 'Subclass', choices: 'Features', summary: 'Summary' };
-                const shouldShow = step === 'subclass' ? levelUpInfo.needsSubclass : 
+                const stepNames = { hp: 'HP', subclass: 'Subclass', beast: 'Beast', choices: 'Features', summary: 'Summary' };
+                const shouldShow = step === 'subclass' ? levelUpInfo.needsSubclass :
+                                 step === 'beast' ? levelUpInfo.needsBeastSelection :
                                  step === 'choices' ? levelUpInfo.choiceFeatures.length > 0 : true;
                 
                 if (!shouldShow) return null;
@@ -13418,6 +13723,8 @@ const CampaignView: React.FC = () => {
                   onClick={() => {
                     if (levelUpInfo.needsSubclass) {
                       setLevelUpStep('subclass');
+                    } else if (levelUpInfo.needsBeastSelection) {
+                      setLevelUpStep('beast');
                     } else if (levelUpInfo.choiceFeatures.length > 0) {
                       setLevelUpStep('choices');
                     } else {
@@ -13500,7 +13807,9 @@ const CampaignView: React.FC = () => {
                   </button>
                   <button
                     onClick={() => {
-                      if (levelUpInfo.choiceFeatures.length > 0) {
+                      if (levelUpInfo.needsBeastSelection) {
+                        setLevelUpStep('beast');
+                      } else if (levelUpInfo.choiceFeatures.length > 0) {
                         setLevelUpStep('choices');
                       } else {
                         setLevelUpStep('summary');
@@ -13516,6 +13825,143 @@ const CampaignView: React.FC = () => {
                       color: !levelUpData.subclassId ? '#64748b' : '#4ade80',
                       cursor: !levelUpData.subclassId ? 'not-allowed' : 'pointer',
                       opacity: !levelUpData.subclassId ? 0.5 : 1
+                    }}
+                  >
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Beast Selection Step */}
+            {levelUpStep === 'beast' && levelUpInfo.needsBeastSelection && (
+              <div>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
+                  🐾 Choose Your Beast Companion
+                </h5>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
+                  Your bond manifests a powerful beast companion that will fight at your side
+                </p>
+
+                <div style={{ display: 'grid', gap: '1rem', marginBottom: '2rem' }}>
+                  {levelUpInfo.availableBeastTypes
+                    ?.filter((beast: any) => {
+                      // If there's a subclass property on the beast, filter by selected subclass
+                      if (beast.subclass && levelUpData.subclassId) {
+                        const selectedSubclass = levelUpInfo.availableSubclasses?.find((s: any) => s.id === levelUpData.subclassId);
+                        return beast.subclass === selectedSubclass?.name;
+                      }
+                      // If no subclass property, show all beasts (means character already has subclass)
+                      return true;
+                    })
+                    .map((beast: any) => (
+                    <div
+                      key={beast.type}
+                      onClick={() => setLevelUpData(prev => ({ 
+                        ...prev, 
+                        beastSelection: { beastType: beast.type, beastName: beast.name } 
+                      }))}
+                      style={{
+                        padding: '1.5rem',
+                        background: levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
+                        border: `3px solid ${levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                        borderRadius: '0.75rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1.5rem'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateX(5px)';
+                        e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.8)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateX(0)';
+                        e.currentTarget.style.borderColor = levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                      }}
+                    >
+                      <div style={{ 
+                        width: '100px', 
+                        height: '100px', 
+                        borderRadius: '0.5rem',
+                        overflow: 'hidden',
+                        border: '2px solid rgba(212, 193, 156, 0.3)',
+                        flexShrink: 0,
+                        backgroundColor: '#000'
+                      }}>
+                        <img 
+                          src={`/images/Beasts/${beast.type}.jpg`}
+                          alt={beast.name}
+                          style={{ 
+                            width: '100%', 
+                            height: '100%', 
+                            objectFit: 'contain' 
+                          }}
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent) {
+                              parent.style.display = 'flex';
+                              parent.style.alignItems = 'center';
+                              parent.style.justifyContent = 'center';
+                              parent.style.background = 'rgba(100, 116, 139, 0.3)';
+                              parent.innerHTML = '<span style="font-size: 3rem;">🐾</span>';
+                            }
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                          {beast.name}
+                        </div>
+                        <div style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                          {beast.description}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    onClick={() => {
+                      if (levelUpInfo.needsSubclass) {
+                        setLevelUpStep('subclass');
+                      } else {
+                        setLevelUpStep('hp');
+                      }
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      background: 'rgba(100, 116, 139, 0.3)',
+                      border: '2px solid rgba(100, 116, 139, 0.5)',
+                      color: '#94a3b8'
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (levelUpInfo.choiceFeatures.length > 0) {
+                        setLevelUpStep('choices');
+                      } else {
+                        setLevelUpStep('summary');
+                      }
+                    }}
+                    disabled={!levelUpData.beastSelection}
+                    className="btn btn-primary"
+                    style={{
+                      flex: 2,
+                      padding: '1rem',
+                      background: !levelUpData.beastSelection ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                      border: '2px solid rgba(34, 197, 94, 0.5)',
+                      color: !levelUpData.beastSelection ? '#64748b' : '#4ade80',
+                      cursor: !levelUpData.beastSelection ? 'not-allowed' : 'pointer',
+                      opacity: !levelUpData.beastSelection ? 0.5 : 1
                     }}
                   >
                     Continue →
@@ -13619,7 +14065,9 @@ const CampaignView: React.FC = () => {
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <button
                     onClick={() => {
-                      if (levelUpInfo.needsSubclass) {
+                      if (levelUpInfo.needsBeastSelection) {
+                        setLevelUpStep('beast');
+                      } else if (levelUpInfo.needsSubclass) {
                         setLevelUpStep('subclass');
                       } else {
                         setLevelUpStep('hp');
@@ -13718,6 +14166,16 @@ const CampaignView: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Beast Selection Summary */}
+                  {levelUpData.beastSelection && (
+                    <div style={{ padding: '1rem', background: 'rgba(251, 146, 60, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(251, 146, 60, 0.3)' }}>
+                      <div style={{ fontWeight: 'bold', color: '#fb923c', marginBottom: '0.5rem' }}>🐾 Beast Companion</div>
+                      <div style={{ color: 'var(--text-secondary)' }}>
+                        {levelUpData.beastSelection.beastName}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Feature Choices */}
                   {levelUpData.featureChoices.length > 0 && (
                     <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
@@ -13736,6 +14194,8 @@ const CampaignView: React.FC = () => {
                     onClick={() => {
                       if (levelUpInfo.choiceFeatures.length > 0) {
                         setLevelUpStep('choices');
+                      } else if (levelUpInfo.needsBeastSelection) {
+                        setLevelUpStep('beast');
                       } else if (levelUpInfo.needsSubclass) {
                         setLevelUpStep('subclass');
                       } else {

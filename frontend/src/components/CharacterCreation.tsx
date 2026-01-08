@@ -364,30 +364,60 @@ const CharacterCreation: React.FC = () => {
         { level: 20, features: 'Holy Nimbus (Devotion) / Elder Champion (Ancients) / Avenging Angel (Vengeance)' }
       ]
     },
+    'Primal Bond': {
+      description: 'A warrior who forms an unbreakable bond with a beast companion, fighting as one unified force. Through shared instinct and coordinated strikes, you and your bonded beast become an unstoppable team.',
+      features: ['Bonded Instinct', 'Shared Initiative', 'Predatory Focus', 'Primal Path & Beast Companion'],
+      subclasses: [
+        { name: 'Agile Hunter', color: '#F39C12', description: 'Swift predator bonded with Cheetah or Leopard (arrives level 3)' },
+        { name: 'Packbound', color: '#7F8C8D', description: 'Pack leader bonded with Alpha or Omega Wolf (arrives level 6)' },
+        { name: 'Colossal Bond', color: '#8B4513', description: 'Titan rider bonded with Elephant or Owlbear (arrives level 10)' }
+      ],
+      levelProgression: [
+        { level: 1, features: 'Bonded Instinct, Shared Initiative' },
+        { level: 2, features: 'Predatory Focus (+1d4 damage), Coordinated Strike (beast moves half speed as reaction)' },
+        { level: 3, features: 'Primal Path Choice, Animal Aspect Choice (Agile Hunter beasts arrive)' },
+        { level: 4, features: 'Ability Score Improvement' },
+        { level: 5, features: 'Extra Attack' },
+        { level: 6, features: 'Path Feature (Packbound beasts arrive)' },
+        { level: 7, features: 'Shared Reflex (impose disadvantage PB/long rest)' },
+        { level: 8, features: 'Ability Score Improvement' },
+        { level: 9, features: 'Instinctive Evasion' },
+        { level: 10, features: 'Path Feature (Colossal Bond beasts arrive)' },
+        { level: 11, features: 'Twin Assault (beast attacks without bonus action)' },
+        { level: 12, features: 'Ability Score Improvement' },
+        { level: 13, features: 'Dominant Presence (10ft disadvantage on opportunity attacks)' },
+        { level: 14, features: 'Path Feature' },
+        { level: 15, features: 'Unbreakable Bond (beast survives at 1 HP once/long rest, transfer HP)' },
+        { level: 16, features: 'Ability Score Improvement' },
+        { level: 17, features: 'Apex Instinct (enter Apex State), Dominant Presence (15ft)' },
+        { level: 18, features: 'Perfect Coordination (independent reactions)' },
+        { level: 19, features: 'Ability Score Improvement' },
+        { level: 20, features: 'Primal Ascension (+2 all stats max 22, immunity fear/charm, two turns once/long rest)' }
+      ]
+    },
     'Ranger': {
       description: 'A warrior who uses martial prowess and nature magic to combat threats on the edges of civilization. Rangers are skilled hunters and trackers.',
       features: ['Favored Enemy', 'Natural Explorer', 'Fighting Style', 'Spellcasting'],
       subclasses: [
         { name: 'Hunter', color: '#A0522D', description: 'Specialized at taking down prey' },
-        { name: 'Beast Master', color: '#228B22', description: 'Bond with an animal companion' },
         { name: 'Gloom Stalker', color: '#2C3E50', description: 'Master of the darkness' }
       ],
       levelProgression: [
         { level: 1, features: 'Favored Enemy, Natural Explorer' },
         { level: 2, features: 'Fighting Style, Spellcasting' },
-        { level: 3, features: 'Ranger Archetype, Primeval Awareness, Hunter\'s Prey (Hunter), Colossus Slayer/Giant Killer/Horde Breaker (Hunter) / Ranger\'s Companion (Beast Master), Dread Ambusher (Gloom Stalker), Umbral Sight (Gloom Stalker)' },
+        { level: 3, features: 'Ranger Archetype, Primeval Awareness, Hunter\'s Prey (Hunter), Colossus Slayer/Giant Killer/Horde Breaker (Hunter) / Dread Ambusher (Gloom Stalker), Umbral Sight (Gloom Stalker)' },
         { level: 4, features: 'Ability Score Improvement' },
         { level: 5, features: 'Extra Attack' },
         { level: 6, features: 'Favored Enemy and Natural Explorer Improvements' },
-        { level: 7, features: 'Defensive Tactics (Hunter), Escape the Horde/Multiattack Defense/Steel Will (Hunter) / Exceptional Training (Beast Master) / Iron Mind (Gloom Stalker)' },
+        { level: 7, features: 'Defensive Tactics (Hunter), Escape the Horde/Multiattack Defense/Steel Will (Hunter) / Iron Mind (Gloom Stalker)' },
         { level: 8, features: 'Ability Score Improvement, Land\'s Stride' },
         { level: 9, features: '3rd Level Spells' },
         { level: 10, features: 'Natural Explorer Improvement, Hide in Plain Sight' },
-        { level: 11, features: 'Multiattack (Hunter), Volley/Whirlwind Attack (Hunter) / Bestial Fury (Beast Master) / Stalker\'s Flurry (Gloom Stalker)' },
+        { level: 11, features: 'Multiattack (Hunter), Volley/Whirlwind Attack (Hunter) / Stalker\'s Flurry (Gloom Stalker)' },
         { level: 12, features: 'Ability Score Improvement' },
         { level: 13, features: '4th Level Spells' },
         { level: 14, features: 'Favored Enemy Improvement, Vanish' },
-        { level: 15, features: 'Superior Hunter\'s Defense (Hunter), Evasion/Stand Against the Tide/Uncanny Dodge (Hunter) / Share Spells (Beast Master) / Shadowy Dodge (Gloom Stalker)' },
+        { level: 15, features: 'Superior Hunter\'s Defense (Hunter), Evasion/Stand Against the Tide/Uncanny Dodge (Hunter) / Shadowy Dodge (Gloom Stalker)' },
         { level: 16, features: 'Ability Score Improvement' },
         { level: 17, features: '5th Level Spells' },
         { level: 18, features: 'Feral Senses' },

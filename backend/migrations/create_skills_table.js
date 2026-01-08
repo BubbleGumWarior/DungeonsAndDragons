@@ -150,7 +150,7 @@ const createSkillsTable = async () => {
       { name: 'Druid Circle', description: 'Choose your circle: Circle of the Land (terrain-based magic and spell recovery), Circle of the Moon (enhanced Wild Shape combat forms), or others. Grants features at 2nd, 6th, 10th, and 14th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 2, class_restriction: 'Druid' },
       { name: 'Monastic Tradition', description: 'Choose your monastery\'s tradition: Way of the Open Hand (enhanced unarmed combat), Way of Shadow (stealth and darkness), Way of the Four Elements (elemental spells), or others. Grants features at 3rd, 6th, 11th, and 17th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Monk' },
       { name: 'Sacred Oath', description: 'Choose your oath: Oath of Devotion (classic holy knight), Oath of the Ancients (nature protector), Oath of Vengeance (relentless pursuer), or others. Your oath grants spells and features at 3rd, 7th, 15th, and 20th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Paladin' },
-      { name: 'Ranger Archetype', description: 'Choose your ranger path: Hunter (versatile combat options), Beast Master (animal companion), or others. Your choice grants features at 3rd, 7th, 11th, and 15th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Ranger' },
+      { name: 'Ranger Archetype', description: 'Choose your ranger path: Hunter (versatile combat options) or Gloom Stalker (shadow specialist). Your choice grants features at 3rd, 7th, 11th, and 15th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Ranger' },
       { name: 'Roguish Archetype', description: 'Choose your archetype: Thief (second-story work and fast hands), Assassin (deadly ambush specialist), Arcane Trickster (rogue/wizard hybrid), or others. Grants features at 3rd, 9th, 13th, and 17th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Rogue' },
       { name: 'Sorcerous Origin', description: 'Choose your magic source: Draconic Bloodline (dragon ancestry and elemental affinity), Wild Magic (chaotic unpredictable effects), or others. Your origin grants features at 1st, 6th, 14th, and 18th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 1, class_restriction: 'Sorcerer' },
       { name: 'Primal Path', description: 'Choose your barbarian path: Path of the Berserker (frenzied rage), Path of the Totem Warrior (animal spirit powers), or others. Your path grants features at 3rd, 6th, 10th, and 14th level.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Barbarian' },
@@ -336,12 +336,6 @@ const createSkillsTable = async () => {
       { name: 'Multiattack (Hunter)', description: 'Choose one: Volley (ranged attack vs all creatures in 10ft radius within range), or Whirlwind Attack (melee attack vs any number of creatures within 5ft).', damage_dice: 'Multiple', damage_type: 'Weapon', range_size: '10ft/5ft', usage_frequency: 'Action', level_requirement: 11, class_restriction: 'Ranger' },
       { name: 'Superior Hunter\'s Defense (Hunter)', description: 'Choose one: Evasion (DEX save: take no damage on success, half on fail), Stand Against the Tide (reaction to redirect miss to another creature), or Uncanny Dodge (reaction to halve attack damage vs you).', damage_dice: 'Varies', damage_type: null, range_size: 'Self', usage_frequency: 'Varies', level_requirement: 15, class_restriction: 'Ranger' },
       
-      // Ranger - Beast Master
-      { name: 'Ranger\'s Companion (Beast Master)', description: 'You gain a beast companion. Add your prof bonus to its AC, attack rolls, damage, saves, and skills you\'re proficient in. Its HP max = normal max or 4× your ranger level (whichever is higher). It obeys your commands (no action). During your turn, you can verbally command it where to move (no action). Use bonus action to command it to Attack, Dash, Disengage, Dodge, or Help.', damage_dice: 'Beast attacks', damage_type: 'Varies', range_size: 'Beast range', usage_frequency: 'Bonus action', level_requirement: 3, class_restriction: 'Ranger' },
-      { name: 'Exceptional Training (Beast Master)', description: 'On any turn you don\'t use bonus action to command beast, it can use bonus action to Dash, Disengage, Dodge, or Help. Additionally, your beast\'s attacks count as magical for overcoming resistance and immunity.', damage_dice: null, damage_type: null, range_size: 'Beast', usage_frequency: 'Passive', level_requirement: 7, class_restriction: 'Ranger' },
-      { name: 'Bestial Fury (Beast Master)', description: 'When you command your beast to Attack action, it can attack twice or use Multiattack if it has that action.', damage_dice: '2 attacks', damage_type: 'Varies', range_size: 'Beast range', usage_frequency: 'With Attack command', level_requirement: 11, class_restriction: 'Ranger' },
-      { name: 'Share Spells (Beast Master)', description: 'When you cast a spell targeting yourself, you can also affect your beast if it\'s within 30 ft.', damage_dice: null, damage_type: null, range_size: '30 feet', usage_frequency: 'Per spell', level_requirement: 15, class_restriction: 'Ranger' },
-      
       // Ranger - Gloom Stalker
       { name: 'Dread Ambusher (Gloom Stalker)', description: 'Add your WIS modifier to initiative rolls. On first turn of combat, your speed increases by 10 ft. If you take Attack action, you can make one additional weapon attack. If that attack hits, target takes extra 1d8 damage.', damage_dice: '+1d8', damage_type: 'Weapon', range_size: 'Weapon', usage_frequency: 'First turn', level_requirement: 3, class_restriction: 'Ranger' },
       { name: 'Umbral Sight (Gloom Stalker)', description: 'You gain darkvision 60 ft (or +30 ft if you already have it). You are invisible to creatures that rely on darkvision to see you in darkness.', damage_dice: null, damage_type: null, range_size: '60 feet', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Ranger' },
@@ -460,7 +454,47 @@ const createSkillsTable = async () => {
       { name: 'Portent (Divination)', description: 'When you finish long rest, roll 2d20 (3d20 at 14th level). Record results. Replace any attack, save, or ability check made by you or creature you can see with one portent roll. Must choose before roll is made.', damage_dice: '2d20/3d20', damage_type: null, range_size: 'Sight', usage_frequency: 'Per long rest', level_requirement: 2, class_restriction: 'Wizard' },
       { name: 'Expert Divination (Divination)', description: 'When you cast divination spell of 2nd+ level using a spell slot, you regain one expended spell slot of lower level than the spell cast.', damage_dice: null, damage_type: null, range_size: 'Self', usage_frequency: 'Per divination spell', level_requirement: 6, class_restriction: 'Wizard' },
       { name: 'The Third Eye (Divination)', description: 'Use action to gain one benefit for 1 minute: darkvision 60ft, see invisible within 10ft, read any language, or see into Ethereal Plane 60ft.', damage_dice: null, damage_type: null, range_size: 'Varies', usage_frequency: '1 per short rest', level_requirement: 10, class_restriction: 'Wizard' },
-      { name: 'Greater Portent (Divination)', description: 'You now roll 3d20 for your Portent feature (instead of 2d20).', damage_dice: '3d20', damage_type: null, range_size: 'Sight', usage_frequency: 'Per long rest', level_requirement: 14, class_restriction: 'Wizard' }
+      { name: 'Greater Portent (Divination)', description: 'You now roll 3d20 for your Portent feature (instead of 2d20).', damage_dice: '3d20', damage_type: null, range_size: 'Sight', usage_frequency: 'Per long rest', level_requirement: 14, class_restriction: 'Wizard' },
+      
+      // Primal Bond Core Skills
+      { name: 'Bonded Instinct', description: 'You and your bonded beast share initiative and can communicate intent, emotions, and danger instinctively. When either you or your beast hits a creature, the other gains a minor reactive benefit.', damage_dice: null, damage_type: null, range_size: 'Beast', usage_frequency: 'Passive', level_requirement: 1, class_restriction: 'Primal Bond' },
+      { name: 'Shared Initiative', description: 'You and your beast always act on the same initiative count. You choose the order each round.', damage_dice: null, damage_type: null, range_size: 'Beast', usage_frequency: 'Passive', level_requirement: 1, class_restriction: 'Primal Bond' },
+      { name: 'Predatory Focus', description: 'Once per turn, when you or your beast hits a creature: Add +1d4 damage. Damage type matches the attack.', damage_dice: '+1d4', damage_type: 'Weapon', range_size: 'Attack', usage_frequency: 'Once per turn', level_requirement: 2, class_restriction: 'Primal Bond' },
+      { name: 'Coordinated Strike', description: 'When you hit a creature, your beast may move up to half its speed as a reaction without provoking opportunity attacks.', damage_dice: null, damage_type: null, range_size: 'Half speed', usage_frequency: 'Per hit', level_requirement: 2, class_restriction: 'Primal Bond' },
+      
+      // Primal Bond - Cheetah Aspect
+      { name: 'Sprinting Volley (Cheetah)', description: 'When you move at least 20 ft before making a ranged weapon attack: Gain +1d6 damage and ignore disadvantage from long range.', damage_dice: '+1d6', damage_type: 'Weapon', range_size: 'Ranged', usage_frequency: 'Per attack', level_requirement: 3, class_restriction: 'Primal Bond' },
+      { name: 'Marked Quarry (Cheetah)', description: 'When you hit a creature with a ranged weapon: Mark it until end of your next turn. Your beast has advantage on attacks against it. Once per round, marked target takes +1d6 damage.', damage_dice: '+1d6', damage_type: 'Weapon', range_size: 'Ranged', usage_frequency: 'Per hit', level_requirement: 6, class_restriction: 'Primal Bond' },
+      { name: 'Blurred Stride (Cheetah)', description: 'After making a ranged attack: You may move half your speed. You are unaffected by difficult terrain during this movement.', damage_dice: null, damage_type: null, range_size: 'Half speed', usage_frequency: 'Per attack', level_requirement: 10, class_restriction: 'Primal Bond' },
+      { name: 'Arrowstorm Chase (Cheetah)', description: 'Once per short rest: For one turn, you may make one additional ranged attack, command your beast to attack twice, and all attacks gain +10 ft movement before or after.', damage_dice: 'Extra attack', damage_type: 'Weapon', range_size: 'Ranged', usage_frequency: '1/short rest', level_requirement: 14, class_restriction: 'Primal Bond' },
+      
+      // Primal Bond - Leopard Aspect
+      { name: 'Silent Pounce (Leopard)', description: 'If you or your beast move at least 10 ft toward a creature before attacking: Gain advantage on the attack and deal +1d6 damage.', damage_dice: '+1d6', damage_type: 'Weapon', range_size: 'Melee', usage_frequency: 'Per attack', level_requirement: 3, class_restriction: 'Primal Bond' },
+      { name: 'Rending Claws (Leopard)', description: 'Once per turn on a hit: Target begins bleeding and takes 1d4 damage at the start of its turns. Ends with a successful Constitution save.', damage_dice: '1d4', damage_type: 'Slashing', range_size: 'Hit', usage_frequency: 'Once per turn', level_requirement: 6, class_restriction: 'Primal Bond' },
+      { name: 'Shadow Slip (Leopard)', description: 'When you hit a creature while unseen: You may immediately Hide as a reaction. You remain lightly obscured until the start of your next turn.', damage_dice: null, damage_type: null, range_size: 'Self', usage_frequency: 'Reaction', level_requirement: 10, class_restriction: 'Primal Bond' },
+      { name: 'Apex Ambush (Leopard)', description: 'Once per long rest: You and your beast become invisible for 1 round. Your first hits deal maximum weapon damage.', damage_dice: 'Max damage', damage_type: 'Weapon', range_size: 'Self', usage_frequency: '1/long rest', level_requirement: 14, class_restriction: 'Primal Bond' },
+      
+      // Primal Bond - Alpha Wolf Aspect
+      { name: 'Inspiring Presence (Alpha Wolf)', description: 'Your aura also grants +1 to saving throws. Allies may move 5 ft when they hit a creature.', damage_dice: null, damage_type: null, range_size: '10ft aura', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Primal Bond' },
+      { name: 'Lead the Charge (Alpha Wolf)', description: 'When you or your beast hit a creature: One ally in aura may make a weapon attack as a reaction or move half their speed.', damage_dice: 'Ally attack', damage_type: 'Weapon', range_size: 'Aura', usage_frequency: 'Per hit', level_requirement: 6, class_restriction: 'Primal Bond' },
+      { name: 'Rally the Pack (Alpha Wolf)', description: 'Once per short rest: Regain 1d10 + Wisdom mod HP. All allies in aura regain the same amount.', damage_dice: '1d10+WIS', damage_type: 'Healing', range_size: 'Aura', usage_frequency: '1/short rest', level_requirement: 10, class_restriction: 'Primal Bond' },
+      { name: 'Alpha Command (Alpha Wolf)', description: 'Once per long rest: Allies in aura may take one additional action. Can only be used to Attack or Dash.', damage_dice: null, damage_type: null, range_size: 'Aura', usage_frequency: '1/long rest', level_requirement: 14, class_restriction: 'Primal Bond' },
+      
+      // Primal Bond - Omega Wolf Aspect
+      { name: 'Survivor\'s Instinct (Omega Wolf)', description: 'When you are not adjacent to an ally: Gain +2 damage and +1 AC.', damage_dice: '+2', damage_type: 'Weapon', range_size: 'Self', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Primal Bond' },
+      { name: 'Blood Momentum (Omega Wolf)', description: 'Each time you reduce a creature to 0 HP: Gain temporary HP equal to your proficiency bonus. Bonus stacks.', damage_dice: 'Temp HP', damage_type: null, range_size: 'Self', usage_frequency: 'Per kill', level_requirement: 6, class_restriction: 'Primal Bond' },
+      { name: 'Relentless Hunter (Omega Wolf)', description: 'If you start your turn below half HP: Gain advantage on attacks and resistance to weapon damage.', damage_dice: null, damage_type: null, range_size: 'Self', usage_frequency: 'Passive', level_requirement: 10, class_restriction: 'Primal Bond' },
+      { name: 'One-Man War (Omega Wolf)', description: 'Once per long rest: For 1 minute: You regain 10 HP at the start of each turn and each hit deals +1d8 damage.', damage_dice: '+1d8', damage_type: 'Weapon', range_size: 'Self', usage_frequency: '1/long rest', level_requirement: 14, class_restriction: 'Primal Bond' },
+      
+      // Primal Bond - Elephant Aspect
+      { name: 'Living Bulwark (Elephant)', description: 'Allies behind you gain +2 AC and half cover.', damage_dice: null, damage_type: null, range_size: 'Behind', usage_frequency: 'Passive', level_requirement: 3, class_restriction: 'Primal Bond' },
+      { name: 'Crushing Advance (Elephant)', description: 'As an action: Move up to your speed. Creatures in your path take 2d10 bludgeoning damage and are knocked prone.', damage_dice: '2d10', damage_type: 'Bludgeoning', range_size: 'Path', usage_frequency: 'Action', level_requirement: 10, class_restriction: 'Primal Bond' },
+      { name: 'Fortress Unmoving (Elephant)', description: 'Once per long rest: For 1 minute: You gain resistance to all damage and allies within 10 ft take half damage.', damage_dice: null, damage_type: 'Resistance', range_size: '10ft', usage_frequency: '1/long rest', level_requirement: 14, class_restriction: 'Primal Bond' },
+      
+      // Primal Bond - Owlbear Aspect
+      { name: 'Brutal Frame (Owlbear)', description: 'Gain temporary HP equal to your Constitution modifier at the start of each combat.', damage_dice: 'Temp HP', damage_type: null, range_size: 'Self', usage_frequency: 'Per combat', level_requirement: 3, class_restriction: 'Primal Bond' },
+      { name: 'Rampaging Charge (Owlbear)', description: 'When you move at least 15 ft toward a creature: Deal +2d8 damage. Target must save or be knocked prone.', damage_dice: '+2d8', damage_type: 'Weapon', range_size: 'Melee', usage_frequency: 'Per charge', level_requirement: 10, class_restriction: 'Primal Bond' },
+      { name: 'Unstoppable Horror (Owlbear)', description: 'Once per long rest: For 1 minute: Each hit grants temporary HP and enemies within 10 ft must save or become frightened.', damage_dice: 'Temp HP', damage_type: null, range_size: '10ft', usage_frequency: '1/long rest', level_requirement: 14, class_restriction: 'Primal Bond' }
     ];
 
     // Check if skills already exist
@@ -497,11 +531,19 @@ const createSkillsTable = async () => {
 
     console.log('Seeding default class skills...');
 
-    // Insert all skills
+    // Insert all skills with ON CONFLICT handling
     for (const skill of defaultSkills) {
       await pool.query(
         `INSERT INTO skills (name, description, damage_dice, damage_type, range_size, usage_frequency, level_requirement, class_restriction)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (name) DO UPDATE SET
+           description = EXCLUDED.description,
+           damage_dice = EXCLUDED.damage_dice,
+           damage_type = EXCLUDED.damage_type,
+           range_size = EXCLUDED.range_size,
+           usage_frequency = EXCLUDED.usage_frequency,
+           level_requirement = EXCLUDED.level_requirement,
+           class_restriction = EXCLUDED.class_restriction`,
         [skill.name, skill.description, skill.damage_dice, skill.damage_type, skill.range_size, skill.usage_frequency, skill.level_requirement, skill.class_restriction]
       );
     }

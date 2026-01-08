@@ -80,7 +80,7 @@ async function populateRemainingClassesSubclass() {
     // Ranger - Level 3
     await client.query(`
       INSERT INTO class_features (class, subclass_id, level, name, description, is_choice, choice_count, choice_type)
-      VALUES ('Ranger', NULL, 3, 'Ranger Archetype', 'Choose a ranger archetype to emulate: Hunter, Beast Master, or Gloom Stalker. Your choice grants you features at 3rd level and again at 7th, 11th, and 15th levels.', true, 1, 'subclass')
+      VALUES ('Ranger', NULL, 3, 'Ranger Archetype', 'Choose a ranger archetype to emulate: Hunter or Gloom Stalker. Your choice grants you features at 3rd level and again at 7th, 11th, and 15th levels.', true, 1, 'subclass')
       ON CONFLICT DO NOTHING
     `);
     

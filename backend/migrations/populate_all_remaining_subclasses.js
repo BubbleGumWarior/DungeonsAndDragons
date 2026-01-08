@@ -280,12 +280,6 @@ async function populateAllRemainingSubclasses() {
       ON CONFLICT (class, name) DO UPDATE SET description = EXCLUDED.description
       RETURNING id
     `);
-    const beastMasterResult = await client.query(`
-      INSERT INTO subclasses (class, name, description)
-      VALUES ('Ranger', 'Beast Master', 'You form a deep bond with an animal companion that fights alongside you.')
-      ON CONFLICT (class, name) DO UPDATE SET description = EXCLUDED.description
-      RETURNING id
-    `);
     const gloomResult = await client.query(`
       INSERT INTO subclasses (class, name, description)
       VALUES ('Ranger', 'Gloom Stalker', 'You are at home in the darkest places, striking from the shadows with deadly precision.')
@@ -297,10 +291,9 @@ async function populateAllRemainingSubclasses() {
       INSERT INTO class_features (class, subclass_id, level, name, description, is_choice, choice_count, choice_type)
       VALUES 
         ('Ranger', $1, 3, 'Hunter''s Prey', 'Choose one ability: Colossus Slayer (extra 1d8 damage to wounded targets), Giant Killer (reaction attack vs Large+), or Horde Breaker (extra attack against nearby enemy).', true, 1, 'hunters_prey'),
-        ('Ranger', $2, 3, 'Ranger''s Companion', 'You gain a beast companion with CR 1/4 or lower. It obeys your commands and takes its turn on your initiative. You can use a bonus action to command it.', false, 0, NULL),
-        ('Ranger', $3, 3, 'Dread Ambusher', 'On your first turn of combat, your speed increases by 10 feet and you can make one additional weapon attack. If you hit, add 1d8 damage.', false, 0, NULL)
+        ('Ranger', $2, 3, 'Dread Ambusher', 'On your first turn of combat, your speed increases by 10 feet and you can make one additional weapon attack. If you hit, add 1d8 damage.', false, 0, NULL)
       ON CONFLICT DO NOTHING
-    `, [hunterResult.rows[0].id, beastMasterResult.rows[0].id, gloomResult.rows[0].id]);
+    `, [hunterResult.rows[0].id, gloomResult.rows[0].id]);
     console.log('✅ Ranger subclasses added\n');
     
     await client.query('COMMIT');
@@ -314,8 +307,12 @@ async function populateAllRemainingSubclasses() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-populateAllRemainingSubclasses();
+module.exports = populateAllRemainingSubclasses;
+
+// Auto-execute only if run directly
+if (require.main === module) {
+  populateAllRemainingSubclasses();
+}

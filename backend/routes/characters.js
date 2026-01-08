@@ -161,6 +161,29 @@ router.post('/', authenticateToken, async (req, res) => {
     };
     
     const character = await Character.create(characterData);
+    
+    // Automatically assign level 1 skills for the character's class
+    try {
+      const { pool } = require('../models/database');
+      const level1Skills = await pool.query(`
+        SELECT id FROM skills 
+        WHERE class_restriction = $1 AND level_requirement = 1
+      `, [characterClass]);
+      
+      for (const skill of level1Skills.rows) {
+        await pool.query(`
+          INSERT INTO character_skills (character_id, skill_id)
+          VALUES ($1, $2)
+          ON CONFLICT DO NOTHING
+        `, [character.id, skill.id]);
+      }
+      
+      console.log(`✅ Assigned ${level1Skills.rows.length} level 1 skills to new character ${character.name} (${characterClass})`);
+    } catch (skillError) {
+      console.error('Error assigning level 1 skills:', skillError);
+      // Don't fail character creation if skill assignment fails
+    }
+    
     res.status(201).json({
       message: 'Character created successfully',
       character
@@ -318,6 +341,7 @@ router.get('/reference/data', async (req, res) => {
         { name: 'Monk', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['str', 'dex'] },
         { name: 'Oathknight', hitDie: 12, primaryAbility: ['con'], savingThrows: ['con', 'wis'] },
         { name: 'Paladin', hitDie: 10, primaryAbility: ['str', 'cha'], savingThrows: ['wis', 'cha'] },
+        { name: 'Primal Bond', hitDie: 10, primaryAbility: ['str', 'dex'], savingThrows: ['str', 'con'] },
         { name: 'Ranger', hitDie: 10, primaryAbility: ['dex', 'wis'], savingThrows: ['str', 'dex'] },
         { name: 'Reaver', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['dex', 'int'] },
         { name: 'Rogue', hitDie: 8, primaryAbility: ['dex'], savingThrows: ['dex', 'int'] },

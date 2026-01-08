@@ -172,6 +172,32 @@ export interface Skill {
   created_at: string;
 }
 
+export interface Beast {
+  id: number;
+  character_id: number;
+  beast_type: 'Cheetah' | 'Leopard' | 'AlphaWolf' | 'OmegaWolf' | 'Elephant' | 'Owlbear';
+  beast_name: string;
+  level_acquired: number;
+  hit_points_max: number;
+  hit_points_current: number;
+  armor_class: number;
+  abilities: {
+    str: number;
+    dex: number;
+    con: number;
+    int: number;
+    wis: number;
+    cha: number;
+  };
+  speed: number;
+  attack_bonus: number;
+  damage_dice: string;
+  damage_type: string;
+  special_abilities: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Subclass {
   id: number;
   class: string;
@@ -823,9 +849,58 @@ export const skillAPI = {
     hpIncrease: number;
     subclassId?: number;
     featureChoices?: FeatureChoice[];
+    beastSelection?: { beastType: string; beastName: string };
   }): Promise<any> => {
     const response = await api.post(`/skills/level-up/${characterId}`, levelUpData);
     return response.data;
+  }
+};
+
+export const beastAPI = {
+  getBeast: async (characterId: number): Promise<Beast | null> => {
+    try {
+      const response = await api.get(`/beasts/${characterId}`);
+      return response.data.beast;
+    } catch (error: any) {
+      // 404 means no beast exists yet - this is normal
+      if (error?.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  createOrUpdateBeast: async (characterId: number, beastData: {
+    beast_type: string;
+    beast_name: string;
+    level_acquired: number;
+    hit_points_max: number;
+    armor_class: number;
+    abilities: {
+      str: number;
+      dex: number;
+      con: number;
+      int: number;
+      wis: number;
+      cha: number;
+    };
+    speed: number;
+    attack_bonus: number;
+    damage_dice: string;
+    damage_type: string;
+    special_abilities: string;
+  }): Promise<Beast> => {
+    const response = await api.post(`/beasts/${characterId}`, beastData);
+    return response.data.beast;
+  },
+
+  updateBeastHP: async (characterId: number, hit_points_current: number): Promise<Beast> => {
+    const response = await api.patch(`/beasts/${characterId}/hp`, { hit_points_current });
+    return response.data.beast;
+  },
+
+  deleteBeast: async (characterId: number): Promise<void> => {
+    await api.delete(`/beasts/${characterId}`);
   }
 };
 

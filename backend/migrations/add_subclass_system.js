@@ -79,8 +79,12 @@ async function addSubclassSystem() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-addSubclassSystem();
+module.exports = addSubclassSystem;
+
+// Auto-execute only if run directly
+if (require.main === module) {
+  addSubclassSystem();
+}
