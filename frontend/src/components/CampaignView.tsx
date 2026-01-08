@@ -2,8 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, LevelUpInfo, FeatureChoice } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
+import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
 import FigureImage from '../assets/images/Board/Figure.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
 import BattleMapImage from '../assets/images/Campaign/BattleMap.jpg';
@@ -691,7 +692,7 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'levelup'>('board');
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
   const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia'>('map');
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
@@ -928,6 +929,39 @@ const CampaignView: React.FC = () => {
     title: '',
     description: '',
     imageFile: null as File | null
+  });
+
+  // Skills state
+  const [allSkills, setAllSkills] = useState<Skill[]>([]);
+  const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
+  const [showAddSkillModal, setShowAddSkillModal] = useState(false);
+  const [showCreateSkillModal, setShowCreateSkillModal] = useState(false);
+  const [newSkillData, setNewSkillData] = useState<Partial<Skill>>({
+    name: '',
+    description: '',
+    level_requirement: 1,
+    class_restriction: ''
+  });
+
+  // Experience state
+  const [showGrantExpModal, setShowGrantExpModal] = useState(false);
+  const [selectedCharactersForExp, setSelectedCharactersForExp] = useState<number[]>([]);
+  const [expAmount, setExpAmount] = useState<number>(100);
+
+  // Level up state
+  const [levelUpInfo, setLevelUpInfo] = useState<any | null>(null);
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+  const [levelUpStep, setLevelUpStep] = useState<'hp' | 'subclass' | 'choices' | 'summary'>('hp');
+  const [levelUpData, setLevelUpData] = useState<{
+    hpIncrease: number;
+    hpRolled: number | null;
+    subclassId: number | null;
+    featureChoices: any[];
+  }>({
+    hpIncrease: 0,
+    hpRolled: null,
+    subclassId: null,
+    featureChoices: []
   });
 
   // Function to split backstory into pages with intelligent paragraph boundary detection
@@ -1312,6 +1346,162 @@ const CampaignView: React.FC = () => {
     }
     
     return parts.length > 0 ? parts : text;
+  };
+
+  // Skills Management Functions
+  const loadAllSkills = useCallback(async () => {
+    try {
+      const skills = await skillAPI.getAll();
+      setAllSkills(skills);
+    } catch (error) {
+      console.error('Error loading skills:', error);
+    }
+  }, []);
+
+  const loadCharacterSkills = useCallback(async (characterId: number) => {
+    try {
+      const skills = await skillAPI.getCharacterSkills(characterId);
+      setCharacterSkills(prev => ({ ...prev, [characterId]: skills }));
+    } catch (error) {
+      console.error('Error loading character skills:', error);
+    }
+  }, []);
+
+  const handleAddSkillToCharacter = async (characterId: number, skillId: number) => {
+    try {
+      await skillAPI.addSkillToCharacter(characterId, skillId);
+      await loadCharacterSkills(characterId);
+      setShowAddSkillModal(false);
+      setToastMessage('Skill added successfully!');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error adding skill:', error);
+      alert('Failed to add skill');
+    }
+  };
+
+  const handleCreateSkill = async () => {
+    try {
+      await skillAPI.createSkill(newSkillData);
+      await loadAllSkills();
+      setShowCreateSkillModal(false);
+      setNewSkillData({
+        name: '',
+        description: '',
+        level_requirement: 1,
+        class_restriction: ''
+      });
+      setToastMessage('Skill created successfully!');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error creating skill:', error);
+      alert('Failed to create skill');
+    }
+  };
+
+  const handleRemoveSkill = async (characterId: number, skillId: number) => {
+    if (!window.confirm('Remove this skill from the character?')) return;
+    
+    try {
+      await skillAPI.removeSkillFromCharacter(characterId, skillId);
+      await loadCharacterSkills(characterId);
+      setToastMessage('Skill removed');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error removing skill:', error);
+      alert('Failed to remove skill');
+    }
+  };
+
+  // Experience Management Functions
+  const handleGrantExperience = async () => {
+    if (!currentCampaign || selectedCharactersForExp.length === 0 || expAmount <= 0) {
+      alert('Please select at least one character and enter a valid EXP amount');
+      return;
+    }
+
+    try {
+      await skillAPI.grantExperience(currentCampaign.campaign.id, selectedCharactersForExp, expAmount);
+      // Reload campaign to update character data
+      await loadCampaign(campaignName!);
+      setShowGrantExpModal(false);
+      setSelectedCharactersForExp([]);
+      setExpAmount(100);
+      setToastMessage(`Granted ${expAmount} EXP to ${selectedCharactersForExp.length} character(s)!`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error granting experience:', error);
+      alert('Failed to grant experience');
+    }
+  };
+
+  const handleLevelUp = async (characterId: number) => {
+    try {
+      const info = await skillAPI.getLevelUpInfo(characterId);
+      setLevelUpInfo(info);
+      setLevelUpData({
+        hpIncrease: info.hitDieAverage,
+        hpRolled: null,
+        subclassId: null,
+        featureChoices: []
+      });
+      setLevelUpStep('hp');
+      setShowLevelUpModal(true);
+    } catch (error) {
+      console.error('Error getting level-up info:', error);
+      alert('Failed to get level-up information');
+    }
+  };
+
+  const handleRollHP = () => {
+    if (!levelUpInfo) return;
+    const rolled = Math.floor(Math.random() * levelUpInfo.hitDie) + 1;
+    setLevelUpData(prev => ({ ...prev, hpIncrease: rolled, hpRolled: rolled }));
+  };
+
+  const handleTakeAverage = () => {
+    if (!levelUpInfo) return;
+    setLevelUpData(prev => ({ ...prev, hpIncrease: levelUpInfo.hitDieAverage, hpRolled: null }));
+  };
+
+  const handleCompleteLevelUp = async () => {
+    if (!selectedCharacter || !levelUpInfo) return;
+    
+    try {
+      const result = await skillAPI.levelUp(selectedCharacter, {
+        hpIncrease: levelUpData.hpIncrease,
+        subclassId: levelUpData.subclassId || undefined,
+        featureChoices: levelUpData.featureChoices
+      });
+      // Reload campaign to update character data
+      await loadCampaign(campaignName!);
+      
+      setShowLevelUpModal(false);
+      setLevelUpInfo(null);
+      
+      if (result.skillGained) {
+        setToastMessage(`${result.message} Learned: ${result.skillGained.name}`);
+      } else {
+        setToastMessage(result.message);
+      }
+      setTimeout(() => setToastMessage(null), 5000);
+      
+      // Load updated skills for the character
+      await loadCharacterSkills(selectedCharacter);
+    } catch (error) {
+      console.error('Error leveling up:', error);
+      alert('Failed to level up character');
+    }
+  };
+
+  const toggleAllCharactersForExp = () => {
+    if (currentCampaign) {
+      if (selectedCharactersForExp.length === currentCampaign.characters.length) {
+        setSelectedCharactersForExp([]);
+      } else {
+        setSelectedCharactersForExp(currentCampaign.characters.map(c => c.id));
+      }
+    }
   };
 
   // Helper function to calculate total character health from limbs
@@ -2053,6 +2243,28 @@ const CampaignView: React.FC = () => {
         refreshActiveBattle(data.battleId);
       });
       
+      // Listen for experience granted
+      newSocket.on('experienceGranted', (data: { campaignId: number; characters: any[]; expAmount: number; timestamp: string }) => {
+        console.log('Experience granted:', data);
+        // Reload campaign data to update all character EXP values
+        if (currentCampaign && currentCampaign.campaign.id === data.campaignId && campaignName) {
+          loadCampaign(campaignName);
+        }
+      });
+      
+      // Listen for character leveled up
+      newSocket.on('characterLeveledUp', (data: { characterId: number; newLevel: number; newHP: number; experiencePoints: number; skillGained: any; timestamp: string }) => {
+        console.log('Character leveled up:', data);
+        // Reload campaign data to update character level, HP, and EXP (reset to 0)
+        if (currentCampaign && campaignName) {
+          loadCampaign(campaignName);
+          // If this is the selected character, also reload their skills
+          if (selectedCharacter === data.characterId) {
+            loadCharacterSkills(data.characterId);
+          }
+        }
+      });
+      
       // Listen for journal entry created
       newSocket.on('journalEntryCreated', (data: { entry: JournalEntry; timestamp: string }) => {
         setJournalEntries(prev => [data.entry, ...prev]);
@@ -2084,6 +2296,18 @@ const CampaignView: React.FC = () => {
       loadEquipmentDetails(selectedCharacter);
     }
   }, [selectedCharacter, currentCampaign, loadEquippedItems, loadEquipmentDetails]);
+
+  // Load all skills when component mounts
+  useEffect(() => {
+    loadAllSkills();
+  }, [loadAllSkills]);
+
+  // Load character skills when selected character changes
+  useEffect(() => {
+    if (selectedCharacter) {
+      loadCharacterSkills(selectedCharacter);
+    }
+  }, [selectedCharacter, loadCharacterSkills]);
 
   const renderEquipTab = (character: any) => {
     // Define equipment slots with their names and types
@@ -3023,6 +3247,41 @@ const CampaignView: React.FC = () => {
           {/* Character List - Always Visible */}
           <div style={{ flex: '0 0 280px' }}>
             <div className="glass-panel" style={{ position: 'sticky', top: '1rem' }}>
+              {/* DM Controls */}
+              {user?.role === 'Dungeon Master' && (
+                <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => setShowGrantExpModal(true)}
+                    className="btn btn-primary"
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem',
+                      fontSize: '0.75rem',
+                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
+                      border: '2px solid rgba(168, 85, 247, 0.5)',
+                      color: '#c084fc'
+                    }}
+                  >
+                    ⭐ Add EXP
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem',
+                      fontSize: '0.75rem',
+                      background: 'rgba(100, 116, 139, 0.3)',
+                      border: '2px solid rgba(100, 116, 139, 0.5)',
+                      color: '#94a3b8',
+                      cursor: 'not-allowed',
+                      opacity: 0.6
+                    }}
+                    disabled
+                  >
+                    💤 Rest
+                  </button>
+                </div>
+              )}
               <div style={{ marginBottom: '1rem' }}>
                 <h6 style={{ margin: 0, marginBottom: '0.5rem' }}>👥 Characters ({characters.length})</h6>
                 {characters.length > 1 && (
@@ -3174,9 +3433,82 @@ const CampaignView: React.FC = () => {
                             fontSize: '0.65rem',
                             color: healthColor,
                             textAlign: 'right',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            marginBottom: '0.5rem'
                           }}>
                             {health.percentage.toFixed(0)}% HP
+                          </div>
+
+                          {/* Experience Bar */}
+                          <div style={{ marginTop: '0.5rem' }}>
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '0.5rem',
+                              marginBottom: '0.25rem'
+                            }}>
+                              {/* EXP Icon */}
+                              <div style={{ 
+                                fontSize: '0.9rem',
+                                filter: 'drop-shadow(0 0 4px rgba(168, 85, 247, 0.6))'
+                              }} title="Experience">
+                                ⭐
+                              </div>
+                              
+                              {/* EXP Bar Background */}
+                              <div style={{
+                                flex: 1,
+                                height: '10px',
+                                background: 'rgba(0, 0, 0, 0.4)',
+                                borderRadius: '5px',
+                                overflow: 'hidden',
+                                border: '1px solid rgba(168, 85, 247, 0.3)',
+                                position: 'relative'
+                              }}>
+                                {/* EXP Bar Fill */}
+                                <div style={{
+                                  width: `${getLevelProgress(character.level, character.experience_points || 0)}%`,
+                                  height: '100%',
+                                  background: 'linear-gradient(90deg, #a855f7 0%, #c084fc 100%)',
+                                  transition: 'width 0.3s ease',
+                                  boxShadow: '0 0 8px rgba(168, 85, 247, 0.5)'
+                                }} />
+                                
+                                {/* EXP Text Overlay */}
+                                <div style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.6rem',
+                                  fontWeight: 'bold',
+                                  color: '#fff',
+                                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+                                  pointerEvents: 'none'
+                                }}>
+                                  {character.experience_points || 0}/{getRequiredExpForNextLevel(character.level)}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* EXP Percentage or Level Cap */}
+                            <div style={{
+                              fontSize: '0.65rem',
+                              color: character.level >= 20 ? '#fbbf24' : '#c084fc',
+                              textAlign: 'right',
+                              fontWeight: 'bold'
+                            }}>
+                              {character.level >= 20 
+                                ? 'MAX LEVEL' 
+                                : canLevelUp(character.level, character.experience_points || 0)
+                                ? '⬆️ READY TO LEVEL UP!'
+                                : `${getLevelProgress(character.level, character.experience_points || 0).toFixed(0)}% to Level ${character.level + 1}`
+                              }
+                            </div>
                           </div>
                         </div>
                       );
@@ -6703,7 +7035,7 @@ const CampaignView: React.FC = () => {
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                     {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
                     {(canViewAllTabs(selectedCharacterData.id) 
-                      ? (['board', 'sheet', 'inventory', 'equip', 'armies'] as const)
+                      ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies', ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])] as const)
                       : (['board'] as const)
                     ).map((tab) => (
                       <button
@@ -6730,7 +7062,9 @@ const CampaignView: React.FC = () => {
                         {tab === 'board' ? '📋 Overview' : 
                          tab === 'sheet' ? '📊 Character Sheet' :
                          tab === 'inventory' ? '🎒 Inventory' :
+                         tab === 'skills' ? '✨ Skills' :
                          tab === 'armies' ? '⚔️ Armies' :
+                         tab === 'levelup' ? '⬆️ LEVEL UP!' :
                          '🛡️ Equipment'}
                       </button>
                     ))}
@@ -7750,6 +8084,168 @@ const CampaignView: React.FC = () => {
 
                 {activeTab === 'inventory' && canViewAllTabs(selectedCharacterData.id) && renderInventoryTab(selectedCharacterData)}
                 {activeTab === 'equip' && canViewAllTabs(selectedCharacterData.id) && renderEquipTab(selectedCharacterData)}
+                
+                {/* Skills Tab */}
+                {activeTab === 'skills' && canViewAllTabs(selectedCharacterData.id) && (
+                  <div className="glass-panel">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>✨ Skills</h5>
+                      {user?.role === 'Dungeon Master' && (
+                        <button
+                          onClick={() => setShowAddSkillModal(true)}
+                          className="btn btn-primary"
+                          style={{
+                            padding: '0.5rem 1rem',
+                            fontSize: '0.9rem',
+                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.3))',
+                            border: '2px solid rgba(59, 130, 246, 0.5)',
+                            color: '#60a5fa'
+                          }}
+                        >
+                          ➕ Add Skill
+                        </button>
+                      )}
+                    </div>
+
+                    {characterSkills[selectedCharacterData.id]?.length > 0 ? (
+                      <div style={{ display: 'grid', gap: '1rem' }}>
+                        {characterSkills[selectedCharacterData.id].map((skill) => (
+                          <div
+                            key={skill.id}
+                            className="glass-panel"
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              padding: '1rem',
+                              position: 'relative'
+                            }}
+                          >
+                            {user?.role === 'Dungeon Master' && (
+                              <button
+                                onClick={() => handleRemoveSkill(selectedCharacterData.id, skill.id)}
+                                style={{
+                                  position: 'absolute',
+                                  top: '0.5rem',
+                                  right: '0.5rem',
+                                  background: 'rgba(239, 68, 68, 0.3)',
+                                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                                  color: '#ef4444',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                ✕
+                              </button>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                              <h6 style={{ color: 'var(--text-gold)', margin: 0 }}>{skill.name}</h6>
+                              <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.75rem' }}>
+                                {skill.class_restriction && (
+                                  <span style={{
+                                    padding: '0.25rem 0.5rem',
+                                    background: 'rgba(59, 130, 246, 0.2)',
+                                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                                    borderRadius: '0.25rem',
+                                    color: '#60a5fa'
+                                  }}>
+                                    {skill.class_restriction}
+                                  </span>
+                                )}
+                                <span style={{
+                                  padding: '0.25rem 0.5rem',
+                                  background: 'rgba(168, 85, 247, 0.2)',
+                                  border: '1px solid rgba(168, 85, 247, 0.4)',
+                                  borderRadius: '0.25rem',
+                                  color: '#c084fc'
+                                }}>
+                                  Level {skill.level_requirement}
+                                </span>
+                              </div>
+                            </div>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                              {skill.description}
+                            </p>
+                            {(skill.damage_dice || skill.range_size || skill.usage_frequency) && (
+                              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+                                {skill.damage_dice && (
+                                  <div>
+                                    <span style={{ color: 'var(--text-muted)' }}>Damage: </span>
+                                    <span style={{ color: 'var(--text-gold)' }}>{skill.damage_dice} {skill.damage_type}</span>
+                                  </div>
+                                )}
+                                {skill.range_size && (
+                                  <div>
+                                    <span style={{ color: 'var(--text-muted)' }}>Range: </span>
+                                    <span style={{ color: 'var(--text-gold)' }}>{skill.range_size}</span>
+                                  </div>
+                                )}
+                                {skill.usage_frequency && (
+                                  <div>
+                                    <span style={{ color: 'var(--text-muted)' }}>Usage: </span>
+                                    <span style={{ color: 'var(--text-gold)' }}>{skill.usage_frequency}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{
+                        textAlign: 'center',
+                        padding: '3rem 2rem',
+                        color: 'var(--text-muted)',
+                        fontSize: '1.1rem'
+                      }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✨</div>
+                        <div>No skills learned yet</div>
+                        {user?.role === 'Dungeon Master' && (
+                          <div style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                            Click "Add Skill" to grant skills to this character
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Level Up Tab */}
+                {activeTab === 'levelup' && canViewAllTabs(selectedCharacterData.id) && canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) && (
+                  <div className="glass-panel">
+                    <div style={{ textAlign: 'center', padding: '2rem' }}>
+                      <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>⬆️</div>
+                      <h3 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Ready to Level Up!</h3>
+                      <div style={{ marginBottom: '2rem' }}>
+                        <div style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                          Level {selectedCharacterData.level} → Level {selectedCharacterData.level + 1}
+                        </div>
+                        <div style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>
+                          {selectedCharacterData.experience_points || 0} / {getRequiredExpForNextLevel(selectedCharacterData.level)} EXP
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleLevelUp(selectedCharacterData.id)}
+                        className="btn btn-primary"
+                        style={{
+                          padding: '1rem 2rem',
+                          fontSize: '1.2rem',
+                          background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.4), rgba(202, 138, 4, 0.4))',
+                          border: '3px solid rgba(234, 179, 8, 0.6)',
+                          color: '#fbbf24',
+                          boxShadow: '0 0 30px rgba(234, 179, 8, 0.3)',
+                          animation: 'pulse 2s infinite'
+                        }}
+                      >
+                        ⬆️ Begin Level Up Process
+                      </button>
+                      <div style={{ marginTop: '2rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                        This will guide you through choosing HP increases, subclass selection (if applicable), and new features
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Armies Tab */}
                 {activeTab === 'armies' && canViewAllTabs(selectedCharacterData.id) && (
@@ -12236,6 +12732,1073 @@ const CampaignView: React.FC = () => {
           );
         })()}
       </div>
+
+      {/* Grant Experience Modal */}
+      {showGrantExpModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            padding: '2rem'
+          }}>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⭐ Grant Experience</h3>
+            
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <label style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>Select Characters</label>
+                <button
+                  onClick={toggleAllCharactersForExp}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: 'rgba(59, 130, 246, 0.2)',
+                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                    borderRadius: '0.25rem',
+                    color: '#60a5fa',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  {selectedCharactersForExp.length === currentCampaign?.characters.length ? 'Unselect All' : 'Select All'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflow: 'auto', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '0.5rem' }}>
+                {currentCampaign?.characters.map((character) => (
+                  <label
+                    key={character.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.75rem',
+                      background: selectedCharactersForExp.includes(character.id) ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                      border: selectedCharactersForExp.includes(character.id) ? '2px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCharactersForExp.includes(character.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCharactersForExp([...selectedCharactersForExp, character.id]);
+                        } else {
+                          setSelectedCharactersForExp(selectedCharactersForExp.filter(id => id !== character.id));
+                        }
+                      }}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: 'var(--text-gold)', fontWeight: 'bold' }}>{character.name}</div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        Level {character.level} - {character.experience_points || 0} EXP
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                Experience Amount
+              </label>
+              <input
+                type="number"
+                value={expAmount}
+                onChange={(e) => setExpAmount(parseInt(e.target.value) || 0)}
+                min="0"
+                step="50"
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '2px solid rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.5rem',
+                  color: 'var(--text-gold)',
+                  fontSize: '1.2rem',
+                  fontWeight: 'bold',
+                  textAlign: 'center'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={handleGrantExperience}
+                disabled={selectedCharactersForExp.length === 0 || expAmount <= 0}
+                className="btn btn-primary"
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  background: selectedCharactersForExp.length === 0 || expAmount <= 0
+                    ? 'rgba(100, 116, 139, 0.3)'
+                    : 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
+                  border: '2px solid rgba(168, 85, 247, 0.5)',
+                  color: selectedCharactersForExp.length === 0 || expAmount <= 0 ? '#64748b' : '#c084fc',
+                  cursor: selectedCharactersForExp.length === 0 || expAmount <= 0 ? 'not-allowed' : 'pointer',
+                  opacity: selectedCharactersForExp.length === 0 || expAmount <= 0 ? 0.5 : 1
+                }}
+              >
+                ⭐ Grant {expAmount} EXP
+              </button>
+              <button
+                onClick={() => {
+                  setShowGrantExpModal(false);
+                  setSelectedCharactersForExp([]);
+                  setExpAmount(100);
+                }}
+                className="btn btn-secondary"
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  background: 'rgba(239, 68, 68, 0.3)',
+                  border: '2px solid rgba(239, 68, 68, 0.5)',
+                  color: '#ef4444'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Skill Modal */}
+      {showAddSkillModal && selectedCharacter && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: '700px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            padding: '2rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>✨ Add Skill</h3>
+              <button
+                onClick={() => setShowCreateSkillModal(true)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'rgba(34, 197, 94, 0.3)',
+                  border: '2px solid rgba(34, 197, 94, 0.5)',
+                  borderRadius: '0.5rem',
+                  color: '#4ade80',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                ➕ Create New Skill
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {allSkills.length > 0 ? (
+                allSkills.map((skill) => {
+                  const alreadyHas = characterSkills[selectedCharacter]?.some(s => s.id === skill.id);
+                  return (
+                    <div
+                      key={skill.id}
+                      className="glass-panel"
+                      style={{
+                        background: alreadyHas 
+                          ? 'rgba(100, 116, 139, 0.1)'
+                          : 'linear-gradient(135deg, rgba(212, 193, 156, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                        border: alreadyHas 
+                          ? '1px solid rgba(100, 116, 139, 0.3)'
+                          : '2px solid rgba(212, 193, 156, 0.3)',
+                        padding: '1rem',
+                        opacity: alreadyHas ? 0.6 : 1
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                        <div style={{ flex: 1 }}>
+                          <h6 style={{ color: 'var(--text-gold)', margin: 0, marginBottom: '0.25rem' }}>
+                            {skill.name}
+                            {alreadyHas && <span style={{ color: '#64748b', marginLeft: '0.5rem', fontSize: '0.85rem' }}>(Already learned)</span>}
+                          </h6>
+                          <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.75rem', marginBottom: '0.5rem' }}>
+                            {skill.class_restriction && (
+                              <span style={{
+                                padding: '0.25rem 0.5rem',
+                                background: 'rgba(59, 130, 246, 0.2)',
+                                border: '1px solid rgba(59, 130, 246, 0.4)',
+                                borderRadius: '0.25rem',
+                                color: '#60a5fa'
+                              }}>
+                                {skill.class_restriction}
+                              </span>
+                            )}
+                            <span style={{
+                              padding: '0.25rem 0.5rem',
+                              background: 'rgba(168, 85, 247, 0.2)',
+                              border: '1px solid rgba(168, 85, 247, 0.4)',
+                              borderRadius: '0.25rem',
+                              color: '#c084fc'
+                            }}>
+                              Level {skill.level_requirement}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleAddSkillToCharacter(selectedCharacter, skill.id)}
+                          disabled={alreadyHas}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: alreadyHas 
+                              ? 'rgba(100, 116, 139, 0.2)'
+                              : 'rgba(59, 130, 246, 0.3)',
+                            border: alreadyHas
+                              ? '1px solid rgba(100, 116, 139, 0.4)'
+                              : '2px solid rgba(59, 130, 246, 0.5)',
+                            borderRadius: '0.5rem',
+                            color: alreadyHas ? '#64748b' : '#60a5fa',
+                            cursor: alreadyHas ? 'not-allowed' : 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {alreadyHas ? '✓ Added' : '+ Add'}
+                        </button>
+                      </div>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
+                        {skill.description}
+                      </p>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  No skills available. Create a new skill to get started.
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowAddSkillModal(false)}
+              className="btn btn-secondary"
+              style={{
+                width: '100%',
+                marginTop: '1.5rem',
+                padding: '0.75rem',
+                background: 'rgba(239, 68, 68, 0.3)',
+                border: '2px solid rgba(239, 68, 68, 0.5)',
+                color: '#ef4444'
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create Skill Modal */}
+      {showCreateSkillModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10001,
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            padding: '2rem'
+          }}>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>✨ Create New Skill</h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                  Skill Name *
+                </label>
+                <input
+                  type="text"
+                  value={newSkillData.name || ''}
+                  onChange={(e) => setNewSkillData({ ...newSkillData, name: e.target.value })}
+                  placeholder="Enter skill name"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-gold)',
+                    fontSize: '1rem'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                  Description *
+                </label>
+                <textarea
+                  value={newSkillData.description || ''}
+                  onChange={(e) => setNewSkillData({ ...newSkillData, description: e.target.value })}
+                  placeholder="Describe what this skill does"
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.95rem',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    Level Requirement
+                  </label>
+                  <input
+                    type="number"
+                    value={newSkillData.level_requirement || 1}
+                    onChange={(e) => setNewSkillData({ ...newSkillData, level_requirement: parseInt(e.target.value) || 1 })}
+                    min="0"
+                    max="20"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      color: 'var(--text-gold)',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    Class Restriction
+                  </label>
+                  <input
+                    type="text"
+                    value={newSkillData.class_restriction || ''}
+                    onChange={(e) => setNewSkillData({ ...newSkillData, class_restriction: e.target.value })}
+                    placeholder="Optional (e.g., Wizard)"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      color: 'var(--text-gold)',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    Damage Dice
+                  </label>
+                  <input
+                    type="text"
+                    value={newSkillData.damage_dice || ''}
+                    onChange={(e) => setNewSkillData({ ...newSkillData, damage_dice: e.target.value })}
+                    placeholder="e.g., 2d6"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      color: 'var(--text-gold)',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    Damage Type
+                  </label>
+                  <input
+                    type="text"
+                    value={newSkillData.damage_type || ''}
+                    onChange={(e) => setNewSkillData({ ...newSkillData, damage_type: e.target.value })}
+                    placeholder="e.g., fire"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      color: 'var(--text-gold)',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    Range
+                  </label>
+                  <input
+                    type="text"
+                    value={newSkillData.range_size || ''}
+                    onChange={(e) => setNewSkillData({ ...newSkillData, range_size: e.target.value })}
+                    placeholder="e.g., 30 feet"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      color: 'var(--text-gold)',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    Usage Frequency
+                  </label>
+                  <input
+                    type="text"
+                    value={newSkillData.usage_frequency || ''}
+                    onChange={(e) => setNewSkillData({ ...newSkillData, usage_frequency: e.target.value })}
+                    placeholder="e.g., Once per day"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      borderRadius: '0.5rem',
+                      color: 'var(--text-gold)',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+              <button
+                onClick={handleCreateSkill}
+                disabled={!newSkillData.name || !newSkillData.description}
+                className="btn btn-primary"
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  background: !newSkillData.name || !newSkillData.description
+                    ? 'rgba(100, 116, 139, 0.3)'
+                    : 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                  border: '2px solid rgba(34, 197, 94, 0.5)',
+                  color: !newSkillData.name || !newSkillData.description ? '#64748b' : '#4ade80',
+                  cursor: !newSkillData.name || !newSkillData.description ? 'not-allowed' : 'pointer',
+                  opacity: !newSkillData.name || !newSkillData.description ? 0.5 : 1
+                }}
+              >
+                ✨ Create Skill
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateSkillModal(false);
+                  setNewSkillData({
+                    name: '',
+                    description: '',
+                    level_requirement: 1,
+                    class_restriction: ''
+                  });
+                }}
+                className="btn btn-secondary"
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  background: 'rgba(239, 68, 68, 0.3)',
+                  border: '2px solid rgba(239, 68, 68, 0.5)',
+                  color: '#ef4444'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Level Up Modal */}
+      {showLevelUpModal && levelUpInfo && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '2rem'
+          }}
+          onClick={() => {}}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.98) 0%, rgba(31, 41, 55, 0.98) 100%)',
+              border: '3px solid rgba(234, 179, 8, 0.5)',
+              padding: '2.5rem',
+              borderRadius: '1rem',
+              maxWidth: '800px',
+              width: '100%',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              boxShadow: '0 0 50px rgba(234, 179, 8, 0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem', textAlign: 'center' }}>
+              ⬆️ Level Up: {levelUpInfo.currentLevel} → {levelUpInfo.newLevel}
+            </h4>
+            
+            {/* Progress Indicator */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
+              {['hp', 'subclass', 'choices', 'summary'].map((step, idx) => {
+                const isActive = levelUpStep === step;
+                const stepNames = { hp: 'HP', subclass: 'Subclass', choices: 'Features', summary: 'Summary' };
+                const shouldShow = step === 'subclass' ? levelUpInfo.needsSubclass : 
+                                 step === 'choices' ? levelUpInfo.choiceFeatures.length > 0 : true;
+                
+                if (!shouldShow) return null;
+                
+                return (
+                  <div key={step} style={{
+                    padding: '0.5rem 1rem',
+                    background: isActive ? 'rgba(234, 179, 8, 0.3)' : 'rgba(100, 116, 139, 0.2)',
+                    border: `2px solid ${isActive ? 'rgba(234, 179, 8, 0.6)' : 'rgba(100, 116, 139, 0.3)'}`,
+                    borderRadius: '0.5rem',
+                    color: isActive ? '#fbbf24' : '#94a3b8',
+                    fontSize: '0.9rem',
+                    fontWeight: isActive ? 'bold' : 'normal'
+                  }}>
+                    {stepNames[step as keyof typeof stepNames]}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* HP Selection Step */}
+            {levelUpStep === 'hp' && (
+              <div>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
+                  ❤️ Hit Points Increase
+                </h5>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
+                  Choose how to increase your maximum HP (Hit Die: d{levelUpInfo.hitDie})
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
+                  <div
+                    onClick={handleRollHP}
+                    style={{
+                      padding: '2rem',
+                      background: levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
+                      border: `3px solid ${levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                      borderRadius: '0.75rem',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                      e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.8)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                      e.currentTarget.style.borderColor = levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                    }}
+                  >
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎲</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                      Roll for HP
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                      Roll 1d{levelUpInfo.hitDie} + CON modifier
+                    </div>
+                    {levelUpData.hpRolled !== null && (
+                      <div style={{ fontSize: '2rem', color: '#4ade80', fontWeight: 'bold' }}>
+                        +{levelUpData.hpIncrease} HP
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    onClick={handleTakeAverage}
+                    style={{
+                      padding: '2rem',
+                      background: levelUpData.hpRolled === null && levelUpData.hpIncrease > 0 ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
+                      border: `3px solid ${levelUpData.hpRolled === null && levelUpData.hpIncrease > 0 ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                      borderRadius: '0.75rem',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                      e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.8)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                      e.currentTarget.style.borderColor = levelUpData.hpRolled === null && levelUpData.hpIncrease > 0 ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                    }}
+                  >
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                      Take Average
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                      Guaranteed {levelUpInfo.hitDieAverage} + CON modifier
+                    </div>
+                    <div style={{ fontSize: '2rem', color: '#4ade80', fontWeight: 'bold' }}>
+                      +{levelUpInfo.hitDieAverage} HP
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', marginBottom: '2rem', padding: '1rem', background: 'rgba(212, 193, 156, 0.1)', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>
+                    Current HP: {levelUpInfo.currentHP} → New HP: {levelUpInfo.currentHP + levelUpData.hpIncrease}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (levelUpInfo.needsSubclass) {
+                      setLevelUpStep('subclass');
+                    } else if (levelUpInfo.choiceFeatures.length > 0) {
+                      setLevelUpStep('choices');
+                    } else {
+                      setLevelUpStep('summary');
+                    }
+                  }}
+                  disabled={levelUpData.hpIncrease === 0}
+                  className="btn btn-primary"
+                  style={{
+                    width: '100%',
+                    padding: '1rem',
+                    background: levelUpData.hpIncrease === 0 ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                    border: '2px solid rgba(34, 197, 94, 0.5)',
+                    color: levelUpData.hpIncrease === 0 ? '#64748b' : '#4ade80',
+                    fontSize: '1.1rem',
+                    cursor: levelUpData.hpIncrease === 0 ? 'not-allowed' : 'pointer',
+                    opacity: levelUpData.hpIncrease === 0 ? 0.5 : 1
+                  }}
+                >
+                  Continue →
+                </button>
+              </div>
+            )}
+
+            {/* Subclass Selection Step */}
+            {levelUpStep === 'subclass' && levelUpInfo.needsSubclass && (
+              <div>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
+                  🎯 Choose Your Subclass
+                </h5>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
+                  This is a permanent choice that defines your character's specialization
+                </p>
+
+                <div style={{ display: 'grid', gap: '1rem', marginBottom: '2rem' }}>
+                  {levelUpInfo.availableSubclasses.map((subclass: any) => (
+                    <div
+                      key={subclass.id}
+                      onClick={() => setLevelUpData(prev => ({ ...prev, subclassId: subclass.id }))}
+                      style={{
+                        padding: '1.5rem',
+                        background: levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
+                        border: `3px solid ${levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                        borderRadius: '0.75rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateX(5px)';
+                        e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.8)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateX(0)';
+                        e.currentTarget.style.borderColor = levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                      }}
+                    >
+                      <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                        {subclass.name}
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                        {subclass.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    onClick={() => setLevelUpStep('hp')}
+                    className="btn btn-secondary"
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      background: 'rgba(100, 116, 139, 0.3)',
+                      border: '2px solid rgba(100, 116, 139, 0.5)',
+                      color: '#94a3b8'
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (levelUpInfo.choiceFeatures.length > 0) {
+                        setLevelUpStep('choices');
+                      } else {
+                        setLevelUpStep('summary');
+                      }
+                    }}
+                    disabled={!levelUpData.subclassId}
+                    className="btn btn-primary"
+                    style={{
+                      flex: 2,
+                      padding: '1rem',
+                      background: !levelUpData.subclassId ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                      border: '2px solid rgba(34, 197, 94, 0.5)',
+                      color: !levelUpData.subclassId ? '#64748b' : '#4ade80',
+                      cursor: !levelUpData.subclassId ? 'not-allowed' : 'pointer',
+                      opacity: !levelUpData.subclassId ? 0.5 : 1
+                    }}
+                  >
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Feature Choices Step */}
+            {levelUpStep === 'choices' && levelUpInfo.choiceFeatures.length > 0 && (
+              <div>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
+                  ✨ Make Your Choices
+                </h5>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
+                  Select from available options for your class features
+                </p>
+
+                <div style={{ marginBottom: '2rem' }}>
+                  {levelUpInfo.choiceFeatures.map((feature: any) => (
+                    <div key={feature.id} style={{ marginBottom: '2rem', padding: '1.5rem', background: 'rgba(212, 193, 156, 0.1)', borderRadius: '0.75rem', border: '2px solid rgba(212, 193, 156, 0.3)' }}>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                        {feature.name}
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: '1.6' }}>
+                        {feature.description}
+                      </div>
+                      
+                      {feature.choice_type === 'asi_or_feat' && (
+                        <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
+                          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                            This choice will be tracked in your character sheet
+                          </p>
+                          <textarea
+                            placeholder="Enter your ASI/Feat choice (e.g., '+2 Strength' or 'Great Weapon Master feat')"
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              background: 'rgba(0, 0, 0, 0.3)',
+                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              borderRadius: '0.5rem',
+                              color: 'var(--text-gold)',
+                              minHeight: '80px',
+                              resize: 'vertical'
+                            }}
+                            onChange={(e) => {
+                              const choice = {
+                                featureId: feature.id,
+                                choiceName: e.target.value,
+                                choiceDescription: ''
+                              };
+                              setLevelUpData(prev => ({
+                                ...prev,
+                                featureChoices: [
+                                  ...prev.featureChoices.filter(c => c.featureId !== feature.id),
+                                  choice
+                                ]
+                              }));
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {feature.choice_type && feature.choice_type !== 'asi_or_feat' && feature.choice_type !== 'subclass' && (
+                        <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
+                          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                            Enter your choice for: {feature.choice_type.replace(/_/g, ' ')}
+                          </p>
+                          <input
+                            type="text"
+                            placeholder={`Enter your ${feature.choice_type.replace(/_/g, ' ')} choice`}
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              background: 'rgba(0, 0, 0, 0.3)',
+                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              borderRadius: '0.5rem',
+                              color: 'var(--text-gold)'
+                            }}
+                            onChange={(e) => {
+                              const choice = {
+                                featureId: feature.id,
+                                choiceName: e.target.value,
+                                choiceDescription: feature.description
+                              };
+                              setLevelUpData(prev => ({
+                                ...prev,
+                                featureChoices: [
+                                  ...prev.featureChoices.filter(c => c.featureId !== feature.id),
+                                  choice
+                                ]
+                              }));
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    onClick={() => {
+                      if (levelUpInfo.needsSubclass) {
+                        setLevelUpStep('subclass');
+                      } else {
+                        setLevelUpStep('hp');
+                      }
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      background: 'rgba(100, 116, 139, 0.3)',
+                      border: '2px solid rgba(100, 116, 139, 0.5)',
+                      color: '#94a3b8'
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => setLevelUpStep('summary')}
+                    className="btn btn-primary"
+                    style={{
+                      flex: 2,
+                      padding: '1rem',
+                      background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                      border: '2px solid rgba(34, 197, 94, 0.5)',
+                      color: '#4ade80'
+                    }}
+                  >
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Summary Step */}
+            {levelUpStep === 'summary' && (
+              <div>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
+                  📜 Level Up Summary
+                </h5>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
+                  Review your choices before confirming
+                </p>
+
+                <div style={{ marginBottom: '2rem' }}>
+                  {/* HP Summary */}
+                  <div style={{ padding: '1rem', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(34, 197, 94, 0.3)' }}>
+                    <div style={{ fontWeight: 'bold', color: '#4ade80', marginBottom: '0.5rem' }}>❤️ Hit Points</div>
+                    <div style={{ color: 'var(--text-secondary)' }}>
+                      +{levelUpData.hpIncrease} HP ({levelUpData.hpRolled !== null ? `Rolled: ${levelUpData.hpRolled}` : 'Took Average'})
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                      {levelUpInfo.currentHP} → {levelUpInfo.currentHP + levelUpData.hpIncrease}
+                    </div>
+                  </div>
+
+                  {/* Subclass Summary */}
+                  {levelUpData.subclassId && (
+                    <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
+                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>🎯 Subclass</div>
+                      <div style={{ color: 'var(--text-secondary)' }}>
+                        {levelUpInfo.availableSubclasses.find((s: any) => s.id === levelUpData.subclassId)?.name}
+                      </div>
+                      {levelUpInfo.subclassFeatures && levelUpInfo.subclassFeatures.length > 0 && (
+                        <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(234, 179, 8, 0.2)' }}>
+                          {levelUpInfo.subclassFeatures
+                            .filter((f: any) => f.subclass_id === levelUpData.subclassId)
+                            .map((feature: any) => (
+                              <div key={feature.id} style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', fontSize: '0.9rem' }}>
+                                <strong>{feature.name}:</strong> {feature.description}
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Auto Features */}
+                  {levelUpInfo.autoFeatures.length > 0 && (
+                    <div style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(59, 130, 246, 0.3)' }}>
+                      <div style={{ fontWeight: 'bold', color: '#60a5fa', marginBottom: '0.5rem' }}>✨ Features Gained</div>
+                      {levelUpInfo.autoFeatures.map((feature: any) => (
+                        <div key={feature.id} style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                          • {feature.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Skill Gained - only show if not a duplicate of auto features and not empty */}
+                  {levelUpInfo.skillGained && !levelUpInfo.autoFeatures.some((f: any) => f.name === levelUpInfo.skillGained.name) && (
+                    <div style={{ padding: '1rem', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(168, 85, 247, 0.3)' }}>
+                      <div style={{ fontWeight: 'bold', color: '#a78bfa', marginBottom: '0.5rem' }}>⚔️ Skill Learned</div>
+                      <div style={{ color: 'var(--text-secondary)' }}>
+                        {levelUpInfo.skillGained.name}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Feature Choices */}
+                  {levelUpData.featureChoices.length > 0 && (
+                    <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
+                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>🎯 Choices Made</div>
+                      {levelUpData.featureChoices.map((choice: any, idx: number) => (
+                        <div key={idx} style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                          • {choice.choiceName}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    onClick={() => {
+                      if (levelUpInfo.choiceFeatures.length > 0) {
+                        setLevelUpStep('choices');
+                      } else if (levelUpInfo.needsSubclass) {
+                        setLevelUpStep('subclass');
+                      } else {
+                        setLevelUpStep('hp');
+                      }
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      background: 'rgba(100, 116, 139, 0.3)',
+                      border: '2px solid rgba(100, 116, 139, 0.5)',
+                      color: '#94a3b8'
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={handleCompleteLevelUp}
+                    className="btn btn-primary"
+                    style={{
+                      flex: 2,
+                      padding: '1rem',
+                      background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                      border: '2px solid rgba(34, 197, 94, 0.5)',
+                      color: '#4ade80',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    ⬆️ Confirm Level Up
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setShowLevelUpModal(false);
+                setLevelUpInfo(null);
+              }}
+              style={{
+                position: 'absolute',
+                top: '1rem',
+                right: '1rem',
+                background: 'rgba(239, 68, 68, 0.3)',
+                border: '2px solid rgba(239, 68, 68, 0.5)',
+                color: '#ef4444',
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

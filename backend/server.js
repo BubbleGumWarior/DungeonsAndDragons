@@ -132,6 +132,15 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../frontend/build')));
 }
 
+// Placeholder for Socket.IO - will be attached after server initialization
+let io = null;
+app.use((req, res, next) => {
+  if (io) {
+    req.io = io;
+  }
+  next();
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', journalsRoutes);
@@ -239,7 +248,7 @@ const startServer = async () => {
     }
     
     // Initialize Socket.IO
-    const io = new Server(server, {
+    io = new Server(server, {
       cors: {
         origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000'],
         methods: ['GET', 'POST'],

@@ -100,7 +100,7 @@ router.post('/', authenticateToken, async (req, res) => {
       race,
       class: characterClass,
       background,
-      level = 1,
+      level = 0,
       hit_points,
       armor_class,
       abilities,

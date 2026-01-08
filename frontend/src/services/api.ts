@@ -60,6 +60,7 @@ export interface Character {
   class: string;
   background: string;
   level: number;
+  experience_points?: number;
   hit_points: number;
   armor_class: number;
   abilities: {
@@ -155,6 +156,60 @@ export interface Monster {
   visible_to_players: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Skill {
+  id: number;
+  name: string;
+  description: string;
+  damage_dice?: string;
+  damage_type?: string;
+  range_size?: string;
+  usage_frequency?: string;
+  level_requirement: number;
+  class_restriction?: string;
+  acquired_at?: string;
+  created_at: string;
+}
+
+export interface Subclass {
+  id: number;
+  class: string;
+  name: string;
+  description: string;
+  created_at: string;
+}
+
+export interface ClassFeature {
+  id: number;
+  class: string;
+  subclass_id: number | null;
+  level: number;
+  name: string;
+  description: string;
+  is_choice: boolean;
+  choice_count: number;
+  choice_type: string | null;
+  created_at: string;
+}
+
+export interface LevelUpInfo {
+  currentLevel: number;
+  newLevel: number;
+  hitDie: number;
+  hitDieAverage: number;
+  currentHP: number;
+  autoFeatures: ClassFeature[];
+  choiceFeatures: ClassFeature[];
+  availableSubclasses: Subclass[];
+  skillGained: Skill | null;
+  needsSubclass: boolean;
+}
+
+export interface FeatureChoice {
+  featureId: number;
+  choiceName: string;
+  choiceDescription?: string;
 }
 
 export interface MonsterInstance {
@@ -721,27 +776,55 @@ export const battleAPI = {
   }
 };
 
-export interface Skill {
-  id: number;
-  name: string;
-  description: string;
-  damage_dice: string | null;
-  damage_type: string | null;
-  range_size: string;
-  usage_frequency: string;
-  level_requirement: number;
-  class_restriction: string;
-  created_at: string;
-}
-
 export const skillAPI = {
-  getAll: async (): Promise<{ skills: Skill[] }> => {
+  getAll: async (): Promise<Skill[]> => {
     const response = await api.get('/skills');
     return response.data;
   },
 
-  getByName: async (name: string): Promise<{ skill: Skill }> => {
+  getByName: async (name: string): Promise<Skill> => {
     const response = await api.get(`/skills/name/${encodeURIComponent(name)}`);
+    return response.data;
+  },
+
+  getCharacterSkills: async (characterId: number): Promise<Skill[]> => {
+    const response = await api.get(`/skills/characters/${characterId}`);
+    return response.data;
+  },
+
+  addSkillToCharacter: async (characterId: number, skillId: number): Promise<Skill> => {
+    const response = await api.post(`/skills/characters/${characterId}`, { skillId });
+    return response.data;
+  },
+
+  createSkill: async (skillData: Partial<Skill>): Promise<Skill> => {
+    const response = await api.post('/skills', skillData);
+    return response.data;
+  },
+
+  removeSkillFromCharacter: async (characterId: number, skillId: number): Promise<void> => {
+    await api.delete(`/skills/characters/${characterId}/${skillId}`);
+  },
+
+  grantExperience: async (campaignId: number, characterIds: number[], expAmount: number): Promise<any> => {
+    const response = await api.post(`/skills/grant-exp/${campaignId}`, {
+      characterIds,
+      expAmount
+    });
+    return response.data;
+  },
+
+  getLevelUpInfo: async (characterId: number): Promise<LevelUpInfo> => {
+    const response = await api.get(`/skills/level-up-info/${characterId}`);
+    return response.data;
+  },
+
+  levelUp: async (characterId: number, levelUpData: {
+    hpIncrease: number;
+    subclassId?: number;
+    featureChoices?: FeatureChoice[];
+  }): Promise<any> => {
+    const response = await api.post(`/skills/level-up/${characterId}`, levelUpData);
     return response.data;
   }
 };

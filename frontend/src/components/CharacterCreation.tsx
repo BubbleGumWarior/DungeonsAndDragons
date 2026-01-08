@@ -564,7 +564,7 @@ const CharacterCreation: React.FC = () => {
         // Load skills
         const skillsResponse = await skillAPI.getAll();
         const skillsMap: Record<string, Skill> = {};
-        skillsResponse.skills.forEach(skill => {
+        skillsResponse.forEach(skill => {
           skillsMap[skill.name] = skill;
         });
         setSkillData(skillsMap);
