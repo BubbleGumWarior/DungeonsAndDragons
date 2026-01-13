@@ -34,7 +34,7 @@ async function addKnightsCategory() {
   }
 }
 
-module.exports = { addKnightsCategory };
+module.exports = addKnightsCategory;
 
 // Run if called directly
 if (require.main === module) {

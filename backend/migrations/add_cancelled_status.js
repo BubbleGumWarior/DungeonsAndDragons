@@ -18,12 +18,23 @@ async function addCancelledStatus() {
     `);
     
     console.log('✅ Added "cancelled" status to battles table');
-    console.log('🎉 Migration completed successfully!');
-    process.exit(0);
   } catch (error) {
     console.error('❌ Migration failed:', error);
-    process.exit(1);
+    throw error;
   }
 }
 
-addCancelledStatus();
+module.exports = addCancelledStatus;
+
+// Allow running directly as a script
+if (require.main === module) {
+  addCancelledStatus()
+    .then(() => {
+      console.log('🎉 Migration completed successfully!');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('❌ Migration failed:', error);
+      process.exit(1);
+    });
+}

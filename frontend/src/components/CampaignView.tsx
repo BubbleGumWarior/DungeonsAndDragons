@@ -733,10 +733,10 @@ const CampaignView: React.FC = () => {
 
   // Character map positions state
   const [characterPositions, setCharacterPositions] = useState<Record<number, { x: number; y: number }>>({});
-  const [battlePositions, setBattlePositions] = useState<Record<number, { x: number; y: number }>>({});
-  const [remainingMovement, setRemainingMovement] = useState<Record<number, number>>({});
+  const [battlePositions, setBattlePositions] = useState<Record<number | string, { x: number; y: number }>>({});
+  const [remainingMovement, setRemainingMovement] = useState<Record<number | string, number>>({});
   const [remainingArmyMovement, setRemainingArmyMovement] = useState<Record<number, number>>({});
-  const [draggedCharacter, setDraggedCharacter] = useState<number | null>(null);
+  const [draggedCharacter, setDraggedCharacter] = useState<number | string | null>(null);
   const [draggedArmyParticipant, setDraggedArmyParticipant] = useState<number | null>(null);
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
   const [currentDragPosition, setCurrentDragPosition] = useState<{ x: number; y: number } | null>(null);
@@ -747,7 +747,7 @@ const CampaignView: React.FC = () => {
   const [showCombatInviteModal, setShowCombatInviteModal] = useState(false);
   const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string } | null>(null);
   const [combatants, setCombatants] = useState<Array<{ 
-    characterId: number; 
+    characterId: number | string; 
     playerId: number; 
     name: string; 
     initiative: number; 
@@ -755,8 +755,10 @@ const CampaignView: React.FC = () => {
     isMonster?: boolean;
     monsterId?: number;
     instanceNumber?: number;
+    isBeast?: boolean;
+    ownerId?: number;
   }>>([]);
-  const [initiativeOrder, setInitiativeOrder] = useState<number[]>([]);
+  const [initiativeOrder, setInitiativeOrder] = useState<(number | string)[]>([]);
   const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(-1);
 
   // Monster/Encyclopedia state
@@ -1963,7 +1965,7 @@ const CampaignView: React.FC = () => {
 
       // Listen for character movement on battle map
       newSocket.on('characterBattleMoved', (data: {
-        characterId: number;
+        characterId: number | string;
         characterName: string;
         x: number;
         y: number;
@@ -1984,7 +1986,7 @@ const CampaignView: React.FC = () => {
 
       // Listen for battle movement sync (server sends authoritative state on join)
       newSocket.on('battleMovementSync', (data: {
-        movementState: Record<number, number>;
+        movementState: Record<number | string, number>;
       }) => {
         setRemainingMovement(data.movementState);
       });
@@ -2069,7 +2071,7 @@ const CampaignView: React.FC = () => {
       // Listen for combatants updated (new combatant added or initiative changed)
       newSocket.on('combatantsUpdated', (data: {
         combatants: Array<{ 
-          characterId: number; 
+          characterId: number | string; 
           playerId: number; 
           name: string; 
           initiative: number; 
@@ -2077,8 +2079,10 @@ const CampaignView: React.FC = () => {
           isMonster?: boolean;
           monsterId?: number;
           instanceNumber?: number;
+          isBeast?: boolean;
+          ownerId?: number;
         }>;
-        initiativeOrder: number[];
+        initiativeOrder: (number | string)[];
         currentTurnIndex: number;
         timestamp: string;
       }) => {
@@ -2093,10 +2097,10 @@ const CampaignView: React.FC = () => {
 
       // Listen for turn advanced (initiative moves to next combatant)
       newSocket.on('turnAdvanced', (data: {
-        currentCharacterId: number;
-        initiativeOrder: number[];
+        currentCharacterId: number | string;
+        initiativeOrder: (number | string)[];
         currentTurnIndex: number;
-        resetMovementFor: number;
+        resetMovementFor: number | string;
         movementSpeed: number;
         timestamp: string;
       }) => {
@@ -3673,10 +3677,12 @@ const CampaignView: React.FC = () => {
                       socket.emit('characterMove', moveData);
                     }
                     
-                    // Update position in backend (async, doesn't block UI)
-                    characterAPI.updateMapPosition(draggedCharacter, x, y).catch(error => {
-                      console.error('Error updating character position:', error);
-                    });
+                    // Update position in backend (async, doesn't block UI) - only for actual characters, not beasts
+                    if (typeof draggedCharacter === 'number') {
+                      characterAPI.updateMapPosition(draggedCharacter, x, y).catch(error => {
+                        console.error('Error updating character position:', error);
+                      });
+                    }
                     
                     setDraggedCharacter(null);
                   }
@@ -4018,10 +4024,12 @@ const CampaignView: React.FC = () => {
                       socket.emit('characterBattleMove', moveData);
                     }
                     
-                    // Update position in backend (async, doesn't block UI)
-                    characterAPI.updateBattlePosition(draggedCharacter, x, y).catch(error => {
-                      console.error('Error updating character battle position:', error);
-                    });
+                    // Update position in backend (async, doesn't block UI) - only for actual characters, not beasts
+                    if (typeof draggedCharacter === 'number') {
+                      characterAPI.updateBattlePosition(draggedCharacter, x, y).catch(error => {
+                        console.error('Error updating character battle position:', error);
+                      });
+                    }
                     
                     setDraggedCharacter(null);
                     setDragStartPosition(null);
@@ -5219,6 +5227,14 @@ const CampaignView: React.FC = () => {
                         }
                       }) : [];
 
+                      // Check if teams have surviving armies
+                      const teamsWithAliveTroops = new Set(
+                        teams ? Object.values(teams)
+                          .filter(t => t.participants.some(p => (p.current_troops || 0) > 0))
+                          .map(t => t.name)
+                        : []
+                      );
+
                       const unselectedUserTeams = userTeams.filter(t => !t.has_selected);
                       const isDM = user?.role === 'Dungeon Master';
 
@@ -5491,8 +5507,14 @@ const CampaignView: React.FC = () => {
                                 let isLocked = false;
                                 let lockReason = '';
                                 
+                                // Check if team has no surviving armies and goal requires army stats
+                                if (executorParticipant && !teamsWithAliveTroops.has(executorParticipant.team_name) && goal.uses_army_stat) {
+                                  isLocked = true;
+                                  lockReason = 'Requires surviving army troops';
+                                }
+                                
                                 // Check army category requirement
-                                if (goal.required_army_category && executorParticipant) {
+                                if (!isLocked && goal.required_army_category && executorParticipant) {
                                   // Get the army category for the selected executor
                                   let armyCategory: string | undefined;
                                   if (executorParticipant.is_temporary) {

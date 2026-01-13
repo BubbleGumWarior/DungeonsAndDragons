@@ -722,17 +722,41 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const goalData = req.body;
     
-    console.log('Setting battle goal:', { battleId: id, goalData });
+    console.log('Setting battle goal:', { 
+      battleId: id, 
+      round: goalData.round_number,
+      participant_id: goalData.participant_id,
+      target_participant_id: goalData.target_participant_id,
+      goal_name: goalData.goal_name
+    });
     
     const battle = await Battle.findById(id);
     if (!battle) {
       return res.status(404).json({ error: 'Battle not found' });
     }
     
+    // Verify target exists if provided
+    if (goalData.target_participant_id) {
+      const targetExists = battle.participants?.find(p => p.id === goalData.target_participant_id);
+      if (!targetExists) {
+        console.error('❌ Target participant not found:', goalData.target_participant_id);
+        return res.status(400).json({ error: 'Target participant not found' });
+      }
+      console.log('✅ Target verified:', { 
+        target_id: targetExists.id, 
+        target_name: targetExists.temp_army_name || targetExists.army_name,
+        target_team: targetExists.team_name
+      });
+    }
+    
     goalData.battle_id = id;
     const goal = await Battle.setGoal(goalData);
     
-    console.log('Goal set successfully:', goal);
+    console.log('✅ Goal set successfully:', {
+      goal_id: goal.id,
+      team: goal.team_name,
+      target_id: goal.target_participant_id
+    });
     
     // Emit socket event to notify all users in the campaign
     const io = req.app.get('io');

@@ -232,6 +232,15 @@ const startServer = async () => {
       const addSubclassSystem = require('./migrations/add_subclass_system');
       const addExperienceAndSkills = require('./migrations/add_experience_and_skills');
       
+      // Army/Battle structure migrations
+      const addArmyCategory = require('./migrations/add_army_category');
+      const addKnightsCategory = require('./migrations/add_knights_category');
+      const addTroopCounts = require('./migrations/add_troop_counts');
+      const addTotalRounds = require('./migrations/add_total_rounds');
+      const addCancelledStatus = require('./migrations/add_cancelled_status');
+      const addFactionSupport = require('./migrations/add_faction_support');
+      const migrateTeamBasedGoals = require('./migrations/team_based_goals');
+      
       // Class data migrations (require subclass tables to exist)
       const populateAllClasses = require('./migrations/populate_all_classes_data');
       const populateAllSubclasses = require('./migrations/populate_all_remaining_subclasses');
@@ -245,6 +254,13 @@ const startServer = async () => {
       await createJournalTable();
       await addSubclassSystem();
       await addExperienceAndSkills();
+      await addArmyCategory();
+      await addKnightsCategory();
+      await addTroopCounts();
+      await addTotalRounds();
+      await addCancelledStatus();
+      await addFactionSupport();
+      await migrateTeamBasedGoals();
       await populateAllClasses();
       await populateAllSubclasses();
       await addPrimalBondClass();
@@ -547,6 +563,7 @@ const startServer = async () => {
 
       // Player accepts an invite to combat
       socket.on('acceptCombatInvite', async (data) => {
+        console.log('🚀 DEBUG: acceptCombatInvite called with data:', JSON.stringify(data));
         try {
           const { campaignId, characterId, playerId } = data;
 
@@ -561,6 +578,8 @@ const startServer = async () => {
             console.warn(`Character ${characterId} not found for combat`);
             return;
           }
+
+          console.log(`🔍 DEBUG: Character found - Name: "${character.name}", Class: "${character.class}", Level: ${character.level}`);
 
           // Roll initiative: d20 + dex modifier
           const roll = Math.floor(Math.random() * 20) + 1;
@@ -587,6 +606,87 @@ const startServer = async () => {
           // Initialize movement state for this character
           if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
           battleMovementState[campaignId][characterId] = character.movement_speed ?? 30;
+
+          // Check if character is Primal Bond and should have their beast companion added
+          console.log(`🔍 DEBUG: Checking if character is Primal Bond - Class is: "${character.class}"`);
+          if (character.class === 'Primal Bond') {
+            console.log(`🐾 DEBUG: ${character.name} is Primal Bond class, checking for beast companion...`);
+            try {
+              // Fetch beast companion
+              const beastResult = await pool.query(
+                'SELECT * FROM character_beasts WHERE character_id = $1',
+                [characterId]
+              );
+
+              console.log(`🔍 DEBUG: Beast query result - Rows found: ${beastResult.rows.length}`);
+
+              if (beastResult.rows.length > 0) {
+                const beast = beastResult.rows[0];
+                const beastType = beast.beast_type;
+                const characterLevel = character.level;
+                
+                console.log(`🐾 DEBUG: Beast found - Type: "${beastType}", Character Level: ${characterLevel}`);
+                
+                // Check if beast should be added based on level requirements
+                let shouldAddBeast = false;
+                let matchReason = '';
+                
+                // Agile Hunter (Cheetah/Leopard) gets beast at level 3
+                if ((beastType === 'Cheetah' || beastType === 'Leopard') && characterLevel >= 3) {
+                  shouldAddBeast = true;
+                  matchReason = `Agile Hunter (${beastType}) at level ${characterLevel} >= 3`;
+                }
+                // Packbound (Alpha Wolf/Omega Wolf) gets beast at level 6
+                else if ((beastType === 'AlphaWolf' || beastType === 'OmegaWolf') && characterLevel >= 6) {
+                  shouldAddBeast = true;
+                  matchReason = `Packbound (${beastType}) at level ${characterLevel} >= 6`;
+                }
+                // Colossal Bond (Elephant/Owlbear) gets beast at level 10
+                else if ((beastType === 'Elephant' || beastType === 'Owlbear') && characterLevel >= 10) {
+                  shouldAddBeast = true;
+                  matchReason = `Colossal Bond (${beastType}) at level ${characterLevel} >= 10`;
+                } else {
+                  matchReason = `No match - Beast type "${beastType}" at level ${characterLevel}`;
+                }
+
+                console.log(`🔍 DEBUG: Should add beast: ${shouldAddBeast} - Reason: ${matchReason}`);
+
+                if (shouldAddBeast) {
+                  // Beast uses same initiative as character (they act together)
+                  const beastName = beast.beast_name || beastType;
+                  const beastSpeed = beast.speed || 30;
+
+                  console.log(`✅ DEBUG: Adding beast to combat - Name: "${beastName}", Speed: ${beastSpeed}, Initiative: ${initiative}`);
+
+                  // Add beast to combatants with same initiative
+                  battleCombatState[campaignId].combatants.push({
+                    characterId: `beast_${characterId}`, // Unique ID for the beast
+                    playerId: playerId, // Same player controls the beast
+                    name: `${beastName} (Companion)`,
+                    initiative: initiative, // Same initiative as the character
+                    movement_speed: beastSpeed,
+                    isBeast: true,
+                    ownerId: characterId // Track which character owns this beast
+                  });
+
+                  // Initialize movement state for the beast
+                  battleMovementState[campaignId][`beast_${characterId}`] = beastSpeed;
+
+                  console.log(`🐾 Beast companion ${beastName} added to combat with ${character.name} (same initiative: ${initiative})`);
+                } else {
+                  console.log(`❌ DEBUG: Beast NOT added - ${matchReason}`);
+                }
+              } else {
+                console.log(`❌ DEBUG: No beast found in database for character ${characterId}`);
+              }
+            } catch (beastErr) {
+              console.error('❌ ERROR: Error adding beast companion to combat:', beastErr);
+              console.error('Stack trace:', beastErr.stack);
+              // Continue without beast if there's an error - don't block character from joining
+            }
+          } else {
+            console.log(`ℹ️ DEBUG: Character ${character.name} is not Primal Bond class (class is "${character.class}"), skipping beast check`);
+          }
 
           // Sort initiative order (highest first)
           const sorted = [...battleCombatState[campaignId].combatants].sort((a, b) => b.initiative - a.initiative);

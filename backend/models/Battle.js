@@ -59,12 +59,12 @@ class Battle {
       
       // Get goals for current round
       const goalsResult = await pool.query(
-        `SELECT bg.*, bp.team_name, bp_target.team_name as target_team_name
+        `SELECT bg.*, bg.team_name, bp_target.team_name as target_team_name,
+                bp_target.temp_army_name as target_army_name, bp_target.army_id as target_army_id
          FROM battle_goals bg
-         JOIN battle_participants bp ON bg.participant_id = bp.id
          LEFT JOIN battle_participants bp_target ON bg.target_participant_id = bp_target.id
          WHERE bg.battle_id = $1 AND bg.round_number = $2
-         ORDER BY bp.team_name`,
+         ORDER BY bg.team_name`,
         [battleId, battle.current_round]
       );
       

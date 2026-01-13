@@ -9,7 +9,8 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
-async function migrate() {
+async function migrateTeamBasedGoals() {
+  const { pool } = require('../models/database');
   const client = await pool.connect();
   
   try {
@@ -48,7 +49,7 @@ async function migrate() {
     console.log('✅ Removed old participant-based index');
 
     await client.query('COMMIT');
-    console.log('🎉 Migration completed successfully!');
+    console.log('✅ Migration completed successfully!');
     
   } catch (error) {
     await client.query('ROLLBACK');
@@ -56,8 +57,20 @@ async function migrate() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-migrate().catch(console.error);
+module.exports = migrateTeamBasedGoals;
+
+// Allow running directly as a script
+if (require.main === module) {
+  migrateTeamBasedGoals()
+    .then(() => {
+      console.log('🎉 Migration completed successfully!');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('❌ Migration failed:', error);
+      process.exit(1);
+    });
+}

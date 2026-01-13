@@ -56,30 +56,42 @@ async function addTroopCounts() {
       console.log('✅ troop count columns already exist in armies');
     }
     
-    // Add current_troops to battle_participants table
-    const checkParticipantsColumn = await pool.query(`
+    // Add current_troops and temp_army_troops to battle_participants table
+    const checkParticipantsColumns = await pool.query(`
       SELECT column_name 
       FROM information_schema.columns 
       WHERE table_name = 'battle_participants' 
-      AND column_name = 'current_troops'
+      AND column_name IN ('current_troops', 'temp_army_troops')
     `);
     
-    if (checkParticipantsColumn.rows.length === 0) {
+    if (checkParticipantsColumns.rows.length < 2) {
       await pool.query(`
         ALTER TABLE battle_participants 
-        ADD COLUMN current_troops INTEGER DEFAULT 100
+        ADD COLUMN IF NOT EXISTS current_troops INTEGER DEFAULT 100,
+        ADD COLUMN IF NOT EXISTS temp_army_troops INTEGER DEFAULT 100
       `);
-      console.log('✅ current_troops column added to battle_participants');
+      console.log('✅ current_troops and temp_army_troops columns added to battle_participants');
     } else {
-      console.log('✅ current_troops column already exists in battle_participants');
+      console.log('✅ troop count columns already exist in battle_participants');
     }
-    
-    console.log('Migration completed successfully!');
-    process.exit(0);
   } catch (error) {
     console.error('Migration failed:', error);
-    process.exit(1);
+    throw error;
   }
 }
 
-addTroopCounts();
+// Export for use in server startup
+module.exports = addTroopCounts;
+
+// Allow running directly as a script
+if (require.main === module) {
+  addTroopCounts()
+    .then(() => {
+      console.log('Migration completed successfully!');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Migration failed:', error);
+      process.exit(1);
+    });
+}
