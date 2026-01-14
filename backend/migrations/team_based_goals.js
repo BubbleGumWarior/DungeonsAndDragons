@@ -35,12 +35,27 @@ async function migrateTeamBasedGoals() {
     // Add team_name column to battle_participants if not exists (for has_selected_goal tracking)
     // Actually, we'll track goal selection at the team level differently
     
-    // Create a unique index to ensure only 1 goal per team per round
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_battle_goals_team_round 
-      ON battle_goals(battle_id, round_number, team_name);
+    // Check if there are duplicate team goals that would prevent the unique index
+    const duplicates = await client.query(`
+      SELECT battle_id, round_number, team_name, COUNT(*) as count
+      FROM battle_goals
+      WHERE team_name IS NOT NULL
+      GROUP BY battle_id, round_number, team_name
+      HAVING COUNT(*) > 1
     `);
-    console.log('✅ Created unique index for team-based goal selection');
+    
+    if (duplicates.rows.length > 0) {
+      console.log('⚠️  Found duplicate team goals - skipping team-based unique constraint');
+      console.log('   (Will be replaced by participant-based constraint in next migration)');
+    } else {
+      // Create a unique index to ensure only 1 goal per team per round
+      // NOTE: This will be replaced by idx_battle_goals_participant_round in enable_multi_army_goals migration
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_battle_goals_team_round 
+        ON battle_goals(battle_id, round_number, team_name);
+      `);
+      console.log('✅ Created unique index for team-based goal selection');
+    }
 
     // Remove old participant-based index for goals (no longer needed)
     await client.query(`

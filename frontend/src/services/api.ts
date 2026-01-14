@@ -850,6 +850,7 @@ export const skillAPI = {
     subclassId?: number;
     featureChoices?: FeatureChoice[];
     beastSelection?: { beastType: string; beastName: string };
+    abilityIncreases?: { [key: string]: number };
   }): Promise<any> => {
     const response = await api.post(`/skills/level-up/${characterId}`, levelUpData);
     return response.data;

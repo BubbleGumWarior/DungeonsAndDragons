@@ -961,12 +961,14 @@ const CampaignView: React.FC = () => {
     subclassId: number | null;
     featureChoices: any[];
     beastSelection: { beastType: string; beastName: string } | null;
+    abilityIncreases: { [key: string]: number };
   }>({
     hpIncrease: 0,
     hpRolled: null,
     subclassId: null,
     featureChoices: [],
-    beastSelection: null
+    beastSelection: null,
+    abilityIncreases: {}
   });
 
   // Function to split backstory into pages with intelligent paragraph boundary detection
@@ -1459,7 +1461,8 @@ const CampaignView: React.FC = () => {
         hpRolled: null,
         subclassId: null,
         featureChoices: [],
-        beastSelection: null
+        beastSelection: null,
+        abilityIncreases: {}
       });
       setLevelUpStep('hp');
       setShowLevelUpModal(true);
@@ -1488,7 +1491,8 @@ const CampaignView: React.FC = () => {
         hpIncrease: levelUpData.hpIncrease,
         subclassId: levelUpData.subclassId || undefined,
         featureChoices: levelUpData.featureChoices,
-        beastSelection: levelUpData.beastSelection || undefined
+        beastSelection: levelUpData.beastSelection || undefined,
+        abilityIncreases: levelUpData.abilityIncreases
       });
       // Reload campaign to update character data
       await loadCampaign(campaignName!);
@@ -4544,13 +4548,20 @@ const CampaignView: React.FC = () => {
                           acc[p.team_name] = {
                             name: p.team_name,
                             color: p.faction_color || '#808080',
-                            has_selected: p.has_selected_goal || false,
+                            has_selected: false, // Will calculate based on all armies
                             participants: []
                           };
                         }
                         acc[p.team_name].participants.push(p);
                         return acc;
                       }, {} as Record<string, {name: string; color: string; has_selected: boolean; participants: any[]}>);
+
+                      // Check if ALL armies in each team have selected
+                      if (teams) {
+                        Object.values(teams).forEach(team => {
+                          team.has_selected = team.participants.every(p => p.has_selected_goal);
+                        });
+                      }
 
                       const teamsList = teams ? Object.values(teams) : [];
                       const allSelected = teamsList.every(t => t.has_selected);
@@ -4569,34 +4580,41 @@ const CampaignView: React.FC = () => {
                           borderRadius: '0.75rem'
                         }}>
                           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: allSelected ? '#4ade80' : '#fbbf24', marginBottom: '1rem', textAlign: 'center' }}>
-                            {allSelected ? '✓ All Teams Ready!' : '⏳ Teams Selecting Goals'}
+                            {allSelected ? '✓ All Armies Ready!' : '⏳ Armies Selecting Goals'}
                           </div>
                           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                            {teamsList.map(team => (
-                              <div key={team.name} style={{
-                                padding: '0.75rem 1.25rem',
-                                background: team.has_selected 
-                                  ? `linear-gradient(135deg, ${team.color}40, ${team.color}60)`
-                                  : 'rgba(100, 100, 120, 0.2)',
-                                border: `2px solid ${team.color}`,
-                                borderRadius: '0.5rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                              }}>
-                                <span style={{ fontSize: '1.2rem' }}>
-                                  {team.has_selected ? '✓' : '⏱️'}
-                                </span>
-                                <div>
-                                  <div style={{ fontWeight: 'bold', color: team.color }}>
-                                    Team {team.name}
-                                  </div>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    {team.has_selected ? 'Ready' : 'Selecting...'}
+                            {teamsList.map(team => {
+                              const selectedArmies = team.participants.filter(p => p.has_selected_goal).length;
+                              const totalArmies = team.participants.length;
+                              
+                              return (
+                                <div key={team.name} style={{
+                                  padding: '0.75rem 1.25rem',
+                                  background: team.has_selected 
+                                    ? `linear-gradient(135deg, ${team.color}40, ${team.color}60)`
+                                    : 'rgba(100, 100, 120, 0.2)',
+                                  border: `2px solid ${team.color}`,
+                                  borderRadius: '0.5rem',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.25rem'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '1.2rem' }}>
+                                      {team.has_selected ? '✓' : '⏱️'}
+                                    </span>
+                                    <div>
+                                      <div style={{ fontWeight: 'bold', color: team.color }}>
+                                        Team {team.name}
+                                      </div>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                        {selectedArmies}/{totalArmies} armies ready
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                           {allSelected && (
                             <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.9rem', color: '#4ade80' }}>
@@ -5208,13 +5226,20 @@ const CampaignView: React.FC = () => {
                           acc[p.team_name] = {
                             name: p.team_name,
                             color: p.faction_color || '#808080',
-                            has_selected: p.has_selected_goal || false,
+                            has_selected: false, // Will calculate below
                             participants: []
                           };
                         }
                         acc[p.team_name].participants.push(p);
                         return acc;
                       }, {} as Record<string, {name: string; color: string; has_selected: boolean; participants: any[]}>);
+
+                      // Check if ALL armies in each team have selected goals
+                      if (teams) {
+                        Object.values(teams).forEach(team => {
+                          team.has_selected = team.participants.every(p => p.has_selected_goal);
+                        });
+                      }
 
                       // Find teams the current user can control
                       const userTeams = teams ? Object.values(teams).filter(t => {
@@ -5258,8 +5283,8 @@ const CampaignView: React.FC = () => {
                               </div>
                               <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
                                 {isDM 
-                                  ? 'You have selected goals for all your factions. Waiting for other teams...'
-                                  : 'Your team has selected its goal. Waiting for other teams...'}
+                                  ? 'You have selected goals for all armies in your factions. Waiting for other teams...'
+                                  : 'Your team has selected goals for all armies. Waiting for other teams...'}
                               </div>
                             </div>
 
@@ -5267,40 +5292,65 @@ const CampaignView: React.FC = () => {
                             <div style={{ marginTop: '1.5rem' }}>
                               <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Team Status:</h6>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                {teams && Object.values(teams).map(team => (
-                                  <div key={team.name} style={{
-                                    padding: '0.75rem 1rem',
-                                    background: team.has_selected 
-                                      ? `linear-gradient(135deg, ${team.color}30, ${team.color}20)`
-                                      : 'rgba(100, 100, 120, 0.15)',
-                                    border: `2px solid ${team.color}`,
-                                    borderRadius: '0.5rem',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                      <span style={{ fontSize: '1.3rem' }}>
-                                        {team.has_selected ? '✓' : '⏱️'}
-                                      </span>
-                                      <div>
-                                        <div style={{ fontWeight: 'bold', color: team.color }}>
-                                          Team {team.name}
+                                {teams && Object.values(teams).map(team => {
+                                  const selectedArmies = team.participants.filter(p => p.has_selected_goal).length;
+                                  const totalArmies = team.participants.length;
+                                  const allSelected = selectedArmies === totalArmies;
+                                  
+                                  return (
+                                    <div key={team.name} style={{
+                                      padding: '0.75rem 1rem',
+                                      background: allSelected 
+                                        ? `linear-gradient(135deg, ${team.color}30, ${team.color}20)`
+                                        : 'rgba(100, 100, 120, 0.15)',
+                                      border: `2px solid ${team.color}`,
+                                      borderRadius: '0.5rem',
+                                    }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                          <span style={{ fontSize: '1.3rem' }}>
+                                            {allSelected ? '✓' : '⏱️'}
+                                          </span>
+                                          <div>
+                                            <div style={{ fontWeight: 'bold', color: team.color }}>
+                                              Team {team.name}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                              {selectedArmies}/{totalArmies} armies ready
+                                            </div>
+                                          </div>
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                          {team.participants.map(p => p.temp_army_name || p.army_name).join(', ')}
+                                        <div style={{ 
+                                          fontSize: '0.85rem', 
+                                          fontWeight: 'bold',
+                                          color: allSelected ? '#4ade80' : '#fbbf24'
+                                        }}>
+                                          {allSelected ? 'Ready' : 'Selecting...'}
                                         </div>
                                       </div>
+                                      {/* Show individual army status */}
+                                      <div style={{ 
+                                        display: 'flex', 
+                                        flexDirection: 'column', 
+                                        gap: '0.25rem',
+                                        marginLeft: '2rem',
+                                        fontSize: '0.8rem'
+                                      }}>
+                                        {team.participants.map(p => (
+                                          <div key={p.id} style={{ 
+                                            color: p.has_selected_goal ? '#4ade80' : '#fbbf24',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                          }}>
+                                            <span>{p.has_selected_goal ? '✓' : '○'}</span>
+                                            <span>{p.temp_army_name || p.army_name}</span>
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
-                                    <div style={{ 
-                                      fontSize: '0.85rem', 
-                                      fontWeight: 'bold',
-                                      color: team.has_selected ? '#4ade80' : '#fbbf24'
-                                    }}>
-                                      {team.has_selected ? 'Ready' : 'Selecting...'}
-                                    </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
@@ -5322,8 +5372,8 @@ const CampaignView: React.FC = () => {
                             </div>
                             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                               {isDM 
-                                ? 'Select goals for your factions. All teams choose simultaneously.'
-                                : 'Select a goal for your team. All teams choose at the same time.'}
+                                ? 'Select a goal for each army in your factions. Each army acts independently!'
+                                : 'Select a goal for each of your armies. Each army can choose its own goal!'}
                             </div>
                           </div>
 
@@ -5331,42 +5381,47 @@ const CampaignView: React.FC = () => {
                           {isDM && unselectedUserTeams.length > 1 && (
                             <div style={{ marginBottom: '1.5rem' }}>
                               <h6 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>
-                                Select Faction to Choose Goal:
+                                Select Faction to Choose Goals:
                               </h6>
                               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                {unselectedUserTeams.map(team => (
-                                  <button
-                                    key={team.name}
-                                    onClick={() => {
-                                      setSelectedFactionForGoal(team.name);
-                                      setSelectedGoalExecutor(null);
-                                    }}
-                                    style={{
-                                      padding: '1rem 1.5rem',
-                                      background: selectedFactionForGoal === team.name
-                                        ? `linear-gradient(135deg, ${team.color}50, ${team.color}70)`
-                                        : `linear-gradient(135deg, ${team.color}20, ${team.color}30)`,
-                                      border: selectedFactionForGoal === team.name
-                                        ? `3px solid ${team.color}`
-                                        : `2px solid ${team.color}80`,
-                                      borderRadius: '0.75rem',
-                                      color: 'white',
-                                      cursor: 'pointer',
-                                      fontWeight: 'bold',
-                                      transition: 'all 0.2s',
-                                      boxShadow: selectedFactionForGoal === team.name 
-                                        ? `0 4px 12px ${team.color}60`
-                                        : 'none'
-                                    }}
-                                  >
-                                    <div style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>
-                                      Team {team.name}
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>
-                                      {team.participants.length} {team.participants.length === 1 ? 'army' : 'armies'}
-                                    </div>
-                                  </button>
-                                ))}
+                                {unselectedUserTeams.map(team => {
+                                  const unselectedArmies = team.participants.filter(p => !p.has_selected_goal).length;
+                                  const totalArmies = team.participants.length;
+                                  
+                                  return (
+                                    <button
+                                      key={team.name}
+                                      onClick={() => {
+                                        setSelectedFactionForGoal(team.name);
+                                        setSelectedGoalExecutor(null);
+                                      }}
+                                      style={{
+                                        padding: '1rem 1.5rem',
+                                        background: selectedFactionForGoal === team.name
+                                          ? `linear-gradient(135deg, ${team.color}50, ${team.color}70)`
+                                          : `linear-gradient(135deg, ${team.color}20, ${team.color}30)`,
+                                        border: selectedFactionForGoal === team.name
+                                          ? `3px solid ${team.color}`
+                                          : `2px solid ${team.color}80`,
+                                        borderRadius: '0.75rem',
+                                        color: 'white',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold',
+                                        transition: 'all 0.2s',
+                                        boxShadow: selectedFactionForGoal === team.name 
+                                          ? `0 4px 12px ${team.color}60`
+                                          : 'none'
+                                      }}
+                                    >
+                                      <div style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>
+                                        Team {team.name}
+                                      </div>
+                                      <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>
+                                        {unselectedArmies} of {totalArmies} armies need goals
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -6077,7 +6132,20 @@ const CampaignView: React.FC = () => {
                         </div>
 
                         {/* Goals to Resolve */}
-                        {activeBattle.current_goals && activeBattle.current_goals.map((goal) => (
+                        {activeBattle.current_goals && (() => {
+                          // Sort goals: first by team_name (alphabetically), then by goal creation order (id)
+                          const sortedGoals = [...activeBattle.current_goals].sort((a, b) => {
+                            // First sort by team name alphabetically (handle undefined)
+                            const teamA = a.team_name || '';
+                            const teamB = b.team_name || '';
+                            const teamCompare = teamA.localeCompare(teamB);
+                            if (teamCompare !== 0) return teamCompare;
+                            
+                            // If same team, sort by goal id (order they were selected)
+                            return a.id - b.id;
+                          });
+                          
+                          return sortedGoals.map((goal) => (
                           <div
                             key={goal.id}
                             style={{
@@ -6738,7 +6806,8 @@ const CampaignView: React.FC = () => {
                               </div>
                             )}
                           </div>
-                        ))}
+                        ));
+                        })()}
                       </div>
                     )}
                       </div>
@@ -11405,13 +11474,20 @@ const CampaignView: React.FC = () => {
                         acc[p.team_name] = {
                           name: p.team_name,
                           color: p.faction_color || '#808080',
-                          has_selected: p.has_selected_goal || false,
+                          has_selected: false, // Will calculate based on all armies
                           participants: []
                         };
                       }
                       acc[p.team_name].participants.push(p);
                       return acc;
                     }, {} as Record<string, {name: string; color: string; has_selected: boolean; participants: any[]}>);
+
+                    // Check if ALL armies in each team have selected
+                    if (teams) {
+                      Object.values(teams).forEach(team => {
+                        team.has_selected = team.participants.every(p => p.has_selected_goal);
+                      });
+                    }
 
                     // Get teams the user can control
                     let availableTeam: any = null;
@@ -11421,25 +11497,30 @@ const CampaignView: React.FC = () => {
                       // DM has selected a specific faction
                       availableTeam = teams ? teams[selectedFactionForGoal] : null;
                     } else if (isDM) {
-                      // DM hasn't selected yet, get first unselected NPC team
-                      const unselectedTeams = teams ? Object.values(teams).filter(t => 
-                        !t.has_selected && t.participants.every(p => !p.user_id || p.is_temporary)
+                      // DM hasn't selected yet, get first team with unselected armies
+                      const teamsWithUnselected = teams ? Object.values(teams).filter(t => 
+                        t.participants.some(p => !p.has_selected_goal) && t.participants.every(p => !p.user_id || p.is_temporary)
                       ) : [];
-                      availableTeam = unselectedTeams.length > 0 ? unselectedTeams[0] : null;
+                      availableTeam = teamsWithUnselected.length > 0 ? teamsWithUnselected[0] : null;
                       if (availableTeam) {
                         setSelectedFactionForGoal(availableTeam.name);
                       }
                     } else {
-                      // Player - find their unselected team
+                      // Player - find their team with unselected armies
                       const userTeams = teams ? Object.values(teams).filter(t => 
-                        !t.has_selected && t.participants.some(p => p.user_id === user?.id)
+                        t.participants.some(p => !p.has_selected_goal && p.user_id === user?.id)
                       ) : [];
                       availableTeam = userTeams.length > 0 ? userTeams[0] : null;
                     }
 
-                    if (!availableTeam) return <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No team available</div>;
+                    if (!availableTeam) return <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No armies available</div>;
 
-                    const teamArmies = availableTeam.participants;
+                    // Filter to only show armies that haven't selected goals yet
+                    const teamArmies = availableTeam.participants.filter((p: any) => !p.has_selected_goal);
+
+                    if (teamArmies.length === 0) {
+                      return <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>All armies have selected their goals</div>;
+                    }
 
                     return teamArmies.map((participant: any) => {
                       // Get army category for icon
@@ -11917,8 +11998,16 @@ const CampaignView: React.FC = () => {
                       setSelectedGoalExecutor(null);
                       setSelectedFactionForGoal(null);
 
-                      setToastMessage(`Goal "${selectedGoal.name}" selected!`);
-                      setTimeout(() => setToastMessage(null), 3000);
+                      // Check if there are more armies in this team that need to select goals
+                      const currentTeamParticipants = updated.participants?.filter(p => p.team_name === executorParticipant.team_name) || [];
+                      const remainingArmies = currentTeamParticipants.filter(p => !p.has_selected_goal);
+                      
+                      if (remainingArmies.length > 0) {
+                        setToastMessage(`Goal selected! ${remainingArmies.length} more ${remainingArmies.length === 1 ? 'army' : 'armies'} in this team need to select goals.`);
+                      } else {
+                        setToastMessage(`Goal "${selectedGoal.name}" selected! All armies in Team ${executorParticipant.team_name} have selected their goals.`);
+                      }
+                      setTimeout(() => setToastMessage(null), 4000);
                     } catch (error) {
                       console.error('Error selecting goal:', error);
                       alert('Failed to select goal');
@@ -14013,39 +14102,111 @@ const CampaignView: React.FC = () => {
                       </div>
                       
                       {feature.choice_type === 'asi_or_feat' && (
-                        <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
-                          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                            This choice will be tracked in your character sheet
+                        <div style={{ padding: '1.5rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
+                          <p style={{ color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                            📊 Ability Score Improvement
                           </p>
-                          <textarea
-                            placeholder="Enter your ASI/Feat choice (e.g., '+2 Strength' or 'Great Weapon Master feat')"
-                            style={{
-                              width: '100%',
-                              padding: '0.75rem',
-                              background: 'rgba(0, 0, 0, 0.3)',
-                              border: '2px solid rgba(212, 193, 156, 0.3)',
-                              borderRadius: '0.5rem',
-                              color: 'var(--text-gold)',
-                              minHeight: '80px',
-                              resize: 'vertical'
-                            }}
-                            onChange={(e) => {
-                              const choice = {
-                                featureId: feature.id,
-                                choiceName: e.target.value,
-                                choiceDescription: ''
-                              };
-                              setLevelUpData(prev => ({
-                                ...prev,
-                                featureChoices: [
-                                  ...prev.featureChoices.filter(c => c.featureId !== feature.id),
-                                  choice
-                                ]
-                              }));
-                            }}
-                          />
+                          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+                            Increase one ability by +2, or two abilities by +1 each (max 20 without special abilities)
+                          </p>
+                          
+                          {(() => {
+                            const abilities = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+                            const abilityNames: Record<typeof abilities[number], string> = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+                            const totalIncreases = Object.values(levelUpData.abilityIncreases).reduce((sum: number, val: number) => sum + val, 0);
+                            
+                            return (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                                {abilities.map(ability => {
+                                  const currentValue = (selectedCharacterData?.abilities?.[ability] as number) || 10;
+                                  const increase = levelUpData.abilityIncreases[ability] || 0;
+                                  const newValue = currentValue + increase;
+                                  
+                                  return (
+                                    <div key={ability} style={{
+                                      padding: '1rem',
+                                      background: increase > 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(0, 0, 0, 0.3)',
+                                      border: `2px solid ${increase > 0 ? 'rgba(34, 197, 94, 0.5)' : 'rgba(212, 193, 156, 0.3)'}`,
+                                      borderRadius: '0.5rem'
+                                    }}>
+                                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                                        {abilityNames[ability as keyof typeof abilityNames]}
+                                      </div>
+                                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: increase > 0 ? '#4ade80' : 'var(--text-gold)', marginBottom: '0.75rem' }}>
+                                        {currentValue} {increase > 0 && `→ ${newValue}`}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                          onClick={() => {
+                                            if (increase > 0) {
+                                              setLevelUpData(prev => ({
+                                                ...prev,
+                                                abilityIncreases: { ...prev.abilityIncreases, [ability]: increase - 1 }
+                                              }));
+                                            }
+                                          }}
+                                          disabled={increase === 0}
+                                          style={{
+                                            flex: 1,
+                                            padding: '0.5rem',
+                                            background: increase === 0 ? 'rgba(100, 116, 139, 0.2)' : 'rgba(239, 68, 68, 0.3)',
+                                            border: '1px solid rgba(239, 68, 68, 0.5)',
+                                            borderRadius: '0.25rem',
+                                            color: increase === 0 ? '#64748b' : '#f87171',
+                                            cursor: increase === 0 ? 'not-allowed' : 'pointer',
+                                            fontSize: '1.2rem',
+                                            opacity: increase === 0 ? 0.3 : 1
+                                          }}
+                                        >
+                                          −
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (totalIncreases < 2 && newValue < 20 && increase < 2) {
+                                              setLevelUpData(prev => ({
+                                                ...prev,
+                                                abilityIncreases: { ...prev.abilityIncreases, [ability]: increase + 1 }
+                                              }));
+                                            }
+                                          }}
+                                          disabled={totalIncreases >= 2 || newValue >= 20 || increase >= 2}
+                                          style={{
+                                            flex: 1,
+                                            padding: '0.5rem',
+                                            background: (totalIncreases >= 2 || newValue >= 20 || increase >= 2) ? 'rgba(100, 116, 139, 0.2)' : 'rgba(34, 197, 94, 0.3)',
+                                            border: '1px solid rgba(34, 197, 94, 0.5)',
+                                            borderRadius: '0.25rem',
+                                            color: (totalIncreases >= 2 || newValue >= 20 || increase >= 2) ? '#64748b' : '#4ade80',
+                                            cursor: (totalIncreases >= 2 || newValue >= 20 || increase >= 2) ? 'not-allowed' : 'pointer',
+                                            fontSize: '1.2rem',
+                                            opacity: (totalIncreases >= 2 || newValue >= 20 || increase >= 2) ? 0.3 : 1
+                                          }}
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+                          
+                          <div style={{
+                            marginTop: '1rem',
+                            padding: '0.75rem',
+                            background: 'rgba(59, 130, 246, 0.2)',
+                            border: '1px solid rgba(59, 130, 246, 0.4)',
+                            borderRadius: '0.5rem',
+                            textAlign: 'center',
+                            color: '#60a5fa',
+                            fontSize: '0.9rem'
+                          }}>
+                            Points Used: {Object.values(levelUpData.abilityIncreases).reduce((sum: number, val: number) => sum + val, 0)} / 2
+                          </div>
                         </div>
                       )}
+
 
                       {feature.choice_type && feature.choice_type !== 'asi_or_feat' && feature.choice_type !== 'subclass' && (
                         <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>

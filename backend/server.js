@@ -240,6 +240,7 @@ const startServer = async () => {
       const addCancelledStatus = require('./migrations/add_cancelled_status');
       const addFactionSupport = require('./migrations/add_faction_support');
       const migrateTeamBasedGoals = require('./migrations/team_based_goals');
+      const enableMultiArmyGoals = require('./migrations/enable_multi_army_goals');
       
       // Class data migrations (require subclass tables to exist)
       const populateAllClasses = require('./migrations/populate_all_classes_data');
@@ -248,6 +249,10 @@ const startServer = async () => {
       // Specific class migrations (require all base tables)
       const addPrimalBondClass = require('./migrations/add_primal_bond_class');
       const addPrimalBondSkills = require('./migrations/add_primal_bond_skills');
+      const addUniqueConstraintClassFeatures = require('./migrations/add_unique_constraint_class_features');
+      const fixClassFeaturesLevel0 = require('./migrations/fix_class_features_level0');
+      const addShadowSovereignClass = require('./migrations/add_shadow_sovereign_class');
+      const addShadowSovereignSkills = require('./migrations/add_shadow_sovereign_skills');
       
       // Execute migrations in correct order
       await createSkillsTable();
@@ -261,10 +266,15 @@ const startServer = async () => {
       await addCancelledStatus();
       await addFactionSupport();
       await migrateTeamBasedGoals();
+      await enableMultiArmyGoals();
       await populateAllClasses();
       await populateAllSubclasses();
       await addPrimalBondClass();
       await addPrimalBondSkills();
+      await addUniqueConstraintClassFeatures();
+      await fixClassFeaturesLevel0();
+      await addShadowSovereignClass();
+      await addShadowSovereignSkills();
       
       console.log('Database migrations completed');
     } catch (error) {

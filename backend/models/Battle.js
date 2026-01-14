@@ -64,7 +64,7 @@ class Battle {
          FROM battle_goals bg
          LEFT JOIN battle_participants bp_target ON bg.target_participant_id = bp_target.id
          WHERE bg.battle_id = $1 AND bg.round_number = $2
-         ORDER BY bg.team_name`,
+         ORDER BY bg.team_name, bg.id`,
         [battleId, battle.current_round]
       );
       
@@ -261,7 +261,7 @@ class Battle {
     }
   }
   
-  // Add or update a battle goal (team-based: each team gets 1 goal per round)
+  // Add or update a battle goal (army-based: each army can select its own goal per round)
   static async setGoal(goalData) {
     const {
       battle_id,
@@ -287,27 +287,27 @@ class Battle {
       
       const team_name = participantResult.rows[0].team_name;
       
-      // Check if goal already exists for this TEAM and round (not participant)
+      // Check if goal already exists for this specific PARTICIPANT (army) and round
       const existing = await pool.query(
         `SELECT id FROM battle_goals 
-         WHERE battle_id = $1 AND round_number = $2 AND team_name = $3`,
-        [battle_id, round_number, team_name]
+         WHERE battle_id = $1 AND round_number = $2 AND participant_id = $3`,
+        [battle_id, round_number, participant_id]
       );
       
       if (existing.rows.length > 0) {
-        // Update existing goal for this team
+        // Update existing goal for this participant
         const result = await pool.query(
           `UPDATE battle_goals 
            SET goal_name = $4, target_participant_id = $5, test_type = $6, 
-               character_modifier = $7, army_stat_modifier = $8, participant_id = $9
+               character_modifier = $7, army_stat_modifier = $8
            WHERE id = $1 AND battle_id = $2 AND round_number = $3
            RETURNING *`,
           [existing.rows[0].id, battle_id, round_number, goal_name, target_participant_id, 
-           test_type, character_modifier, army_stat_modifier, participant_id]
+           test_type, character_modifier, army_stat_modifier]
         );
         return result.rows[0];
       } else {
-        // Insert new goal for this team
+        // Insert new goal for this participant
         const result = await pool.query(
           `INSERT INTO battle_goals 
            (battle_id, round_number, participant_id, team_name, goal_name, target_participant_id, 
@@ -318,11 +318,11 @@ class Battle {
            test_type, character_modifier, army_stat_modifier]
         );
         
-        // Mark ALL participants in this team as having selected a goal
+        // Mark ONLY THIS participant as having selected a goal (not the entire team)
         await pool.query(
           `UPDATE battle_participants SET has_selected_goal = true 
-           WHERE battle_id = $1 AND team_name = $2`,
-          [battle_id, team_name]
+           WHERE id = $1`,
+          [participant_id]
         );
         
         return result.rows[0];

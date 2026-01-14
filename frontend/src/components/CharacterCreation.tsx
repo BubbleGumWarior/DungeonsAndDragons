@@ -487,6 +487,33 @@ const CharacterCreation: React.FC = () => {
         { level: 20, features: 'Stroke of Luck' }
       ]
     },
+    'Shadow Sovereign': {
+      description: 'An assassin who kills, claims, and commands. Those you slay do not rest — they kneel. A battlefield controller that converts kills into permanent pressure, replacing slain enemies with shadowy echoes.',
+      features: ['Shadow Step', 'Shadow Reap', 'Assassin\'s Mark', 'Shadow Legion'],
+      subclasses: [], // No subclasses - single path progression
+      levelProgression: [
+        { level: 1, features: 'Shadow Step (Invisibility + teleport, +2d6 necrotic)' },
+        { level: 2, features: 'Assassin\'s Mark (+1d8 damage, auto-crit when hidden)' },
+        { level: 3, features: 'Cloak of Dusk (Resistance to all damage when hiding)' },
+        { level: 4, features: 'Ability Score Improvement, Death from Darkness (+3d6 necrotic, frighten on Con save)' },
+        { level: 5, features: 'Phantom Assault (Teleport + stealth attack)' },
+        { level: 6, features: 'Shadow Reap (1/long rest - raise slain as Shadow Echo), Shadow Realm (Con mod active shadows, Con×4 stored)' },
+        { level: 7, features: 'Improved Shadow Step (60ft range, bring ally/shadow, free attack)' },
+        { level: 8, features: 'Ability Score Improvement, Sovereign of Shades (Shadows use prof bonus, Aura of Dread)' },
+        { level: 9, features: 'Executioner\'s Presence (10ft aura: disadvantage vs fear/necrotic, no advantage, max damage vs <25% HP)' },
+        { level: 10, features: 'Life for a Life (1/long rest - survive death by sacrificing shadow)' },
+        { level: 11, features: 'Shadow Mastery (+2 Shadow Step uses, ignore terrain while invisible)' },
+        { level: 12, features: 'Ability Score Improvement, Twin Reap (Shadow Reap 2/long rest)' },
+        { level: 13, features: 'Living Darkness (+1 AC per active shadow)' },
+        { level: 14, features: 'Shadow Legion (Shadows act without action/bonus action)' },
+        { level: 15, features: 'Death Refuses You (Life for a Life 2/long rest, use stored if no active)' },
+        { level: 16, features: 'Ability Score Improvement, Absolute Silence (Frightened = silenced, no verbal spells)' },
+        { level: 17, features: 'Shadow Cataclysm (1/long rest - all shadows attack, kills auto-Reap)' },
+        { level: 18, features: 'Sovereign\'s Domain (30ft dim light aura, suppress <5th level magical light)' },
+        { level: 19, features: 'Ability Score Improvement, You Decide Who Dies (1/long rest - declare execution, auto-crit, auto-Reap)' },
+        { level: 20, features: 'The Shadow Throne (All stored active, unlimited Shadow Step, Life for a Life uses souls)' }
+      ]
+    },
     'Sorcerer': {
       description: 'A spellcaster who draws on inherent magic from a gift or bloodline. Sorcerers manipulate raw magical energy with innate power.',
       features: ['Spellcasting', 'Sorcerous Origin', 'Font of Magic', 'Metamagic'],

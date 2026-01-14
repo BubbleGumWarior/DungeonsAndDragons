@@ -21,12 +21,12 @@ export const EXP_TABLE: Record<number, number> = {
   17: 265000,
   18: 305000,
   19: 355000,
-  20: 999999999 // Max level
+  20: 405000 // Max level (based on D&D 5e progression)
 };
 
 // Get required EXP for next level (cumulative total needed)
 export const getRequiredExpForNextLevel = (currentLevel: number): number => {
-  if (currentLevel >= 20) return 999999999;
+  if (currentLevel >= 20) return EXP_TABLE[20];
   return EXP_TABLE[currentLevel + 1] || 0;
 };
 

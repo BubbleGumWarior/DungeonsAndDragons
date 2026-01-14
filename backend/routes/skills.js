@@ -221,6 +221,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       'Paladin': 10,
       'Ranger': 10,
       'Primal Bond': 10,
+      'Shadow Sovereign': 10,
       'Reaver': 8,
       'Bard': 8,
       'Cleric': 8,
@@ -236,23 +237,25 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
     
     // Get automatic features for this level (general class features)
     const autoFeaturesResult = await pool.query(`
-      SELECT * FROM class_features
+      SELECT DISTINCT ON (name, description) *
+      FROM class_features
       WHERE class = $1 
         AND level = $2 
         AND is_choice = false
         AND (subclass_id IS NULL OR subclass_id = $3)
-      ORDER BY name
+      ORDER BY name, description, id
     `, [character.class, newLevel, character.subclass_id]);
     
     // Get choice-based features for this level (excluding subclass choice)
     const choiceFeaturesResult = await pool.query(`
-      SELECT * FROM class_features
+      SELECT DISTINCT ON (name, choice_type) *
+      FROM class_features
       WHERE class = $1 
         AND level = $2 
         AND is_choice = true
         AND choice_type != 'subclass'
         AND (subclass_id IS NULL OR subclass_id = $3)
-      ORDER BY choice_type, name
+      ORDER BY name, choice_type, id
     `, [character.class, newLevel, character.subclass_id]);
     
     // Check separately for subclass choice at this level
@@ -423,7 +426,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
 router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
   try {
     const { characterId } = req.params;
-    const { hpIncrease, subclassId, featureChoices, beastSelection } = req.body;
+    const { hpIncrease, subclassId, featureChoices, beastSelection, abilityIncreases } = req.body;
     
     // Get character details
     const charResult = await pool.query(`
@@ -444,12 +447,22 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     const newLevel = character.level + 1;
     const newHP = (character.hit_points_max || 0) + hpIncrease;
     
-    // Update character level, HP, and reset experience to 0
+    // Apply ability score increases - create a copy to avoid mutation issues
+    const currentAbilities = { ...character.abilities };
+    if (abilityIncreases && typeof abilityIncreases === 'object') {
+      for (const [ability, increase] of Object.entries(abilityIncreases)) {
+        if (increase && typeof increase === 'number' && increase > 0) {
+          currentAbilities[ability] = (currentAbilities[ability] || 10) + increase;
+        }
+      }
+    }
+    
+    // Update character level, HP, abilities, and reset experience to 0
     await pool.query(`
       UPDATE characters
-      SET level = $1, hit_points_max = $2, experience_points = 0, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $3
-    `, [newLevel, newHP, characterId]);
+      SET level = $1, hit_points_max = $2, abilities = $3, experience_points = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+    `, [newLevel, newHP, JSON.stringify(currentAbilities), characterId]);
     
     // If subclass was selected, save it
     if (subclassId) {
@@ -478,20 +491,40 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     if (subclassId) {
       // Get subclass name
       const subclassResult = await pool.query(`
-        SELECT name FROM subclasses WHERE id = $1
+        SELECT name, class FROM subclasses WHERE id = $1
       `, [subclassId]);
       
       if (subclassResult.rows.length > 0) {
         const subclassName = subclassResult.rows[0].name;
+        const className = subclassResult.rows[0].class;
         
-        // Look for skills that have the subclass name in the name (e.g., "Crusader Might (Vanguard)")
+        // Special handling for Primal Bond subclasses (they use beast names in skills)
+        let searchPatterns = [`%${subclassName}%`, `%(${subclassName.split(' ').pop()})%`];
+        
+        if (className === 'Primal Bond' && beastSelection && beastSelection.beastType) {
+          // For Primal Bond, use the specific beast type selected
+          const beastType = beastSelection.beastType;
+          searchPatterns = [`%${beastType}%`, `%(${beastType})%`];
+        } else if (className === 'Primal Bond') {
+          // If no beast selected yet, check if character already has a beast
+          const existingBeast = await pool.query(`
+            SELECT beast_type FROM character_beasts WHERE character_id = $1
+          `, [characterId]);
+          
+          if (existingBeast.rows.length > 0) {
+            const beastType = existingBeast.rows[0].beast_type;
+            searchPatterns = [`%${beastType}%`, `%(${beastType})%`];
+          }
+        }
+        
+        // Look for skills that match the subclass or beast patterns
         const subclassSkillResult = await pool.query(`
           SELECT * FROM skills
           WHERE class_restriction = $1 
             AND level_requirement = $2
-            AND (name ILIKE $3 OR name ILIKE $4)
+            AND (${searchPatterns.map((_, i) => `name ILIKE $${i + 3}`).join(' OR ')})
           LIMIT 1
-        `, [character.class, newLevel, `%${subclassName}%`, `%(${subclassName.split(' ').pop()})%`]);
+        `, [character.class, newLevel, ...searchPatterns]);
         
         if (subclassSkillResult.rows.length > 0) {
           const skill = subclassSkillResult.rows[0];
@@ -507,13 +540,31 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     
     // If no subclass-specific skill found, look for general class skill
     if (!skillGained) {
-      const skillResult = await pool.query(`
+      // For Primal Bond, we need to exclude beast-specific skills that don't match this character's beast
+      let query = `
         SELECT * FROM skills
         WHERE (class_restriction = $1 OR class_restriction IS NULL)
           AND level_requirement = $2
-        ORDER BY class_restriction DESC NULLS LAST
-        LIMIT 1
-      `, [character.class, newLevel]);
+      `;
+      let queryParams = [character.class, newLevel];
+      
+      if (character.class === 'Primal Bond') {
+        // Check if character has a beast selected
+        const beastCheck = await pool.query(`
+          SELECT beast_type FROM character_beasts WHERE character_id = $1
+        `, [characterId]);
+        
+        if (beastCheck.rows.length > 0) {
+          const characterBeast = beastCheck.rows[0].beast_type;
+          // Exclude skills with beast names in parentheses that don't match this character's beast
+          query += ` AND (name NOT LIKE '%(%)' OR name ILIKE $3)`;
+          queryParams.push(`%${characterBeast}%`);
+        }
+      }
+      
+      query += ` ORDER BY class_restriction DESC NULLS LAST LIMIT 1`;
+      
+      const skillResult = await pool.query(query, queryParams);
       
       // If there's a skill for this level, add it to the character
       if (skillResult.rows.length > 0) {
@@ -653,6 +704,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         characterId: parseInt(characterId),
         newLevel,
         newHP,
+        updatedAbilities: currentAbilities,
         experiencePoints: 0,
         skillGained,
         beastCreated,
@@ -664,6 +716,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       message: `Leveled up to ${newLevel}!`,
       newLevel,
       newHP,
+      updatedAbilities: currentAbilities,
       skillGained,
       beastCreated
     });
