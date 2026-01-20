@@ -8087,13 +8087,13 @@ const CampaignView: React.FC = () => {
                       title={`Limb Health System:\n\n• Head: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.25 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (25% base + CON bonus, max 100%)\n• Torso: ${Math.floor(selectedCharacterData.hit_points * Math.min(2.0, 1.0 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (100% base + CON bonus, max 200%)\n• Hands: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.15 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (15% base + CON bonus, max 100%)\n• Legs: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.4 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (40% base + CON bonus, max 100%)\n\nCON Modifier: ${Math.floor((selectedCharacterData.abilities.con - 10) / 2) >= 0 ? '+' : ''}${Math.floor((selectedCharacterData.abilities.con - 10) / 2)}\nEach +1 CON adds 10% more HP to all limbs\nTorso can reach up to 200% of base HP!`}
                       >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                          Hit Points
+                          Hit Points Base
                         </div>
                         <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>
                           {selectedCharacterData.hit_points}
                         </div>
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                          Chest will always be 100% hit points value, the rest is a value of Hit Points that scales with CON value.
+                          Limb HP: Head (25%+CON), Torso (100%+CON), Hands (15%+CON), Legs (40%+CON). Each +1 CON adds 10% HP to all limbs. Torso can reach up to 200% of base HP.
                         </div>
                       </div>
                       
