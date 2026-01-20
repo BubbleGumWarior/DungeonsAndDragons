@@ -360,10 +360,7 @@ router.get('/reference/data', async (req, res) => {
       { name: 'Kobold', abilities: { dex: 2 }, traits: ['Darkvision', 'Grovel, Cower, and Beg', 'Pack Tactics', 'Sunlight Sensitivity'] },
       { name: 'Orc', abilities: { str: 2, con: 1 }, traits: ['Darkvision', 'Aggressive', 'Menacing', 'Powerful Build'] },
       { name: 'Tortle', abilities: { str: 2, wis: 1 }, traits: ['Claws', 'Hold Breath', 'Natural Armor', 'Shell Defense', 'Survival Instinct'] },
-      { name: 'Warforged', abilities: { con: 2, any: 1 }, traits: ['Constructed Resilience', 'Sentry\'s Rest', 'Integrated Protection', 'Specialized Design'] },
-      { name: 'Changeling', abilities: { cha: 2, any: 1 }, traits: ['Shapechanger', 'Changeling Instincts', 'Unsettling Visage', 'Divergent Persona'] },
       { name: 'Kalashtar', abilities: { wis: 2, cha: 1 }, traits: ['Dual Mind', 'Mental Discipline', 'Mind Link', 'Severed from Dreams'] },
-      { name: 'Shifter', abilities: { dex: 1, any: 2 }, traits: ['Darkvision', 'Shifting'] },
       { name: 'Simic Hybrid', abilities: { con: 2, any: 1 }, traits: ['Animal Enhancement', 'Darkvision'] },
       { name: 'Vedalken', abilities: { int: 2, wis: 1 }, traits: ['Vedalken Dispassion', 'Tireless Precision', 'Partially Amphibious'] },
       { name: 'Loxodon', abilities: { con: 2, wis: 1 }, traits: ['Powerful Build', 'Loxodon Serenity', 'Natural Armor', 'Trunk', 'Keen Smell'] },
@@ -383,31 +380,31 @@ router.get('/reference/data', async (req, res) => {
       { name: 'Owlin', abilities: { dex: 2, wis: 1 }, traits: ['Darkvision', 'Flight', 'Silent Feathers'] }
       ],
       classes: [
-      { name: 'Barbarian', hitDie: 12, primaryAbility: ['str'], savingThrows: ['str', 'con'] },
-      { name: 'Bard', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['dex', 'cha'] },
-      { name: 'Cleric', hitDie: 8, primaryAbility: ['wis'], savingThrows: ['wis', 'cha'] },
-      { name: 'Druid', hitDie: 8, primaryAbility: ['wis'], savingThrows: ['int', 'wis'] },
-      { name: 'Fighter', hitDie: 10, primaryAbility: ['str', 'dex'], savingThrows: ['str', 'con'] },
-      { name: 'Monk', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['str', 'dex'] },
-      { name: 'Oathknight', hitDie: 12, primaryAbility: ['con'], savingThrows: ['con', 'wis'] },
-      { name: 'Paladin', hitDie: 10, primaryAbility: ['str', 'cha'], savingThrows: ['wis', 'cha'] },
-      { name: 'Primal Bond', hitDie: 10, primaryAbility: ['str', 'dex'], savingThrows: ['str', 'con'] },
-      { name: 'Ranger', hitDie: 10, primaryAbility: ['dex', 'wis'], savingThrows: ['str', 'dex'] },
-      { name: 'Reaver', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['dex', 'int'] },
-      { name: 'Rogue', hitDie: 8, primaryAbility: ['dex'], savingThrows: ['dex', 'int'] },
-      { name: 'Shadow Sovereign', hitDie: 10, primaryAbility: ['dex'], savingThrows: ['dex', 'con'] },
-      { name: 'Sorcerer', hitDie: 6, primaryAbility: ['cha'], savingThrows: ['con', 'cha'] },
-      { name: 'Warlock', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['wis', 'cha'] },
-      { name: 'Wizard', hitDie: 6, primaryAbility: ['int'], savingThrows: ['int', 'wis'] }
+        { name: 'Barbarian', hitDie: 12, primaryAbility: ['str'], savingThrows: ['str', 'con'] },
+        { name: 'Bard', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['dex', 'cha'] },
+        { name: 'Cleric', hitDie: 8, primaryAbility: ['wis'], savingThrows: ['wis', 'cha'] },
+        { name: 'Druid', hitDie: 8, primaryAbility: ['wis'], savingThrows: ['int', 'wis'] },
+        { name: 'Fighter', hitDie: 10, primaryAbility: ['str', 'dex'], savingThrows: ['str', 'con'] },
+        { name: 'Monk', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['str', 'dex'] },
+        { name: 'Oathknight', hitDie: 12, primaryAbility: ['con'], savingThrows: ['con', 'wis'] },
+        { name: 'Paladin', hitDie: 10, primaryAbility: ['str', 'cha'], savingThrows: ['wis', 'cha'] },
+        { name: 'Primal Bond', hitDie: 10, primaryAbility: ['str', 'dex'], savingThrows: ['str', 'con'] },
+        { name: 'Ranger', hitDie: 10, primaryAbility: ['dex', 'wis'], savingThrows: ['str', 'dex'] },
+        { name: 'Reaver', hitDie: 8, primaryAbility: ['dex', 'wis'], savingThrows: ['dex', 'int'] },
+        { name: 'Rogue', hitDie: 8, primaryAbility: ['dex'], savingThrows: ['dex', 'int'] },
+        { name: 'Shadow Sovereign', hitDie: 10, primaryAbility: ['dex'], savingThrows: ['dex', 'con'] },
+        { name: 'Sorcerer', hitDie: 6, primaryAbility: ['cha'], savingThrows: ['con', 'cha'] },
+        { name: 'Warlock', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['wis', 'cha'] },
+        { name: 'Wizard', hitDie: 6, primaryAbility: ['int'], savingThrows: ['int', 'wis'] }
       ],
       backgrounds: [
-      'Acolyte', 'Criminal', 'Folk Hero', 'Noble', 'Sage', 'Soldier',
-      'Charlatan', 'Entertainer', 'Guild Artisan', 'Hermit', 'Outlander', 'Sailor'
+        'Acolyte', 'Criminal', 'Folk Hero', 'Noble', 'Sage', 'Soldier',
+        'Charlatan', 'Entertainer', 'Guild Artisan', 'Hermit', 'Outlander', 'Sailor'
       ],
       skills: [
-      'Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History',
-      'Insight', 'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception',
-      'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'
+        'Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History',
+        'Insight', 'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception',
+        'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'
       ],
       equipment
     };
