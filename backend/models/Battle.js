@@ -215,24 +215,22 @@ class Battle {
           };
         }
         
-        const diceRoll = Math.floor(Math.random() * 10) + 1; // 1d10
-        
         if (isFirstRound) {
           // First round: Calculate base score from stats + dice roll
-          // Numbers stat applies 10x the normal rate
-          const statSum = ((stats.numbers || 0) * 10) + (stats.equipment || 0) + (stats.discipline || 0) + 
+          // Numbers stat applies 5x the normal rate
+          const statSum = ((stats.numbers || 0) * 5) + (stats.equipment || 0) + (stats.discipline || 0) + 
                          (stats.morale || 0) + (stats.command || 0) + (stats.logistics || 0);
-          const baseScore = statSum + diceRoll;
+          const baseScore = statSum;
           
           await pool.query(
             `UPDATE battle_participants SET base_score = $2, current_score = $2 WHERE id = $1`,
             [participant.id, baseScore]
           );
         } else {
-          // Subsequent rounds: Add new dice roll to current score (preserving modifiers)
+          // Subsequent rounds: No random roll applied
           await pool.query(
-            `UPDATE battle_participants SET current_score = current_score + $2 WHERE id = $1`,
-            [participant.id, diceRoll]
+            `UPDATE battle_participants SET current_score = current_score WHERE id = $1`,
+            [participant.id]
           );
         }
       }

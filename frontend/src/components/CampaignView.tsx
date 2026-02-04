@@ -3432,7 +3432,7 @@ const CampaignView: React.FC = () => {
                   />
                   
                   {/* Visual movement line while dragging */}
-                  {draggedCharacter !== null && dragStartPosition && currentDragPosition && (
+                  {draggedCharacter !== null && dragStartPosition && (currentDragPosition || dragStartPosition) && (
                     <>
                       {/* Distance line */}
                       <svg
@@ -3449,13 +3449,14 @@ const CampaignView: React.FC = () => {
                         <line
                           x1={`${dragStartPosition.x}%`}
                           y1={`${dragStartPosition.y}%`}
-                          x2={`${currentDragPosition.x}%`}
-                          y2={`${currentDragPosition.y}%`}
+                          x2={`${(currentDragPosition || dragStartPosition).x}%`}
+                          y2={`${(currentDragPosition || dragStartPosition).y}%`}
                           stroke={(() => {
                             const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
                             const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
-                            const deltaX = currentDragPosition.x - dragStartPosition.x;
-                            const deltaY = currentDragPosition.y - dragStartPosition.y;
+                            const currentPos = currentDragPosition || dragStartPosition;
+                            const deltaX = currentPos.x - dragStartPosition.x;
+                            const deltaY = currentPos.y - dragStartPosition.y;
                             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                             return distance <= currentRemaining ? '#4CAF50' : '#f44336';
                           })()}
@@ -3477,8 +3478,9 @@ const CampaignView: React.FC = () => {
                               fill={(() => {
                                 const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
                                 const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
-                                const deltaX = currentDragPosition.x - dragStartPosition.x;
-                                const deltaY = currentDragPosition.y - dragStartPosition.y;
+                                const currentPos = currentDragPosition || dragStartPosition;
+                                const deltaX = currentPos.x - dragStartPosition.x;
+                                const deltaY = currentPos.y - dragStartPosition.y;
                                 const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                                 return distance <= currentRemaining ? '#4CAF50' : '#f44336';
                               })()}
@@ -3491,14 +3493,15 @@ const CampaignView: React.FC = () => {
                       <div
                         style={{
                           position: 'absolute',
-                          left: `${(dragStartPosition.x + currentDragPosition.x) / 2}%`,
-                          top: `${(dragStartPosition.y + currentDragPosition.y) / 2}%`,
+                          left: `${(dragStartPosition.x + (currentDragPosition || dragStartPosition).x) / 2}%`,
+                          top: `${(dragStartPosition.y + (currentDragPosition || dragStartPosition).y) / 2}%`,
                           transform: 'translate(-50%, -150%)',
                           background: (() => {
                             const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
                             const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
-                            const deltaX = currentDragPosition.x - dragStartPosition.x;
-                            const deltaY = currentDragPosition.y - dragStartPosition.y;
+                            const currentPos = currentDragPosition || dragStartPosition;
+                            const deltaX = currentPos.x - dragStartPosition.x;
+                            const deltaY = currentPos.y - dragStartPosition.y;
                             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                             return distance <= currentRemaining ? 'rgba(76, 175, 80, 0.9)' : 'rgba(244, 67, 54, 0.9)';
                           })(),
@@ -3517,8 +3520,9 @@ const CampaignView: React.FC = () => {
                         {(() => {
                           const character = currentCampaign?.characters.find(c => c.id === draggedCharacter);
                           const currentRemaining = remainingMovement[draggedCharacter] ?? (character?.movement_speed ?? 30);
-                          const deltaX = currentDragPosition.x - dragStartPosition.x;
-                          const deltaY = currentDragPosition.y - dragStartPosition.y;
+                          const currentPos = currentDragPosition || dragStartPosition;
+                          const deltaX = currentPos.x - dragStartPosition.x;
+                          const deltaY = currentPos.y - dragStartPosition.y;
                           const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                           const afterMove = currentRemaining - distance;
                           return `${distance.toFixed(1)}ft (${afterMove.toFixed(1)}ft remaining)`;
@@ -3590,7 +3594,7 @@ const CampaignView: React.FC = () => {
                             if (canMove && (isDM || remaining > 0)) {
                               setDraggedCharacter(combatant.characterId);
                               setDragStartPosition({ x: position.x, y: position.y });
-                              setCurrentDragPosition(null);
+                              setCurrentDragPosition({ x: position.x, y: position.y });
                             }
                           }}
                           onDragEnd={() => {
@@ -4014,11 +4018,12 @@ const CampaignView: React.FC = () => {
                           }} />
 
                           {/* Drag distance line */}
-                          {draggedArmyParticipant !== null && dragStartPosition && currentDragPosition && 
+                          {draggedArmyParticipant !== null && dragStartPosition && (currentDragPosition || dragStartPosition) && 
                            !isNaN(dragStartPosition.x) && !isNaN(dragStartPosition.y) && 
-                           !isNaN(currentDragPosition.x) && !isNaN(currentDragPosition.y) && (() => {
-                            const deltaX = currentDragPosition.x - dragStartPosition.x;
-                            const deltaY = currentDragPosition.y - dragStartPosition.y;
+                           !isNaN((currentDragPosition || dragStartPosition).x) && !isNaN((currentDragPosition || dragStartPosition).y) && (() => {
+                            const currentPos = currentDragPosition || dragStartPosition;
+                            const deltaX = currentPos.x - dragStartPosition.x;
+                            const deltaY = currentPos.y - dragStartPosition.y;
                             const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                             const distanceFeet = Math.round(distancePercent * 10);
                             
@@ -4026,8 +4031,8 @@ const CampaignView: React.FC = () => {
                             const isDM = user?.role === 'Dungeon Master';
                             const hasEnoughMovement = isDM || distanceFeet <= currentRemaining;
                             
-                            const midX = (dragStartPosition.x + currentDragPosition.x) / 2;
-                            const midY = (dragStartPosition.y + currentDragPosition.y) / 2;
+                            const midX = (dragStartPosition.x + currentPos.x) / 2;
+                            const midY = (dragStartPosition.y + currentPos.y) / 2;
                             
                             // Extra safety check
                             if (isNaN(midX) || isNaN(midY)) return null;
@@ -4045,8 +4050,8 @@ const CampaignView: React.FC = () => {
                                 <line
                                   x1={`${dragStartPosition.x}%`}
                                   y1={`${dragStartPosition.y}%`}
-                                  x2={`${currentDragPosition.x}%`}
-                                  y2={`${currentDragPosition.y}%`}
+                                  x2={`${currentPos.x}%`}
+                                  y2={`${currentPos.y}%`}
                                   stroke={hasEnoughMovement ? '#4ade80' : '#ef4444'}
                                   strokeWidth="3"
                                   strokeDasharray="5,5"
