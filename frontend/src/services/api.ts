@@ -579,12 +579,38 @@ export interface Battle {
   campaign_id: number;
   battle_name: string;
   terrain_description: string;
-  status: 'planning' | 'resolution' | 'completed' | 'cancelled';
+  status: 'planning' | 'goal_selection' | 'resolution' | 'completed' | 'cancelled';
   current_round: number;
   total_rounds: number;
   created_at: string;
   updated_at: string;
   participants?: BattleParticipant[];
+  current_goals?: BattleGoal[];
+}
+
+export interface BattleGoal {
+  id: number;
+  battle_id: number;
+  round_number: number;
+  participant_id: number;
+  team_name: string;
+  goal_key: string;
+  goal_name: string;
+  goal_type: 'attack' | 'defend' | 'logistics' | 'custom' | 'commander';
+  target_participant_id?: number | null;
+  status: 'selected' | 'resolved' | 'applied';
+  attacker_roll?: number | null;
+  defender_roll?: number | null;
+  logistics_roll?: number | null;
+  roll_details?: any;
+  advantage?: 'attacker' | 'defender' | 'none';
+  casualties_target?: number;
+  casualties_self?: number;
+  score_change_target?: number;
+  score_change_self?: number;
+  notes?: string;
+  executor_army_name?: string;
+  target_army_name?: string;
 }
 
 export interface BattleParticipant {
@@ -621,6 +647,7 @@ export interface BattleParticipant {
   command?: number;
   logistics?: number;
   character_abilities?: any;
+  has_selected_goal?: boolean;
 }
 
 // Army API
@@ -709,6 +736,32 @@ export const battleAPI = {
 
   calculateBaseScores: async (battleId: number): Promise<Battle> => {
     const response = await api.post(`/armies/battles/${battleId}/calculate-base-scores`);
+    return response.data;
+  },
+
+  getGoals: async (battleId: number, round?: number): Promise<BattleGoal[]> => {
+    const query = round ? `?round=${round}` : '';
+    const response = await api.get(`/armies/battles/${battleId}/goals${query}`);
+    return response.data;
+  },
+
+  setGoal: async (battleId: number, data: { participant_id: number; goal_key: string; target_participant_id?: number | null }): Promise<BattleGoal> => {
+    const response = await api.post(`/armies/battles/${battleId}/goals`, data);
+    return response.data;
+  },
+
+  resolveGoal: async (battleId: number, goalId: number): Promise<BattleGoal> => {
+    const response = await api.post(`/armies/battles/${battleId}/goals/${goalId}/resolve`);
+    return response.data;
+  },
+
+  updateGoalResult: async (battleId: number, goalId: number, updates: { casualties_target: number; casualties_self: number; score_change_target: number; score_change_self: number; notes?: string }): Promise<BattleGoal> => {
+    const response = await api.patch(`/armies/battles/${battleId}/goals/${goalId}`, updates);
+    return response.data;
+  },
+
+  applyGoalResults: async (battleId: number): Promise<{ goals: BattleGoal[]; battle: Battle }> => {
+    const response = await api.post(`/armies/battles/${battleId}/goals/apply`);
     return response.data;
   },
 

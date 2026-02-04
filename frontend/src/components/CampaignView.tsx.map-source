@@ -23,6 +23,19 @@ interface JournalEntry {
   updated_at?: string;
 }
 
+// Journal Entry Interface
+interface JournalEntry {
+  id: number;
+  campaign_id: number;
+  title: string;
+  description: string;
+  image_url?: string;
+  created_by: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+// Army categories organized by type
 // Helper function to get army category icon
 const getArmyCategoryIcon = (category: string): string => {
   const iconMap: Record<string, string> = {
@@ -76,35 +89,41 @@ const getArmyCategoryPresets = (category: string): { equipment: number; discipli
     'Royal Guard': { equipment: 9, discipline: 9, morale: 9, command: 8, logistics: 7 },
     'Knights': { equipment: 9, discipline: 8, morale: 8, command: 7, logistics: 6 },
     'Assassins': { equipment: 8, discipline: 9, morale: 7, command: 6, logistics: 8 },
+    
     // Heavy Infantry - Strong (6-7)
     'Swordsmen': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 5 },
     'Shield Wall': { equipment: 7, discipline: 8, morale: 7, command: 6, logistics: 5 },
     'Spear Wall': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
     'Pikemen': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
     'Heavy Infantry': { equipment: 7, discipline: 7, morale: 7, command: 5, logistics: 5 },
+    
     // Light Infantry - Average (4-5)
     'Light Infantry': { equipment: 4, discipline: 5, morale: 5, command: 4, logistics: 6 },
+    
     // Archers - Medium (5-6)
     'Longbowmen': { equipment: 6, discipline: 6, morale: 5, command: 5, logistics: 5 },
     'Crossbowmen': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
     'Skirmishers': { equipment: 4, discipline: 4, morale: 5, command: 4, logistics: 7 },
     'Mounted Archers': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 6 },
+    
     // Cavalry - Strong to Very Strong (6-8)
     'Shock Cavalry': { equipment: 8, discipline: 7, morale: 8, command: 6, logistics: 5 },
     'Heavy Cavalry': { equipment: 8, discipline: 7, morale: 7, command: 6, logistics: 5 },
     'Light Cavalry': { equipment: 5, discipline: 6, morale: 6, command: 5, logistics: 7 },
     'Lancers': { equipment: 7, discipline: 7, morale: 7, command: 6, logistics: 5 },
+    
     // Artillery - Specialized (5-7)
     'Catapults': { equipment: 7, discipline: 5, morale: 5, command: 6, logistics: 4 },
     'Trebuchets': { equipment: 8, discipline: 6, morale: 5, command: 6, logistics: 4 },
     'Ballistae': { equipment: 7, discipline: 6, morale: 5, command: 6, logistics: 5 },
     'Siege Towers': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 4 },
     'Bombards': { equipment: 8, discipline: 5, morale: 5, command: 6, logistics: 3 },
+    
     // Specialists - Varied (4-7)
     'Scouts': { equipment: 4, discipline: 6, morale: 6, command: 5, logistics: 8 },
     'Spies': { equipment: 5, discipline: 7, morale: 6, command: 4, logistics: 7 }
   };
-
+  
   return presets[category] || { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
 };
 
@@ -114,11 +133,11 @@ const getArmyMovementSpeed = (category: string): number => {
   // Artillery: 50ft per round
   const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
   if (artilleryTypes.includes(category)) return 50;
-
+  
   // Cavalry: 300ft per round
   const cavalryTypes = ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Knights', 'Mounted Archers'];
   if (cavalryTypes.includes(category)) return 300;
-
+  
   // Infantry and others: 100ft per round
   return 100;
 };
@@ -180,8 +199,8 @@ const CampaignView: React.FC = () => {
   // Image cropping state
   const [showImageCropModal, setShowImageCropModal] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<{ file: File; url: string; characterId: number } | null>(null);
-  const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
-  const [imageScale, setImageScale] = useState(100);
+  const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 }); // Percentage position
+  const [imageScale, setImageScale] = useState(100); // Percentage scale
 
   // Character map positions state
   const [characterPositions, setCharacterPositions] = useState<Record<number, { x: number; y: number }>>({});
@@ -1783,70 +1802,6 @@ const CampaignView: React.FC = () => {
       newSocket.on('journalEntryDeleted', (data: { entryId: number; timestamp: string }) => {
         setJournalEntries(prev => prev.filter(e => e.id !== data.entryId));
       });
-
-      // Listen for battle round advanced (emit to all users when DM advances round)
-      newSocket.on('battleRoundAdvanced', (data: { battleId: number; round: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
-          // Refresh battle data to get new state (status reset to goal_selection, etc.)
-          refreshActiveBattle(data.battleId);
-          // Close any open modals and reset to fresh goal selection
-          setShowGoalSelectionModal(false);
-          setShowGoalResolutionModal(false);
-          setSelectedGoalArmyId(null);
-          setGoalSelections({});
-          setGoalEdits({});
-        }
-      });
-
-      // Listen for when a goal is selected by any user
-      newSocket.on('battleGoalSelected', (data: { battleId: number; goal: any; participantId: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
-          // Update the participant's has_selected_goal flag
-          setActiveBattle(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              participants: (prev.participants || []).map(p => 
-                p.id === data.participantId
-                  ? { ...p, has_selected_goal: true }
-                  : p
-              )
-            };
-          });
-        }
-      });
-
-      // Listen for individual goal resolution by DM
-      newSocket.on('battleGoalResolved', (data: { battleId: number; goal: any; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
-          // Refresh goals list to show updated goal
-          setBattleGoals(prev => {
-            const updated = [...prev];
-            const idx = updated.findIndex(g => g.id === data.goal.id);
-            if (idx >= 0) {
-              updated[idx] = data.goal;
-            }
-            return updated;
-          });
-        }
-      });
-
-      // Listen for when all goals have been selected (enables "Move to Resolution" button)
-      newSocket.on('allGoalsSelected', (data: { battleId: number; round: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
-          // Force a re-render by refreshing the battle to ensure button state updates
-          refreshActiveBattle(data.battleId);
-        }
-      });
-
-      // Listen for goals phase completed (all goals resolved, moving to next phase or round)
-      newSocket.on('goalsPhaseCompleted', (data: { battleId: number; round: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
-          // Refresh to get updated battle status and proceed
-          refreshActiveBattle(data.battleId);
-          setShowGoalResolutionModal(false);
-        }
-      });
       
       setSocket(newSocket);
       
@@ -1855,7 +1810,7 @@ const CampaignView: React.FC = () => {
         newSocket.disconnect();
       };
     }
-  }, [campaignTab, currentCampaign, loadCharacterSkills, loadEquippedItems, loadEquipmentDetails, campaignName, loadCampaign, refreshActiveBattle, selectedCharacter, user, activeBattle]);
+  }, [campaignTab, currentCampaign, loadCharacterSkills, loadEquippedItems, loadEquipmentDetails, campaignName, loadCampaign, refreshActiveBattle, selectedCharacter, user]);
 
   // Load equipped items when character changes
   useEffect(() => {
@@ -4064,6 +4019,65 @@ const CampaignView: React.FC = () => {
                       )}
                     </div>
 
+                    {activeBattle.status === 'goal_selection' && (
+                      <div style={{
+                        marginBottom: '1.5rem',
+                        padding: '1rem',
+                        borderRadius: '0.75rem',
+                        border: '2px solid rgba(234, 179, 8, 0.35)',
+                        background: 'rgba(234, 179, 8, 0.08)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <div style={{ color: '#facc15', fontWeight: 'bold' }}>🎯 Goal Selection Phase</div>
+                          <button
+                            onClick={() => setShowGoalSelectionModal(true)}
+                            style={{
+                              padding: '0.35rem 0.75rem',
+                              background: 'rgba(234, 179, 8, 0.2)',
+                              border: '1px solid rgba(234, 179, 8, 0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#facc15',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Select Goals
+                          </button>
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                          Goal selection opens in a focused window for each round.
+                        </div>
+                      </div>
+                    )}
+
+                    {activeBattle.status === 'resolution' && (
+                      <div style={{
+                        marginBottom: '1.5rem',
+                        padding: '1rem',
+                        borderRadius: '0.75rem',
+                        border: '2px solid rgba(239, 68, 68, 0.35)',
+                        background: 'rgba(239, 68, 68, 0.08)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <div style={{ color: '#f87171', fontWeight: 'bold' }}>⚔️ Goal Resolution Phase</div>
+                          <button
+                            onClick={() => setShowGoalResolutionModal(true)}
+                            style={{
+                              padding: '0.35rem 0.75rem',
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '1px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#f87171',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Resolve Goals
+                          </button>
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                          Resolution details open in a focused window for this round.
+                        </div>
+                      </div>
+                    )}
 
                     {/* Battle Map with Overlay Controls */}
                     <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
@@ -4392,48 +4406,6 @@ const CampaignView: React.FC = () => {
                           gap: '0.5rem',
                           zIndex: 10
                         }}>
-                          {activeBattle.status === 'goal_selection' && (
-                            <button
-                              onClick={() => setShowGoalSelectionModal(!showGoalSelectionModal)}
-                              style={{
-                                padding: '0.75rem 1rem',
-                                background: showGoalSelectionModal
-                                  ? 'rgba(212, 193, 156, 0.9)'
-                                  : 'rgba(0, 0, 0, 0.8)',
-                                border: '2px solid var(--border-gold)',
-                                borderRadius: '0.5rem',
-                                color: showGoalSelectionModal ? '#000' : 'var(--text-gold)',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                fontSize: '0.9rem',
-                                backdropFilter: 'blur(10px)',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
-                              }}
-                            >
-                              🎯 Goals
-                            </button>
-                          )}
-                          {activeBattle.status === 'resolution' && (
-                            <button
-                              onClick={() => setShowGoalResolutionModal(!showGoalResolutionModal)}
-                              style={{
-                                padding: '0.75rem 1rem',
-                                background: showGoalResolutionModal
-                                  ? 'rgba(212, 193, 156, 0.9)'
-                                  : 'rgba(0, 0, 0, 0.8)',
-                                border: '2px solid var(--border-gold)',
-                                borderRadius: '0.5rem',
-                                color: showGoalResolutionModal ? '#000' : 'var(--text-gold)',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                fontSize: '0.9rem',
-                                backdropFilter: 'blur(10px)',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
-                              }}
-                            >
-                              ⚔️ Goals
-                            </button>
-                          )}
                           {activeBattle.participants && activeBattle.participants.length > 0 && (
                             <button
                               onClick={() => setShowBattlefieldParticipants(!showBattlefieldParticipants)}
@@ -4460,713 +4432,659 @@ const CampaignView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Overlay Modals (Participants / Goals) */}
-                    {activeBattle && (showBattlefieldParticipants || showGoalSelectionModal || showGoalResolutionModal) && (
+                    {/* Participants Overlay Panel */}
+                    {showBattlefieldParticipants && activeBattle.participants && activeBattle.participants.length > 0 && (
                       <div style={{
                         position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        zIndex: 1200,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none'
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        maxWidth: '90vw',
+                        maxHeight: '80vh',
+                        overflowY: 'auto',
+                        background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
+                        border: '3px solid var(--border-gold)',
+                        borderRadius: '1rem',
+                        padding: '2rem',
+                        zIndex: 1000,
+                        backdropFilter: 'blur(20px)',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+                        transition: 'transform 0.4s ease-in-out'
                       }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                          <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Battle Participants</h5>
+                          <button
+                            onClick={() => setShowBattlefieldParticipants(false)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '2px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#f87171',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            ✕ Close
+                          </button>
+                        </div>
                         {(() => {
-                          const openKeys: Array<'participants' | 'selection' | 'resolution'> = [];
-                          if (showBattlefieldParticipants && activeBattle.participants && activeBattle.participants.length > 0) {
-                            openKeys.push('participants');
-                          }
-                          // Never show both selection and resolution at the same time
-                          if (showGoalSelectionModal && !showGoalResolutionModal) openKeys.push('selection');
-                          if (showGoalResolutionModal && !showGoalSelectionModal) openKeys.push('resolution');
+                          // Group participants by team
+                          const teamGroups = (activeBattle.participants || []).reduce((acc, p) => {
+                            if (!acc[p.team_name]) acc[p.team_name] = [];
+                            acc[p.team_name].push(p);
+                            return acc;
+                          }, {} as Record<string, BattleParticipant[]>);
 
-                          const count = openKeys.length;
-                          const getLeft = (key: 'participants' | 'selection' | 'resolution') => {
-                            const index = openKeys.indexOf(key);
-                            if (index === -1 || count <= 1) return '50%';
-                            if (count === 2) return index === 0 ? '25%' : '75%';
-                            return index === 0 ? '20%' : index === 1 ? '50%' : '80%';
-                          };
-
-                          const panelWidth =
-                            count === 1
-                              ? 'min(900px, 92vw)'
-                              : count === 2
-                              ? 'min(720px, 42vw)'
-                              : 'min(560px, 30vw)';
-
-                          const panelBase: React.CSSProperties = {
-                            position: 'fixed',
-                            top: '50%',
-                            transform: 'translate(-50%, -50%)',
-                            maxHeight: '80vh',
-                            overflowY: 'auto',
-                            overflowX: 'hidden',
-                            borderRadius: '1rem',
-                            padding: '1.5rem',
-                            backdropFilter: 'blur(20px)',
-                            boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
-                            transition: 'transform 0.35s ease, opacity 0.35s ease',
-                            pointerEvents: 'auto',
-                            width: panelWidth,
-                            maxWidth: '92vw',
-                            boxSizing: 'border-box'
-                          };
-
-                          const getVisibility = (isOpen: boolean) => ({
-                            opacity: isOpen ? 1 : 0,
-                            transform: isOpen ? 'translate(-50%, -50%) scale(0.98)' : 'translate(-50%, -45%) scale(0.96)'
-                          });
-
-                          return (
-                            <>
-                              {activeBattle.participants && activeBattle.participants.length > 0 && (
-                                <div
-                                  style={{
-                                    ...panelBase,
-                                    left: getLeft('participants'),
-                                    background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
-                                    border: '3px solid var(--border-gold)',
-                                    ...getVisibility(showBattlefieldParticipants)
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                    <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Battle Participants</h5>
-                                    <button
-                                      onClick={() => setShowBattlefieldParticipants(false)}
-                                      style={{
-                                        padding: '0.5rem 1rem',
-                                        background: 'rgba(239, 68, 68, 0.2)',
-                                        border: '2px solid rgba(239, 68, 68, 0.5)',
-                                        borderRadius: '0.5rem',
-                                        color: '#f87171',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer',
-                                        fontSize: '0.9rem'
-                                      }}
-                                    >
-                                      ✕ Close
-                                    </button>
+                          return Object.entries(teamGroups).map(([teamName, participants]) => (
+                            <div key={teamName} style={{
+                              marginBottom: '1.5rem',
+                              padding: '1rem',
+                              background: 'rgba(0, 0, 0, 0.2)',
+                              border: `2px solid ${participants[0].faction_color || '#808080'}`,
+                              borderRadius: '0.75rem'
+                            }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                marginBottom: '1rem',
+                                paddingBottom: '0.5rem',
+                                borderBottom: `2px solid ${participants[0].faction_color || '#808080'}`
+                              }}>
+                                <div style={{
+                                  width: '1rem',
+                                  height: '1rem',
+                                  background: participants[0].faction_color || '#808080',
+                                  borderRadius: '50%',
+                                  boxShadow: `0 0 10px ${participants[0].faction_color || '#808080'}`
+                                }} />
+                                <h6 style={{ color: participants[0].faction_color || '#808080', margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                  {teamName}
+                                </h6>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                  ({participants.length} {participants.length === 1 ? 'army' : 'armies'})
+                                </span>
+                                {activeBattle.status !== 'planning' && (
+                                  <div style={{
+                                    marginLeft: 'auto',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.5rem 1rem',
+                                    background: 'rgba(0, 0, 0, 0.4)',
+                                    borderRadius: '0.5rem',
+                                    border: `2px solid ${participants[0].faction_color || '#808080'}`
+                                  }}>
+                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Total Score:</span>
+                                    <span style={{
+                                      fontSize: '1.3rem',
+                                      fontWeight: 'bold',
+                                      color: participants[0].faction_color || '#808080',
+                                      textShadow: `0 0 10px ${participants[0].faction_color || '#808080'}`
+                                    }}>
+                                      {participants.reduce((sum, p) => sum + ((p.current_troops || 0) > 0 ? (p.current_score || 0) : 0), 0)}
+                                    </span>
                                   </div>
-                                  {(() => {
-                                    const teamGroups = (activeBattle.participants || []).reduce((acc, p) => {
-                                      if (!acc[p.team_name]) acc[p.team_name] = [];
-                                      acc[p.team_name].push(p);
-                                      return acc;
-                                    }, {} as Record<string, BattleParticipant[]>);
+                                )}
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                                {participants.map((participant) => (
+                            <div
+                              key={participant.id}
+                              style={{
+                                padding: '1rem',
+                                background: 'rgba(0, 0, 0, 0.3)',
+                                border: '2px solid rgba(212, 193, 156, 0.3)',
+                                borderRadius: '0.5rem'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
+                                <div>
+                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', fontSize: '1rem' }}>
+                                    {participant.temp_army_name || participant.army_name}
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                    Team: {participant.team_name}
+                                    {participant.player_name && ` (${participant.player_name})`}
+                                  </div>
+                                  {participant.current_troops !== undefined && (
+                                    <div style={{ 
+                                      fontSize: '0.8rem', 
+                                      color: participant.current_troops < (participant.army_total_troops || 0) * 0.5 ? '#ef4444' : '#4ade80',
+                                      marginTop: '0.25rem',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      👥 Troops: {participant.current_troops.toLocaleString()} / {participant.army_total_troops?.toLocaleString() || 'N/A'}
+                                    </div>
+                                  )}
+                                </div>
+                                {participant.is_temporary && (
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.25rem 0.5rem',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    borderRadius: '0.25rem',
+                                    color: '#f87171'
+                                  }}>
+                                    Temporary
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {activeBattle.status !== 'planning' && (
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '0.5rem' }}>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Base Score</div>
+                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#60a5fa' }}>
+                                      {participant.base_score || 0}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Current Score</div>
+                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#4ade80' }}>
+                                      {participant.current_score || 0}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Modifier</div>
+                                    <div style={{ 
+                                      fontSize: '1.1rem', 
+                                      fontWeight: 'bold', 
+                                      color: (participant.current_score - participant.base_score) >= 0 ? '#4ade80' : '#f87171'
+                                    }}>
+                                      {(participant.current_score - participant.base_score) >= 0 ? '+' : ''}
+                                      {participant.current_score - participant.base_score}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                                ))}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
 
-                                    return Object.entries(teamGroups).map(([teamName, participants]) => (
-                                      <div key={teamName} style={{
-                                        marginBottom: '1.5rem',
-                                        padding: '1rem',
-                                        background: 'rgba(0, 0, 0, 0.2)',
-                                        border: `2px solid ${participants[0].faction_color || '#808080'}`,
-                                        borderRadius: '0.75rem'
-                                      }}>
-                                        <div style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '0.5rem',
-                                          marginBottom: '1rem',
-                                          paddingBottom: '0.5rem',
-                                          borderBottom: `2px solid ${participants[0].faction_color || '#808080'}`
-                                        }}>
-                                          <div style={{
-                                            width: '1rem',
-                                            height: '1rem',
-                                            background: participants[0].faction_color || '#808080',
-                                            borderRadius: '50%',
-                                            boxShadow: `0 0 10px ${participants[0].faction_color || '#808080'}`
-                                          }} />
-                                          <h6 style={{ color: participants[0].faction_color || '#808080', margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>
-                                            {teamName}
-                                          </h6>
-                                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                            ({participants.length} {participants.length === 1 ? 'army' : 'armies'})
-                                          </span>
-                                          {activeBattle.status !== 'planning' && (
-                                            <div style={{
-                                              marginLeft: 'auto',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '0.5rem',
-                                              padding: '0.5rem 1rem',
-                                              background: 'rgba(0, 0, 0, 0.4)',
-                                              borderRadius: '0.5rem',
-                                              border: `2px solid ${participants[0].faction_color || '#808080'}`
-                                            }}>
-                                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Total Score:</span>
-                                              <span style={{
-                                                fontSize: '1.3rem',
-                                                fontWeight: 'bold',
-                                                color: participants[0].faction_color || '#808080',
-                                                textShadow: `0 0 10px ${participants[0].faction_color || '#808080'}`
-                                              }}>
-                                                {participants.reduce((sum, p) => sum + ((p.current_troops || 0) > 0 ? (p.current_score || 0) : 0), 0)}
-                                              </span>
-                                            </div>
-                                          )}
+                    {/* Goal Selection Modal */}
+                    {showGoalSelectionModal && activeBattle && (
+                      <div style={{
+                        position: 'fixed',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        maxWidth: '92vw',
+                        maxHeight: '85vh',
+                        overflowY: 'auto',
+                        background: 'linear-gradient(135deg, rgba(25, 20, 10, 0.98), rgba(40, 30, 15, 0.98))',
+                        border: '3px solid rgba(234, 179, 8, 0.6)',
+                        borderRadius: '1rem',
+                        padding: '2rem',
+                        zIndex: 1100,
+                        backdropFilter: 'blur(20px)',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.85)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                          <h5 style={{ color: '#facc15', margin: 0 }}>🎯 Goal Selection</h5>
+                          <button
+                            onClick={() => setShowGoalSelectionModal(false)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '2px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#f87171',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            ✕ Close
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                          {(() => {
+                            const selectable = getSelectableParticipants();
+                            const selectedParticipant = selectedGoalArmyId
+                              ? (activeBattle.participants || []).find(p => p.id === selectedGoalArmyId)
+                              : selectable[0];
+                            const selectedCategory = selectedParticipant?.temp_army_category || selectedParticipant?.army_category || 'Swordsmen';
+                            const selectedGoal = selectedParticipant
+                              ? battleGoals.find(g => g.participant_id === selectedParticipant.id)
+                              : undefined;
+                            const enemyTargets = selectedParticipant
+                              ? (activeBattle.participants || []).filter(p => p.team_name !== selectedParticipant.team_name && (p.current_troops || 0) > 0)
+                              : [];
+
+                            return (
+                              <>
+                                <div style={{ flex: '1 1 260px', minWidth: '220px' }}>
+                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Your Armies</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {selectable.length === 0 && (
+                                      <div style={{ color: 'var(--text-muted)' }}>No eligible armies this round.</div>
+                                    )}
+                                    {selectable.map(participant => (
+                                      <button
+                                        key={participant.id}
+                                        onClick={() => setSelectedGoalArmyId(participant.id)}
+                                        style={{
+                                          textAlign: 'left',
+                                          padding: '0.6rem 0.8rem',
+                                          borderRadius: '0.6rem',
+                                          border: participant.id === selectedGoalArmyId
+                                            ? '2px solid rgba(234, 179, 8, 0.9)'
+                                            : '1px solid rgba(212, 193, 156, 0.3)',
+                                          background: participant.has_selected_goal
+                                            ? 'rgba(34, 197, 94, 0.2)'
+                                            : 'rgba(255, 255, 255, 0.03)',
+                                          color: '#e2e8f0',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        <div style={{ fontWeight: 'bold' }}>{getBattleParticipantName(participant)}</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                          {participant.has_selected_goal ? '✅ Goal selected' : '⏳ Needs goal'}
                                         </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-                                          {participants.map((participant) => (
-                                            <div
-                                              key={participant.id}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div style={{ flex: '2 1 520px', minWidth: '320px' }}>
+                                  {selectedParticipant ? (
+                                    <>
+                                      <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                                        {getBattleParticipantName(selectedParticipant)} · {selectedCategory}
+                                      </div>
+                                      {selectedGoal && (
+                                        <div style={{ marginBottom: '0.75rem', color: '#4ade80' }}>
+                                          Selected: {selectedGoal.goal_name}{selectedGoal.target_army_name ? ` → ${selectedGoal.target_army_name}` : ''}
+                                        </div>
+                                      )}
+
+                                      {(['attacking', 'defending', 'logistics'] as const).map(section => (
+                                        <div key={section} style={{ marginBottom: '0.75rem' }}>
+                                          <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.35rem', textTransform: 'capitalize' }}>{section}</div>
+                                          <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                            {BATTLE_GOALS[section]
+                                              .filter(goal => isGoalEligible(goal, selectedCategory))
+                                              .map(goal => (
+                                                <button
+                                                  key={goal.key}
+                                                  onClick={() => {
+                                                    setGoalSelections(prev => ({
+                                                      ...prev,
+                                                      [selectedParticipant.id]: {
+                                                        ...prev[selectedParticipant.id],
+                                                        goalKey: goal.key
+                                                      }
+                                                    }));
+                                                  }}
+                                                  style={{
+                                                    textAlign: 'left',
+                                                    padding: '0.6rem 0.8rem',
+                                                    borderRadius: '0.6rem',
+                                                    border: goalSelections[selectedParticipant.id]?.goalKey === goal.key
+                                                      ? '2px solid rgba(234, 179, 8, 0.9)'
+                                                      : '1px solid rgba(212, 193, 156, 0.3)',
+                                                    background: 'rgba(255, 255, 255, 0.03)',
+                                                    color: '#e2e8f0',
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >
+                                                  <div style={{ fontWeight: 'bold' }}>{goal.name}</div>
+                                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{goal.description}</div>
+                                                </button>
+                                              ))}
+                                          </div>
+                                        </div>
+                                      ))}
+
+                                      {(() => {
+                                        const selection = goalSelections[selectedParticipant.id];
+                                        if (!selection?.goalKey) return null;
+                                        const goal = findGoalByKey(selection.goalKey);
+                                        if (!goal || goal.target_type !== 'enemy') return null;
+                                        return (
+                                          <div style={{ marginBottom: '0.75rem' }}>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Target Army</label>
+                                            <select
+                                              value={selection.targetId || ''}
+                                              onChange={(e) => {
+                                                const targetId = e.target.value ? parseInt(e.target.value, 10) : null;
+                                                setGoalSelections(prev => ({
+                                                  ...prev,
+                                                  [selectedParticipant.id]: {
+                                                    ...prev[selectedParticipant.id],
+                                                    targetId
+                                                  }
+                                                }));
+                                              }}
                                               style={{
-                                                padding: '1rem',
-                                                background: 'rgba(0, 0, 0, 0.3)',
-                                                border: '2px solid rgba(212, 193, 156, 0.3)',
-                                                borderRadius: '0.5rem'
+                                                width: '100%',
+                                                padding: '0.5rem 0.7rem',
+                                                borderRadius: '0.5rem',
+                                                border: '1px solid rgba(212, 193, 156, 0.4)',
+                                                background: 'rgba(0,0,0,0.4)',
+                                                color: '#e2e8f0'
                                               }}
                                             >
-                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
-                                                <div>
-                                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', fontSize: '1rem' }}>
-                                                    {participant.temp_army_name || participant.army_name}
-                                                  </div>
-                                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                                                    Team: {participant.team_name}
-                                                    {participant.player_name && ` (${participant.player_name})`}
-                                                  </div>
-                                                  {participant.current_troops !== undefined && (
-                                                    <div style={{
-                                                      fontSize: '0.8rem',
-                                                      color: participant.current_troops < (participant.army_total_troops || 0) * 0.5 ? '#ef4444' : '#4ade80',
-                                                      marginTop: '0.25rem',
-                                                      fontWeight: 'bold'
-                                                    }}>
-                                                      👥 Troops: {participant.current_troops.toLocaleString()} / {participant.army_total_troops?.toLocaleString() || 'N/A'}
-                                                    </div>
-                                                  )}
-                                                </div>
-                                                {participant.is_temporary && (
-                                                  <span style={{
-                                                    fontSize: '0.75rem',
-                                                    padding: '0.25rem 0.5rem',
-                                                    background: 'rgba(239, 68, 68, 0.2)',
-                                                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                                                    borderRadius: '0.25rem',
-                                                    color: '#f87171'
-                                                  }}>
-                                                    Temporary
-                                                  </span>
-                                                )}
-                                              </div>
-                                              {activeBattle.status !== 'planning' && (
-                                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '0.5rem' }}>
-                                                  <div>
-                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Base Score</div>
-                                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#60a5fa' }}>
-                                                      {participant.base_score || 0}
-                                                    </div>
-                                                  </div>
-                                                  <div>
-                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Current Score</div>
-                                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#4ade80' }}>
-                                                      {participant.current_score || 0}
-                                                    </div>
-                                                  </div>
-                                                  <div>
-                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Modifier</div>
-                                                    <div style={{
-                                                      fontSize: '1.1rem',
-                                                      fontWeight: 'bold',
-                                                      color: (participant.current_score - participant.base_score) >= 0 ? '#4ade80' : '#f87171'
-                                                    }}>
-                                                      {(participant.current_score - participant.base_score) >= 0 ? '+' : ''}
-                                                      {participant.current_score - participant.base_score}
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          ))}
+                                              <option value="">Select target</option>
+                                              {enemyTargets.map(target => (
+                                                <option key={target.id} value={target.id}>
+                                                  {getBattleParticipantName(target)}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        );
+                                      })()}
+
+                                      <button
+                                        onClick={async () => {
+                                          if (!selectedParticipant) return;
+                                          const selection = goalSelections[selectedParticipant.id];
+                                          if (!selection?.goalKey) return;
+                                          const goal = findGoalByKey(selection.goalKey);
+                                          if (goal?.target_type === 'enemy' && !selection.targetId) return;
+
+                                          try {
+                                            await battleAPI.setGoal(activeBattle.id, {
+                                              participant_id: selectedParticipant.id,
+                                              goal_key: selection.goalKey,
+                                              target_participant_id: selection.targetId || null
+                                            });
+                                            const updated = await battleAPI.getBattle(activeBattle.id);
+                                            setActiveBattle(updated);
+                                            const goals = await battleAPI.getGoals(activeBattle.id, activeBattle.current_round);
+                                            setBattleGoals(goals);
+                                          } catch (error) {
+                                            console.error('Error setting goal:', error);
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '0.55rem 1.2rem',
+                                          background: 'rgba(34, 197, 94, 0.25)',
+                                          border: '1px solid rgba(34, 197, 94, 0.5)',
+                                          borderRadius: '0.6rem',
+                                          color: '#4ade80',
+                                          cursor: 'pointer',
+                                          fontWeight: 'bold'
+                                        }}
+                                      >
+                                        🔒 Lock Goal
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <div style={{ color: 'var(--text-muted)' }}>Select an army to choose goals.</div>
+                                  )}
+                                </div>
+
+                                <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
+                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Waiting On</div>
+                                  {(() => {
+                                    const teamMap: Record<string, { total: number; selected: number }> = {};
+                                    (activeBattle.participants || []).forEach(p => {
+                                      if ((p.current_troops || 0) <= 0) return;
+                                      if (!teamMap[p.team_name]) {
+                                        teamMap[p.team_name] = { total: 0, selected: 0 };
+                                      }
+                                      teamMap[p.team_name].total += 1;
+                                      if (p.has_selected_goal) teamMap[p.team_name].selected += 1;
+                                    });
+
+                                    return Object.entries(teamMap).map(([teamName, stats]) => (
+                                      <div key={teamName} style={{ marginBottom: '0.5rem', color: '#e2e8f0' }}>
+                                        <div style={{ fontWeight: 'bold' }}>{teamName}</div>
+                                        <div style={{ fontSize: '0.8rem', color: stats.selected === stats.total ? '#4ade80' : '#facc15' }}>
+                                          {stats.selected}/{stats.total} armies ready
                                         </div>
                                       </div>
                                     ));
                                   })()}
                                 </div>
-                              )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
 
-                              <div
-                                style={{
-                                  ...panelBase,
-                                  left: getLeft('selection'),
-                                  background: 'linear-gradient(135deg, rgba(25, 20, 10, 0.98), rgba(40, 30, 15, 0.98))',
-                                  border: '3px solid rgba(234, 179, 8, 0.6)',
-                                  ...getVisibility(showGoalSelectionModal)
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                  <h5 style={{ color: '#facc15', margin: 0 }}>🎯 Goal Selection</h5>
+                    {/* Goal Resolution Modal */}
+                    {showGoalResolutionModal && activeBattle && (
+                      <div style={{
+                        position: 'fixed',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        maxWidth: '92vw',
+                        maxHeight: '85vh',
+                        overflowY: 'auto',
+                        background: 'linear-gradient(135deg, rgba(20, 10, 10, 0.98), rgba(35, 15, 15, 0.98))',
+                        border: '3px solid rgba(239, 68, 68, 0.6)',
+                        borderRadius: '1rem',
+                        padding: '2rem',
+                        zIndex: 1100,
+                        backdropFilter: 'blur(20px)',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.85)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                          <h5 style={{ color: '#f87171', margin: 0 }}>⚔️ Goal Resolution</h5>
+                          <button
+                            onClick={() => setShowGoalResolutionModal(false)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '2px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#f87171',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            ✕ Close
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          {battleGoals.length === 0 && (
+                            <div style={{ color: 'var(--text-muted)' }}>No goals set for this round.</div>
+                          )}
+                          {battleGoals.map(goal => {
+                            const isDM = user?.role === 'Dungeon Master';
+                            const canResolve = isDM || (activeBattle.participants || []).some(p => p.id === goal.participant_id && p.user_id === user?.id);
+                            const editValues = goalEdits[goal.id] || {
+                              casualties_target: goal.casualties_target || 0,
+                              casualties_self: goal.casualties_self || 0,
+                              score_change_target: goal.score_change_target || 0,
+                              score_change_self: goal.score_change_self || 0,
+                              notes: goal.notes || ''
+                            };
+
+                            return (
+                              <div key={goal.id} style={{ padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(248, 113, 113, 0.4)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)' }}>{goal.goal_name}</div>
+                                  <div style={{ fontSize: '0.75rem', color: goal.status === 'resolved' ? '#4ade80' : goal.status === 'applied' ? '#60a5fa' : '#facc15' }}>
+                                    {goal.status}
+                                  </div>
+                                </div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                                  {goal.executor_army_name || `Army #${goal.participant_id}`}
+                                  {goal.target_army_name ? ` → ${goal.target_army_name}` : ''}
+                                </div>
+                                {goal.advantage && goal.advantage !== 'none' && (
+                                  <div style={{ fontSize: '0.75rem', color: '#facc15' }}>Advantage: {goal.advantage}</div>
+                                )}
+                                {goal.attacker_roll && (
+                                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Attacker roll: {goal.attacker_roll} · Defender roll: {goal.defender_roll}</div>
+                                )}
+                                {goal.logistics_roll && (
+                                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Logistics roll: {goal.logistics_roll}</div>
+                                )}
+
+                                {goal.status === 'selected' && canResolve && (
                                   <button
-                                    onClick={() => setShowGoalSelectionModal(false)}
+                                    onClick={async () => {
+                                      try {
+                                        const resolved = await battleAPI.resolveGoal(activeBattle.id, goal.id);
+                                        setBattleGoals(prev => prev.map(g => g.id === resolved.id ? resolved : g));
+                                      } catch (error) {
+                                        console.error('Error resolving goal:', error);
+                                      }
+                                    }}
                                     style={{
-                                      padding: '0.5rem 1rem',
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '2px solid rgba(239, 68, 68, 0.5)',
-                                      borderRadius: '0.5rem',
-                                      color: '#f87171',
-                                      fontWeight: 'bold',
-                                      cursor: 'pointer',
-                                      fontSize: '0.9rem'
+                                      marginTop: '0.6rem',
+                                      padding: '0.4rem 0.9rem',
+                                      background: 'rgba(34, 197, 94, 0.2)',
+                                      border: '1px solid rgba(34, 197, 94, 0.5)',
+                                      borderRadius: '0.4rem',
+                                      color: '#4ade80',
+                                      cursor: 'pointer'
                                     }}
                                   >
-                                    ✕ Close
+                                    🎲 Resolve Goal
                                   </button>
-                                </div>
-                                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                                  {(() => {
-                                    const selectable = getSelectableParticipants();
-                                    const selectedParticipant = selectedGoalArmyId
-                                      ? (activeBattle.participants || []).find(p => p.id === selectedGoalArmyId)
-                                      : selectable[0];
-                                    const selectedCategory = selectedParticipant?.temp_army_category || selectedParticipant?.army_category || 'Swordsmen';
-                                    const selectedGoal = selectedParticipant
-                                      ? battleGoals.find(g => g.participant_id === selectedParticipant.id)
-                                      : undefined;
-                                    const enemyTargets = selectedParticipant
-                                      ? (activeBattle.participants || []).filter(p => p.team_name !== selectedParticipant.team_name && (p.current_troops || 0) > 0)
-                                      : [];
+                                )}
 
-                                    return (
-                                      <>
-                                        <div style={{ flex: '1 1 260px', minWidth: '220px' }}>
-                                          <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Your Armies</div>
-                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                            {selectable.length === 0 && (
-                                              <div style={{ color: 'var(--text-muted)' }}>No eligible armies this round.</div>
-                                            )}
-                                            {selectable.map(participant => (
-                                              <button
-                                                key={participant.id}
-                                                onClick={() => setSelectedGoalArmyId(participant.id)}
-                                                style={{
-                                                  textAlign: 'left',
-                                                  padding: '0.6rem 0.8rem',
-                                                  borderRadius: '0.6rem',
-                                                  border: participant.id === selectedGoalArmyId
-                                                    ? '2px solid rgba(234, 179, 8, 0.9)'
-                                                    : '1px solid rgba(212, 193, 156, 0.3)',
-                                                  background: participant.has_selected_goal
-                                                    ? 'rgba(34, 197, 94, 0.2)'
-                                                    : 'rgba(255, 255, 255, 0.03)',
-                                                  color: '#e2e8f0',
-                                                  cursor: 'pointer'
-                                                }}
-                                              >
-                                                <div style={{ fontWeight: 'bold' }}>{getBattleParticipantName(participant)}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                  {participant.has_selected_goal ? '✅ Goal selected' : '⏳ Needs goal'}
-                                                </div>
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-
-                                        <div style={{ flex: '2 1 520px', minWidth: '320px' }}>
-                                          {selectedParticipant ? (
-                                            <>
-                                              <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
-                                                {getBattleParticipantName(selectedParticipant)} · {selectedCategory}
-                                              </div>
-                                              {selectedGoal && (
-                                                <div style={{ marginBottom: '0.75rem', color: '#4ade80' }}>
-                                                  Selected: {selectedGoal.goal_name}{selectedGoal.target_army_name ? ` → ${selectedGoal.target_army_name}` : ''}
-                                                </div>
-                                              )}
-
-                                              {(['attacking', 'defending', 'logistics'] as const).map(section => (
-                                                <div key={section} style={{ marginBottom: '0.75rem' }}>
-                                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.35rem', textTransform: 'capitalize' }}>{section}</div>
-                                                  <div style={{ display: 'grid', gap: '0.5rem' }}>
-                                                    {BATTLE_GOALS[section]
-                                                      .filter(goal => isGoalEligible(goal, selectedCategory))
-                                                      .map(goal => (
-                                                        <button
-                                                          key={goal.key}
-                                                          onClick={() => {
-                                                            setGoalSelections(prev => ({
-                                                              ...prev,
-                                                              [selectedParticipant.id]: {
-                                                                ...prev[selectedParticipant.id],
-                                                                goalKey: goal.key
-                                                              }
-                                                            }));
-                                                          }}
-                                                          style={{
-                                                            textAlign: 'left',
-                                                            padding: '0.6rem 0.8rem',
-                                                            borderRadius: '0.6rem',
-                                                            border: goalSelections[selectedParticipant.id]?.goalKey === goal.key
-                                                              ? '2px solid rgba(234, 179, 8, 0.9)'
-                                                              : '1px solid rgba(212, 193, 156, 0.3)',
-                                                            background: 'rgba(255, 255, 255, 0.03)',
-                                                            color: '#e2e8f0',
-                                                            cursor: 'pointer'
-                                                          }}
-                                                        >
-                                                          <div style={{ fontWeight: 'bold' }}>{goal.name}</div>
-                                                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{goal.description}</div>
-                                                        </button>
-                                                      ))}
-                                                  </div>
-                                                </div>
-                                              ))}
-
-                                              {(() => {
-                                                const selection = goalSelections[selectedParticipant.id];
-                                                if (!selection?.goalKey) return null;
-                                                const goal = findGoalByKey(selection.goalKey);
-                                                if (!goal || goal.target_type !== 'enemy') return null;
-                                                return (
-                                                  <div style={{ marginBottom: '0.75rem' }}>
-                                                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Target Army</label>
-                                                    <select
-                                                      value={selection.targetId || ''}
-                                                      onChange={(e) => {
-                                                        const targetId = e.target.value ? parseInt(e.target.value, 10) : null;
-                                                        setGoalSelections(prev => ({
-                                                          ...prev,
-                                                          [selectedParticipant.id]: {
-                                                            ...prev[selectedParticipant.id],
-                                                            targetId
-                                                          }
-                                                        }));
-                                                      }}
-                                                      style={{
-                                                        width: '100%',
-                                                        padding: '0.5rem 0.7rem',
-                                                        borderRadius: '0.5rem',
-                                                        border: '1px solid rgba(212, 193, 156, 0.4)',
-                                                        background: 'rgba(0,0,0,0.4)',
-                                                        color: '#e2e8f0'
-                                                      }}
-                                                    >
-                                                      <option value="">Select target</option>
-                                                      {enemyTargets.map(target => (
-                                                        <option key={target.id} value={target.id}>
-                                                          {getBattleParticipantName(target)}
-                                                        </option>
-                                                      ))}
-                                                    </select>
-                                                  </div>
-                                                );
-                                              })()}
-
-                                              <button
-                                                onClick={async () => {
-                                                  if (!selectedParticipant) return;
-                                                  const selection = goalSelections[selectedParticipant.id];
-                                                  if (!selection?.goalKey) return;
-                                                  const goal = findGoalByKey(selection.goalKey);
-                                                  if (goal?.target_type === 'enemy' && !selection.targetId) return;
-
-                                                  try {
-                                                    await battleAPI.setGoal(activeBattle.id, {
-                                                      participant_id: selectedParticipant.id,
-                                                      goal_key: selection.goalKey,
-                                                      target_participant_id: selection.targetId || null
-                                                    });
-                                                    const updated = await battleAPI.getBattle(activeBattle.id);
-                                                    setActiveBattle(updated);
-                                                    const goals = await battleAPI.getGoals(activeBattle.id, activeBattle.current_round);
-                                                    setBattleGoals(goals);
-                                                  } catch (error) {
-                                                    console.error('Error setting goal:', error);
-                                                  }
-                                                }}
-                                                style={{
-                                                  padding: '0.55rem 1.2rem',
-                                                  background: 'rgba(34, 197, 94, 0.25)',
-                                                  border: '1px solid rgba(34, 197, 94, 0.5)',
-                                                  borderRadius: '0.6rem',
-                                                  color: '#4ade80',
-                                                  cursor: 'pointer',
-                                                  fontWeight: 'bold'
-                                                }}
-                                              >
-                                                🔒 Lock Goal
-                                              </button>
-                                            </>
-                                          ) : (
-                                            <div style={{ color: 'var(--text-muted)' }}>Select an army to choose goals.</div>
-                                          )}
-                                        </div>
-
-                                        <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
-                                          <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Waiting On</div>
-                                          {(() => {
-                                            const teamMap: Record<string, { total: number; selected: number }> = {};
-                                            (activeBattle.participants || []).forEach(p => {
-                                              if ((p.current_troops || 0) <= 0) return;
-                                              if (!teamMap[p.team_name]) {
-                                                teamMap[p.team_name] = { total: 0, selected: 0 };
-                                              }
-                                              teamMap[p.team_name].total += 1;
-                                              if (p.has_selected_goal) teamMap[p.team_name].selected += 1;
-                                            });
-
-                                            return Object.entries(teamMap).map(([teamName, stats]) => (
-                                              <div key={teamName} style={{ marginBottom: '0.5rem', color: '#e2e8f0' }}>
-                                                <div style={{ fontWeight: 'bold' }}>{teamName}</div>
-                                                <div style={{ fontSize: '0.8rem', color: stats.selected === stats.total ? '#4ade80' : '#facc15' }}>
-                                                  {stats.selected}/{stats.total} armies ready
-                                                </div>
-                                              </div>
-                                            ));
-                                          })()}
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-
-                              <div
-                                style={{
-                                  ...panelBase,
-                                  left: getLeft('resolution'),
-                                  background: 'linear-gradient(135deg, rgba(20, 10, 10, 0.98), rgba(35, 15, 15, 0.98))',
-                                  border: '3px solid rgba(239, 68, 68, 0.6)',
-                                  ...getVisibility(showGoalResolutionModal)
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                  <h5 style={{ color: '#f87171', margin: 0 }}>⚔️ Goal Resolution</h5>
-                                  <button
-                                    onClick={() => setShowGoalResolutionModal(false)}
-                                    style={{
-                                      padding: '0.5rem 1rem',
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '2px solid rgba(239, 68, 68, 0.5)',
-                                      borderRadius: '0.5rem',
-                                      color: '#f87171',
-                                      fontWeight: 'bold',
-                                      cursor: 'pointer',
-                                      fontSize: '0.9rem'
-                                    }}
-                                  >
-                                    ✕ Close
-                                  </button>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                  {battleGoals.length === 0 && (
-                                    <div style={{ color: 'var(--text-muted)' }}>No goals set for this round.</div>
-                                  )}
-                                  {battleGoals.map(goal => {
-                                    const isDM = user?.role === 'Dungeon Master';
-                                    const canResolve = isDM || (activeBattle.participants || []).some(p => p.id === goal.participant_id && p.user_id === user?.id);
-                                    const editValues = goalEdits[goal.id] || {
-                                      casualties_target: goal.casualties_target || 0,
-                                      casualties_self: goal.casualties_self || 0,
-                                      score_change_target: goal.score_change_target || 0,
-                                      score_change_self: goal.score_change_self || 0,
-                                      notes: goal.notes || ''
-                                    };
-
-                                    return (
-                                      <div key={goal.id} style={{ padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(248, 113, 113, 0.4)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                                          <div style={{ fontWeight: 'bold', color: 'var(--text-gold)' }}>{goal.goal_name}</div>
-                                          <div style={{ fontSize: '0.75rem', color: goal.status === 'resolved' ? '#4ade80' : goal.status === 'applied' ? '#60a5fa' : '#facc15' }}>
-                                            {goal.status}
-                                          </div>
-                                        </div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                                          {goal.executor_army_name || `Army #${goal.participant_id}`}
-                                          {goal.target_army_name ? ` → ${goal.target_army_name}` : ''}
-                                        </div>
-                                        {goal.advantage && goal.advantage !== 'none' && (
-                                          <div style={{ fontSize: '0.75rem', color: '#facc15' }}>Advantage: {goal.advantage}</div>
-                                        )}
-                                        {goal.attacker_roll && (
-                                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Attacker roll: {goal.attacker_roll} · Defender roll: {goal.defender_roll}</div>
-                                        )}
-                                        {goal.logistics_roll && (
-                                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Logistics roll: {goal.logistics_roll}</div>
-                                        )}
-
-                                        {goal.status === 'selected' && canResolve && (
-                                          <button
-                                            onClick={async () => {
-                                              try {
-                                                const resolved = await battleAPI.resolveGoal(activeBattle.id, goal.id);
-                                                setBattleGoals(prev => prev.map(g => g.id === resolved.id ? resolved : g));
-                                              } catch (error) {
-                                                console.error('Error resolving goal:', error);
-                                              }
-                                            }}
-                                            style={{
-                                              marginTop: '0.6rem',
-                                              padding: '0.4rem 0.9rem',
-                                              background: 'rgba(34, 197, 94, 0.2)',
-                                              border: '1px solid rgba(34, 197, 94, 0.5)',
-                                              borderRadius: '0.4rem',
-                                              color: '#4ade80',
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            🎲 Resolve Goal
-                                          </button>
-                                        )}
-
-                                        {isDM && goal.status === 'resolved' && (
-                                          <div style={{ marginTop: '0.7rem', display: 'grid', gap: '0.5rem' }}>
-                                            {(() => {
-                                              const showCasualties = goal.goal_type === 'attack' || goal.goal_type === 'defend';
-                                              const showScores = goal.goal_type === 'logistics';
-                                              const columnCount = (showCasualties ? 2 : 0) + (showScores ? 2 : 0);
-
-                                              return (
-                                                <>
-                                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'grid', gap: '0.2rem' }}>
-                                                    <div>Adjust results before applying:</div>
-                                                    {showCasualties && <div>• Target casualties / Self casualties (troops)</div>}
-                                                    {showScores && <div>• Target score change / Self score change</div>}
-                                                  </div>
-                                                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, columnCount)}, minmax(120px, 1fr))`, gap: '0.4rem' }}>
-                                                    {showCasualties && (
-                                                      <>
-                                                        <div style={{ display: 'grid', gap: '0.2rem' }}>
-                                                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target casualties</span>
-                                                          <input
-                                                            type="number"
-                                                            value={editValues.casualties_target}
-                                                            onChange={(e) => setGoalEdits(prev => ({
-                                                              ...prev,
-                                                              [goal.id]: { ...editValues, casualties_target: parseInt(e.target.value, 10) || 0 }
-                                                            }))}
-                                                            placeholder="Target casualties"
-                                                            aria-label="Target casualties"
-                                                            style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
-                                                          />
-                                                        </div>
-                                                        <div style={{ display: 'grid', gap: '0.2rem' }}>
-                                                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Self casualties</span>
-                                                          <input
-                                                            type="number"
-                                                            value={editValues.casualties_self}
-                                                            onChange={(e) => setGoalEdits(prev => ({
-                                                              ...prev,
-                                                              [goal.id]: { ...editValues, casualties_self: parseInt(e.target.value, 10) || 0 }
-                                                            }))}
-                                                            placeholder="Self casualties"
-                                                            aria-label="Self casualties"
-                                                            style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
-                                                          />
-                                                        </div>
-                                                      </>
-                                                    )}
-                                                    {showScores && (
-                                                      <>
-                                                        <div style={{ display: 'grid', gap: '0.2rem' }}>
-                                                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target score change</span>
-                                                          <input
-                                                            type="number"
-                                                            value={editValues.score_change_target}
-                                                            onChange={(e) => setGoalEdits(prev => ({
-                                                              ...prev,
-                                                              [goal.id]: { ...editValues, score_change_target: parseInt(e.target.value, 10) || 0 }
-                                                            }))}
-                                                            placeholder="Target score change"
-                                                            aria-label="Target score change"
-                                                            style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
-                                                          />
-                                                        </div>
-                                                        <div style={{ display: 'grid', gap: '0.2rem' }}>
-                                                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Self score change</span>
-                                                          <input
-                                                            type="number"
-                                                            value={editValues.score_change_self}
-                                                            onChange={(e) => setGoalEdits(prev => ({
-                                                              ...prev,
-                                                              [goal.id]: { ...editValues, score_change_self: parseInt(e.target.value, 10) || 0 }
-                                                            }))}
-                                                            placeholder="Self score change"
-                                                            aria-label="Self score change"
-                                                            style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
-                                                          />
-                                                        </div>
-                                                      </>
-                                                    )}
-                                                  </div>
-                                                </>
-                                              );
-                                            })()}
-                                            <textarea
-                                              value={editValues.notes || ''}
-                                              onChange={(e) => setGoalEdits(prev => ({
-                                                ...prev,
-                                                [goal.id]: { ...editValues, notes: e.target.value }
-                                              }))}
-                                              placeholder="DM notes"
-                                              rows={2}
-                                              style={{ padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
-                                            />
-                                            <button
-                                              onClick={async () => {
-                                                try {
-                                                  const updated = await battleAPI.updateGoalResult(activeBattle.id, goal.id, {
-                                                    casualties_target: editValues.casualties_target,
-                                                    casualties_self: editValues.casualties_self,
-                                                    score_change_target: editValues.score_change_target,
-                                                    score_change_self: editValues.score_change_self,
-                                                    notes: editValues.notes
-                                                  });
-                                                  setBattleGoals(prev => prev.map(g => g.id === updated.id ? updated : g));
-                                                } catch (error) {
-                                                  console.error('Error updating goal result:', error);
-                                                }
-                                              }}
-                                              style={{
-                                                padding: '0.45rem 0.9rem',
-                                                background: 'rgba(59, 130, 246, 0.2)',
-                                                border: '1px solid rgba(59, 130, 246, 0.5)',
-                                                borderRadius: '0.4rem',
-                                                color: '#60a5fa',
-                                                cursor: 'pointer'
-                                              }}
-                                            >
-                                              💾 Update Result
-                                            </button>
-                                          </div>
-                                        )}
+                                {isDM && goal.status === 'resolved' && (
+                                  <div style={{ marginTop: '0.7rem', display: 'grid', gap: '0.5rem' }}>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'grid', gap: '0.2rem' }}>
+                                      <div>Adjust results before applying:</div>
+                                      <div>• Target casualties / Self casualties (troops)</div>
+                                      <div>• Target score change / Self score change</div>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))', gap: '0.4rem' }}>
+                                      <div style={{ display: 'grid', gap: '0.2rem' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target casualties</span>
+                                        <input
+                                          type="number"
+                                          value={editValues.casualties_target}
+                                          onChange={(e) => setGoalEdits(prev => ({
+                                            ...prev,
+                                            [goal.id]: { ...editValues, casualties_target: parseInt(e.target.value, 10) || 0 }
+                                          }))}
+                                          placeholder="Target casualties"
+                                          aria-label="Target casualties"
+                                          style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
+                                        />
                                       </div>
-                                    );
-                                  })}
-
-                                  {user?.role === 'Dungeon Master' && (
+                                      <div style={{ display: 'grid', gap: '0.2rem' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Self casualties</span>
+                                        <input
+                                          type="number"
+                                          value={editValues.casualties_self}
+                                          onChange={(e) => setGoalEdits(prev => ({
+                                            ...prev,
+                                            [goal.id]: { ...editValues, casualties_self: parseInt(e.target.value, 10) || 0 }
+                                          }))}
+                                          placeholder="Self casualties"
+                                          aria-label="Self casualties"
+                                          style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
+                                        />
+                                      </div>
+                                      <div style={{ display: 'grid', gap: '0.2rem' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target score change</span>
+                                        <input
+                                          type="number"
+                                          value={editValues.score_change_target}
+                                          onChange={(e) => setGoalEdits(prev => ({
+                                            ...prev,
+                                            [goal.id]: { ...editValues, score_change_target: parseInt(e.target.value, 10) || 0 }
+                                          }))}
+                                          placeholder="Target score change"
+                                          aria-label="Target score change"
+                                          style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
+                                        />
+                                      </div>
+                                      <div style={{ display: 'grid', gap: '0.2rem' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Self score change</span>
+                                        <input
+                                          type="number"
+                                          value={editValues.score_change_self}
+                                          onChange={(e) => setGoalEdits(prev => ({
+                                            ...prev,
+                                            [goal.id]: { ...editValues, score_change_self: parseInt(e.target.value, 10) || 0 }
+                                          }))}
+                                          placeholder="Self score change"
+                                          aria-label="Self score change"
+                                          style={{ padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <textarea
+                                      value={editValues.notes || ''}
+                                      onChange={(e) => setGoalEdits(prev => ({
+                                        ...prev,
+                                        [goal.id]: { ...editValues, notes: e.target.value }
+                                      }))}
+                                      placeholder="DM notes"
+                                      rows={2}
+                                      style={{ padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.4)', background: 'rgba(0,0,0,0.4)', color: '#e2e8f0' }}
+                                    />
                                     <button
                                       onClick={async () => {
                                         try {
-                                          const applied = await battleAPI.applyGoalResults(activeBattle.id);
-                                          setActiveBattle(applied.battle);
-                                          setBattleGoals(applied.goals);
+                                          const updated = await battleAPI.updateGoalResult(activeBattle.id, goal.id, {
+                                            casualties_target: editValues.casualties_target,
+                                            casualties_self: editValues.casualties_self,
+                                            score_change_target: editValues.score_change_target,
+                                            score_change_self: editValues.score_change_self,
+                                            notes: editValues.notes
+                                          });
+                                          setBattleGoals(prev => prev.map(g => g.id === updated.id ? updated : g));
                                         } catch (error) {
-                                          console.error('Error applying goal results:', error);
+                                          console.error('Error updating goal result:', error);
                                         }
                                       }}
                                       style={{
-                                        padding: '0.7rem 1.2rem',
-                                        background: 'rgba(34, 197, 94, 0.25)',
-                                        border: '2px solid rgba(34, 197, 94, 0.5)',
-                                        borderRadius: '0.6rem',
-                                        color: '#4ade80',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold'
+                                        padding: '0.45rem 0.9rem',
+                                        background: 'rgba(59, 130, 246, 0.2)',
+                                        border: '1px solid rgba(59, 130, 246, 0.5)',
+                                        borderRadius: '0.4rem',
+                                        color: '#60a5fa',
+                                        cursor: 'pointer'
                                       }}
                                     >
-                                      ✅ Apply Goal Results
+                                      💾 Update Result
                                     </button>
-                                  )}
-                                </div>
+                                  </div>
+                                )}
                               </div>
-                            </>
-                          );
-                        })()}
+                            );
+                          })}
+
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const applied = await battleAPI.applyGoalResults(activeBattle.id);
+                                  setActiveBattle(applied.battle);
+                                  setBattleGoals(applied.goals);
+                                } catch (error) {
+                                  console.error('Error applying goal results:', error);
+                                }
+                              }}
+                              style={{
+                                padding: '0.7rem 1.2rem',
+                                background: 'rgba(34, 197, 94, 0.25)',
+                                border: '2px solid rgba(34, 197, 94, 0.5)',
+                                borderRadius: '0.6rem',
+                                color: '#4ade80',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              ✅ Apply Goal Results
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -11628,4 +11546,5 @@ const CampaignView: React.FC = () => {
 };
 
 export default CampaignView;
+
 

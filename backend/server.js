@@ -251,7 +251,7 @@ const startServer = async () => {
       const fixClassFeaturesLevel0 = require('./migrations/fix_class_features_level0');
       const addShadowSovereignClass = require('./migrations/add_shadow_sovereign_class');
       const addShadowSovereignSkills = require('./migrations/add_shadow_sovereign_skills');
-      const dropBattleGoalsTable = require('./migrations/drop_battle_goals_table');
+      const createBattleGoalsTable = require('./migrations/create_battle_goals_table');
       
       // Execute migrations in correct order
       await createSkillsTable();
@@ -272,7 +272,7 @@ const startServer = async () => {
       await fixClassFeaturesLevel0();
       await addShadowSovereignClass();
       await addShadowSovereignSkills();
-      await dropBattleGoalsTable();
+      await createBattleGoalsTable();
       
       console.log('Database migrations completed');
     } catch (error) {

@@ -102,13 +102,238 @@ class Battle {
   static async advanceRound(battleId) {
     try {
       const result = await pool.query(
-        `UPDATE battles SET current_round = current_round + 1, updated_at = CURRENT_TIMESTAMP
+        `UPDATE battles SET current_round = current_round + 1, status = 'goal_selection', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1
          RETURNING *`,
         [battleId]
       );
+
+      // Reset goal selection flags for the new round
+      await pool.query(
+        `UPDATE battle_participants SET has_selected_goal = false WHERE battle_id = $1`,
+        [battleId]
+      );
+
+      // Clean any existing goals for the new round (safety)
+      if (result.rows.length > 0) {
+        await pool.query(
+          `DELETE FROM battle_goals WHERE battle_id = $1 AND round_number = $2`,
+          [battleId, result.rows[0].current_round]
+        );
+      }
       
       return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async getGoals(battleId, roundNumber) {
+    try {
+      const result = await pool.query(
+        `SELECT bg.*,
+                bp_executor.team_name as executor_team_name,
+                COALESCE(bp_executor.temp_army_name, a_executor.name, 'Army #' || bp_executor.id) as executor_army_name,
+                COALESCE(bp_target.temp_army_name, a_target.name, 'Army #' || bp_target.id) as target_army_name,
+                bp_executor.army_id as executor_army_id,
+                bp_executor.is_temporary as executor_is_temporary,
+                bp_executor.current_troops as executor_current_troops,
+                bp_target.current_troops as target_current_troops
+         FROM battle_goals bg
+         LEFT JOIN battle_participants bp_executor ON bg.participant_id = bp_executor.id
+         LEFT JOIN battle_participants bp_target ON bg.target_participant_id = bp_target.id
+         LEFT JOIN armies a_executor ON bp_executor.army_id = a_executor.id
+         LEFT JOIN armies a_target ON bp_target.army_id = a_target.id
+         WHERE bg.battle_id = $1 AND bg.round_number = $2
+         ORDER BY bg.team_name, bg.id`,
+        [battleId, roundNumber]
+      );
+
+      return result.rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async setGoal(goalData) {
+    const {
+      battle_id,
+      round_number,
+      participant_id,
+      team_name,
+      goal_key,
+      goal_name,
+      goal_type,
+      target_participant_id
+    } = goalData;
+
+    try {
+      const existing = await pool.query(
+        `SELECT id FROM battle_goals WHERE battle_id = $1 AND round_number = $2 AND participant_id = $3`,
+        [battle_id, round_number, participant_id]
+      );
+
+      let goalResult;
+
+      if (existing.rows.length > 0) {
+        goalResult = await pool.query(
+          `UPDATE battle_goals
+           SET goal_key = $2, goal_name = $3, goal_type = $4, target_participant_id = $5,
+               status = 'selected', updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1
+           RETURNING *`,
+          [existing.rows[0].id, goal_key, goal_name, goal_type, target_participant_id]
+        );
+      } else {
+        goalResult = await pool.query(
+          `INSERT INTO battle_goals
+           (battle_id, round_number, participant_id, team_name, goal_key, goal_name, goal_type, target_participant_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING *`,
+          [battle_id, round_number, participant_id, team_name, goal_key, goal_name, goal_type, target_participant_id]
+        );
+      }
+
+      await pool.query(
+        `UPDATE battle_participants SET has_selected_goal = true WHERE id = $1`,
+        [participant_id]
+      );
+
+      return goalResult.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async resolveGoal(goalId, resolutionData) {
+    const {
+      attacker_roll,
+      defender_roll,
+      logistics_roll,
+      roll_details,
+      advantage,
+      casualties_target,
+      casualties_self,
+      score_change_target,
+      score_change_self,
+      notes
+    } = resolutionData;
+
+    try {
+      const result = await pool.query(
+        `UPDATE battle_goals
+         SET attacker_roll = $2,
+             defender_roll = $3,
+             logistics_roll = $4,
+             roll_details = $5,
+             advantage = $6,
+             casualties_target = $7,
+             casualties_self = $8,
+             score_change_target = $9,
+             score_change_self = $10,
+             notes = $11,
+             status = 'resolved',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [goalId, attacker_roll, defender_roll, logistics_roll, roll_details, advantage, casualties_target, casualties_self, score_change_target, score_change_self, notes]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async updateGoalResult(goalId, updates) {
+    const {
+      casualties_target,
+      casualties_self,
+      score_change_target,
+      score_change_self,
+      notes
+    } = updates;
+
+    try {
+      const result = await pool.query(
+        `UPDATE battle_goals
+         SET casualties_target = $2,
+             casualties_self = $3,
+             score_change_target = $4,
+             score_change_self = $5,
+             notes = COALESCE($6, notes),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [goalId, casualties_target, casualties_self, score_change_target, score_change_self, notes]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async applyGoalResults(battleId, roundNumber) {
+    try {
+      const goalsResult = await pool.query(
+        `SELECT * FROM battle_goals
+         WHERE battle_id = $1 AND round_number = $2 AND status = 'resolved'`,
+        [battleId, roundNumber]
+      );
+
+      const goals = goalsResult.rows;
+      const participantChanges = new Map();
+
+      goals.forEach(goal => {
+        const targetId = goal.target_participant_id;
+        const executorId = goal.participant_id;
+
+        if (targetId) {
+          const targetChange = participantChanges.get(targetId) || { troopDelta: 0, scoreDelta: 0 };
+          targetChange.troopDelta -= (goal.casualties_target || 0);
+          targetChange.scoreDelta += (goal.score_change_target || 0);
+          participantChanges.set(targetId, targetChange);
+        }
+
+        if (executorId) {
+          const executorChange = participantChanges.get(executorId) || { troopDelta: 0, scoreDelta: 0 };
+          executorChange.troopDelta -= (goal.casualties_self || 0);
+          executorChange.scoreDelta += (goal.score_change_self || 0);
+          participantChanges.set(executorId, executorChange);
+        }
+      });
+
+      for (const [participantId, change] of participantChanges.entries()) {
+        const participantResult = await pool.query(
+          `SELECT current_troops, current_score FROM battle_participants WHERE id = $1`,
+          [participantId]
+        );
+
+        if (participantResult.rows.length === 0) continue;
+
+        const currentTroops = participantResult.rows[0].current_troops || 0;
+        const currentScore = participantResult.rows[0].current_score || 0;
+
+        const nextTroops = Math.max(0, currentTroops + change.troopDelta);
+        const nextScore = nextTroops === 0 ? 0 : currentScore + change.scoreDelta;
+
+        await pool.query(
+          `UPDATE battle_participants
+           SET current_troops = $2, current_score = $3
+           WHERE id = $1`,
+          [participantId, nextTroops, nextScore]
+        );
+      }
+
+      await pool.query(
+        `UPDATE battle_goals
+         SET status = 'applied', updated_at = CURRENT_TIMESTAMP
+         WHERE battle_id = $1 AND round_number = $2 AND status = 'resolved'`,
+        [battleId, roundNumber]
+      );
+
+      return goals;
     } catch (error) {
       throw error;
     }

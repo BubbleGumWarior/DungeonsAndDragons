@@ -6,6 +6,7 @@ const Campaign = require('../models/Campaign');
 const Character = require('../models/Character');
 const { authenticateToken } = require('../middleware/auth');
 const { pool } = require('../models/database');
+const { BATTLE_GOALS, findGoalByKey, isGoalEligible, GOAL_TYPES } = require('../utils/battleGoals');
 
 // Get all armies for a player in a campaign
 router.get('/campaign/:campaignId/player/:playerId', authenticateToken, async (req, res) => {
@@ -356,11 +357,20 @@ router.post('/battles/:id/advance-round', authenticateToken, async (req, res) =>
     
     const updatedBattle = await Battle.advanceRound(id);
     
-    // Emit socket event
+    // Emit socket event to ALL users (using campaign room)
     const io = req.app.get('io');
     if (io) {
       io.to(`campaign_${battle.campaign_id}`).emit('battleRoundAdvanced', {
         battleId: id,
+        round: updatedBattle.current_round,
+        status: updatedBattle.status,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also emit that we've moved to goal selection phase
+      io.to(`campaign_${battle.campaign_id}`).emit('battleStatusUpdated', {
+        battleId: id,
+        status: 'goal_selection',
         round: updatedBattle.current_round,
         timestamp: new Date().toISOString()
       });
@@ -716,6 +726,361 @@ router.post('/battles/:id/calculate-base-scores', authenticateToken, async (req,
   }
 });
 
+const rollD100 = () => Math.floor(Math.random() * 100) + 1;
+
+const calculateCasualties = (roll, currentTroops) => {
+  if (!currentTroops || currentTroops <= 0) return 0;
+  const percent = Math.min(25, Math.max(5, Math.round((roll / 100) * 20)));
+  return Math.max(1, Math.floor(currentTroops * (percent / 100)));
+};
+
+// Get battle goals for a round (filters by player unless DM or resolution phase)
+router.get('/battles/:id/goals', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const roundNumber = parseInt(req.query.round, 10);
+
+    const battle = await Battle.findById(id);
+    if (!battle) {
+      return res.status(404).json({ error: 'Battle not found' });
+    }
+
+    const currentRound = Number.isFinite(roundNumber) ? roundNumber : battle.current_round;
+    const goals = await Battle.getGoals(id, currentRound);
+
+    const campaign = await Campaign.findById(battle.campaign_id);
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+
+    if (isDM || battle.status === 'resolution' || battle.status === 'completed') {
+      return res.json(goals);
+    }
+
+    const allowedParticipantIds = battle.participants
+      .filter(p => !p.is_temporary && p.user_id === req.user.id)
+      .map(p => p.id);
+
+    const filtered = goals.filter(goal => allowedParticipantIds.includes(goal.participant_id));
+    return res.json(filtered);
+  } catch (error) {
+    console.error('Error fetching battle goals:', error);
+    res.status(500).json({ error: 'Failed to fetch battle goals' });
+  }
+});
+
+// Set or update a goal for a participant
+router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { participant_id, goal_key, target_participant_id } = req.body;
+
+    const battle = await Battle.findById(id);
+    if (!battle) {
+      return res.status(404).json({ error: 'Battle not found' });
+    }
+
+    if (battle.status !== 'goal_selection') {
+      return res.status(400).json({ error: 'Goals can only be selected during goal selection phase' });
+    }
+
+    const campaign = await Campaign.findById(battle.campaign_id);
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+
+    const participant = battle.participants.find(p => p.id === participant_id);
+    if (!participant) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+
+    if (participant.current_troops <= 0) {
+      return res.status(400).json({ error: 'Armies with 0 troops cannot select goals' });
+    }
+
+    if (!isDM && participant.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized to select goal for this army' });
+    }
+
+    if (participant.is_temporary && !isDM) {
+      return res.status(403).json({ error: 'Only the Dungeon Master can select goals for temporary armies' });
+    }
+
+    const goalTemplate = findGoalByKey(goal_key);
+    if (!goalTemplate) {
+      return res.status(400).json({ error: 'Invalid goal selection' });
+    }
+
+    const category = participant.temp_army_category || participant.army_category || 'Swordsmen';
+    if (!isGoalEligible(goalTemplate, category)) {
+      return res.status(400).json({ error: 'This army is not eligible for that goal' });
+    }
+
+    if (goalTemplate.target_type === 'enemy') {
+      if (!target_participant_id) {
+        return res.status(400).json({ error: 'Target required for this goal' });
+      }
+      const target = battle.participants.find(p => p.id === target_participant_id);
+      if (!target) {
+        return res.status(404).json({ error: 'Target participant not found' });
+      }
+      if (target.team_name === participant.team_name) {
+        return res.status(400).json({ error: 'Target must be an enemy army' });
+      }
+    }
+
+    const created = await Battle.setGoal({
+      battle_id: battle.id,
+      round_number: battle.current_round,
+      participant_id: participant.id,
+      team_name: participant.team_name,
+      goal_key: goalTemplate.key,
+      goal_name: goalTemplate.name,
+      goal_type: goalTemplate.goal_type,
+      target_participant_id: target_participant_id || null
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleGoalSelected', {
+        battleId: battle.id,
+        goal: created,
+        participantId: participant.id,
+        timestamp: new Date().toISOString()
+      });
+
+      // Check if all eligible participants have now selected goals
+      const eligibleParticipants = (battle.participants || []).filter(p => (p.current_troops || 0) > 0);
+      const allGoalsResult = await pool.query(
+        `SELECT DISTINCT participant_id FROM battle_goals 
+         WHERE battle_id = $1 AND round_number = $2`,
+        [battle.id, battle.current_round]
+      );
+      const goalParticipantIds = new Set(allGoalsResult.rows.map(row => row.participant_id));
+      
+      // Check if all eligible participants have selected goals
+      const allSelected = eligibleParticipants.every(p => 
+        p.has_selected_goal || goalParticipantIds.has(p.id)
+      );
+      
+      if (allSelected) {
+        io.to(`campaign_${battle.campaign_id}`).emit('allGoalsSelected', {
+          battleId: battle.id,
+          round: battle.current_round,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    res.json(created);
+  } catch (error) {
+    console.error('Error setting battle goal:', error);
+    res.status(500).json({ error: 'Failed to set battle goal' });
+  }
+});
+
+// Resolve an individual goal
+router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req, res) => {
+  try {
+    const { id, goalId } = req.params;
+
+    const battle = await Battle.findById(id);
+    if (!battle) {
+      return res.status(404).json({ error: 'Battle not found' });
+    }
+
+    if (battle.status !== 'resolution') {
+      return res.status(400).json({ error: 'Goals can only be resolved during resolution phase' });
+    }
+
+    const goalResult = await pool.query(
+      `SELECT bg.*, bp.team_name as executor_team_name, bp.is_temporary, bp.army_id, bp.current_troops,
+              COALESCE(bp.temp_army_category, a.category, 'Swordsmen') as executor_category,
+              a.player_id as executor_player_id,
+              target_bp.current_troops as target_troops
+       FROM battle_goals bg
+       LEFT JOIN battle_participants bp ON bg.participant_id = bp.id
+       LEFT JOIN armies a ON bp.army_id = a.id
+       LEFT JOIN battle_participants target_bp ON bg.target_participant_id = target_bp.id
+       WHERE bg.id = $1 AND bg.battle_id = $2`,
+      [goalId, id]
+    );
+
+    if (goalResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Goal not found' });
+    }
+
+    const goal = goalResult.rows[0];
+    const campaign = await Campaign.findById(battle.campaign_id);
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+
+    if (!isDM && goal.executor_player_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized to resolve this goal' });
+    }
+
+    if (goal.status === 'resolved' || goal.status === 'applied') {
+      return res.json(goal);
+    }
+
+    let resolution = {
+      attacker_roll: null,
+      defender_roll: null,
+      logistics_roll: null,
+      roll_details: {},
+      advantage: 'none',
+      casualties_target: 0,
+      casualties_self: 0,
+      score_change_target: 0,
+      score_change_self: 0,
+      notes: ''
+    };
+
+    if (goal.goal_type === GOAL_TYPES.ATTACK) {
+      const targetDefend = await pool.query(
+        `SELECT id FROM battle_goals
+         WHERE battle_id = $1 AND round_number = $2 AND participant_id = $3 AND goal_type = $4`,
+        [battle.id, battle.current_round, goal.target_participant_id, GOAL_TYPES.DEFEND]
+      );
+
+      const attackerAdvantage = targetDefend.rows.length === 0;
+      const attackerRolls = attackerAdvantage ? [rollD100(), rollD100()] : [rollD100()];
+      const defenderRolls = attackerAdvantage ? [rollD100()] : [rollD100(), rollD100()];
+
+      const attackerRoll = Math.max(...attackerRolls);
+      const defenderRoll = Math.max(...defenderRolls);
+
+      const attackerWins = attackerRoll >= defenderRoll;
+      const losingTroops = attackerWins ? goal.target_troops : goal.current_troops;
+      const casualties = calculateCasualties(attackerWins ? attackerRoll : defenderRoll, losingTroops);
+
+      resolution = {
+        attacker_roll: attackerRoll,
+        defender_roll: defenderRoll,
+        logistics_roll: null,
+        roll_details: { attacker: attackerRolls, defender: defenderRolls },
+        advantage: attackerAdvantage ? 'attacker' : 'defender',
+        casualties_target: attackerWins ? casualties : 0,
+        casualties_self: attackerWins ? 0 : casualties,
+        score_change_target: 0,
+        score_change_self: 0,
+        notes: attackerWins ? 'Attacker wins the clash.' : 'Defender repels the attack.'
+      };
+    } else if (goal.goal_type === GOAL_TYPES.DEFEND) {
+      const attackers = await pool.query(
+        `SELECT id FROM battle_goals
+         WHERE battle_id = $1 AND round_number = $2 AND target_participant_id = $3 AND goal_type = $4`,
+        [battle.id, battle.current_round, goal.participant_id, GOAL_TYPES.ATTACK]
+      );
+
+      resolution.notes = attackers.rows.length === 0
+        ? 'No attackers targeted this army. Defensive stance unused.'
+        : 'Defensive stance applied during attacks.';
+    } else if (goal.goal_type === GOAL_TYPES.LOGISTICS) {
+      const logRoll = rollD100();
+      const scoreDelta = Math.max(1, Math.round((logRoll / 100) * 10));
+      const template = findGoalByKey(goal.goal_key);
+      if (template && template.effect === 'decrease_target') {
+        resolution.score_change_target = -scoreDelta;
+        resolution.score_change_self = 0;
+        resolution.notes = 'Enemy logistics disrupted.';
+      } else {
+        resolution.score_change_self = scoreDelta;
+        resolution.score_change_target = 0;
+        resolution.notes = 'Army logistics improved.';
+      }
+      resolution.logistics_roll = logRoll;
+      resolution.roll_details = { logistics: [logRoll] };
+    }
+
+    const updatedGoal = await Battle.resolveGoal(goal.id, resolution);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleGoalResolved', {
+        battleId: battle.id,
+        goal: updatedGoal,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json(updatedGoal);
+  } catch (error) {
+    console.error('Error resolving battle goal:', error);
+    res.status(500).json({ error: 'Failed to resolve battle goal' });
+  }
+});
+
+// DM can edit resolved goal outcomes
+router.patch('/battles/:id/goals/:goalId', authenticateToken, async (req, res) => {
+  try {
+    const { id, goalId } = req.params;
+    const { casualties_target, casualties_self, score_change_target, score_change_self, notes } = req.body;
+
+    const battle = await Battle.findById(id);
+    if (!battle) {
+      return res.status(404).json({ error: 'Battle not found' });
+    }
+
+    const campaign = await Campaign.findById(battle.campaign_id);
+    if (req.user.role !== 'Dungeon Master' || campaign.dungeon_master_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only Dungeon Master can edit goal results' });
+    }
+
+    const updatedGoal = await Battle.updateGoalResult(goalId, {
+      casualties_target: casualties_target || 0,
+      casualties_self: casualties_self || 0,
+      score_change_target: score_change_target || 0,
+      score_change_self: score_change_self || 0,
+      notes: notes || ''
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleGoalResolved', {
+        battleId: battle.id,
+        goal: updatedGoal,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json(updatedGoal);
+  } catch (error) {
+    console.error('Error updating goal result:', error);
+    res.status(500).json({ error: 'Failed to update goal result' });
+  }
+});
+
+// Apply all resolved goal results (DM only)
+router.post('/battles/:id/goals/apply', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const battle = await Battle.findById(id);
+    if (!battle) {
+      return res.status(404).json({ error: 'Battle not found' });
+    }
+
+    const campaign = await Campaign.findById(battle.campaign_id);
+    if (req.user.role !== 'Dungeon Master' || campaign.dungeon_master_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only Dungeon Master can apply goal results' });
+    }
+
+    const appliedGoals = await Battle.applyGoalResults(battle.id, battle.current_round);
+
+    const updatedBattle = await Battle.findById(battle.id);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleGoalsApplied', {
+        battleId: battle.id,
+        goals: appliedGoals,
+        participants: updatedBattle.participants,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({ goals: appliedGoals, battle: updatedBattle });
+  } catch (error) {
+    console.error('Error applying battle goal results:', error);
+    res.status(500).json({ error: 'Failed to apply goal results' });
+  }
+});
+
 
 
 
@@ -769,8 +1134,11 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
     for (const participant of participants) {
       if (!participant.is_temporary && participant.army_id) {
         // Find all goals chosen by this participant
-        const goalsResult = await Battle.findById(id);
-        const participantGoals = goalsResult.current_goals.filter(g => g.participant_id === participant.id);
+        const goalsResult = await pool.query(
+          `SELECT * FROM battle_goals WHERE battle_id = $1 AND participant_id = $2 ORDER BY round_number`,
+          [id, participant.id]
+        );
+        const participantGoals = goalsResult.rows || [];
         
         // Determine result based on team victory
         const participantTeamScore = teamScores[participant.team_name];
