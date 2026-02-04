@@ -1,28 +1,5 @@
 // Campaign-related TypeScript interfaces and types
 
-export interface BattleGoalDefinition {
-  name: string;
-  category: 'Command' | 'Strategy' | 'Assault' | 'Combat' | 'Misc';
-  requirement: string;
-  required_army_category?: string[];
-  test_type: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | 'Attack' | 'Saving Throw' | 'Combat' | 'Numbers' | 'Equipment';
-  army_stat?: 'numbers' | 'equipment' | 'discipline' | 'morale' | 'command' | 'logistics';
-  uses_character_stat?: boolean;
-  uses_army_stat?: boolean;
-  use_highest_modifier?: boolean;
-  targets_enemy: boolean;
-  reward: string;
-  fail: string;
-  description: string;
-  requires_combat?: boolean;
-  min_round?: number;
-  max_round?: number;
-  only_when_losing?: boolean;
-  is_defensive?: boolean;
-  can_kill?: boolean;
-  defensive_kill_only?: boolean;
-}
-
 export interface ArmyStats {
   equipment: number;
   discipline: number;

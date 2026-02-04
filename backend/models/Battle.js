@@ -25,7 +25,7 @@ class Battle {
     }
   }
   
-  // Find battle by ID with all participants and goals
+  // Find battle by ID with all participants
   static async findById(battleId) {
     try {
       const battleResult = await pool.query(
@@ -56,19 +56,6 @@ class Battle {
       );
       
       battle.participants = participantsResult.rows;
-      
-      // Get goals for current round
-      const goalsResult = await pool.query(
-        `SELECT bg.*, bg.team_name, bp_target.team_name as target_team_name,
-                bp_target.temp_army_name as target_army_name, bp_target.army_id as target_army_id
-         FROM battle_goals bg
-         LEFT JOIN battle_participants bp_target ON bg.target_participant_id = bp_target.id
-         WHERE bg.battle_id = $1 AND bg.round_number = $2
-         ORDER BY bg.team_name, bg.id`,
-        [battleId, battle.current_round]
-      );
-      
-      battle.current_goals = goalsResult.rows;
       
       return battle;
     } catch (error) {
@@ -121,13 +108,6 @@ class Battle {
         [battleId]
       );
       
-      // Reset has_selected_goal for all participants in this battle
-      await pool.query(
-        `UPDATE battle_participants SET has_selected_goal = false
-         WHERE battle_id = $1`,
-        [battleId]
-      );
-      
       return result.rows[0];
     } catch (error) {
       throw error;
@@ -162,8 +142,8 @@ class Battle {
     try {
       const result = await pool.query(
         `INSERT INTO battle_participants 
-         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_troops, temp_army_stats, position_x, position_y, base_score, current_score, current_troops, has_selected_goal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, false)
+         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_troops, temp_army_stats, position_x, position_y, base_score, current_score, current_troops)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12)
          RETURNING *`,
         [battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category,
          temp_army_troops, temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y, current_troops]
@@ -253,170 +233,6 @@ class Battle {
           await pool.query(
             `UPDATE battle_participants SET current_score = current_score + $2 WHERE id = $1`,
             [participant.id, diceRoll]
-          );
-        }
-      }
-    } catch (error) {
-      throw error;
-    }
-  }
-  
-  // Add or update a battle goal (army-based: each army can select its own goal per round)
-  static async setGoal(goalData) {
-    const {
-      battle_id,
-      round_number,
-      participant_id,
-      goal_name,
-      target_participant_id,
-      test_type,
-      character_modifier = 0,
-      army_stat_modifier = 0
-    } = goalData;
-    
-    try {
-      // Get the team name from the participant
-      const participantResult = await pool.query(
-        `SELECT team_name FROM battle_participants WHERE id = $1`,
-        [participant_id]
-      );
-      
-      if (participantResult.rows.length === 0) {
-        throw new Error('Participant not found');
-      }
-      
-      const team_name = participantResult.rows[0].team_name;
-      
-      // Check if goal already exists for this specific PARTICIPANT (army) and round
-      const existing = await pool.query(
-        `SELECT id FROM battle_goals 
-         WHERE battle_id = $1 AND round_number = $2 AND participant_id = $3`,
-        [battle_id, round_number, participant_id]
-      );
-      
-      if (existing.rows.length > 0) {
-        // Update existing goal for this participant
-        const result = await pool.query(
-          `UPDATE battle_goals 
-           SET goal_name = $4, target_participant_id = $5, test_type = $6, 
-               character_modifier = $7, army_stat_modifier = $8
-           WHERE id = $1 AND battle_id = $2 AND round_number = $3
-           RETURNING *`,
-          [existing.rows[0].id, battle_id, round_number, goal_name, target_participant_id, 
-           test_type, character_modifier, army_stat_modifier]
-        );
-        return result.rows[0];
-      } else {
-        // Insert new goal for this participant
-        const result = await pool.query(
-          `INSERT INTO battle_goals 
-           (battle_id, round_number, participant_id, team_name, goal_name, target_participant_id, 
-            test_type, character_modifier, army_stat_modifier, locked_in)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
-           RETURNING *`,
-          [battle_id, round_number, participant_id, team_name, goal_name, target_participant_id, 
-           test_type, character_modifier, army_stat_modifier]
-        );
-        
-        // Mark ONLY THIS participant as having selected a goal (not the entire team)
-        await pool.query(
-          `UPDATE battle_participants SET has_selected_goal = true 
-           WHERE id = $1`,
-          [participant_id]
-        );
-        
-        return result.rows[0];
-      }
-    } catch (error) {
-      throw error;
-    }
-  }
-  
-  // Lock in a goal
-  static async lockGoal(goalId, locked = true) {
-    try {
-      const result = await pool.query(
-        `UPDATE battle_goals SET locked_in = $2 WHERE id = $1 RETURNING *`,
-        [goalId, locked]
-      );
-      return result.rows[0];
-    } catch (error) {
-      throw error;
-    }
-  }
-  
-  // Update goal roll
-  static async updateGoalRoll(goalId, diceRoll) {
-    try {
-      const result = await pool.query(
-        `UPDATE battle_goals SET dice_roll = $2 WHERE id = $1 RETURNING *`,
-        [goalId, diceRoll]
-      );
-      return result.rows[0];
-    } catch (error) {
-      throw error;
-    }
-  }
-  
-  // Resolve goal (DM sets DC and success)
-  // Resolve goal and immediately apply modifier to team
-  static async resolveGoal(goalId, dcRequired, success, modifierApplied) {
-    try {
-      // Update goal with resolution
-      const result = await pool.query(
-        `UPDATE battle_goals 
-         SET dc_required = $2, success = $3, modifier_applied = $4
-         WHERE id = $1
-         RETURNING *`,
-        [goalId, dcRequired, success, modifierApplied]
-      );
-      
-      const goal = result.rows[0];
-      
-      // Apply modifier only to the executor (the army that executed the goal)
-      // Target score changes are handled separately via updateParticipantScore
-      if (goal.participant_id && modifierApplied !== 0) {
-        await pool.query(
-          `UPDATE battle_participants 
-           SET current_score = current_score + $2
-           WHERE id = $1`,
-          [goal.participant_id, modifierApplied]
-        );
-      }
-      
-      return goal;
-    } catch (error) {
-      throw error;
-    }
-  }
-  
-  // Apply goal modifiers to participant scores
-  static async applyModifiers(battleId, roundNumber) {
-    try {
-      const goals = await pool.query(
-        `SELECT * FROM battle_goals 
-         WHERE battle_id = $1 AND round_number = $2 AND success IS NOT NULL`,
-        [battleId, roundNumber]
-      );
-      
-      for (const goal of goals.rows) {
-        // Apply positive modifier only to the army that executed the goal
-        if (goal.participant_id && goal.modifier_applied !== 0) {
-          await pool.query(
-            `UPDATE battle_participants 
-             SET current_score = current_score + $2
-             WHERE id = $1`,
-            [goal.participant_id, goal.modifier_applied]
-          );
-        }
-        
-        // Apply negative modifier to target army only (not entire team)
-        if (goal.target_participant_id && goal.modifier_applied !== 0) {
-          await pool.query(
-            `UPDATE battle_participants 
-             SET current_score = current_score - $2
-             WHERE id = $1`,
-            [goal.target_participant_id, goal.modifier_applied]
           );
         }
       }
@@ -592,8 +408,8 @@ class Battle {
         const current_troops = armyResult.rows.length > 0 ? armyResult.rows[0].total_troops : 100;
         
         const result = await pool.query(
-          `INSERT INTO battle_participants (battle_id, army_id, team_name, faction_color, is_temporary, current_troops, has_selected_goal)
-           VALUES ($1, $2, $3, $4, FALSE, $5, FALSE)
+          `INSERT INTO battle_participants (battle_id, army_id, team_name, faction_color, is_temporary, current_troops)
+           VALUES ($1, $2, $3, $4, FALSE, $5)
            RETURNING *`,
           [invitation.battle_id, armyId, invitation.team_name, invitation.faction_color, current_troops]
         );

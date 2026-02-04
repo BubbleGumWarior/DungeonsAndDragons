@@ -429,7 +429,7 @@ const runMigrations = async () => {
         campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
         battle_name VARCHAR(255) NOT NULL,
         terrain_description TEXT,
-        status VARCHAR(50) DEFAULT 'planning' CHECK (status IN ('planning', 'goal_selection', 'resolution', 'completed', 'cancelled')),
+        status VARCHAR(50) DEFAULT 'planning' CHECK (status IN ('planning', 'resolution', 'completed', 'cancelled')),
         current_round INTEGER DEFAULT 0,
         total_rounds INTEGER DEFAULT 5,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -459,7 +459,6 @@ const runMigrations = async () => {
         base_score INTEGER DEFAULT 0,
         position_x DECIMAL(5,2) DEFAULT 50.00,
         position_y DECIMAL(5,2) DEFAULT 50.00,
-        has_selected_goal BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -495,39 +494,6 @@ const runMigrations = async () => {
     `);
 
     console.log('✅ battle_invitations table created successfully');
-
-    // Create battle_goals table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS battle_goals (
-        id SERIAL PRIMARY KEY,
-        battle_id INTEGER NOT NULL REFERENCES battles(id) ON DELETE CASCADE,
-        round_number INTEGER NOT NULL,
-        participant_id INTEGER NOT NULL REFERENCES battle_participants(id) ON DELETE CASCADE,
-        goal_name VARCHAR(255) NOT NULL,
-        target_participant_id INTEGER REFERENCES battle_participants(id) ON DELETE CASCADE,
-        test_type VARCHAR(100),
-        character_modifier INTEGER DEFAULT 0,
-        army_stat_modifier INTEGER DEFAULT 0,
-        dice_roll INTEGER,
-        dc_required INTEGER,
-        success BOOLEAN,
-        modifier_applied INTEGER DEFAULT 0,
-        locked_in BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_battle_goals_battle ON battle_goals(battle_id);
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_battle_goals_participant ON battle_goals(participant_id);
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_battle_goals_round ON battle_goals(battle_id, round_number);
-    `);
-
-    console.log('✅ battle_goals table created successfully');
     
     console.log('Database migrations completed successfully');
   } catch (error) {

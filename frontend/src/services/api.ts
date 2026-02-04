@@ -579,13 +579,12 @@ export interface Battle {
   campaign_id: number;
   battle_name: string;
   terrain_description: string;
-  status: 'planning' | 'goal_selection' | 'resolution' | 'completed' | 'cancelled';
+  status: 'planning' | 'resolution' | 'completed' | 'cancelled';
   current_round: number;
-  total_rounds?: number;
+  total_rounds: number;
   created_at: string;
   updated_at: string;
   participants?: BattleParticipant[];
-  current_goals?: BattleGoal[];
 }
 
 export interface BattleParticipant {
@@ -609,7 +608,6 @@ export interface BattleParticipant {
   base_score: number;
   position_x: number;
   position_y: number;
-  has_selected_goal?: boolean;
   army_name?: string;
   army_category?: string;
   player_name?: string;
@@ -623,26 +621,6 @@ export interface BattleParticipant {
   command?: number;
   logistics?: number;
   character_abilities?: any;
-}
-
-export interface BattleGoal {
-  id: number;
-  battle_id: number;
-  round_number: number;
-  participant_id: number;
-  goal_name: string;
-  target_participant_id: number | null;
-  test_type: string;
-  character_modifier: number;
-  army_stat_modifier: number;
-  dice_roll: number | null;
-  dc_required: number | null;
-  success: boolean | null;
-  modifier_applied: number;
-  locked_in: boolean;
-  created_at: string;
-  team_name?: string;
-  target_team_name?: string;
 }
 
 // Army API
@@ -731,36 +709,6 @@ export const battleAPI = {
 
   calculateBaseScores: async (battleId: number): Promise<Battle> => {
     const response = await api.post(`/armies/battles/${battleId}/calculate-base-scores`);
-    return response.data;
-  },
-
-  setGoal: async (battleId: number, goalData: Partial<BattleGoal>): Promise<BattleGoal> => {
-    const response = await api.post(`/armies/battles/${battleId}/goals`, goalData);
-    return response.data;
-  },
-
-  lockGoal: async (goalId: number, locked: boolean): Promise<BattleGoal> => {
-    const response = await api.put(`/armies/battles/goals/${goalId}/lock`, { locked });
-    return response.data;
-  },
-
-  updateGoalRoll: async (goalId: number, diceRoll: number): Promise<BattleGoal> => {
-    const response = await api.put(`/armies/battles/goals/${goalId}/roll`, { dice_roll: diceRoll });
-    return response.data;
-  },
-
-  resolveGoal: async (goalId: number, dcRequired: number, success: boolean, modifierApplied: number, rollTotal?: number): Promise<BattleGoal> => {
-    const response = await api.put(`/armies/battles/goals/${goalId}/resolve`, {
-      dc_required: dcRequired,
-      success,
-      modifier_applied: modifierApplied,
-      roll_total: rollTotal
-    });
-    return response.data;
-  },
-
-  applyModifiers: async (battleId: number, roundNumber: number): Promise<Battle> => {
-    const response = await api.post(`/armies/battles/${battleId}/apply-modifiers`, { round_number: roundNumber });
     return response.data;
   },
 
