@@ -16,6 +16,8 @@ async function addArmyCategory() {
       SET category = 'Swordsmen' 
       WHERE category IS NULL OR category NOT IN (
         'Royal Guard',
+        'Knights',
+        'Assassins',
         'Swordsmen',
         'Shield Wall',
         'Spear Wall',
@@ -34,7 +36,9 @@ async function addArmyCategory() {
         'Trebuchets',
         'Ballistae',
         'Siege Towers',
-        'Bombards'
+        'Bombards',
+        'Scouts',
+        'Spies'
       );
     `);
 
@@ -49,6 +53,8 @@ async function addArmyCategory() {
           ADD CONSTRAINT armies_category_check 
           CHECK (category IN (
             'Royal Guard',
+            'Knights',
+            'Assassins',
             'Swordsmen',
             'Shield Wall',
             'Spear Wall',
@@ -67,7 +73,9 @@ async function addArmyCategory() {
             'Trebuchets',
             'Ballistae',
             'Siege Towers',
-            'Bombards'
+            'Bombards',
+            'Scouts',
+            'Spies'
           ));
         END IF;
       END $$;

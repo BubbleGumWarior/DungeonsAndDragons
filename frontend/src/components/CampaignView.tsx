@@ -232,7 +232,7 @@ const CampaignView: React.FC = () => {
   const [showGoalSelectionModal, setShowGoalSelectionModal] = useState(false);
   const [showGoalResolutionModal, setShowGoalResolutionModal] = useState(false);
   const [selectedGoalArmyId, setSelectedGoalArmyId] = useState<number | null>(null);
-  const [goalSelections, setGoalSelections] = useState<Record<number, { goalKey?: string; targetId?: number | null }>>({});
+  const [goalSelections, setGoalSelections] = useState<Record<number, { goalKey?: string; targetId?: number | null; activeTab?: 'attacking' | 'defending' | 'logistics' | 'commander' | 'unique' }>>({});
   const [goalEdits, setGoalEdits] = useState<Record<number, { casualties_target: number; casualties_self: number; score_change_target: number; score_change_self: number; notes?: string }>>({});
   const [showBackstoryModal, setShowBackstoryModal] = useState(false);
   const [showAddArmyModal, setShowAddArmyModal] = useState(false);
@@ -4003,6 +4003,10 @@ const CampaignView: React.FC = () => {
                             <button
                               onClick={async () => {
                                 try {
+                                  // Close modals before advancing round
+                                  setShowGoalSelectionModal(false);
+                                  setShowGoalResolutionModal(false);
+                                  
                                   await battleAPI.advanceRound(activeBattle.id);
                                   const updated = await battleAPI.getBattle(activeBattle.id);
                                   setActiveBattle(updated);
@@ -4493,10 +4497,10 @@ const CampaignView: React.FC = () => {
 
                           const panelWidth =
                             count === 1
-                              ? 'min(900px, 92vw)'
+                              ? 'min(1150px, 98vw)'
                               : count === 2
-                              ? 'min(720px, 42vw)'
-                              : 'min(560px, 30vw)';
+                              ? 'min(850px, 48vw)'
+                              : 'min(700px, 35vw)';
 
                           const panelBase: React.CSSProperties = {
                             position: 'fixed',
@@ -4694,13 +4698,13 @@ const CampaignView: React.FC = () => {
                                 style={{
                                   ...panelBase,
                                   left: getLeft('selection'),
-                                  background: 'linear-gradient(135deg, rgba(25, 20, 10, 0.98), rgba(40, 30, 15, 0.98))',
-                                  border: '3px solid rgba(234, 179, 8, 0.6)',
+                                  background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
+                                  border: '3px solid var(--border-gold)',
                                   ...getVisibility(showGoalSelectionModal)
                                 }}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                  <h5 style={{ color: '#facc15', margin: 0 }}>🎯 Goal Selection</h5>
+                                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🎯 Goal Selection</h5>
                                   <button
                                     onClick={() => setShowGoalSelectionModal(false)}
                                     style={{
@@ -4723,7 +4727,32 @@ const CampaignView: React.FC = () => {
                                     const selectedParticipant = selectedGoalArmyId
                                       ? (activeBattle.participants || []).find(p => p.id === selectedGoalArmyId)
                                       : selectable[0];
-                                    const selectedCategory = selectedParticipant?.temp_army_category || selectedParticipant?.army_category || 'Swordsmen';
+                                    
+                                    // For non-temporary armies, prefer army_category from armies table
+                                    // For temporary armies, use temp_army_category
+                                    const selectedCategory = selectedParticipant?.is_temporary
+                                      ? (selectedParticipant?.temp_army_category || 'Swordsmen')
+                                      : (selectedParticipant?.army_category || selectedParticipant?.temp_army_category || 'Swordsmen');
+                                    
+                                    // DEBUG: Log category info
+                                    console.log(`🔍 Battle Goal Selection Debug:`, {
+                                      participantId: selectedParticipant?.id,
+                                      participantName: selectedParticipant?.temp_army_name || selectedParticipant?.army_name,
+                                      is_temporary: selectedParticipant?.is_temporary,
+                                      temp_army_category: selectedParticipant?.temp_army_category,
+                                      army_category: selectedParticipant?.army_category,
+                                      finalSelectedCategory: selectedCategory,
+                                      allParticipantData: selectedParticipant ? {
+                                        id: selectedParticipant.id,
+                                        army_name: selectedParticipant.army_name,
+                                        team_name: selectedParticipant.team_name,
+                                        current_troops: selectedParticipant.current_troops,
+                                        is_temporary: selectedParticipant.is_temporary,
+                                        temp_army_category: selectedParticipant.temp_army_category,
+                                        army_category: selectedParticipant.army_category
+                                      } : null
+                                    });
+                                    
                                     const selectedGoal = selectedParticipant
                                       ? battleGoals.find(g => g.participant_id === selectedParticipant.id)
                                       : undefined;
@@ -4766,55 +4795,147 @@ const CampaignView: React.FC = () => {
                                           </div>
                                         </div>
 
-                                        <div style={{ flex: '2 1 520px', minWidth: '320px' }}>
+                                        <div style={{ flex: '2 1 520px', minWidth: '320px', overflow: 'visible', display: 'flex', flexDirection: 'column' }}>
                                           {selectedParticipant ? (
                                             <>
-                                              <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                                              <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '1rem' }}>
                                                 {getBattleParticipantName(selectedParticipant)} · {selectedCategory}
                                               </div>
                                               {selectedGoal && (
-                                                <div style={{ marginBottom: '0.75rem', color: '#4ade80' }}>
-                                                  Selected: {selectedGoal.goal_name}{selectedGoal.target_army_name ? ` → ${selectedGoal.target_army_name}` : ''}
+                                                <div style={{ marginBottom: '1rem', padding: '0.6rem', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.4)', borderRadius: '0.4rem', color: '#4ade80' }}>
+                                                  ✅ Selected: {selectedGoal.goal_name}{selectedGoal.target_army_name ? ` → ${selectedGoal.target_army_name}` : ''}
                                                 </div>
                                               )}
 
-                                              {(['attacking', 'defending', 'logistics'] as const).map(section => (
-                                                <div key={section} style={{ marginBottom: '0.75rem' }}>
-                                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.35rem', textTransform: 'capitalize' }}>{section}</div>
-                                                  <div style={{ display: 'grid', gap: '0.5rem' }}>
-                                                    {BATTLE_GOALS[section]
-                                                      .filter(goal => isGoalEligible(goal, selectedCategory))
-                                                      .map(goal => (
+                                              {/* Tab Navigation */}
+                                              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem', borderBottom: '2px solid rgba(212, 193, 156, 0.2)', width: '100%', overflowX: 'visible', overflowY: 'visible', position: 'relative', zIndex: 100 }}>
+                                                {(['attacking', 'defending', 'logistics', 'commander', 'unique'] as const).map(section => {
+                                                  const isActive = goalSelections[selectedParticipant.id]?.activeTab === section;
+                                                  return (
+                                                    <button
+                                                      key={section}
+                                                      onClick={() => {
+                                                        setGoalSelections(prev => ({
+                                                          ...prev,
+                                                          [selectedParticipant.id]: {
+                                                            ...prev[selectedParticipant.id],
+                                                            activeTab: section
+                                                          }
+                                                        }));
+                                                      }}
+                                                      style={{
+                                                        flex: '0 0 auto',
+                                                        minWidth: 'fit-content',
+                                                        padding: '0.9rem 1.2rem',
+                                                        whiteSpace: 'nowrap',
+                                                        fontWeight: isActive ? 'bold' : 'normal',
+                                                        background: isActive ? 'rgba(234, 179, 8, 0.2)' : 'rgba(255, 255, 255, 0.01)',
+                                                        border: '1px solid rgba(212, 193, 156, 0.2)',
+                                                        borderBottom: isActive ? '2px solid var(--border-gold)' : '1px solid rgba(212, 193, 156, 0.2)',
+                                                        color: isActive ? 'var(--text-gold)' : 'var(--text-muted)',
+                                                        cursor: 'pointer',
+                                                        borderRadius: '0.3rem 0.3rem 0 0',
+                                                        fontSize: '0.85rem',
+                                                        transition: 'all 0.2s ease',
+                                                        pointerEvents: 'auto',
+                                                        position: 'relative',
+                                                        zIndex: 101,
+                                                        userSelect: 'none'
+                                                      }}
+                                                    >
+                                                      {section === 'attacking' && '⚔️ Attacking'}
+                                                      {section === 'defending' && '🛡️ Defending'}
+                                                      {section === 'logistics' && '📦 Logistics'}
+                                                      {section === 'commander' && '👑 Commander'}
+                                                      {section === 'unique' && '✨ Unique'}
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+
+                                              {/* Goals for Active Tab */}
+                                              {(() => {
+                                                const activeTab = (goalSelections[selectedParticipant.id]?.activeTab || 'attacking') as 'attacking' | 'defending' | 'logistics' | 'commander' | 'unique';
+                                                const goals = BATTLE_GOALS[activeTab];
+                                                
+                                                // Handle empty categories
+                                                if (!goals || goals.length === 0) {
+                                                  return (
+                                                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                                      <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+                                                        {activeTab === 'commander' && '👑'}
+                                                        {activeTab === 'unique' && '✨'}
+                                                      </div>
+                                                      <div>Coming Soon...</div>
+                                                    </div>
+                                                  );
+                                                }
+                                                
+                                                return (
+                                                  <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                                    {goals.map(goal => {
+                                                      const isEligible = isGoalEligible(goal, selectedCategory);
+                                                      const isSelected = goalSelections[selectedParticipant.id]?.goalKey === goal.key;
+                                                      
+                                                      // DEBUG: Log eligibility check for each goal
+                                                      console.log(`  ✓ Goal "${goal.name}": eligible=${isEligible}, category="${selectedCategory}", allowed_categories=${goal.eligible_categories}`);
+                                                      
+                                                      return (
                                                         <button
                                                           key={goal.key}
                                                           onClick={() => {
-                                                            setGoalSelections(prev => ({
-                                                              ...prev,
-                                                              [selectedParticipant.id]: {
-                                                                ...prev[selectedParticipant.id],
-                                                                goalKey: goal.key
-                                                              }
-                                                            }));
+                                                            if (isEligible) {
+                                                              setGoalSelections(prev => ({
+                                                                ...prev,
+                                                                [selectedParticipant.id]: {
+                                                                  ...prev[selectedParticipant.id],
+                                                                  goalKey: goal.key
+                                                                }
+                                                              }));
+                                                            }
                                                           }}
+                                                          disabled={!isEligible}
+                                                          title={!isEligible ? goal.lock_reason || 'Not eligible for this unit' : ''}
                                                           style={{
                                                             textAlign: 'left',
-                                                            padding: '0.6rem 0.8rem',
-                                                            borderRadius: '0.6rem',
-                                                            border: goalSelections[selectedParticipant.id]?.goalKey === goal.key
+                                                            padding: '0.7rem',
+                                                            borderRadius: '0.5rem',
+                                                            border: isSelected
                                                               ? '2px solid rgba(234, 179, 8, 0.9)'
-                                                              : '1px solid rgba(212, 193, 156, 0.3)',
-                                                            background: 'rgba(255, 255, 255, 0.03)',
-                                                            color: '#e2e8f0',
-                                                            cursor: 'pointer'
+                                                              : isEligible
+                                                              ? '1px solid rgba(212, 193, 156, 0.3)'
+                                                              : '1px solid rgba(139, 92, 246, 0.3)',
+                                                            background: isSelected
+                                                              ? 'rgba(234, 179, 8, 0.1)'
+                                                              : isEligible
+                                                              ? 'rgba(255, 255, 255, 0.03)'
+                                                              : 'rgba(139, 92, 246, 0.08)',
+                                                            color: isEligible ? '#e2e8f0' : 'rgba(226, 232, 240, 0.6)',
+                                                            cursor: isEligible ? 'pointer' : 'not-allowed',
+                                                            opacity: isEligible ? 1 : 0.7
                                                           }}
                                                         >
-                                                          <div style={{ fontWeight: 'bold' }}>{goal.name}</div>
-                                                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{goal.description}</div>
+                                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <div style={{ flex: 1 }}>
+                                                              <div style={{ fontWeight: 'bold' }}>
+                                                                {isSelected && '✓ '}{goal.name}
+                                                              </div>
+                                                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                {goal.description}
+                                                              </div>
+                                                            </div>
+                                                            {!isEligible && (
+                                                              <div style={{ fontSize: '1.2rem' }} title={goal.lock_reason || 'Not eligible'}>
+                                                                🔒
+                                                              </div>
+                                                            )}
+                                                          </div>
                                                         </button>
-                                                      ))}
+                                                      );
+                                                    })}
                                                   </div>
-                                                </div>
-                                              ))}
+                                                );
+                                              })()}
 
                                               {(() => {
                                                 const selection = goalSelections[selectedParticipant.id];
@@ -4822,7 +4943,7 @@ const CampaignView: React.FC = () => {
                                                 const goal = findGoalByKey(selection.goalKey);
                                                 if (!goal || goal.target_type !== 'enemy') return null;
                                                 return (
-                                                  <div style={{ marginBottom: '0.75rem' }}>
+                                                  <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
                                                     <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Target Army</label>
                                                     <select
                                                       value={selection.targetId || ''}
@@ -4879,6 +5000,7 @@ const CampaignView: React.FC = () => {
                                                   }
                                                 }}
                                                 style={{
+                                                  marginTop: '1rem',
                                                   padding: '0.55rem 1.2rem',
                                                   background: 'rgba(34, 197, 94, 0.25)',
                                                   border: '1px solid rgba(34, 197, 94, 0.5)',
@@ -4896,46 +5018,50 @@ const CampaignView: React.FC = () => {
                                           )}
                                         </div>
 
-                                        <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
-                                          <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Waiting On</div>
-                                          {(() => {
-                                            const teamMap: Record<string, { total: number; selected: number }> = {};
-                                            (activeBattle.participants || []).forEach(p => {
-                                              if ((p.current_troops || 0) <= 0) return;
-                                              if (!teamMap[p.team_name]) {
-                                                teamMap[p.team_name] = { total: 0, selected: 0 };
-                                              }
-                                              teamMap[p.team_name].total += 1;
-                                              if (p.has_selected_goal) teamMap[p.team_name].selected += 1;
-                                            });
-
-                                            return Object.entries(teamMap).map(([teamName, stats]) => (
-                                              <div key={teamName} style={{ marginBottom: '0.5rem', color: '#e2e8f0' }}>
-                                                <div style={{ fontWeight: 'bold' }}>{teamName}</div>
-                                                <div style={{ fontSize: '0.8rem', color: stats.selected === stats.total ? '#4ade80' : '#facc15' }}>
-                                                  {stats.selected}/{stats.total} armies ready
-                                                </div>
-                                              </div>
-                                            ));
-                                          })()}
-                                        </div>
                                       </>
                                     );
                                   })()}
                                 </div>
+
+                                {/* Waiting On Section - Below the flex container */}
+                                <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '2px solid rgba(212, 193, 156, 0.2)' }}>
+                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Waiting On</div>
+                                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                                    {(() => {
+                                      const teamMap: Record<string, { total: number; selected: number }> = {};
+                                      (activeBattle.participants || []).forEach(p => {
+                                        if ((p.current_troops || 0) <= 0) return;
+                                        if (!teamMap[p.team_name]) {
+                                          teamMap[p.team_name] = { total: 0, selected: 0 };
+                                        }
+                                        teamMap[p.team_name].total += 1;
+                                        if (p.has_selected_goal) teamMap[p.team_name].selected += 1;
+                                      });
+
+                                      return Object.entries(teamMap).map(([teamName, stats]) => (
+                                        <div key={teamName} style={{ marginBottom: '0.5rem', color: '#e2e8f0' }}>
+                                          <div style={{ fontWeight: 'bold' }}>{teamName}</div>
+                                          <div style={{ fontSize: '0.8rem', color: stats.selected === stats.total ? '#4ade80' : '#facc15' }}>
+                                            {stats.selected}/{stats.total} armies ready
+                                          </div>
+                                        </div>
+                                      ));
+                                    })()}
+                                  </div>
+                                </div>
                               </div>
 
-                              <div
-                                style={{
-                                  ...panelBase,
-                                  left: getLeft('resolution'),
-                                  background: 'linear-gradient(135deg, rgba(20, 10, 10, 0.98), rgba(35, 15, 15, 0.98))',
-                                  border: '3px solid rgba(239, 68, 68, 0.6)',
-                                  ...getVisibility(showGoalResolutionModal)
-                                }}
-                              >
+                              {showGoalResolutionModal && (
+                                <div
+                                  style={{
+                                    ...panelBase,
+                                    left: getLeft('resolution'),
+                                    background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
+                                    border: '3px solid var(--border-gold)'
+                                  }}
+                                >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                  <h5 style={{ color: '#f87171', margin: 0 }}>⚔️ Goal Resolution</h5>
+                                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Goal Resolution</h5>
                                   <button
                                     onClick={() => setShowGoalResolutionModal(false)}
                                     style={{
@@ -5164,6 +5290,7 @@ const CampaignView: React.FC = () => {
                                   )}
                                 </div>
                               </div>
+                            )}
                             </>
                           );
                         })()}

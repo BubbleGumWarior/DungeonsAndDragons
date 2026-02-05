@@ -39,8 +39,11 @@ class Battle {
       
       // Get participants with character abilities
       const participantsResult = await pool.query(
-        `SELECT bp.*, a.name as army_name,
-                COALESCE(a.category, bp.temp_army_category, 'Swordsmen') as army_category,
+        `SELECT bp.id, bp.battle_id, bp.army_id, bp.team_name, bp.faction_color, 
+                bp.is_temporary, bp.temp_army_name, bp.temp_army_category, bp.temp_army_stats,
+                bp.current_score, bp.base_score, bp.position_x, bp.position_y, bp.created_at,
+                bp.current_troops, bp.has_selected_goal,
+                a.name as army_name, a.category as army_category,
                 a.numbers, a.equipment, a.discipline, 
                 a.morale, a.command, a.logistics, a.player_id, 
                 COALESCE(a.total_troops, bp.temp_army_troops) as army_total_troops,
@@ -55,7 +58,22 @@ class Battle {
         [battleId, battle.campaign_id]
       );
       
-      battle.participants = participantsResult.rows;
+      battle.participants = participantsResult.rows.map(p => ({
+        ...p,
+        // Ensure army_category is properly set (prefer armies table category over temp)
+        army_category: p.army_category || p.temp_army_category || 'Swordsmen'
+      }));
+      
+      // DEBUG: Log what we're returning for Assassins army
+      const assassinsParticipant = battle.participants.find(p => p.army_name === 'Assassins');
+      if (assassinsParticipant) {
+        console.log(`✅ Battle.findById - Assassins participant:`, {
+          id: assassinsParticipant.id,
+          army_name: assassinsParticipant.army_name,
+          army_category: assassinsParticipant.army_category,
+          temp_army_category: assassinsParticipant.temp_army_category
+        });
+      }
       
       return battle;
     } catch (error) {
@@ -101,6 +119,27 @@ class Battle {
   // Advance to next round
   static async advanceRound(battleId) {
     try {
+      // Check if only one faction with troops remains
+      const factionCheck = await pool.query(
+        `SELECT DISTINCT team_name 
+         FROM battle_participants 
+         WHERE battle_id = $1 AND current_troops > 0
+         GROUP BY team_name`,
+        [battleId]
+      );
+
+      // If only one or zero factions have troops, end the battle
+      if (factionCheck.rows.length <= 1) {
+        const endResult = await pool.query(
+          `UPDATE battles SET status = 'completed', updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1
+           RETURNING *`,
+          [battleId]
+        );
+        return endResult.rows[0];
+      }
+
+      // Otherwise, advance to next round normally
       const result = await pool.query(
         `UPDATE battles SET current_round = current_round + 1, status = 'goal_selection', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1

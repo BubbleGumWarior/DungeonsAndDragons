@@ -17,6 +17,14 @@ const GOAL_CATEGORIES = {
 const BATTLE_GOALS = {
   attacking: [
     {
+      key: 'basic_attack',
+      name: 'Basic Attack',
+      description: 'A straightforward frontal assault against the enemy. Available to all units.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: []
+    },
+    {
       key: 'cavalry_charge',
       name: 'Cavalry Charge',
       description: 'A devastating mounted charge aimed at breaking enemy lines.',
@@ -38,7 +46,7 @@ const BATTLE_GOALS = {
       description: 'A disciplined spear thrust against a chosen enemy.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Spear Wall', 'Pikemen', 'Heavy Infantry', 'Swordsmen']
+      eligible_categories: ['Spear Wall', 'Pikemen', 'Heavy Infantry']
     },
     {
       key: 'artillery_volley',
@@ -47,6 +55,22 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
       eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards']
+    },
+    {
+      key: 'flanking_strike',
+      name: 'Flanking Strike',
+      description: 'Execute a coordinated attack on enemy flanks and weak points.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Light Cavalry', 'Scouts', 'Light Infantry', 'Lancers']
+    },
+    {
+      key: 'overwhelming_assault',
+      name: 'Overwhelming Assault',
+      description: 'All-out frontal assault with maximum force deployment.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard']
     }
   ],
   defending: [
@@ -81,6 +105,22 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
       eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards', 'Siege Towers']
+    },
+    {
+      key: 'shield_wall',
+      name: 'Shield Wall',
+      description: 'Form an impenetrable wall of shields and armor, maximizing defense.',
+      goal_type: GOAL_TYPES.DEFEND,
+      target_type: 'self',
+      eligible_categories: ['Shield Wall', 'Heavy Infantry', 'Royal Guard', 'Pikemen']
+    },
+    {
+      key: 'guerrilla_tactics',
+      name: 'Guerrilla Tactics',
+      description: 'Use evasion and mobility to avoid and counter enemy attacks.',
+      goal_type: GOAL_TYPES.DEFEND,
+      target_type: 'self',
+      eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Mounted Archers']
     }
   ],
   logistics: [
@@ -119,10 +159,40 @@ const BATTLE_GOALS = {
       target_type: 'enemy',
       effect: 'decrease_target',
       eligible_categories: ['Spies', 'Scouts']
+    },
+    {
+      key: 'supply_cache',
+      name: 'Establish Supply Cache',
+      description: 'Create hidden supply stations across the battlefield for sustained operations.',
+      goal_type: GOAL_TYPES.LOGISTICS,
+      target_type: 'self',
+      effect: 'increase_self',
+      eligible_categories: ['Scouts', 'Light Cavalry', 'Spies']
+    },
+    {
+      key: 'field_medical',
+      name: 'Deploy Field Medical',
+      description: 'Set up medical stations to reduce casualty impact and sustain forces.',
+      goal_type: GOAL_TYPES.LOGISTICS,
+      target_type: 'self',
+      effect: 'increase_self',
+      eligible_categories: ['Knights', 'Royal Guard', 'Swordsmen', 'Heavy Infantry']
     }
   ],
   custom: [],
-  commander: []
+  commander: [],
+  unique: [
+    {
+      key: 'assassinate_commander',
+      name: 'Assassinate Commander',
+      description: 'Send elite assassins to eliminate or severely wound the enemy commander. Deals massive damage equal to half the enemy\'s current battle score. Always results in 1 casualty from your forces due to the extreme danger of the mission.',
+      goal_type: 'attack',
+      target_type: 'enemy',
+      effect: 'decrease_target_half_score',
+      eligible_categories: ['Assassins'],
+      guaranteed_casualty: 1
+    }
+  ]
 };
 
 const flattenGoals = () => Object.values(BATTLE_GOALS).flat();

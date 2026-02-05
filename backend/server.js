@@ -239,6 +239,7 @@ const startServer = async () => {
       const addTotalRounds = require('./migrations/add_total_rounds');
       const addCancelledStatus = require('./migrations/add_cancelled_status');
       const addFactionSupport = require('./migrations/add_faction_support');
+      const fixEliteArmyCategories = require('./migrations/fix_elite_army_categories');
       
       // Class data migrations (require subclass tables to exist)
       const populateAllClasses = require('./migrations/populate_all_classes_data');
@@ -273,6 +274,7 @@ const startServer = async () => {
       await addShadowSovereignClass();
       await addShadowSovereignSkills();
       await createBattleGoalsTable();
+      await fixEliteArmyCategories();
       
       console.log('Database migrations completed');
     } catch (error) {

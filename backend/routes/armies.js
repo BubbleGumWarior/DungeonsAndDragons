@@ -773,12 +773,16 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { participant_id, goal_key, target_participant_id } = req.body;
 
+    console.log(`📨 Goal selection request:`, { id, participant_id, goal_key, target_participant_id });
+
     const battle = await Battle.findById(id);
     if (!battle) {
+      console.log(`❌ Battle not found: ${id}`);
       return res.status(404).json({ error: 'Battle not found' });
     }
 
     if (battle.status !== 'goal_selection') {
+      console.log(`❌ Battle not in goal_selection phase: ${battle.status}`);
       return res.status(400).json({ error: 'Goals can only be selected during goal selection phase' });
     }
 
@@ -787,27 +791,46 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
 
     const participant = battle.participants.find(p => p.id === participant_id);
     if (!participant) {
+      console.log(`❌ Participant not found: ${participant_id}`);
       return res.status(404).json({ error: 'Participant not found' });
     }
 
     if (participant.current_troops <= 0) {
+      console.log(`❌ Participant has 0 troops: ${participant_id}`);
       return res.status(400).json({ error: 'Armies with 0 troops cannot select goals' });
     }
 
     if (!isDM && participant.user_id !== req.user.id) {
+      console.log(`❌ Unauthorized: user ${req.user.id} != participant user ${participant.user_id}`);
       return res.status(403).json({ error: 'Unauthorized to select goal for this army' });
     }
 
     if (participant.is_temporary && !isDM) {
+      console.log(`❌ Temporary army, not DM`);
       return res.status(403).json({ error: 'Only the Dungeon Master can select goals for temporary armies' });
     }
 
     const goalTemplate = findGoalByKey(goal_key);
     if (!goalTemplate) {
+      console.log(`❌ Invalid goal: ${goal_key}`);
       return res.status(400).json({ error: 'Invalid goal selection' });
     }
 
-    const category = participant.temp_army_category || participant.army_category || 'Swordsmen';
+    // For non-temporary armies, use the actual army category from armies table
+    // For temporary armies, use the temp_army_category
+    const category = participant.is_temporary 
+      ? (participant.temp_army_category || 'Swordsmen')
+      : (participant.army_category || participant.temp_army_category || 'Swordsmen');
+    
+    console.log(`🔍 Goal eligibility check for participant ${participant.id}:`, {
+      is_temporary: participant.is_temporary,
+      army_category: participant.army_category,
+      temp_army_category: participant.temp_army_category,
+      finalCategory: category,
+      goalKey: goal_key,
+      goalEligibleCategories: goalTemplate.eligible_categories
+    });
+    
     if (!isGoalEligible(goalTemplate, category)) {
       return res.status(400).json({ error: 'This army is not eligible for that goal' });
     }
