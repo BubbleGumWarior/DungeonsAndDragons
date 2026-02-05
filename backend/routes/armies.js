@@ -916,7 +916,8 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
       `SELECT bg.*, bp.team_name as executor_team_name, bp.is_temporary, bp.army_id, bp.current_troops,
               COALESCE(bp.temp_army_category, a.category, 'Swordsmen') as executor_category,
               a.player_id as executor_player_id,
-              target_bp.current_troops as target_troops
+              target_bp.current_troops as target_troops,
+              target_bp.current_score as target_score
        FROM battle_goals bg
        LEFT JOIN battle_participants bp ON bg.participant_id = bp.id
        LEFT JOIN armies a ON bp.army_id = a.id
@@ -956,21 +957,51 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
 
     if (goal.goal_type === GOAL_TYPES.ATTACK) {
       const targetDefend = await pool.query(
-        `SELECT id FROM battle_goals
-         WHERE battle_id = $1 AND round_number = $2 AND participant_id = $3 AND goal_type = $4`,
+        `SELECT goal_key FROM battle_goals
+         WHERE battle_id = $1 AND round_number = $2 AND participant_id = $3 AND goal_type = $4
+         ORDER BY id DESC
+         LIMIT 1`,
         [battle.id, battle.current_round, goal.target_participant_id, GOAL_TYPES.DEFEND]
       );
+
+      const attackTemplate = findGoalByKey(goal.goal_key);
+      const defenseTemplate = targetDefend.rows.length > 0
+        ? findGoalByKey(targetDefend.rows[0].goal_key)
+        : null;
 
       const attackerAdvantage = targetDefend.rows.length === 0;
       const attackerRolls = attackerAdvantage ? [rollD100(), rollD100()] : [rollD100()];
       const defenderRolls = attackerAdvantage ? [rollD100()] : [rollD100(), rollD100()];
 
-      const attackerRoll = Math.max(...attackerRolls);
-      const defenderRoll = Math.max(...defenderRolls);
+      const clampRoll = (roll) => Math.max(1, Math.min(100, roll));
+      const attackBonus = attackTemplate?.attack_bonus || 0;
+      const defenseBonus = defenseTemplate?.defense_bonus || 0;
+
+      const attackerRoll = clampRoll(Math.max(...attackerRolls) + attackBonus);
+      const defenderRoll = clampRoll(Math.max(...defenderRolls) + defenseBonus);
 
       const attackerWins = attackerRoll >= defenderRoll;
       const losingTroops = attackerWins ? goal.target_troops : goal.current_troops;
-      const casualties = calculateCasualties(attackerWins ? attackerRoll : defenderRoll, losingTroops);
+      const baseCasualties = calculateCasualties(attackerWins ? attackerRoll : defenderRoll, losingTroops);
+
+      const casualtyMultiplier = attackerWins
+        ? (attackTemplate?.casualty_multiplier || 1)
+        : (defenseTemplate?.casualty_multiplier || 1);
+
+      const scaledCasualties = baseCasualties > 0
+        ? Math.max(1, Math.floor(baseCasualties * casualtyMultiplier))
+        : 0;
+
+      const guaranteedSelfCasualties = attackTemplate?.guaranteed_casualty || 0;
+
+      let scoreChangeSelf = 0;
+      let scoreChangeTarget = 0;
+
+      // Only assassinate_commander goal applies score changes to attack goals
+      if (attackTemplate?.effect === 'decrease_target_half_score' && attackerWins) {
+        const targetScore = Math.max(0, goal.target_score || 0);
+        scoreChangeTarget = -Math.floor(targetScore / 2);
+      }
 
       resolution = {
         attacker_roll: attackerRoll,
@@ -978,10 +1009,12 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         logistics_roll: null,
         roll_details: { attacker: attackerRolls, defender: defenderRolls },
         advantage: attackerAdvantage ? 'attacker' : 'defender',
-        casualties_target: attackerWins ? casualties : 0,
-        casualties_self: attackerWins ? 0 : casualties,
-        score_change_target: 0,
-        score_change_self: 0,
+        casualties_target: attackerWins ? scaledCasualties : 0,
+        casualties_self: (attackerWins ? 0 : scaledCasualties) + guaranteedSelfCasualties,
+        score_change_target: scoreChangeTarget,
+        score_change_self: scoreChangeSelf,
+        score_change_target: scoreChangeTarget,
+        score_change_self: scoreChangeSelf,
         notes: attackerWins ? 'Attacker wins the clash.' : 'Defender repels the attack.'
       };
     } else if (goal.goal_type === GOAL_TYPES.DEFEND) {
@@ -996,14 +1029,17 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         : 'Defensive stance applied during attacks.';
     } else if (goal.goal_type === GOAL_TYPES.LOGISTICS) {
       const logRoll = rollD100();
-      const scoreDelta = Math.max(1, Math.round((logRoll / 100) * 10));
       const template = findGoalByKey(goal.goal_key);
+      const scoreDelta = Math.max(1, Math.round((logRoll / 100) * 10));
+      const scoreMultiplier = template?.score_multiplier || 1;
+      const adjustedDelta = Math.max(1, Math.round(scoreDelta * scoreMultiplier));
+
       if (template && template.effect === 'decrease_target') {
-        resolution.score_change_target = -scoreDelta;
+        resolution.score_change_target = -adjustedDelta;
         resolution.score_change_self = 0;
         resolution.notes = 'Enemy logistics disrupted.';
       } else {
-        resolution.score_change_self = scoreDelta;
+        resolution.score_change_self = adjustedDelta;
         resolution.score_change_target = 0;
         resolution.notes = 'Army logistics improved.';
       }

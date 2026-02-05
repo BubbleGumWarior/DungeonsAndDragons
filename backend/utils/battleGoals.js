@@ -22,7 +22,10 @@ const BATTLE_GOALS = {
       description: 'A straightforward frontal assault against the enemy. Available to all units.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: []
+      eligible_categories: [],
+      casualty_multiplier: 0.6,
+      score_multiplier: 0.6,
+      attack_bonus: 0
     },
     {
       key: 'cavalry_charge',
@@ -30,7 +33,10 @@ const BATTLE_GOALS = {
       description: 'A devastating mounted charge aimed at breaking enemy lines.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Knights', 'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Mounted Archers']
+      eligible_categories: ['Knights', 'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Mounted Archers'],
+      casualty_multiplier: 1.4,
+      score_multiplier: 1.2,
+      attack_bonus: 8
     },
     {
       key: 'arrow_barrage',
@@ -38,7 +44,10 @@ const BATTLE_GOALS = {
       description: 'Concentrated ranged volley to thin enemy ranks.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers', 'Ballistae']
+      eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers', 'Ballistae'],
+      casualty_multiplier: 1.1,
+      score_multiplier: 1,
+      attack_bonus: 4
     },
     {
       key: 'spear_charge',
@@ -46,7 +55,10 @@ const BATTLE_GOALS = {
       description: 'A disciplined spear thrust against a chosen enemy.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Spear Wall', 'Pikemen', 'Heavy Infantry']
+      eligible_categories: ['Spear Wall', 'Pikemen', 'Heavy Infantry'],
+      casualty_multiplier: 1.1,
+      score_multiplier: 1,
+      attack_bonus: 5
     },
     {
       key: 'artillery_volley',
@@ -54,7 +66,10 @@ const BATTLE_GOALS = {
       description: 'Long-range siege fire directed at a target formation.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards']
+      eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards'],
+      casualty_multiplier: 1.3,
+      score_multiplier: 1.1,
+      attack_bonus: 6
     },
     {
       key: 'flanking_strike',
@@ -62,7 +77,10 @@ const BATTLE_GOALS = {
       description: 'Execute a coordinated attack on enemy flanks and weak points.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Light Cavalry', 'Scouts', 'Light Infantry', 'Lancers']
+      eligible_categories: ['Light Cavalry', 'Scouts', 'Light Infantry', 'Lancers'],
+      casualty_multiplier: 1.2,
+      score_multiplier: 1.1,
+      attack_bonus: 7
     },
     {
       key: 'overwhelming_assault',
@@ -70,7 +88,10 @@ const BATTLE_GOALS = {
       description: 'All-out frontal assault with maximum force deployment.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard']
+      eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard'],
+      casualty_multiplier: 1.4,
+      score_multiplier: 1.2,
+      attack_bonus: 6
     }
   ],
   defending: [
@@ -80,7 +101,10 @@ const BATTLE_GOALS = {
       description: 'Fortify your position to blunt enemy assaults.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Royal Guard']
+      eligible_categories: ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Royal Guard'],
+      casualty_multiplier: 0.7,
+      score_multiplier: 0.8,
+      defense_bonus: 5
     },
     {
       key: 'brace_for_impact',
@@ -88,7 +112,10 @@ const BATTLE_GOALS = {
       description: 'Prepare to absorb the next enemy strike.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Knights']
+      eligible_categories: ['Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Knights'],
+      casualty_multiplier: 0.6,
+      score_multiplier: 0.7,
+      defense_bonus: 10
     },
     {
       key: 'take_cover',
@@ -96,7 +123,10 @@ const BATTLE_GOALS = {
       description: 'Find cover and minimize casualties from incoming attacks.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Light Infantry', 'Scouts']
+      eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Light Infantry', 'Scouts'],
+      casualty_multiplier: 0.5,
+      score_multiplier: 0.6,
+      defense_bonus: 12
     },
     {
       key: 'fortify_position',
@@ -104,7 +134,10 @@ const BATTLE_GOALS = {
       description: 'Dig in and create defensive works for siege units.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards', 'Siege Towers']
+      eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards', 'Siege Towers'],
+      casualty_multiplier: 0.6,
+      score_multiplier: 0.8,
+      defense_bonus: 8
     },
     {
       key: 'shield_wall',
@@ -112,7 +145,10 @@ const BATTLE_GOALS = {
       description: 'Form an impenetrable wall of shields and armor, maximizing defense.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Shield Wall', 'Heavy Infantry', 'Royal Guard', 'Pikemen']
+      eligible_categories: ['Shield Wall', 'Heavy Infantry', 'Royal Guard', 'Pikemen'],
+      casualty_multiplier: 0.5,
+      score_multiplier: 0.9,
+      defense_bonus: 15
     },
     {
       key: 'guerrilla_tactics',
@@ -120,7 +156,10 @@ const BATTLE_GOALS = {
       description: 'Use evasion and mobility to avoid and counter enemy attacks.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Mounted Archers']
+      eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Mounted Archers'],
+      casualty_multiplier: 0.4,
+      score_multiplier: 0.7,
+      defense_bonus: 14
     }
   ],
   logistics: [
@@ -131,7 +170,8 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'enemy',
       effect: 'decrease_target',
-      eligible_categories: ['Scouts', 'Light Cavalry', 'Spies', 'Skirmishers']
+      eligible_categories: ['Scouts', 'Light Cavalry', 'Spies', 'Skirmishers'],
+      score_multiplier: 1.1
     },
     {
       key: 'rally_troops',
@@ -140,7 +180,8 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Royal Guard', 'Knights', 'Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Light Infantry']
+      eligible_categories: ['Royal Guard', 'Knights', 'Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Light Infantry'],
+      score_multiplier: 0.9
     },
     {
       key: 'rapid_resupply',
@@ -149,7 +190,8 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Scouts', 'Spies', 'Light Infantry', 'Light Cavalry']
+      eligible_categories: ['Scouts', 'Spies', 'Light Infantry', 'Light Cavalry'],
+      score_multiplier: 1.2
     },
     {
       key: 'disrupt_comms',
@@ -158,7 +200,8 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'enemy',
       effect: 'decrease_target',
-      eligible_categories: ['Spies', 'Scouts']
+      eligible_categories: ['Spies', 'Scouts'],
+      score_multiplier: 1.3
     },
     {
       key: 'supply_cache',
@@ -167,7 +210,8 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Scouts', 'Light Cavalry', 'Spies']
+      eligible_categories: ['Scouts', 'Light Cavalry', 'Spies'],
+      score_multiplier: 1.1
     },
     {
       key: 'field_medical',
@@ -176,7 +220,8 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Knights', 'Royal Guard', 'Swordsmen', 'Heavy Infantry']
+      eligible_categories: ['Knights', 'Royal Guard', 'Swordsmen', 'Heavy Infantry'],
+      score_multiplier: 1
     }
   ],
   custom: [],
@@ -190,7 +235,34 @@ const BATTLE_GOALS = {
       target_type: 'enemy',
       effect: 'decrease_target_half_score',
       eligible_categories: ['Assassins'],
-      guaranteed_casualty: 1
+      guaranteed_casualty: 1,
+      casualty_multiplier: 2,
+      score_multiplier: 2.5,
+      attack_bonus: 10
+    },
+    {
+      key: 'crusade_charge',
+      name: 'Holy Crusade',
+      description: 'A devastating righteous charge that combines elite knight training with overwhelming force. Deals significant damage to enemies while bolstering the courage of allied forces.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      effect: 'decrease_target_half_score',
+      eligible_categories: ['Knights'],
+      casualty_multiplier: 1.8,
+      score_multiplier: 2,
+      attack_bonus: 12
+    },
+    {
+      key: 'scout_strike',
+      name: 'Reconnaissance Strike',
+      description: 'Execute a precision strike based on scouted intelligence, targeting enemy weaknesses. Quick, accurate, and devastating to unprepared foes.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      effect: 'decrease_target_half_score',
+      eligible_categories: ['Scouts'],
+      casualty_multiplier: 1.6,
+      score_multiplier: 1.8,
+      attack_bonus: 14
     }
   ]
 };

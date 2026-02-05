@@ -202,6 +202,26 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			effect: 'decrease_target_half_score',
 			guaranteed_casualty: 1,
 			lock_reason: 'Requires Assassin units'
+		},
+		{
+			key: 'crusade_charge',
+			name: 'Holy Crusade',
+			description: 'A devastating righteous charge that combines elite knight training with overwhelming force. Deals significant damage to enemies while bolstering the courage of allied forces.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Knights'],
+			effect: 'decrease_target_half_score',
+			lock_reason: 'Requires Knight units'
+		},
+		{
+			key: 'scout_strike',
+			name: 'Reconnaissance Strike',
+			description: 'Execute a precision strike based on scouted intelligence, targeting enemy weaknesses. Quick, accurate, and devastating to unprepared foes.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Scouts'],
+			effect: 'decrease_target_half_score',
+			lock_reason: 'Requires Scout units'
 		}
 	]
 };
