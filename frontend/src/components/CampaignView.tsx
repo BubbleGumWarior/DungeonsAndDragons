@@ -5190,6 +5190,9 @@ const CampaignView: React.FC = () => {
                                       score_change_self: goal.score_change_self || 0,
                                       notes: goal.notes || ''
                                     };
+                                    const hasCasualties = (goal.casualties_target || 0) !== 0 || (goal.casualties_self || 0) !== 0;
+                                    const hasScores = (goal.score_change_target || 0) !== 0 || (goal.score_change_self || 0) !== 0;
+                                    const showOutcome = goal.status === 'applied';
 
                                     return (
                                       <div
@@ -5218,6 +5221,111 @@ const CampaignView: React.FC = () => {
                                         )}
                                         {goal.logistics_roll && (
                                           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Logistics roll: {goal.logistics_roll}</div>
+                                        )}
+
+                                        {showOutcome && (
+                                          <div style={{
+                                            marginTop: '0.6rem',
+                                            padding: '0.7rem',
+                                            background: 'rgba(59, 130, 246, 0.12)',
+                                            border: '1px solid rgba(59, 130, 246, 0.35)',
+                                            borderRadius: '0.6rem'
+                                          }}>
+                                            <div style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.5rem',
+                                              marginBottom: '0.45rem'
+                                            }}>
+                                              <div style={{
+                                                fontSize: '0.7rem',
+                                                fontWeight: 'bold',
+                                                letterSpacing: '0.08em',
+                                                textTransform: 'uppercase',
+                                                color: '#93c5fd'
+                                              }}>
+                                                Outcome
+                                              </div>
+                                              <div style={{
+                                                height: '1px',
+                                                flex: 1,
+                                                background: 'linear-gradient(90deg, rgba(147, 197, 253, 0.6), rgba(148, 163, 184, 0))'
+                                              }} />
+                                            </div>
+                                            <div style={{ display: 'grid', gap: '0.5rem', justifyItems: 'center', textAlign: 'center' }}>
+                                              {hasCasualties && (
+                                                <div style={{ display: 'grid', gap: '0.35rem' }}>
+                                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Casualties</div>
+                                                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                                    <span style={{
+                                                      padding: '0.2rem 0.5rem',
+                                                      borderRadius: '999px',
+                                                      background: 'rgba(248, 113, 113, 0.15)',
+                                                      border: '1px solid rgba(248, 113, 113, 0.35)',
+                                                      fontSize: '0.8rem',
+                                                      color: '#fecaca'
+                                                    }}>
+                                                      Target {goal.casualties_target || 0}
+                                                    </span>
+                                                    <span style={{
+                                                      padding: '0.2rem 0.5rem',
+                                                      borderRadius: '999px',
+                                                      background: 'rgba(148, 163, 184, 0.2)',
+                                                      border: '1px solid rgba(148, 163, 184, 0.4)',
+                                                      fontSize: '0.8rem',
+                                                      color: '#e2e8f0'
+                                                    }}>
+                                                      Self {goal.casualties_self || 0}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {hasScores && (
+                                                <div style={{ display: 'grid', gap: '0.35rem' }}>
+                                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Score change</div>
+                                                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                                    <span style={{
+                                                      padding: '0.2rem 0.5rem',
+                                                      borderRadius: '999px',
+                                                      background: 'rgba(34, 197, 94, 0.15)',
+                                                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                                                      fontSize: '0.8rem',
+                                                      color: '#86efac'
+                                                    }}>
+                                                      Target {goal.score_change_target && goal.score_change_target > 0 ? '+' : ''}{goal.score_change_target || 0}
+                                                    </span>
+                                                    <span style={{
+                                                      padding: '0.2rem 0.5rem',
+                                                      borderRadius: '999px',
+                                                      background: 'rgba(59, 130, 246, 0.2)',
+                                                      border: '1px solid rgba(59, 130, 246, 0.45)',
+                                                      fontSize: '0.8rem',
+                                                      color: '#bfdbfe'
+                                                    }}>
+                                                      Self {goal.score_change_self && goal.score_change_self > 0 ? '+' : ''}{goal.score_change_self || 0}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {!hasCasualties && !hasScores && (
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                  No changes recorded.
+                                                </div>
+                                              )}
+                                              {goal.notes && (
+                                                <div style={{
+                                                  padding: '0.45rem 0.6rem',
+                                                  background: 'rgba(15, 23, 42, 0.35)',
+                                                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                                                  borderRadius: '0.45rem',
+                                                  fontSize: '0.75rem',
+                                                  color: 'var(--text-muted)'
+                                                }}>
+                                                  Notes: {goal.notes}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
                                         )}
 
                                         {goal.status === 'selected' && canResolve && (

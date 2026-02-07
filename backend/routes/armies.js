@@ -1003,13 +1003,17 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         scoreChangeTarget = -Math.floor(targetScore / 2);
       }
 
+      const fixedTargetCasualties = attackTemplate?.key === 'assassinate_commander'
+        ? (attackerWins ? 1 : 0)
+        : (attackerWins ? scaledCasualties : 0);
+
       resolution = {
         attacker_roll: attackerRoll,
         defender_roll: defenderRoll,
         logistics_roll: null,
         roll_details: { attacker: attackerRolls, defender: defenderRolls },
         advantage: attackerAdvantage ? 'attacker' : 'defender',
-        casualties_target: attackerWins ? scaledCasualties : 0,
+        casualties_target: fixedTargetCasualties,
         casualties_self: (attackerWins ? 0 : scaledCasualties) + guaranteedSelfCasualties,
         score_change_target: scoreChangeTarget,
         score_change_self: scoreChangeSelf,
