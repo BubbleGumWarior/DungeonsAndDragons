@@ -231,6 +231,8 @@ const CampaignView: React.FC = () => {
   const [battleGoals, setBattleGoals] = useState<BattleGoal[]>([]);
   const [showGoalSelectionModal, setShowGoalSelectionModal] = useState(false);
   const [showGoalResolutionModal, setShowGoalResolutionModal] = useState(false);
+  const [overlayViewportWidth, setOverlayViewportWidth] = useState<number>(() => (typeof window !== 'undefined' ? window.innerWidth : 1200));
+  const [overlayLastOpened, setOverlayLastOpened] = useState<'participants' | 'selection' | 'resolution' | null>(null);
   const [selectedGoalArmyId, setSelectedGoalArmyId] = useState<number | null>(null);
   const [goalSelections, setGoalSelections] = useState<Record<number, { goalKey?: string; targetId?: number | null; activeTab?: 'attacking' | 'defending' | 'logistics' | 'commander' | 'unique' }>>({});
   const [goalEdits, setGoalEdits] = useState<Record<number, { casualties_target: number; casualties_self: number; score_change_target: number; score_change_self: number; notes?: string }>>({});
@@ -298,6 +300,79 @@ const CampaignView: React.FC = () => {
       return p.user_id === user?.id;
     });
   }, [activeBattle, user]);
+
+  useEffect(() => {
+    const handleResize = () => setOverlayViewportWidth(window.innerWidth);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const shouldUseSingleOverlayPanel = (() => {
+    if (!overlayViewportWidth) return false;
+    const overlapSafetyBuffer = 96;
+    const panelWidthTwo = Math.min(850, 0.48 * overlayViewportWidth);
+    const halfSpacing = 0.5 * overlayViewportWidth - overlapSafetyBuffer;
+    if (panelWidthTwo > halfSpacing) return true;
+    const panelWidthThree = Math.min(700, 0.35 * overlayViewportWidth);
+    const thirdSpacing = 0.3 * overlayViewportWidth - overlapSafetyBuffer;
+    return panelWidthThree > thirdSpacing;
+  })();
+
+  const toggleOverlayPanel = (key: 'participants' | 'selection' | 'resolution') => {
+    setOverlayLastOpened(key);
+    if (shouldUseSingleOverlayPanel) {
+      if (key === 'participants') {
+        setShowBattlefieldParticipants(prev => {
+          const next = !prev;
+          if (next) {
+            setShowGoalSelectionModal(false);
+            setShowGoalResolutionModal(false);
+          }
+          return next;
+        });
+        return;
+      }
+      if (key === 'selection') {
+        setShowGoalSelectionModal(prev => {
+          const next = !prev;
+          if (next) {
+            setShowBattlefieldParticipants(false);
+            setShowGoalResolutionModal(false);
+          }
+          return next;
+        });
+        return;
+      }
+      setShowGoalResolutionModal(prev => {
+        const next = !prev;
+        if (next) {
+          setShowBattlefieldParticipants(false);
+          setShowGoalSelectionModal(false);
+        }
+        return next;
+      });
+      return;
+    }
+
+    if (key === 'participants') {
+      setShowBattlefieldParticipants(prev => !prev);
+      return;
+    }
+    if (key === 'selection') {
+      setShowGoalSelectionModal(prev => {
+        const next = !prev;
+        if (next) setShowGoalResolutionModal(false);
+        return next;
+      });
+      return;
+    }
+    setShowGoalResolutionModal(prev => {
+      const next = !prev;
+      if (next) setShowGoalSelectionModal(false);
+      return next;
+    });
+  };
 
 
   // Helper functions for category-specific options
@@ -4396,9 +4471,30 @@ const CampaignView: React.FC = () => {
                           gap: '0.5rem',
                           zIndex: 10
                         }}>
+                          {activeBattle.participants && activeBattle.participants.length > 0 && (
+                            <button
+                              onClick={() => toggleOverlayPanel('participants')}
+                              style={{
+                                padding: '0.75rem 1rem',
+                                background: showBattlefieldParticipants 
+                                  ? 'rgba(212, 193, 156, 0.9)' 
+                                  : 'rgba(0, 0, 0, 0.8)',
+                                border: '2px solid var(--border-gold)',
+                                borderRadius: '0.5rem',
+                                color: showBattlefieldParticipants ? '#000' : 'var(--text-gold)',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                              }}
+                            >
+                              ⚔️ Participants
+                            </button>
+                          )}
                           {activeBattle.status === 'goal_selection' && (
                             <button
-                              onClick={() => setShowGoalSelectionModal(!showGoalSelectionModal)}
+                              onClick={() => toggleOverlayPanel('selection')}
                               style={{
                                 padding: '0.75rem 1rem',
                                 background: showGoalSelectionModal
@@ -4419,7 +4515,7 @@ const CampaignView: React.FC = () => {
                           )}
                           {activeBattle.status === 'resolution' && (
                             <button
-                              onClick={() => setShowGoalResolutionModal(!showGoalResolutionModal)}
+                              onClick={() => toggleOverlayPanel('resolution')}
                               style={{
                                 padding: '0.75rem 1rem',
                                 background: showGoalResolutionModal
@@ -4436,27 +4532,6 @@ const CampaignView: React.FC = () => {
                               }}
                             >
                               ⚔️ Goals
-                            </button>
-                          )}
-                          {activeBattle.participants && activeBattle.participants.length > 0 && (
-                            <button
-                              onClick={() => setShowBattlefieldParticipants(!showBattlefieldParticipants)}
-                              style={{
-                                padding: '0.75rem 1rem',
-                                background: showBattlefieldParticipants 
-                                  ? 'rgba(212, 193, 156, 0.9)' 
-                                  : 'rgba(0, 0, 0, 0.8)',
-                                border: '2px solid var(--border-gold)',
-                                borderRadius: '0.5rem',
-                                color: showBattlefieldParticipants ? '#000' : 'var(--text-gold)',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                fontSize: '0.9rem',
-                                backdropFilter: 'blur(10px)',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
-                              }}
-                            >
-                              ⚔️ Participants
                             </button>
                           )}
                           
@@ -4479,13 +4554,21 @@ const CampaignView: React.FC = () => {
                         pointerEvents: 'none'
                       }}>
                         {(() => {
-                          const openKeys: Array<'participants' | 'selection' | 'resolution'> = [];
+                          const candidateKeys: Array<'participants' | 'selection' | 'resolution'> = [];
                           if (showBattlefieldParticipants && activeBattle.participants && activeBattle.participants.length > 0) {
-                            openKeys.push('participants');
+                            candidateKeys.push('participants');
                           }
                           // Never show both selection and resolution at the same time
-                          if (showGoalSelectionModal && !showGoalResolutionModal) openKeys.push('selection');
-                          if (showGoalResolutionModal && !showGoalSelectionModal) openKeys.push('resolution');
+                          if (showGoalSelectionModal && !showGoalResolutionModal) candidateKeys.push('selection');
+                          if (showGoalResolutionModal && !showGoalSelectionModal) candidateKeys.push('resolution');
+
+                          const openKeys = (shouldUseSingleOverlayPanel && candidateKeys.length > 1)
+                            ? [
+                                (overlayLastOpened && candidateKeys.includes(overlayLastOpened))
+                                  ? overlayLastOpened
+                                  : candidateKeys[0]
+                              ]
+                            : candidateKeys;
 
                           const count = openKeys.length;
                           const getLeft = (key: 'participants' | 'selection' | 'resolution') => {
@@ -4520,9 +4603,11 @@ const CampaignView: React.FC = () => {
                             boxSizing: 'border-box'
                           };
 
-                          const getVisibility = (isOpen: boolean) => ({
+                          const getVisibility = (isOpen: boolean): React.CSSProperties => ({
                             opacity: isOpen ? 1 : 0,
-                            transform: isOpen ? 'translate(-50%, -50%) scale(0.98)' : 'translate(-50%, -45%) scale(0.96)'
+                            transform: isOpen ? 'translate(-50%, -50%) scale(0.98)' : 'translate(-50%, -45%) scale(0.96)',
+                            pointerEvents: isOpen ? 'auto' : 'none',
+                            visibility: isOpen ? 'visible' : 'hidden'
                           });
 
                           return (
@@ -4534,7 +4619,7 @@ const CampaignView: React.FC = () => {
                                     left: getLeft('participants'),
                                     background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
                                     border: '3px solid var(--border-gold)',
-                                    ...getVisibility(showBattlefieldParticipants)
+                                    ...getVisibility(openKeys.includes('participants'))
                                   }}
                                 >
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -4700,7 +4785,7 @@ const CampaignView: React.FC = () => {
                                   left: getLeft('selection'),
                                   background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
                                   border: '3px solid var(--border-gold)',
-                                  ...getVisibility(showGoalSelectionModal)
+                                  ...getVisibility(openKeys.includes('selection'))
                                 }}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -5057,7 +5142,8 @@ const CampaignView: React.FC = () => {
                                     ...panelBase,
                                     left: getLeft('resolution'),
                                     background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98), rgba(30, 30, 40, 0.98))',
-                                    border: '3px solid var(--border-gold)'
+                                    border: '3px solid var(--border-gold)',
+                                    ...getVisibility(openKeys.includes('resolution'))
                                   }}
                                 >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -5085,6 +5171,18 @@ const CampaignView: React.FC = () => {
                                   {battleGoals.map(goal => {
                                     const isDM = user?.role === 'Dungeon Master';
                                     const canResolve = isDM || (activeBattle.participants || []).some(p => p.id === goal.participant_id && p.user_id === user?.id);
+                                    const executorParticipant = (activeBattle.participants || []).find(p => p.id === goal.participant_id);
+                                    const targetParticipant = goal.target_participant_id
+                                      ? (activeBattle.participants || []).find(p => p.id === goal.target_participant_id)
+                                      : undefined;
+                                    const executorName = executorParticipant
+                                      ? (executorParticipant.temp_army_name || executorParticipant.army_name || `Army #${goal.participant_id}`)
+                                      : (goal.executor_army_name || `Army #${goal.participant_id}`);
+                                    const targetName = targetParticipant
+                                      ? (targetParticipant.temp_army_name || targetParticipant.army_name || `Army #${goal.target_participant_id}`)
+                                      : (goal.target_army_name || '');
+                                    const executorFactionColor = executorParticipant?.faction_color
+                                      || (executorParticipant?.team_name === 'A' ? '#3b82f6' : executorParticipant?.team_name ? '#ef4444' : undefined);
                                     const editValues = goalEdits[goal.id] || {
                                       casualties_target: goal.casualties_target || 0,
                                       casualties_self: goal.casualties_self || 0,
@@ -5094,7 +5192,14 @@ const CampaignView: React.FC = () => {
                                     };
 
                                     return (
-                                      <div key={goal.id} style={{ padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(248, 113, 113, 0.4)' }}>
+                                      <div
+                                        key={goal.id}
+                                        style={{
+                                          padding: '1rem',
+                                          borderRadius: '0.75rem',
+                                          border: `2px solid ${executorFactionColor || 'rgba(248, 113, 113, 0.4)'}`
+                                        }}
+                                      >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                                           <div style={{ fontWeight: 'bold', color: 'var(--text-gold)' }}>{goal.goal_name}</div>
                                           <div style={{ fontSize: '0.75rem', color: goal.status === 'resolved' ? '#4ade80' : goal.status === 'applied' ? '#60a5fa' : '#facc15' }}>
@@ -5102,8 +5207,8 @@ const CampaignView: React.FC = () => {
                                           </div>
                                         </div>
                                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                                          {goal.executor_army_name || `Army #${goal.participant_id}`}
-                                          {goal.target_army_name ? ` → ${goal.target_army_name}` : ''}
+                                          {executorName}
+                                          {targetName ? ` → ${targetName}` : ''}
                                         </div>
                                         {goal.advantage && goal.advantage !== 'none' && (
                                           <div style={{ fontSize: '0.75rem', color: '#facc15' }}>Advantage: {goal.advantage}</div>
