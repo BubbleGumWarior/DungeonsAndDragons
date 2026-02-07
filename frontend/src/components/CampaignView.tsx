@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
@@ -753,17 +753,36 @@ const CampaignView: React.FC = () => {
     }
   }, [activeBattle, battleGoals, user]);
 
+  const lastBattlePhaseRef = useRef<{ battleId?: number; status?: string; round?: number }>({});
+
   useEffect(() => {
-    if (!activeBattle) return;
-    if (activeBattle.status === 'goal_selection') {
-      setGoalSelections({});
-      setSelectedGoalArmyId(null);
-      setGoalEdits({});
+    if (!activeBattle) {
+      lastBattlePhaseRef.current = {};
+      return;
     }
-    if (activeBattle.status === 'resolution') {
-      setGoalEdits({});
+
+    const previous = lastBattlePhaseRef.current;
+    const battleChanged = previous.battleId !== activeBattle.id;
+    const roundChanged = previous.round !== activeBattle.current_round;
+    const statusChanged = previous.status !== activeBattle.status;
+
+    if (battleChanged || roundChanged || statusChanged) {
+      if (activeBattle.status === 'goal_selection') {
+        setGoalSelections({});
+        setSelectedGoalArmyId(null);
+        setGoalEdits({});
+      }
+      if (activeBattle.status === 'resolution') {
+        setGoalEdits({});
+      }
     }
-  }, [activeBattle, activeBattle?.status, activeBattle?.current_round]);
+
+    lastBattlePhaseRef.current = {
+      battleId: activeBattle.id,
+      status: activeBattle.status,
+      round: activeBattle.current_round
+    };
+  }, [activeBattle]);
 
   // Load pending battle invitations for player
   useEffect(() => {
