@@ -1,6 +1,13 @@
 export type BattleGoalType = 'attack' | 'defend' | 'logistics' | 'custom' | 'commander';
 export type BattleGoalSection = 'attacking' | 'defending' | 'logistics' | 'custom' | 'commander' | 'unique';
 
+export type ScoreRequirementType = 'ahead' | 'behind';
+
+export interface ScoreRequirement {
+	method: ScoreRequirementType;
+	delta: number;
+}
+
 export interface BattleGoalDefinition {
 	key: string;
 	name: string;
@@ -10,6 +17,7 @@ export interface BattleGoalDefinition {
 	effect?: 'decrease_target' | 'increase_self' | 'decrease_target_half_score';
 	eligible_categories?: string[];
 	lock_reason?: string; // Reason why a unit can't use this goal
+	score_requirement?: ScoreRequirement; // Score delta required vs target
 	guaranteed_casualty?: number; // Guaranteed casualties from this goal (e.g., assassinate always costs 1)
 }
 
@@ -66,7 +74,18 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'attack',
 			target_type: 'enemy',
 			eligible_categories: ['Light Cavalry', 'Scouts', 'Light Infantry', 'Lancers'],
-			lock_reason: 'Requires fast, mobile units'
+			lock_reason: 'Requires fast, mobile units',
+			score_requirement: { method: 'ahead', delta: 6 }
+		},
+		{
+			key: 'desperation_raid',
+			name: 'Desperation Raid',
+			description: 'A risky raid launched when you are outmatched, aimed at disrupting a stronger foe.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Light Infantry'],
+			lock_reason: 'Requires fast raiders',
+			score_requirement: { method: 'behind', delta: 10 }
 		},
 		{
 			key: 'overwhelming_assault',
@@ -74,10 +93,19 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'All-out frontal assault with maximum force deployment.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard']
+			eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard'],
+			score_requirement: { method: 'ahead', delta: 8 }
 		}
 	],
 	defending: [
+		{
+			key: 'defensive_stance',
+			name: 'Defensive Stance',
+			description: 'Adopt a cautious posture to reduce losses and stabilize the line. Available to all units.',
+			goal_type: 'defend',
+			target_type: 'self',
+			eligible_categories: []
+		},
 		{
 			key: 'hold_the_line',
 			name: 'Hold the Line',
@@ -132,6 +160,25 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 		}
 	],
 	logistics: [
+		{
+			key: 'steady_supplies',
+			name: 'Steady Supplies',
+			description: 'Maintain consistent supply flow to keep your army effective. Available to all units.',
+			goal_type: 'logistics',
+			target_type: 'self',
+			effect: 'increase_self',
+			eligible_categories: []
+		},
+		{
+			key: 'covert_funding',
+			name: 'Covert Funding',
+			description: 'Leverage hidden networks to bolster your battle score through clandestine support.',
+			goal_type: 'logistics',
+			target_type: 'self',
+			effect: 'increase_self',
+			eligible_categories: ['Spies', 'Assassins'],
+			lock_reason: 'Requires spies or assassins'
+		},
 		{
 			key: 'intercept_supply',
 			name: 'Intercept Supply Lines',
@@ -195,33 +242,33 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 		{
 			key: 'assassinate_commander',
 			name: 'Assassinate Commander',
-			description: 'Send elite assassins to eliminate or severely wound the enemy commander. Deals massive damage equal to half the enemy\'s current battle score. Always results in 1 casualty from your forces due to the extreme danger of the mission.',
+			description: 'Send elite assassins to eliminate the enemy commander. Success guarantees a kill on the target and halves the enemy\'s battle score, while your casualties scale with how successful the strike was.',
 			goal_type: 'attack',
 			target_type: 'enemy',
 			eligible_categories: ['Assassins'],
 			effect: 'decrease_target_half_score',
-			guaranteed_casualty: 1,
-			lock_reason: 'Requires Assassin units'
+			lock_reason: 'Requires Assassin units',
+			score_requirement: { method: 'ahead', delta: 10 }
 		},
 		{
 			key: 'crusade_charge',
 			name: 'Holy Crusade',
-			description: 'A devastating righteous charge that combines elite knight training with overwhelming force. Deals significant damage to enemies while bolstering the courage of allied forces.',
+			description: 'A righteous charge by elite knights that hits hard while bolstering allied courage.',
 			goal_type: 'attack',
 			target_type: 'enemy',
 			eligible_categories: ['Knights'],
-			effect: 'decrease_target_half_score',
-			lock_reason: 'Requires Knight units'
+			lock_reason: 'Requires Knight units',
+			score_requirement: { method: 'ahead', delta: 8 }
 		},
 		{
 			key: 'scout_strike',
 			name: 'Reconnaissance Strike',
-			description: 'Execute a precision strike based on scouted intelligence, targeting enemy weaknesses. Quick, accurate, and devastating to unprepared foes.',
+			description: 'A precision strike guided by scouting that punishes exposed enemy weaknesses.',
 			goal_type: 'attack',
 			target_type: 'enemy',
 			eligible_categories: ['Scouts'],
-			effect: 'decrease_target_half_score',
-			lock_reason: 'Requires Scout units'
+			lock_reason: 'Requires Scout units',
+			score_requirement: { method: 'ahead', delta: 6 }
 		}
 	]
 };

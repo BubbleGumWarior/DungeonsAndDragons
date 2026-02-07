@@ -80,7 +80,20 @@ const BATTLE_GOALS = {
       eligible_categories: ['Light Cavalry', 'Scouts', 'Light Infantry', 'Lancers'],
       casualty_multiplier: 1.2,
       score_multiplier: 1.1,
-      attack_bonus: 7
+      attack_bonus: 7,
+      score_requirement: { method: 'ahead', delta: 6 }
+    },
+    {
+      key: 'desperation_raid',
+      name: 'Desperation Raid',
+      description: 'A risky raid launched when you are outmatched, aimed at disrupting a stronger foe.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Light Infantry'],
+      casualty_multiplier: 1.2,
+      score_multiplier: 1.1,
+      attack_bonus: 6,
+      score_requirement: { method: 'behind', delta: 10 }
     },
     {
       key: 'overwhelming_assault',
@@ -91,10 +104,22 @@ const BATTLE_GOALS = {
       eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard'],
       casualty_multiplier: 1.4,
       score_multiplier: 1.2,
-      attack_bonus: 6
+      attack_bonus: 6,
+      score_requirement: { method: 'ahead', delta: 8 }
     }
   ],
   defending: [
+    {
+      key: 'defensive_stance',
+      name: 'Defensive Stance',
+      description: 'Adopt a cautious posture to reduce losses and stabilize the line. Available to all units.',
+      goal_type: GOAL_TYPES.DEFEND,
+      target_type: 'self',
+      eligible_categories: [],
+      casualty_multiplier: 0.6,
+      score_multiplier: 0.7,
+      defense_bonus: 6
+    },
     {
       key: 'hold_the_line',
       name: 'Hold the Line',
@@ -164,6 +189,26 @@ const BATTLE_GOALS = {
   ],
   logistics: [
     {
+      key: 'steady_supplies',
+      name: 'Steady Supplies',
+      description: 'Maintain consistent supply flow to keep your army effective. Available to all units.',
+      goal_type: GOAL_TYPES.LOGISTICS,
+      target_type: 'self',
+      effect: 'increase_self',
+      eligible_categories: [],
+      score_multiplier: 1
+    },
+    {
+      key: 'covert_funding',
+      name: 'Covert Funding',
+      description: 'Leverage hidden networks to bolster your battle score through clandestine support.',
+      goal_type: GOAL_TYPES.LOGISTICS,
+      target_type: 'self',
+      effect: 'increase_self',
+      eligible_categories: ['Spies', 'Assassins'],
+      score_multiplier: 1.3
+    },
+    {
       key: 'intercept_supply',
       name: 'Intercept Supply Lines',
       description: 'Disrupt enemy logistics to weaken their momentum.',
@@ -230,39 +275,39 @@ const BATTLE_GOALS = {
     {
       key: 'assassinate_commander',
       name: 'Assassinate Commander',
-      description: 'Send elite assassins to eliminate or severely wound the enemy commander. Deals massive damage equal to half the enemy\'s current battle score. Always results in 1 casualty from your forces due to the extreme danger of the mission.',
+      description: 'Send elite assassins to eliminate the enemy commander. Success guarantees a kill on the target and halves the enemy\'s battle score, while your casualties scale with how successful the strike was.',
       goal_type: 'attack',
       target_type: 'enemy',
       effect: 'decrease_target_half_score',
       eligible_categories: ['Assassins'],
-      guaranteed_casualty: 1,
       casualty_multiplier: 2,
       score_multiplier: 2.5,
-      attack_bonus: 10
+      attack_bonus: 10,
+      score_requirement: { method: 'ahead', delta: 10 }
     },
     {
       key: 'crusade_charge',
       name: 'Holy Crusade',
-      description: 'A devastating righteous charge that combines elite knight training with overwhelming force. Deals significant damage to enemies while bolstering the courage of allied forces.',
+      description: 'A righteous charge by elite knights that hits hard while bolstering allied courage.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      effect: 'decrease_target_half_score',
       eligible_categories: ['Knights'],
       casualty_multiplier: 1.8,
       score_multiplier: 2,
-      attack_bonus: 12
+      attack_bonus: 12,
+      score_requirement: { method: 'ahead', delta: 8 }
     },
     {
       key: 'scout_strike',
       name: 'Reconnaissance Strike',
-      description: 'Execute a precision strike based on scouted intelligence, targeting enemy weaknesses. Quick, accurate, and devastating to unprepared foes.',
+      description: 'A precision strike guided by scouting that punishes exposed enemy weaknesses.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      effect: 'decrease_target_half_score',
       eligible_categories: ['Scouts'],
       casualty_multiplier: 1.6,
       score_multiplier: 1.8,
-      attack_bonus: 14
+      attack_bonus: 14,
+      score_requirement: { method: 'ahead', delta: 6 }
     }
   ]
 };

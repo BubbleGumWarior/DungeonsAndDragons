@@ -4845,6 +4845,66 @@ const CampaignView: React.FC = () => {
                                       ? (activeBattle.participants || []).filter(p => p.team_name !== selectedParticipant.team_name && (p.current_troops || 0) > 0)
                                       : [];
 
+                                    const getParticipantScore = (p?: BattleParticipant | null) => {
+                                      if (!p) return 0;
+                                      if (typeof p.current_score === 'number') return p.current_score;
+                                      if (typeof p.base_score === 'number') return p.base_score;
+                                      return 0;
+                                    };
+
+                                    const getScoreRequirementText = (requirement?: { method: 'ahead' | 'behind'; delta: number }) => {
+                                      if (!requirement) return '';
+                                      return requirement.method === 'ahead'
+                                        ? `Requires score +${requirement.delta} vs target`
+                                        : `Requires score -${requirement.delta} vs target`;
+                                    };
+
+                                    const meetsScoreRequirement = (
+                                      requirement: { method: 'ahead' | 'behind'; delta: number },
+                                      attackerScore: number,
+                                      targetScore: number
+                                    ) => {
+                                      const delta = attackerScore - targetScore;
+                                      return requirement.method === 'ahead'
+                                        ? delta >= requirement.delta
+                                        : delta <= -requirement.delta;
+                                    };
+
+                                    const evaluateScoreEligibility = (
+                                      goal: typeof BATTLE_GOALS.attacking[number],
+                                      attackerScore: number,
+                                      selectedTarget: BattleParticipant | undefined,
+                                      targets: BattleParticipant[],
+                                      requireSelectedTarget = false
+                                    ) => {
+                                      if (!goal.score_requirement || goal.target_type !== 'enemy') {
+                                        return { eligible: true, reason: '' };
+                                      }
+
+                                      const reason = getScoreRequirementText(goal.score_requirement);
+
+                                      if (selectedTarget) {
+                                        const targetScore = getParticipantScore(selectedTarget);
+                                        return {
+                                          eligible: meetsScoreRequirement(goal.score_requirement, attackerScore, targetScore),
+                                          reason
+                                        };
+                                      }
+
+                                      if (requireSelectedTarget) {
+                                        return { eligible: false, reason: 'Select a target to meet the score requirement.' };
+                                      }
+
+                                      if (!targets || targets.length === 0) {
+                                        return { eligible: false, reason };
+                                      }
+
+                                      const anyEligible = targets.some(target =>
+                                        meetsScoreRequirement(goal.score_requirement!, attackerScore, getParticipantScore(target))
+                                      );
+                                      return { eligible: anyEligible, reason };
+                                    };
+
                                     return (
                                       <>
                                         <div style={{ flex: '1 1 260px', minWidth: '220px' }}>
@@ -4959,11 +5019,31 @@ const CampaignView: React.FC = () => {
                                                 return (
                                                   <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                                                     {goals.map(goal => {
-                                                      const isEligible = isGoalEligible(goal, selectedCategory);
+                                                      const isCategoryEligible = isGoalEligible(goal, selectedCategory);
+                                                      const attackerScore = getParticipantScore(selectedParticipant);
+                                                      const selection = goalSelections[selectedParticipant.id];
+                                                      const selectedTarget = selection?.targetId
+                                                        ? enemyTargets.find(t => t.id === selection.targetId)
+                                                        : undefined;
+                                                      const scoreEligibility = evaluateScoreEligibility(
+                                                        goal,
+                                                        attackerScore,
+                                                        selectedTarget,
+                                                        enemyTargets
+                                                      );
+                                                      const isEligible = isCategoryEligible && scoreEligibility.eligible;
+                                                      const lockReason = !isCategoryEligible
+                                                        ? (goal.lock_reason || 'Not eligible for this unit')
+                                                        : (!scoreEligibility.eligible ? scoreEligibility.reason : '');
                                                       const isSelected = goalSelections[selectedParticipant.id]?.goalKey === goal.key;
+                                                      const scoreRequirementText = goal.score_requirement
+                                                        ? getScoreRequirementText(goal.score_requirement)
+                                                        : '';
                                                       
                                                       // DEBUG: Log eligibility check for each goal
-                                                      console.log(`  ✓ Goal "${goal.name}": eligible=${isEligible}, category="${selectedCategory}", allowed_categories=${goal.eligible_categories}`);
+                                                      console.log(
+                                                        `  ✓ Goal "${goal.name}": eligible=${isEligible}, category="${selectedCategory}", allowed_categories=${goal.eligible_categories}, score_eligible=${scoreEligibility.eligible}`
+                                                      );
                                                       
                                                       return (
                                                         <button
@@ -4980,7 +5060,7 @@ const CampaignView: React.FC = () => {
                                                             }
                                                           }}
                                                           disabled={!isEligible}
-                                                          title={!isEligible ? goal.lock_reason || 'Not eligible for this unit' : ''}
+                                                          title={!isEligible ? lockReason : ''}
                                                           style={{
                                                             textAlign: 'left',
                                                             padding: '0.7rem',
@@ -5002,15 +5082,49 @@ const CampaignView: React.FC = () => {
                                                         >
                                                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                             <div style={{ flex: 1 }}>
-                                                              <div style={{ fontWeight: 'bold' }}>
-                                                                {isSelected && '✓ '}{goal.name}
+                                                              <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                                                <span>{isSelected && '✓ '}{goal.name}</span>
+                                                                {scoreRequirementText && (
+                                                                  <span
+                                                                    title={scoreRequirementText}
+                                                                    style={{
+                                                                      padding: '0.15rem 0.4rem',
+                                                                      borderRadius: '999px',
+                                                                      background: 'rgba(148, 163, 184, 0.2)',
+                                                                      border: '1px solid rgba(148, 163, 184, 0.45)',
+                                                                      color: '#e2e8f0',
+                                                                      fontSize: '0.65rem',
+                                                                      letterSpacing: '0.03em',
+                                                                      textTransform: 'uppercase'
+                                                                    }}
+                                                                  >
+                                                                    Score req
+                                                                  </span>
+                                                                )}
+                                                                {goal.key === 'assassinate_commander' && (
+                                                                  <span
+                                                                    title="Halves target score on success"
+                                                                    style={{
+                                                                      padding: '0.15rem 0.4rem',
+                                                                      borderRadius: '999px',
+                                                                      background: 'rgba(239, 68, 68, 0.18)',
+                                                                      border: '1px solid rgba(239, 68, 68, 0.45)',
+                                                                      color: '#fecaca',
+                                                                      fontSize: '0.65rem',
+                                                                      letterSpacing: '0.03em',
+                                                                      textTransform: 'uppercase'
+                                                                    }}
+                                                                  >
+                                                                    Halves target score
+                                                                  </span>
+                                                                )}
                                                               </div>
                                                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                                                 {goal.description}
                                                               </div>
                                                             </div>
                                                             {!isEligible && (
-                                                              <div style={{ fontSize: '1.2rem' }} title={goal.lock_reason || 'Not eligible'}>
+                                                              <div style={{ fontSize: '1.2rem' }} title={lockReason || 'Not eligible'}>
                                                                 🔒
                                                               </div>
                                                             )}
@@ -5027,6 +5141,15 @@ const CampaignView: React.FC = () => {
                                                 if (!selection?.goalKey) return null;
                                                 const goal = findGoalByKey(selection.goalKey);
                                                 if (!goal || goal.target_type !== 'enemy') return null;
+                                                const attackerScore = getParticipantScore(selectedParticipant);
+                                                const isTargetEligible = (target: BattleParticipant) => {
+                                                  if (!goal.score_requirement) return true;
+                                                  return meetsScoreRequirement(
+                                                    goal.score_requirement,
+                                                    attackerScore,
+                                                    getParticipantScore(target)
+                                                  );
+                                                };
                                                 return (
                                                   <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
                                                     <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Target Army</label>
@@ -5053,7 +5176,7 @@ const CampaignView: React.FC = () => {
                                                     >
                                                       <option value="">Select target</option>
                                                       {enemyTargets.map(target => (
-                                                        <option key={target.id} value={target.id}>
+                                                        <option key={target.id} value={target.id} disabled={!isTargetEligible(target)}>
                                                           {getBattleParticipantName(target)}
                                                         </option>
                                                       ))}
@@ -5069,6 +5192,24 @@ const CampaignView: React.FC = () => {
                                                   if (!selection?.goalKey) return;
                                                   const goal = findGoalByKey(selection.goalKey);
                                                   if (goal?.target_type === 'enemy' && !selection.targetId) return;
+
+                                                  if (goal?.score_requirement && goal.target_type === 'enemy') {
+                                                    const selectedTarget = selection.targetId
+                                                      ? enemyTargets.find(t => t.id === selection.targetId)
+                                                      : undefined;
+                                                    const scoreCheck = evaluateScoreEligibility(
+                                                      goal,
+                                                      getParticipantScore(selectedParticipant),
+                                                      selectedTarget,
+                                                      enemyTargets,
+                                                      true
+                                                    );
+                                                    if (!scoreCheck.eligible) {
+                                                      setToastMessage(scoreCheck.reason || 'Score requirement not met.');
+                                                      setTimeout(() => setToastMessage(null), 3000);
+                                                      return;
+                                                    }
+                                                  }
 
                                                   try {
                                                     await battleAPI.setGoal(activeBattle.id, {

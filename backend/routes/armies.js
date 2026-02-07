@@ -734,6 +734,15 @@ const calculateCasualties = (roll, currentTroops) => {
   return Math.max(1, Math.floor(currentTroops * (percent / 100)));
 };
 
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const getScoreRatioModifier = (winnerScore, loserScore) => {
+  const safeWinner = Number.isFinite(winnerScore) ? winnerScore : 0;
+  const safeLoser = Number.isFinite(loserScore) ? loserScore : 0;
+  const ratio = (safeWinner + 1) / (safeLoser + 1);
+  return clamp(ratio, 0.75, 1.25);
+};
+
 // Get battle goals for a round (filters by player unless DM or resolution phase)
 router.get('/battles/:id/goals', authenticateToken, async (req, res) => {
   try {
@@ -835,16 +844,42 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'This army is not eligible for that goal' });
     }
 
+    let target = null;
     if (goalTemplate.target_type === 'enemy') {
       if (!target_participant_id) {
         return res.status(400).json({ error: 'Target required for this goal' });
       }
-      const target = battle.participants.find(p => p.id === target_participant_id);
+      target = battle.participants.find(p => p.id === target_participant_id);
       if (!target) {
         return res.status(404).json({ error: 'Target participant not found' });
       }
       if (target.team_name === participant.team_name) {
         return res.status(400).json({ error: 'Target must be an enemy army' });
+      }
+    }
+
+    if (goalTemplate.score_requirement && goalTemplate.target_type === 'enemy') {
+      if (!target) {
+        return res.status(400).json({ error: 'Target required for this goal' });
+      }
+      const getParticipantScore = (p) => {
+        if (!p) return 0;
+        if (typeof p.current_score === 'number') return p.current_score;
+        if (typeof p.base_score === 'number') return p.base_score;
+        return 0;
+      };
+      const attackerScore = getParticipantScore(participant);
+      const targetScore = getParticipantScore(target);
+      const delta = attackerScore - targetScore;
+      const requirement = goalTemplate.score_requirement;
+      const meets = requirement.method === 'ahead'
+        ? delta >= requirement.delta
+        : delta <= -requirement.delta;
+      if (!meets) {
+        const needed = requirement.method === 'ahead'
+          ? `+${requirement.delta}`
+          : `-${requirement.delta}`;
+        return res.status(400).json({ error: `Score requirement not met (needs ${needed} vs target).` });
       }
     }
 
@@ -913,7 +948,7 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
     }
 
     const goalResult = await pool.query(
-      `SELECT bg.*, bp.team_name as executor_team_name, bp.is_temporary, bp.army_id, bp.current_troops,
+      `SELECT bg.*, bp.team_name as executor_team_name, bp.is_temporary, bp.army_id, bp.current_troops, bp.current_score as executor_score,
               COALESCE(bp.temp_army_category, a.category, 'Swordsmen') as executor_category,
               a.player_id as executor_player_id,
               target_bp.current_troops as target_troops,
@@ -988,24 +1023,60 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         ? (attackTemplate?.casualty_multiplier || 1)
         : (defenseTemplate?.casualty_multiplier || 1);
 
+      const attackerScore = Number.isFinite(goal.executor_score) ? goal.executor_score : 0;
+      const targetScore = Number.isFinite(goal.target_score) ? goal.target_score : 0;
+      const winnerScore = attackerWins ? attackerScore : targetScore;
+      const loserScore = attackerWins ? targetScore : attackerScore;
+      const scoreCasualtyMultiplier = getScoreRatioModifier(winnerScore, loserScore);
+
       const scaledCasualties = baseCasualties > 0
-        ? Math.max(1, Math.floor(baseCasualties * casualtyMultiplier))
+        ? Math.max(1, Math.floor(baseCasualties * casualtyMultiplier * scoreCasualtyMultiplier))
         : 0;
 
       const guaranteedSelfCasualties = attackTemplate?.guaranteed_casualty || 0;
+      const isAssassinate = attackTemplate?.key === 'assassinate_commander';
 
       let scoreChangeSelf = 0;
       let scoreChangeTarget = 0;
 
       // Only assassinate_commander goal applies score changes to attack goals
-      if (attackTemplate?.effect === 'decrease_target_half_score' && attackerWins) {
+      if (attackTemplate?.key === 'assassinate_commander' && attackTemplate?.effect === 'decrease_target_half_score' && attackerWins) {
         const targetScore = Math.max(0, goal.target_score || 0);
         scoreChangeTarget = -Math.floor(targetScore / 2);
       }
 
-      const fixedTargetCasualties = attackTemplate?.key === 'assassinate_commander'
+      const fixedTargetCasualties = isAssassinate
         ? (attackerWins ? 1 : 0)
         : (attackerWins ? scaledCasualties : 0);
+
+      const rollMargin = Math.abs(attackerRoll - defenderRoll);
+      const decisiveWin = rollMargin >= 30;
+
+      const assassinateSelfCasualties = (() => {
+        if (!isAssassinate) return 0;
+        if (!attackerWins) return Math.max(1, scaledCasualties);
+        const inverseRoll = clampRoll(101 - attackerRoll);
+        const baseSelfCasualties = calculateCasualties(inverseRoll, goal.current_troops);
+        if (baseSelfCasualties <= 0) return 0;
+        const selfMultiplier = attackTemplate?.casualty_multiplier || 1;
+        const selfScoreMultiplier = getScoreRatioModifier(targetScore, attackerScore);
+        const scaledSelf = Math.floor(baseSelfCasualties * selfMultiplier * selfScoreMultiplier);
+        if (decisiveWin) return Math.max(0, scaledSelf);
+        return Math.max(1, scaledSelf);
+      })();
+
+      const baseSelfCasualties = (() => {
+        if (isAssassinate) return assassinateSelfCasualties;
+        if (!attackerWins) return Math.max(1, scaledCasualties);
+        const selfBase = calculateCasualties(defenderRoll, goal.current_troops);
+        if (selfBase <= 0) return 0;
+        const selfScoreMultiplier = getScoreRatioModifier(targetScore, attackerScore);
+        const scaledSelf = Math.floor(selfBase * 0.5 * selfScoreMultiplier);
+        if (decisiveWin) return Math.max(0, scaledSelf);
+        return Math.max(1, scaledSelf);
+      })();
+
+      const totalSelfCasualties = baseSelfCasualties + (isAssassinate ? 0 : guaranteedSelfCasualties);
 
       resolution = {
         attacker_roll: attackerRoll,
@@ -1014,7 +1085,7 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         roll_details: { attacker: attackerRolls, defender: defenderRolls },
         advantage: attackerAdvantage ? 'attacker' : 'defender',
         casualties_target: fixedTargetCasualties,
-        casualties_self: (attackerWins ? 0 : scaledCasualties) + guaranteedSelfCasualties,
+        casualties_self: totalSelfCasualties,
         score_change_target: scoreChangeTarget,
         score_change_self: scoreChangeSelf,
         score_change_target: scoreChangeTarget,
