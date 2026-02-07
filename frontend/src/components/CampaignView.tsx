@@ -5122,6 +5122,11 @@ const CampaignView: React.FC = () => {
                                                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                                                 {goal.description}
                                                               </div>
+                                                              {scoreRequirementText && (
+                                                                <div style={{ fontSize: '0.7rem', color: '#cbd5f5', marginTop: '0.2rem' }}>
+                                                                  {scoreRequirementText}
+                                                                </div>
+                                                              )}
                                                             </div>
                                                             {!isEligible && (
                                                               <div style={{ fontSize: '1.2rem' }} title={lockReason || 'Not eligible'}>

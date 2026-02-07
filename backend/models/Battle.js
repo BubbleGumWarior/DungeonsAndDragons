@@ -355,13 +355,15 @@ class Battle {
         const currentScore = participantResult.rows[0].current_score || 0;
 
         const nextTroops = Math.max(0, currentTroops + change.troopDelta);
-        const nextScore = nextTroops === 0 ? 0 : currentScore + change.scoreDelta;
+        const rawScore = nextTroops === 0 ? 0 : currentScore + change.scoreDelta;
+        const nextScore = Math.max(0, rawScore);
+        const finalTroops = nextScore === 0 ? 0 : nextTroops;
 
         await pool.query(
           `UPDATE battle_participants
            SET current_troops = $2, current_score = $3
            WHERE id = $1`,
-          [participantId, nextTroops, nextScore]
+          [participantId, finalTroops, nextScore]
         );
       }
 
@@ -480,7 +482,7 @@ class Battle {
         }
         
         if (isFirstRound) {
-          // First round: Calculate base score from stats + dice roll
+          // First round: Calculate base score from stats only (no RNG after battle start)
           // Numbers stat applies 5x the normal rate
           const statSum = ((stats.numbers || 0) * 5) + (stats.equipment || 0) + (stats.discipline || 0) + 
                          (stats.morale || 0) + (stats.command || 0) + (stats.logistics || 0);

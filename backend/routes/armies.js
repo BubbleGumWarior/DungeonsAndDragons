@@ -740,8 +740,10 @@ const getScoreRatioModifier = (winnerScore, loserScore) => {
   const safeWinner = Number.isFinite(winnerScore) ? winnerScore : 0;
   const safeLoser = Number.isFinite(loserScore) ? loserScore : 0;
   const ratio = (safeWinner + 1) / (safeLoser + 1);
-  return clamp(ratio, 0.75, 1.25);
+  return clamp(ratio, 0.6, 1.4);
 };
+
+const isDecisiveWin = (rollMargin) => rollMargin >= 30;
 
 // Get battle goals for a round (filters by player unless DM or resolution phase)
 router.get('/battles/:id/goals', authenticateToken, async (req, res) => {
@@ -1050,7 +1052,7 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         : (attackerWins ? scaledCasualties : 0);
 
       const rollMargin = Math.abs(attackerRoll - defenderRoll);
-      const decisiveWin = rollMargin >= 30;
+      const decisiveWin = isDecisiveWin(rollMargin);
 
       const assassinateSelfCasualties = (() => {
         if (!isAssassinate) return 0;
@@ -1088,8 +1090,6 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         casualties_self: totalSelfCasualties,
         score_change_target: scoreChangeTarget,
         score_change_self: scoreChangeSelf,
-        score_change_target: scoreChangeTarget,
-        score_change_self: scoreChangeSelf,
         notes: attackerWins ? 'Attacker wins the clash.' : 'Defender repels the attack.'
       };
     } else if (goal.goal_type === GOAL_TYPES.DEFEND) {
@@ -1105,15 +1105,20 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
     } else if (goal.goal_type === GOAL_TYPES.LOGISTICS) {
       const logRoll = rollD100();
       const template = findGoalByKey(goal.goal_key);
-      const scoreDelta = Math.max(1, Math.round((logRoll / 100) * 10));
       const scoreMultiplier = template?.score_multiplier || 1;
-      const adjustedDelta = Math.max(1, Math.round(scoreDelta * scoreMultiplier));
+      const percent = 0.02 + ((logRoll / 100) * 0.04);
+      const executorScore = Number.isFinite(goal.executor_score) ? goal.executor_score : 0;
+      const targetScore = Number.isFinite(goal.target_score) ? goal.target_score : 0;
 
       if (template && template.effect === 'decrease_target') {
+        const baseDelta = Math.max(1, Math.round(targetScore * percent));
+        const adjustedDelta = Math.max(1, Math.round(baseDelta * scoreMultiplier));
         resolution.score_change_target = -adjustedDelta;
         resolution.score_change_self = 0;
         resolution.notes = 'Enemy logistics disrupted.';
       } else {
+        const baseDelta = Math.max(1, Math.round(executorScore * percent));
+        const adjustedDelta = Math.max(1, Math.round(baseDelta * scoreMultiplier));
         resolution.score_change_self = adjustedDelta;
         resolution.score_change_target = 0;
         resolution.notes = 'Army logistics improved.';
