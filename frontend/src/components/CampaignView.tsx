@@ -4181,7 +4181,7 @@ const CampaignView: React.FC = () => {
                                   console.error('Error moving to resolution:', error);
                                 }
                               }}
-                              disabled={(() => {
+                              disabled={user?.role !== 'Dungeon Master' && (() => {
                                 const eligible = (activeBattle.participants || []).filter(p => (p.current_troops || 0) > 0);
                                 const goalParticipantIds = new Set(battleGoals.map(goal => goal.participant_id));
                                 return !eligible.every(p => p.has_selected_goal || goalParticipantIds.has(p.id));
@@ -4192,10 +4192,10 @@ const CampaignView: React.FC = () => {
                                 border: '2px solid rgba(234, 179, 8, 0.5)',
                                 borderRadius: '0.5rem',
                                 color: '#facc15',
-                                cursor: (activeBattle.participants || []).filter(p => (p.current_troops || 0) > 0).every(p => p.has_selected_goal || new Set(battleGoals.map(goal => goal.participant_id)).has(p.id)) ? 'pointer' : 'not-allowed',
+                                cursor: (user?.role === 'Dungeon Master' || (activeBattle.participants || []).filter(p => (p.current_troops || 0) > 0).every(p => p.has_selected_goal || new Set(battleGoals.map(goal => goal.participant_id)).has(p.id))) ? 'pointer' : 'not-allowed',
                                 fontSize: '0.85rem',
                                 fontWeight: 'bold',
-                                opacity: (activeBattle.participants || []).filter(p => (p.current_troops || 0) > 0).every(p => p.has_selected_goal || new Set(battleGoals.map(goal => goal.participant_id)).has(p.id)) ? 1 : 0.6
+                                opacity: (user?.role === 'Dungeon Master' || (activeBattle.participants || []).filter(p => (p.current_troops || 0) > 0).every(p => p.has_selected_goal || new Set(battleGoals.map(goal => goal.participant_id)).has(p.id))) ? 1 : 0.6
                               }}
                             >
                               ✅ Move to Resolution
