@@ -801,17 +801,33 @@ const startServer = async () => {
       // Participant position update (DM moving armies during planning phase)
       socket.on('battlefieldParticipantMove', (data) => {
         try {
-          const { campaignId, participantId, x, y } = data;
+          const { campaignId, battleId, participantId, x, y, remainingMovement } = data;
           // Broadcast to all users in the campaign
           socket.to(`campaign_${campaignId}`).emit('battlefieldParticipantMoved', {
+            battleId,
             participantId,
             x,
             y,
+            remainingMovement,
             timestamp: new Date().toISOString()
           });
           console.log(`🗺️ Battlefield participant ${participantId} moved to (${x}, ${y}) in campaign ${campaignId}`);
         } catch (error) {
           console.error('Error handling battlefield participant movement:', error);
+        }
+      });
+
+      // Reset battlefield movement (DM advancing round)
+      socket.on('battlefieldMovementReset', (data) => {
+        try {
+          const { campaignId, battleId, movementState } = data;
+          io.to(`campaign_${campaignId}`).emit('battlefieldMovementReset', {
+            battleId,
+            movementState,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('Error handling battlefield movement reset:', error);
         }
       });
 

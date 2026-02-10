@@ -236,7 +236,16 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			eligible_categories: ['Knights', 'Royal Guard', 'Swordsmen', 'Heavy Infantry']
 		}
 	],
-	custom: [],
+	custom: [
+		{
+			key: 'skip_goal',
+			name: 'Hold Position',
+			description: 'No viable actions this round. The army holds position and waits.',
+			goal_type: 'custom',
+			target_type: 'self',
+			eligible_categories: []
+		}
+	],
 	commander: [],
 	unique: [
 		{

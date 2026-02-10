@@ -765,18 +765,21 @@ export const battleAPI = {
     return response.data;
   },
 
-  completeBattle: async (battleId: number): Promise<{ message: string; results: BattleParticipant[] }> => {
+  completeBattle: async (battleId: number): Promise<{ message: string; results: BattleParticipant[]; summary?: any }> => {
     const response = await api.post(`/armies/battles/${battleId}/complete`);
     return response.data;
   },
 
   // Battle invitations
-  invitePlayers: async (battleId: number, playerIds: number[], teamName: string, factionColor: string = '#808080'): Promise<any[]> => {
-    const response = await api.post(`/armies/battles/${battleId}/invite`, {
+  invitePlayers: async (battleId: number, playerIds: number[], teamName: string, factionColor?: string): Promise<any[]> => {
+    const payload: { player_ids: number[]; team_name: string; faction_color?: string } = {
       player_ids: playerIds,
-      team_name: teamName,
-      faction_color: factionColor
-    });
+      team_name: teamName
+    };
+    if (factionColor) {
+      payload.faction_color = factionColor;
+    }
+    const response = await api.post(`/armies/battles/${battleId}/invite`, payload);
     return response.data;
   },
 

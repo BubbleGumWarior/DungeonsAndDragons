@@ -69,4 +69,18 @@ module.exports = (socket, io, battleMovementState) => {
       console.error('Error handling battlefield participant movement:', error);
     }
   });
+
+  // Handle battlefield movement reset (DM advancing round)
+  socket.on('battlefieldMovementReset', (data) => {
+    try {
+      const { campaignId, battleId, movementState } = data;
+      io.to(`campaign_${campaignId}`).emit('battlefieldMovementReset', {
+        battleId,
+        movementState,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error handling battlefield movement reset:', error);
+    }
+  });
 };

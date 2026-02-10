@@ -269,7 +269,18 @@ const BATTLE_GOALS = {
       score_multiplier: 1
     }
   ],
-  custom: [],
+  custom: [
+    {
+      key: 'skip_goal',
+      name: 'Hold Position',
+      description: 'No viable actions this round. The army holds position and waits.',
+      goal_type: GOAL_TYPES.CUSTOM,
+      target_type: 'self',
+      eligible_categories: [],
+      casualty_multiplier: 0,
+      score_multiplier: 0
+    }
+  ],
   commander: [],
   unique: [
     {

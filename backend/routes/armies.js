@@ -8,6 +8,23 @@ const { authenticateToken } = require('../middleware/auth');
 const { pool } = require('../models/database');
 const { BATTLE_GOALS, findGoalByKey, isGoalEligible, GOAL_TYPES } = require('../utils/battleGoals');
 
+const getArmyMovementSpeed = (category) => {
+  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
+  if (artilleryTypes.includes(category)) return 50;
+
+  const cavalryTypes = ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Knights', 'Mounted Archers'];
+  if (cavalryTypes.includes(category)) return 300;
+
+  return 100;
+};
+
+const getParticipantCategory = (participant) => {
+  if (participant.is_temporary) {
+    return participant.temp_army_category || 'Swordsmen';
+  }
+  return participant.army_category || participant.temp_army_category || 'Swordsmen';
+};
+
 // Get all armies for a player in a campaign
 router.get('/campaign/:campaignId/player/:playerId', authenticateToken, async (req, res) => {
   try {
@@ -360,20 +377,39 @@ router.post('/battles/:id/advance-round', authenticateToken, async (req, res) =>
     // Emit socket event to ALL users (using campaign room)
     const io = req.app.get('io');
     if (io) {
-      io.to(`campaign_${battle.campaign_id}`).emit('battleRoundAdvanced', {
-        battleId: id,
+      const roomName = `campaign_${battle.campaign_id}`;
+      const battleId = parseInt(id, 10);
+
+      io.to(roomName).emit('battleRoundAdvanced', {
+        battleId,
         round: updatedBattle.current_round,
         status: updatedBattle.status,
         timestamp: new Date().toISOString()
       });
       
       // Also emit that we've moved to goal selection phase
-      io.to(`campaign_${battle.campaign_id}`).emit('battleStatusUpdated', {
-        battleId: id,
+      io.to(roomName).emit('battleStatusUpdated', {
+        battleId,
         status: 'goal_selection',
         round: updatedBattle.current_round,
         timestamp: new Date().toISOString()
       });
+
+      if (updatedBattle.status === 'goal_selection') {
+        const battleWithParticipants = await Battle.findById(battleId);
+        if (battleWithParticipants && battleWithParticipants.participants) {
+          const movementState = {};
+          battleWithParticipants.participants.forEach((participant) => {
+            const category = getParticipantCategory(participant);
+            movementState[participant.id] = getArmyMovementSpeed(category);
+          });
+          io.to(roomName).emit('battlefieldMovementReset', {
+            battleId,
+            movementState,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
     }
     
     res.json(updatedBattle);
@@ -420,7 +456,7 @@ router.post('/battles/:id/participants', authenticateToken, async (req, res) => 
 router.post('/battles/:id/invite', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { player_ids, team_name, faction_color } = req.body;
+    const { player_ids, team_name } = req.body;
     
     const battle = await Battle.findById(id);
     if (!battle) {
@@ -432,9 +468,10 @@ router.post('/battles/:id/invite', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Only Dungeon Master can invite players' });
     }
     
+    const factionColor = await resolveFactionColor(id, team_name);
     const invitations = [];
     for (const playerId of player_ids) {
-      const invitation = await Battle.invitePlayer(id, playerId, team_name, faction_color);
+      const invitation = await Battle.invitePlayer(id, playerId, team_name, factionColor);
       if (invitation) {
         invitations.push(invitation);
       }
@@ -745,6 +782,70 @@ const getScoreRatioModifier = (winnerScore, loserScore) => {
 
 const isDecisiveWin = (rollMargin) => rollMargin >= 30;
 
+const BATTLEFIELD_FEET_PER_PERCENT = 20 / 3;
+
+const getRangeFeet = (category) => {
+  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
+  if (artilleryTypes.includes(category)) return 300;
+
+  const archerTypes = ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'];
+  if (archerTypes.includes(category)) return 150;
+
+  return 20;
+};
+
+const getBattlefieldDistanceFeet = (attackerX, attackerY, targetX, targetY) => {
+  const ax = Number.isFinite(attackerX) ? attackerX : 50;
+  const ay = Number.isFinite(attackerY) ? attackerY : 50;
+  const tx = Number.isFinite(targetX) ? targetX : 50;
+  const ty = Number.isFinite(targetY) ? targetY : 50;
+  const deltaX = ax - tx;
+  const deltaY = ay - ty;
+  const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+  return distancePercent * BATTLEFIELD_FEET_PER_PERCENT;
+};
+
+const getRandomColor = () => {
+  const rand = () => Math.floor(Math.random() * 256);
+  const toHex = value => value.toString(16).padStart(2, '0');
+  return `#${toHex(rand())}${toHex(rand())}${toHex(rand())}`;
+};
+
+const resolveFactionColor = async (battleId, teamName) => {
+  const existing = await pool.query(
+    `SELECT faction_color FROM battle_participants
+     WHERE battle_id = $1 AND team_name = $2 AND faction_color IS NOT NULL
+     ORDER BY id DESC LIMIT 1`,
+    [battleId, teamName]
+  );
+  if (existing.rows.length > 0 && existing.rows[0].faction_color) {
+    return existing.rows[0].faction_color;
+  }
+
+  const inviteColor = await pool.query(
+    `SELECT faction_color FROM battle_invitations
+     WHERE battle_id = $1 AND team_name = $2 AND faction_color IS NOT NULL
+     ORDER BY invited_at DESC LIMIT 1`,
+    [battleId, teamName]
+  );
+  if (inviteColor.rows.length > 0 && inviteColor.rows[0].faction_color) {
+    return inviteColor.rows[0].faction_color;
+  }
+
+  let color = getRandomColor();
+  const usedColorsResult = await pool.query(
+    `SELECT DISTINCT faction_color FROM battle_participants WHERE battle_id = $1 AND faction_color IS NOT NULL`,
+    [battleId]
+  );
+  const usedColors = new Set(usedColorsResult.rows.map(row => row.faction_color));
+  let guard = 0;
+  while (usedColors.has(color) && guard < 6) {
+    color = getRandomColor();
+    guard += 1;
+  }
+  return color;
+};
+
 // Get battle goals for a round (filters by player unless DM or resolution phase)
 router.get('/battles/:id/goals', authenticateToken, async (req, res) => {
   try {
@@ -951,14 +1052,18 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
 
     const goalResult = await pool.query(
       `SELECT bg.*, bp.team_name as executor_team_name, bp.is_temporary, bp.army_id, bp.current_troops, bp.current_score as executor_score,
+              bp.position_x as executor_position_x, bp.position_y as executor_position_y,
               COALESCE(bp.temp_army_category, a.category, 'Swordsmen') as executor_category,
               a.player_id as executor_player_id,
               target_bp.current_troops as target_troops,
-              target_bp.current_score as target_score
+              target_bp.current_score as target_score,
+              target_bp.position_x as target_position_x, target_bp.position_y as target_position_y,
+              COALESCE(target_bp.temp_army_category, a_target.category, 'Swordsmen') as target_category
        FROM battle_goals bg
        LEFT JOIN battle_participants bp ON bg.participant_id = bp.id
        LEFT JOIN armies a ON bp.army_id = a.id
        LEFT JOIN battle_participants target_bp ON bg.target_participant_id = target_bp.id
+       LEFT JOIN armies a_target ON target_bp.army_id = a_target.id
        WHERE bg.id = $1 AND bg.battle_id = $2`,
       [goalId, id]
     );
@@ -1078,7 +1183,18 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         return Math.max(1, scaledSelf);
       })();
 
-      const totalSelfCasualties = baseSelfCasualties + (isAssassinate ? 0 : guaranteedSelfCasualties);
+      const targetRangeFeet = getRangeFeet(goal.target_category || 'Swordsmen');
+      const distanceFeet = getBattlefieldDistanceFeet(
+        goal.executor_position_x,
+        goal.executor_position_y,
+        goal.target_position_x,
+        goal.target_position_y
+      );
+      const targetHasRange = distanceFeet <= targetRangeFeet;
+
+      const totalSelfCasualties = targetHasRange
+        ? baseSelfCasualties + (isAssassinate ? 0 : guaranteedSelfCasualties)
+        : 0;
 
       resolution = {
         attacker_roll: attackerRoll,
@@ -1090,7 +1206,9 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         casualties_self: totalSelfCasualties,
         score_change_target: scoreChangeTarget,
         score_change_self: scoreChangeSelf,
-        notes: attackerWins ? 'Attacker wins the clash.' : 'Defender repels the attack.'
+        notes: attackerWins
+          ? 'Attacker wins the clash.'
+          : (targetHasRange ? 'Defender repels the attack.' : 'Defender out of range; no counter-casualties.')
       };
     } else if (goal.goal_type === GOAL_TYPES.DEFEND) {
       const attackers = await pool.query(
@@ -1268,6 +1386,25 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
     const sortedTeams = Object.entries(teamScores).sort((a, b) => b[1] - a[1]);
     const winningTeam = sortedTeams[0][0];
     const winningScore = sortedTeams[0][1];
+
+    const killsResult = await pool.query(
+      `SELECT participant_id, COALESCE(SUM(casualties_target), 0) as kills
+       FROM battle_goals
+       WHERE battle_id = $1 AND status IN ('resolved', 'applied')
+       GROUP BY participant_id`,
+      [id]
+    );
+    const killsByParticipant = killsResult.rows.reduce((acc, row) => {
+      acc[row.participant_id] = Number(row.kills) || 0;
+      return acc;
+    }, {});
+
+    const strongestParticipant = participants.reduce((best, current) => {
+      if (!best) return current;
+      const bestScore = Number.isFinite(best.current_score) ? best.current_score : 0;
+      const currentScore = Number.isFinite(current.current_score) ? current.current_score : 0;
+      return currentScore > bestScore ? current : best;
+    }, null);
     
     // Save battle history for each army
     for (const participant of participants) {
@@ -1367,16 +1504,32 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
     
     // Emit socket event
     const io = req.app.get('io');
+    const summary = {
+      teamScores,
+      winningTeam,
+      winningScore,
+      strongestArmy: strongestParticipant
+        ? {
+            participantId: strongestParticipant.id,
+            name: strongestParticipant.temp_army_name || strongestParticipant.army_name || `Army #${strongestParticipant.id}`,
+            score: strongestParticipant.current_score
+          }
+        : null,
+      killsByParticipant
+    };
+
     if (io) {
+      const battleId = parseInt(id, 10);
       io.to(`campaign_${battle.campaign_id}`).emit('battleCompleted', {
-        battleId: id,
+        battleId,
         battleName: battle.battle_name,
         results: participants,
+        summary,
         timestamp: new Date().toISOString()
       });
     }
     
-    res.json({ message: 'Battle completed', results: participants });
+    res.json({ message: 'Battle completed', results: participants, summary });
   } catch (error) {
     console.error('Error completing battle:', error);
     res.status(500).json({ error: 'Failed to complete battle' });

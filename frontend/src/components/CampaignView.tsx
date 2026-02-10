@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
@@ -121,6 +121,55 @@ const getArmyMovementSpeed = (category: string): number => {
 
   // Infantry and others: 100ft per round
   return 100;
+};
+
+const BATTLEFIELD_FEET_PER_PERCENT = 20 / 3;
+
+type ArmyRangeBand = 'melee' | 'archer' | 'artillery';
+
+const getArmyRangeBand = (category: string): ArmyRangeBand => {
+  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
+  if (artilleryTypes.includes(category)) return 'artillery';
+
+  const archerTypes = ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'];
+  if (archerTypes.includes(category)) return 'archer';
+
+  return 'melee';
+};
+
+const getArmyRangeFeet = (category: string): number => {
+  const band = getArmyRangeBand(category);
+  if (band === 'artillery') return 300;
+  if (band === 'archer') return 150;
+  return 20;
+};
+
+const getArmyRangeLabel = (category: string): string => {
+  const band = getArmyRangeBand(category);
+  if (band === 'artillery') return 'Artillery 300ft';
+  if (band === 'archer') return 'Archer 150ft';
+  return 'Melee 20ft';
+};
+
+const getParticipantCategory = (participant: BattleParticipant): string => {
+  if (participant.is_temporary) {
+    return participant.temp_army_category || 'Swordsmen';
+  }
+  return participant.army_category || participant.temp_army_category || 'Swordsmen';
+};
+
+const getBattlefieldDistanceFeet = (
+  attacker: BattleParticipant,
+  target: BattleParticipant
+): number => {
+  const attackerX = attacker.position_x ?? 50;
+  const attackerY = attacker.position_y ?? 50;
+  const targetX = target.position_x ?? 50;
+  const targetY = target.position_y ?? 50;
+  const deltaX = attackerX - targetX;
+  const deltaY = attackerY - targetY;
+  const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+  return distancePercent * BATTLEFIELD_FEET_PER_PERCENT;
 };
 
 const CampaignView: React.FC = () => {
@@ -268,13 +317,16 @@ const CampaignView: React.FC = () => {
   const [showBattleInvitationsModal, setShowBattleInvitationsModal] = useState(false);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
   const [showBattlefieldParticipants, setShowBattlefieldParticipants] = useState(false);
+  const [showBattleSummaryModal, setShowBattleSummaryModal] = useState(false);
+  const [battleSummary, setBattleSummary] = useState<any>(null);
+  const [hoveredBattlefieldParticipantId, setHoveredBattlefieldParticipantId] = useState<number | null>(null);
   const [selectedPlayersToInvite, setSelectedPlayersToInvite] = useState<number[]>([]);
   const [inviteTeamName, setInviteTeamName] = useState<string>('');
-  const [inviteTeamColor, setInviteTeamColor] = useState<string>('#3b82f6');
+  const [inviteTeamMode, setInviteTeamMode] = useState<'existing' | 'new'>('existing');
+  const [inviteTeamSelection, setInviteTeamSelection] = useState<string>('');
   const [newParticipantData, setNewParticipantData] = useState({
     type: 'player' as 'player' | 'dm',
     team: '',
-    faction_color: '#ef4444',
     selectedPlayerArmies: [] as number[],
     tempArmyName: '',
     tempArmyCategory: 'Swordsmen' as string,
@@ -287,6 +339,8 @@ const CampaignView: React.FC = () => {
       logistics: 5
     }
   });
+  const [newParticipantTeamMode, setNewParticipantTeamMode] = useState<'existing' | 'new'>('existing');
+  const [newParticipantTeamSelection, setNewParticipantTeamSelection] = useState<string>('');
 
   const getBattleParticipantName = useCallback((participant: BattleParticipant) => {
     return participant.temp_army_name || participant.army_name || `Army #${participant.id}`;
@@ -300,6 +354,39 @@ const CampaignView: React.FC = () => {
       return p.user_id === user?.id;
     });
   }, [activeBattle, user]);
+
+  const existingFactions = useMemo(() => {
+    const names = (activeBattle?.participants || [])
+      .map(p => p.team_name)
+      .filter((name): name is string => Boolean(name));
+    return Array.from(new Set(names));
+  }, [activeBattle?.participants]);
+
+  useEffect(() => {
+    if (!showAddParticipantModal) return;
+    if (existingFactions.length > 0) {
+      const teamName = existingFactions[0];
+      setNewParticipantTeamMode('existing');
+      setNewParticipantTeamSelection(teamName);
+      setNewParticipantData(prev => ({ ...prev, team: teamName }));
+    } else {
+      setNewParticipantTeamMode('new');
+      setNewParticipantTeamSelection('');
+    }
+  }, [showAddParticipantModal, existingFactions]);
+
+  useEffect(() => {
+    if (!showInvitePlayersModal) return;
+    if (existingFactions.length > 0) {
+      const teamName = existingFactions[0];
+      setInviteTeamMode('existing');
+      setInviteTeamSelection(teamName);
+      setInviteTeamName(teamName);
+    } else {
+      setInviteTeamMode('new');
+      setInviteTeamSelection('');
+    }
+  }, [showInvitePlayersModal, existingFactions]);
 
   useEffect(() => {
     const handleResize = () => setOverlayViewportWidth(window.innerWidth);
@@ -603,7 +690,7 @@ const CampaignView: React.FC = () => {
       if (needsInit) {
         const armyMovement: Record<number, number> = {};
         activeBattle.participants.forEach(participant => {
-          const category = participant.temp_army_category || participant.army_category || 'Swordsmen';
+          const category = getParticipantCategory(participant);
           const speed = getArmyMovementSpeed(category);
           console.log(`Initializing movement for participant ${participant.id}: category="${category}", speed=${speed}ft`);
           armyMovement[participant.id] = speed;
@@ -716,9 +803,18 @@ const CampaignView: React.FC = () => {
     loadGoals();
   }, [activeBattle, currentCampaign]);
 
+  const goalSelectionAutoOpenRef = useRef<{ battleId?: number; round?: number; status?: string }>({});
+
   // Auto-open goal selection when a new round starts
   useEffect(() => {
     if (!activeBattle || activeBattle.status !== 'goal_selection') return;
+
+    const lastOpened = goalSelectionAutoOpenRef.current;
+    const battleChanged = lastOpened.battleId !== activeBattle.id;
+    const roundChanged = lastOpened.round !== activeBattle.current_round;
+    const statusChanged = lastOpened.status !== activeBattle.status;
+    if (!battleChanged && !roundChanged && !statusChanged) return;
+
     const selectable = activeBattle.participants?.filter(p => {
       if ((p.current_troops || 0) <= 0) return false;
       if (p.is_temporary) return user?.role === 'Dungeon Master';
@@ -729,6 +825,11 @@ const CampaignView: React.FC = () => {
     if (hasUnselected) {
       setShowGoalSelectionModal(true);
     }
+    goalSelectionAutoOpenRef.current = {
+      battleId: activeBattle.id,
+      round: activeBattle.current_round,
+      status: activeBattle.status
+    };
   }, [activeBattle, user]);
 
   useEffect(() => {
@@ -1639,6 +1740,17 @@ const CampaignView: React.FC = () => {
         }
       });
 
+      // Listen for battlefield movement resets
+      newSocket.on('battlefieldMovementReset', (data: {
+        battleId: number;
+        movementState: Record<number, number>;
+        timestamp: string;
+      }) => {
+        if (activeBattle && activeBattle.id === data.battleId) {
+          setRemainingArmyMovement(data.movementState);
+        }
+      });
+
       // Listen for battle combat sync (server sends combat state on join)
       newSocket.on('battleCombatSync', (data: {
         combatants: Array<{ 
@@ -1791,6 +1903,17 @@ const CampaignView: React.FC = () => {
       });
 
       // Listen for battle completed
+      newSocket.on('battleCompleted', (data: { battleId: number; battleName: string; results: BattleParticipant[]; summary?: any; timestamp: string }) => {
+        if (activeBattle && activeBattle.id === data.battleId) {
+          setBattleSummary({
+            battleName: data.battleName,
+            results: data.results,
+            summary: data.summary || null
+          });
+          setShowBattleSummaryModal(true);
+          setActiveBattle(null);
+        }
+      });
 
       // Listen for battle invitation sent
       newSocket.on('battleInvitationSent', (data: { battleId: number; invitations: any[]; timestamp: string }) => {
@@ -3190,58 +3313,43 @@ const CampaignView: React.FC = () => {
             </div>
           </div>
 
-          {/* Main Content Area */}
-          <div style={{ flex: '1', minWidth: 0 }}>
+          {mainView === 'campaign' && (
+            <div style={{ flex: '1', minWidth: 0 }}>
 
-            {/* Campaign Content */}
-            {mainView === 'campaign' && (
-              <div>
-            {/* Global Quick Actions for DM */}
-
-            {/* Campaign Tab Navigation */}
             <div className="glass-panel" style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                {(['map', 'combat', 'battlefield', 'news', 'journal', 'encyclopedia'] as const).map((tab) => (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {[
+                  { key: 'map', label: 'Map', icon: '🗺️' },
+                  { key: 'combat', label: 'Combat', icon: '⚔️' },
+                  { key: 'battlefield', label: 'Battlefield', icon: '🏹' },
+                  { key: 'news', label: 'News', icon: '📰' },
+                  { key: 'journal', label: 'Journal', icon: '📖' },
+                  { key: 'encyclopedia', label: 'Encyclopedia', icon: '📚' }
+                ].map((tab) => (
                   <button
-                    key={tab}
-                    onClick={() => setCampaignTab(tab)}
+                    key={tab.key}
+                    onClick={() => setCampaignTab(tab.key as typeof campaignTab)}
+                    className={`tab-button ${campaignTab === tab.key ? 'active' : ''}`}
                     style={{
                       padding: '0.625rem 1.25rem',
-                      background: campaignTab === tab 
-                        ? 'rgba(212, 193, 156, 0.3)' 
+                      background: campaignTab === tab.key
+                        ? 'rgba(212, 193, 156, 0.3)'
                         : 'rgba(255, 255, 255, 0.1)',
-                      border: campaignTab === tab 
-                        ? '2px solid var(--primary-gold)' 
+                      border: campaignTab === tab.key
+                        ? '2px solid var(--primary-gold)'
                         : '1px solid rgba(212, 193, 156, 0.2)',
                       borderRadius: '1.5rem',
-                      color: campaignTab === tab ? 'var(--text-gold)' : 'var(--text-secondary)',
+                      color: campaignTab === tab.key ? 'var(--text-gold)' : 'var(--text-secondary)',
                       cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      fontWeight: 'bold',
-                      transition: 'all var(--transition-normal)',
+                      fontSize: '0.85rem',
+                      fontWeight: campaignTab === tab.key ? 'bold' : 'normal',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.5rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (campaignTab !== tab) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (campaignTab !== tab) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
-                      }
+                      gap: '0.4rem'
                     }}
                   >
-                    {tab === 'map' ? '🗺️ Campaign Map' : 
-                     tab === 'combat' ? '⚔️ Combat Area' :
-                     tab === 'battlefield' ? '🏰 Battlefield' :
-                     tab === 'encyclopedia' ? '📚 Encyclopedia' :
-                     tab === 'news' ? '📰 Campaign News' : 
-                     '📖 Campaign Journal'}
+                    <span style={{ fontSize: '0.9rem' }}>{tab.icon}</span>
+                    {tab.label}
                   </button>
                 ))}
               </div>
@@ -4108,12 +4216,20 @@ const CampaignView: React.FC = () => {
                                   // Reset all army movement for the new round
                                   const armyMovement: Record<number, number> = {};
                                   updated.participants?.forEach(participant => {
-                                    const category = participant.temp_army_category || participant.army_category || 'Swordsmen';
+                                    const category = getParticipantCategory(participant);
                                     const speed = getArmyMovementSpeed(category);
                                     console.log(`Round ${updated.current_round} - Resetting movement for participant ${participant.id}: category="${category}", speed=${speed}ft`);
                                     armyMovement[participant.id] = speed;
                                   });
                                   setRemainingArmyMovement(armyMovement);
+
+                                  if (socket && currentCampaign) {
+                                    socket.emit('battlefieldMovementReset', {
+                                      campaignId: currentCampaign.campaign.id,
+                                      battleId: updated.id,
+                                      movementState: armyMovement
+                                    });
+                                  }
                                 } catch (error) {
                                   console.error('Error advancing round:', error);
                                 }
@@ -4136,10 +4252,14 @@ const CampaignView: React.FC = () => {
                             <button
                               onClick={async () => {
                                 try {
-                                  await battleAPI.completeBattle(activeBattle.id);
+                                  const result = await battleAPI.completeBattle(activeBattle.id);
+                                  setBattleSummary({
+                                    battleName: activeBattle.battle_name,
+                                    results: result.results,
+                                    summary: result.summary || null
+                                  });
+                                  setShowBattleSummaryModal(true);
                                   setActiveBattle(null);
-                                  setToastMessage('Battle completed! Results saved to army histories.');
-                                  setTimeout(() => setToastMessage(null), 4000);
                                 } catch (error) {
                                   console.error('Error completing battle:', error);
                                 }
@@ -4205,8 +4325,7 @@ const CampaignView: React.FC = () => {
                         const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                         
                         // Convert percentage distance to feet
-                        // Battlefield map scale: 1% = 20/3 ft
-                        const distanceFeet = distancePercent * (20 / 3);
+                        const distanceFeet = distancePercent * BATTLEFIELD_FEET_PER_PERCENT;
                         
                         const participant = activeBattle.participants?.find(p => p.id === participantId);
                         if (!participant) return;
@@ -4287,6 +4406,36 @@ const CampaignView: React.FC = () => {
                             pointerEvents: 'none'
                           }} />
 
+                          {/* Hover range ring */}
+                          {hoveredBattlefieldParticipantId !== null && activeBattle.participants && (() => {
+                            const hoveredParticipant = activeBattle.participants?.find(p => p.id === hoveredBattlefieldParticipantId);
+                            if (!hoveredParticipant) return null;
+                            const category = getParticipantCategory(hoveredParticipant);
+                            const rangeFeet = getArmyRangeFeet(category);
+                            const rangePercent = rangeFeet / BATTLEFIELD_FEET_PER_PERCENT;
+                            const positionX = hoveredParticipant.position_x ?? 50;
+                            const positionY = hoveredParticipant.position_y ?? 50;
+                            const ringColor = hoveredParticipant.faction_color
+                              || (hoveredParticipant.team_name === 'A' ? '#3b82f6' : '#ef4444');
+                            return (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: `${positionX}%`,
+                                  top: `${positionY}%`,
+                                  width: `${rangePercent * 2}%`,
+                                  height: `${rangePercent * 2}%`,
+                                  transform: 'translate(-50%, -50%)',
+                                  border: `2px dashed ${ringColor}b3`,
+                                  borderRadius: '50%',
+                                  boxShadow: `0 0 56px ${ringColor}b3`,
+                                  pointerEvents: 'none',
+                                  zIndex: 500
+                                }}
+                              />
+                            );
+                          })()}
+
                           {/* Drag distance line */}
                           {draggedArmyParticipant !== null && dragStartPosition && (currentDragPosition || dragStartPosition) && 
                            !isNaN(dragStartPosition.x) && !isNaN(dragStartPosition.y) && 
@@ -4295,7 +4444,7 @@ const CampaignView: React.FC = () => {
                             const deltaX = currentPos.x - dragStartPosition.x;
                             const deltaY = currentPos.y - dragStartPosition.y;
                             const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                            const distanceFeet = Math.round(distancePercent * (20 / 3));
+                            const distanceFeet = Math.round(distancePercent * BATTLEFIELD_FEET_PER_PERCENT);
                             
                             const currentRemaining = remainingArmyMovement[draggedArmyParticipant] ?? 0;
                             const isDM = user?.role === 'Dungeon Master';
@@ -4411,8 +4560,19 @@ const CampaignView: React.FC = () => {
                                 transition: 'transform 0.2s',
                                 opacity: canDrag ? 1 : 0.7
                               }}
-                              onMouseEnter={(e) => canDrag && (e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.15)')}
-                              onMouseLeave={(e) => canDrag && (e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)')}
+                              onMouseEnter={(e) => {
+                                if (canDrag) {
+                                  e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.15)';
+                                }
+                                setHoveredBattlefieldParticipantId(participant.id);
+                              }}
+                              onMouseLeave={(e) => {
+                                if (canDrag) {
+                                  e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
+                                }
+                                setHoveredBattlefieldParticipantId(prev => (prev === participant.id ? null : prev));
+                              }}
+                              title={`${participant.temp_army_name || participant.army_name || `Army #${participant.id}`} · ${getArmyRangeLabel(armyCategory)}`}
                             >
                               {/* Team badge */}
                               <div style={{
@@ -4430,6 +4590,24 @@ const CampaignView: React.FC = () => {
                               }}>
                                 {participant.team_name}
                               </div>
+
+                              {hoveredBattlefieldParticipantId === participant.id && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '-34px',
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  background: 'rgba(15, 23, 42, 0.85)',
+                                  border: '1px solid rgba(148, 163, 184, 0.6)',
+                                  color: '#e2e8f0',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 'bold',
+                                  textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  {getArmyRangeLabel(armyCategory)}
+                                </div>
+                              )}
                               
                               <div style={{ fontSize: '1.8rem', marginBottom: '0.2rem' }}>
                                 {categoryIcon}
@@ -4832,11 +5010,9 @@ const CampaignView: React.FC = () => {
                                       ? (activeBattle.participants || []).find(p => p.id === selectedGoalArmyId)
                                       : selectable[0];
                                     
-                                    // For non-temporary armies, prefer army_category from armies table
-                                    // For temporary armies, use temp_army_category
-                                    const selectedCategory = selectedParticipant?.is_temporary
-                                      ? (selectedParticipant?.temp_army_category || 'Swordsmen')
-                                      : (selectedParticipant?.army_category || selectedParticipant?.temp_army_category || 'Swordsmen');
+                                    const selectedCategory = selectedParticipant
+                                      ? getParticipantCategory(selectedParticipant)
+                                      : 'Swordsmen';
                                     
                                     // DEBUG: Log category info
                                     console.log(`🔍 Battle Goal Selection Debug:`, {
@@ -4924,6 +5100,91 @@ const CampaignView: React.FC = () => {
                                       return { eligible: anyEligible, reason };
                                     };
 
+                                    const getRangeInfo = (attacker: BattleParticipant, target: BattleParticipant) => {
+                                      const rangeFeet = getArmyRangeFeet(getParticipantCategory(attacker));
+                                      const distanceFeet = getBattlefieldDistanceFeet(attacker, target);
+                                      return {
+                                        rangeFeet,
+                                        distanceFeet,
+                                        inRange: distanceFeet <= rangeFeet
+                                      };
+                                    };
+
+                                    const evaluateRangeEligibility = (
+                                      goal: typeof BATTLE_GOALS.attacking[number],
+                                      attacker: BattleParticipant | undefined,
+                                      selectedTarget: BattleParticipant | undefined,
+                                      targets: BattleParticipant[],
+                                      requireSelectedTarget = false
+                                    ) => {
+                                      if (!attacker || goal.target_type !== 'enemy') {
+                                        return { eligible: true, reason: '', rangeFeet: 0 };
+                                      }
+
+                                      const rangeFeet = getArmyRangeFeet(getParticipantCategory(attacker));
+
+                                      if (selectedTarget) {
+                                        const distanceFeet = getBattlefieldDistanceFeet(attacker, selectedTarget);
+                                        const eligible = distanceFeet <= rangeFeet;
+                                        return {
+                                          eligible,
+                                          reason: eligible
+                                            ? ''
+                                            : `Target out of range (${distanceFeet.toFixed(0)}ft > ${rangeFeet}ft).`,
+                                          rangeFeet
+                                        };
+                                      }
+
+                                      if (requireSelectedTarget) {
+                                        return { eligible: false, reason: `Select a target within ${rangeFeet}ft.`, rangeFeet };
+                                      }
+
+                                      if (!targets || targets.length === 0) {
+                                        return { eligible: false, reason: `No enemies within ${rangeFeet}ft.`, rangeFeet };
+                                      }
+
+                                      const anyEligible = targets.some(target =>
+                                        getBattlefieldDistanceFeet(attacker, target) <= rangeFeet
+                                      );
+                                      return {
+                                        eligible: anyEligible,
+                                        reason: anyEligible ? '' : `No enemies within ${rangeFeet}ft.`,
+                                        rangeFeet
+                                      };
+                                    };
+
+                                    const hasEligibleGoals = (() => {
+                                      if (!selectedParticipant) return false;
+                                      const attackerScore = getParticipantScore(selectedParticipant);
+                                      const sections: Array<'attacking' | 'defending' | 'logistics' | 'commander' | 'unique'> = [
+                                        'attacking',
+                                        'defending',
+                                        'logistics',
+                                        'commander',
+                                        'unique'
+                                      ];
+                                      return sections.some(section =>
+                                        (BATTLE_GOALS[section] || []).some(goal => {
+                                          const categoryEligible = isGoalEligible(goal, selectedCategory);
+                                          if (!categoryEligible) return false;
+                                          const scoreEligibility = evaluateScoreEligibility(
+                                            goal,
+                                            attackerScore,
+                                            undefined,
+                                            enemyTargets
+                                          );
+                                          if (!scoreEligibility.eligible) return false;
+                                          const rangeEligibility = evaluateRangeEligibility(
+                                            goal,
+                                            selectedParticipant,
+                                            undefined,
+                                            enemyTargets
+                                          );
+                                          return rangeEligibility.eligible;
+                                        })
+                                      );
+                                    })();
+
                                     return (
                                       <>
                                         <div style={{ flex: '1 1 260px', minWidth: '220px' }}>
@@ -4964,6 +5225,9 @@ const CampaignView: React.FC = () => {
                                             <>
                                               <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '1rem' }}>
                                                 {getBattleParticipantName(selectedParticipant)} · {selectedCategory}
+                                                <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#94a3b8' }}>
+                                                  {getArmyRangeLabel(selectedCategory)}
+                                                </span>
                                               </div>
                                               {selectedGoal && (
                                                 <div style={{ marginBottom: '1rem', padding: '0.6rem', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.4)', borderRadius: '0.4rem', color: '#4ade80' }}>
@@ -5050,10 +5314,16 @@ const CampaignView: React.FC = () => {
                                                         selectedTarget,
                                                         enemyTargets
                                                       );
-                                                      const isEligible = isCategoryEligible && scoreEligibility.eligible;
+                                                      const rangeEligibility = evaluateRangeEligibility(
+                                                        goal,
+                                                        selectedParticipant,
+                                                        selectedTarget,
+                                                        enemyTargets
+                                                      );
+                                                      const isEligible = isCategoryEligible && scoreEligibility.eligible && rangeEligibility.eligible;
                                                       const lockReason = !isCategoryEligible
                                                         ? (goal.lock_reason || 'Not eligible for this unit')
-                                                        : (!scoreEligibility.eligible ? scoreEligibility.reason : '');
+                                                        : (!scoreEligibility.eligible ? scoreEligibility.reason : (!rangeEligibility.eligible ? rangeEligibility.reason : ''));
                                                       const isSelected = goalSelections[selectedParticipant.id]?.goalKey === goal.key;
                                                       const scoreRequirementText = goal.score_requirement
                                                         ? getScoreRequirementText(goal.score_requirement)
@@ -5141,6 +5411,11 @@ const CampaignView: React.FC = () => {
                                                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                                                 {goal.description}
                                                               </div>
+                                                              {goal.target_type === 'enemy' && rangeEligibility.rangeFeet > 0 && (
+                                                                <div style={{ fontSize: '0.7rem', color: '#93c5fd', marginTop: '0.2rem' }}>
+                                                                  Range: {rangeEligibility.rangeFeet}ft
+                                                                </div>
+                                                              )}
                                                               {scoreRequirementText && (
                                                                 <div style={{ fontSize: '0.7rem', color: '#cbd5f5', marginTop: '0.2rem' }}>
                                                                   {scoreRequirementText}
@@ -5167,12 +5442,13 @@ const CampaignView: React.FC = () => {
                                                 if (!goal || goal.target_type !== 'enemy') return null;
                                                 const attackerScore = getParticipantScore(selectedParticipant);
                                                 const isTargetEligible = (target: BattleParticipant) => {
-                                                  if (!goal.score_requirement) return true;
-                                                  return meetsScoreRequirement(
+                                                  const scoreOk = !goal.score_requirement || meetsScoreRequirement(
                                                     goal.score_requirement,
                                                     attackerScore,
                                                     getParticipantScore(target)
                                                   );
+                                                  const rangeInfo = getRangeInfo(selectedParticipant, target);
+                                                  return scoreOk && rangeInfo.inRange;
                                                 };
                                                 return (
                                                   <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
@@ -5199,11 +5475,14 @@ const CampaignView: React.FC = () => {
                                                       }}
                                                     >
                                                       <option value="">Select target</option>
-                                                      {enemyTargets.map(target => (
-                                                        <option key={target.id} value={target.id} disabled={!isTargetEligible(target)}>
-                                                          {getBattleParticipantName(target)}
-                                                        </option>
-                                                      ))}
+                                                      {enemyTargets.map(target => {
+                                                        const distanceFeet = Math.round(getBattlefieldDistanceFeet(selectedParticipant, target));
+                                                        return (
+                                                          <option key={target.id} value={target.id} disabled={!isTargetEligible(target)}>
+                                                            {getBattleParticipantName(target)} · {distanceFeet}ft
+                                                          </option>
+                                                        );
+                                                      })}
                                                     </select>
                                                   </div>
                                                 );
@@ -5230,6 +5509,24 @@ const CampaignView: React.FC = () => {
                                                     );
                                                     if (!scoreCheck.eligible) {
                                                       setToastMessage(scoreCheck.reason || 'Score requirement not met.');
+                                                      setTimeout(() => setToastMessage(null), 3000);
+                                                      return;
+                                                    }
+                                                  }
+
+                                                  if (goal?.target_type === 'enemy') {
+                                                    const selectedTarget = selection.targetId
+                                                      ? enemyTargets.find(t => t.id === selection.targetId)
+                                                      : undefined;
+                                                    const rangeCheck = evaluateRangeEligibility(
+                                                      goal,
+                                                      selectedParticipant,
+                                                      selectedTarget,
+                                                      enemyTargets,
+                                                      true
+                                                    );
+                                                    if (!rangeCheck.eligible) {
+                                                      setToastMessage(rangeCheck.reason || 'Target out of range.');
                                                       setTimeout(() => setToastMessage(null), 3000);
                                                       return;
                                                     }
@@ -5262,6 +5559,43 @@ const CampaignView: React.FC = () => {
                                               >
                                                 🔒 Lock Goal
                                               </button>
+
+                                              {!hasEligibleGoals && (
+                                                <div style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: '0.5rem', background: 'rgba(148, 163, 184, 0.12)', border: '1px solid rgba(148, 163, 184, 0.4)', color: '#cbd5f5' }}>
+                                                  <div style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+                                                    No eligible goals in range. You can skip this round.
+                                                  </div>
+                                                  <button
+                                                    onClick={async () => {
+                                                      if (!selectedParticipant) return;
+                                                      try {
+                                                        await battleAPI.setGoal(activeBattle.id, {
+                                                          participant_id: selectedParticipant.id,
+                                                          goal_key: 'skip_goal',
+                                                          target_participant_id: null
+                                                        });
+                                                        const updated = await battleAPI.getBattle(activeBattle.id);
+                                                        setActiveBattle(updated);
+                                                        const goals = await battleAPI.getGoals(activeBattle.id, activeBattle.current_round);
+                                                        setBattleGoals(goals);
+                                                      } catch (error) {
+                                                        console.error('Error skipping goal:', error);
+                                                      }
+                                                    }}
+                                                    style={{
+                                                      padding: '0.45rem 1rem',
+                                                      background: 'rgba(148, 163, 184, 0.18)',
+                                                      border: '1px solid rgba(148, 163, 184, 0.5)',
+                                                      borderRadius: '0.5rem',
+                                                      color: '#e2e8f0',
+                                                      cursor: 'pointer',
+                                                      fontWeight: 'bold'
+                                                    }}
+                                                  >
+                                                    ⏭️ Skip Goal
+                                                  </button>
+                                                </div>
+                                              )}
                                             </>
                                           ) : (
                                             <div style={{ color: 'var(--text-muted)' }}>Select an army to choose goals.</div>
@@ -5795,11 +6129,12 @@ const CampaignView: React.FC = () => {
                 )}
               </div>
             )}
-          </div>
-        )}
+            </div>
+          )}
 
         {/* Character Content (existing) */}
         {mainView === 'character' && (
+          <div style={{ flex: '1', minWidth: 0 }}>
           <div>
           {/* Character Details Panel */}
           {selectedCharacterData ? (
@@ -7672,6 +8007,7 @@ const CampaignView: React.FC = () => {
               </div>
             )}
           </div>
+          </div>
         )}
 
         </div>
@@ -7953,6 +8289,123 @@ const CampaignView: React.FC = () => {
             animation: 'slideInRight 0.3s ease-out'
           }}>
             🎒 {toastMessage}
+          </div>
+        )}
+
+        {showBattleSummaryModal && battleSummary && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.82)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1600,
+            padding: '2rem'
+          }} onClick={() => setShowBattleSummaryModal(false)}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98) 0%, rgba(30, 30, 40, 0.98) 100%)',
+              border: '2px solid rgba(212, 193, 156, 0.5)',
+              borderRadius: '1rem',
+              padding: '2rem',
+              width: 'min(900px, 95vw)',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              boxShadow: '0 24px 80px rgba(0, 0, 0, 0.7)'
+            }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div>
+                  <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>🏁 Battle Complete</h3>
+                  <div style={{ color: 'var(--text-secondary)', marginTop: '0.35rem' }}>{battleSummary.battleName}</div>
+                </div>
+                <button
+                  onClick={() => setShowBattleSummaryModal(false)}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    background: 'rgba(239, 68, 68, 0.2)',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: '#f87171',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+
+              {battleSummary.summary && (
+                <div style={{
+                  display: 'grid',
+                  gap: '1rem',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  marginBottom: '1.5rem'
+                }}>
+                  <div style={{
+                    padding: '1rem',
+                    borderRadius: '0.75rem',
+                    border: '1px solid rgba(234, 179, 8, 0.4)',
+                    background: 'rgba(234, 179, 8, 0.08)'
+                  }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Winning Team</div>
+                    <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                      {battleSummary.summary.winningTeam || 'Unknown'}
+                    </div>
+                    <div style={{ color: '#facc15', fontSize: '0.9rem' }}>
+                      {battleSummary.summary.winningScore ?? 0} score
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: '1rem',
+                    borderRadius: '0.75rem',
+                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                    background: 'rgba(59, 130, 246, 0.08)'
+                  }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Strongest Army</div>
+                    <div style={{ color: '#93c5fd', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                      {battleSummary.summary.strongestArmy?.name || 'Unknown'}
+                    </div>
+                    <div style={{ color: '#bfdbfe', fontSize: '0.9rem' }}>
+                      {battleSummary.summary.strongestArmy?.score ?? 0} score
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: '1rem', color: 'var(--text-gold)', fontWeight: 'bold' }}>Final Scores</div>
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                {(battleSummary.results || []).map((participant: any) => {
+                  const name = participant.temp_army_name || participant.army_name || `Army #${participant.id}`;
+                  const kills = battleSummary.summary?.killsByParticipant?.[participant.id] || 0;
+                  return (
+                    <div key={participant.id} style={{
+                      padding: '0.75rem 1rem',
+                      borderRadius: '0.7rem',
+                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      background: 'rgba(15, 23, 42, 0.35)',
+                      display: 'grid',
+                      gridTemplateColumns: '1.5fr 1fr 1fr 1fr',
+                      gap: '0.75rem',
+                      alignItems: 'center'
+                    }}>
+                      <div style={{ fontWeight: 'bold', color: '#e2e8f0' }}>{name}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Score: <span style={{ color: 'var(--text-gold)' }}>{participant.current_score ?? 0}</span>
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Troops: <span style={{ color: '#86efac' }}>{participant.current_troops ?? 0}</span>
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Kills: <span style={{ color: '#f87171' }}>{kills}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
@@ -10070,57 +10523,64 @@ const CampaignView: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
                   Team/Faction Name *
                 </label>
-                <input
-                  type="text"
-                  value={newParticipantData.team}
-                  onChange={(e) => setNewParticipantData({ ...newParticipantData, team: e.target.value })}
-                  placeholder="e.g., Enemies, Monsters, Team Red..."
+                <select
+                  value={newParticipantTeamMode === 'existing' ? newParticipantTeamSelection : '__new__'}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '__new__') {
+                      setNewParticipantTeamMode('new');
+                      setNewParticipantTeamSelection('');
+                      setNewParticipantData(prev => ({ ...prev, team: '' }));
+                      return;
+                    }
+                    setNewParticipantTeamMode('existing');
+                    setNewParticipantTeamSelection(value);
+                    setNewParticipantData(prev => ({ ...prev, team: value }));
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
-                    background: 'rgba(0, 0, 0, 0.4)',
+                    background: 'rgba(0, 0, 0, 0.6)',
                     border: '1px solid rgba(212, 193, 156, 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem',
+                    cursor: 'pointer',
                     marginBottom: '0.75rem'
                   }}
-                />
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
-                  Faction Color *
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                  {['#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#059669'].map(color => (
-                    <button
-                      key={color}
-                      onClick={() => setNewParticipantData({ ...newParticipantData, faction_color: color })}
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '0.5rem',
-                        background: color,
-                        border: newParticipantData.faction_color === color ? '3px solid white' : '1px solid rgba(255,255,255,0.3)',
-                        cursor: 'pointer',
-                        boxShadow: newParticipantData.faction_color === color ? '0 0 10px rgba(255,255,255,0.5)' : 'none'
-                      }}
-                    />
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <label style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Custom:</label>
+                >
+                  {existingFactions.length === 0 && (
+                    <option value="__new__">Create new faction</option>
+                  )}
+                  {existingFactions.length > 0 && (
+                    <>
+                      {existingFactions.map(faction => (
+                        <option key={faction} value={faction}>{faction}</option>
+                      ))}
+                      <option value="__new__">Create new faction</option>
+                    </>
+                  )}
+                </select>
+                {newParticipantTeamMode === 'new' && (
                   <input
-                    type="color"
-                    value={newParticipantData.faction_color}
-                    onChange={(e) => setNewParticipantData({ ...newParticipantData, faction_color: e.target.value })}
+                    type="text"
+                    value={newParticipantData.team}
+                    onChange={(e) => setNewParticipantData({ ...newParticipantData, team: e.target.value })}
+                    placeholder="New faction name"
                     style={{
-                      width: '60px',
-                      height: '35px',
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.4)',
                       border: '1px solid rgba(212, 193, 156, 0.3)',
                       borderRadius: '0.5rem',
-                      cursor: 'pointer',
-                      background: 'transparent'
+                      color: 'white',
+                      fontSize: '1rem',
+                      marginBottom: '0.5rem'
                     }}
                   />
+                )}
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                  Faction colors are assigned automatically.
                 </div>
               </div>
 
@@ -10261,7 +10721,6 @@ const CampaignView: React.FC = () => {
                     setNewParticipantData({
                       type: 'player',
                       team: '',
-                      faction_color: '#ef4444',
                       selectedPlayerArmies: [],
                       tempArmyName: '',
                       tempArmyCategory: 'Swordsmen',
@@ -10293,7 +10752,6 @@ const CampaignView: React.FC = () => {
                     try {
                       await battleAPI.addParticipant(activeBattle.id, {
                         team_name: newParticipantData.team,
-                        faction_color: newParticipantData.faction_color,
                         temp_army_name: newParticipantData.tempArmyName,
                         temp_army_category: newParticipantData.tempArmyCategory,
                         temp_army_troops: newParticipantData.tempArmyTroops,
@@ -10308,7 +10766,6 @@ const CampaignView: React.FC = () => {
                       setNewParticipantData({
                         type: 'dm',
                         team: '',
-                        faction_color: '#ef4444',
                         selectedPlayerArmies: [],
                         tempArmyName: '',
                         tempArmyCategory: 'Swordsmen',
@@ -10405,68 +10862,64 @@ const CampaignView: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
                   Team/Faction Name *
                 </label>
-                <input
-                  type="text"
-                  value={inviteTeamName}
-                  onChange={(e) => setInviteTeamName(e.target.value)}
-                  placeholder="e.g., Alliance, Horde, Red Team, Defenders..."
+                <select
+                  value={inviteTeamMode === 'existing' ? inviteTeamSelection : '__new__'}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '__new__') {
+                      setInviteTeamMode('new');
+                      setInviteTeamSelection('');
+                      setInviteTeamName('');
+                      return;
+                    }
+                    setInviteTeamMode('existing');
+                    setInviteTeamSelection(value);
+                    setInviteTeamName(value);
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
-                    background: 'rgba(0, 0, 0, 0.4)',
+                    background: 'rgba(0, 0, 0, 0.6)',
                     border: '1px solid rgba(212, 193, 156, 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem',
+                    cursor: 'pointer',
                     marginBottom: '0.75rem'
                   }}
-                />
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)', fontSize: '0.95rem' }}>
-                  Faction Color *
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                  {['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'].map(color => (
-                    <button
-                      key={color}
-                      onClick={() => setInviteTeamColor(color)}
-                      style={{
-                        width: '40px',
-                        height: '40px',
-                        borderRadius: '0.5rem',
-                        background: color,
-                        border: inviteTeamColor === color ? '3px solid white' : '1px solid rgba(255,255,255,0.3)',
-                        cursor: 'pointer',
-                        boxShadow: inviteTeamColor === color ? '0 0 10px rgba(255,255,255,0.5)' : 'none'
-                      }}
-                    />
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <label style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Custom:</label>
+                >
+                  {existingFactions.length === 0 && (
+                    <option value="__new__">Create new faction</option>
+                  )}
+                  {existingFactions.length > 0 && (
+                    <>
+                      {existingFactions.map(faction => (
+                        <option key={faction} value={faction}>{faction}</option>
+                      ))}
+                      <option value="__new__">Create new faction</option>
+                    </>
+                  )}
+                </select>
+                {inviteTeamMode === 'new' && (
                   <input
-                    type="color"
-                    value={inviteTeamColor}
-                    onChange={(e) => setInviteTeamColor(e.target.value)}
+                    type="text"
+                    value={inviteTeamName}
+                    onChange={(e) => setInviteTeamName(e.target.value)}
+                    placeholder="New faction name"
                     style={{
-                      width: '60px',
-                      height: '35px',
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'rgba(0, 0, 0, 0.4)',
                       border: '1px solid rgba(212, 193, 156, 0.3)',
                       borderRadius: '0.5rem',
-                      cursor: 'pointer',
-                      background: 'transparent'
+                      color: 'white',
+                      fontSize: '1rem',
+                      marginBottom: '0.5rem'
                     }}
                   />
-                  <div style={{
-                    padding: '0.5rem 1rem',
-                    background: inviteTeamColor,
-                    borderRadius: '0.5rem',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    fontSize: '0.9rem',
-                    textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-                  }}>
-                    {inviteTeamName || 'Preview'}
-                  </div>
+                )}
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                  Faction colors are assigned automatically.
                 </div>
               </div>
 
@@ -10560,12 +11013,11 @@ const CampaignView: React.FC = () => {
                     if (selectedPlayersToInvite.length === 0 || !inviteTeamName.trim()) return;
                     
                     try {
-                      await battleAPI.invitePlayers(activeBattle.id, selectedPlayersToInvite, inviteTeamName.trim(), inviteTeamColor);
+                      await battleAPI.invitePlayers(activeBattle.id, selectedPlayersToInvite, inviteTeamName.trim());
                       
                       setShowInvitePlayersModal(false);
                       setSelectedPlayersToInvite([]);
                       setInviteTeamName('');
-                      setInviteTeamColor('#3b82f6');
                       
                       setToastMessage(`Invited ${selectedPlayersToInvite.length} players to ${inviteTeamName}!`);
                       setTimeout(() => setToastMessage(null), 3000);
@@ -12128,7 +12580,6 @@ const CampaignView: React.FC = () => {
         </div>
       )}
     </div>
-  </div>
   );
 };
 
