@@ -410,6 +410,15 @@ p {
   display: flex;
   gap: 1.5rem;
   align-items: flex-start;
+  width: 100%;
+}
+
+.campaign-layout.layout-collapsed {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 1.5rem;
+  align-items: start;
 }
 
 .campaign-container {
@@ -418,11 +427,55 @@ p {
 
 .campaign-sidebar {
   flex: 0 0 280px;
+  transition: all 0.3s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: auto;
+}
+
+.campaign-layout.layout-collapsed .campaign-sidebar {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.campaign-sidebar.collapsed {
+  flex: 0 0 280px;
+}
+
+.campaign-sidebar.collapsed .glass-panel {
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.character-list-collapse-btn {
+  transition: all 0.2s ease;
+  width: fit-content;
+  margin: 0.5rem auto;
 }
 
 .campaign-main {
   flex: 1;
   min-width: 0;
+  transition: all 0.3s ease;
+}
+
+.campaign-layout.layout-collapsed .campaign-main {
+  display: contents;
+}
+
+.campaign-layout.layout-collapsed .campaign-content-shell {
+  display: contents;
+}
+
+.campaign-layout.layout-collapsed .campaign-tabs-row {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.campaign-layout.layout-collapsed .campaign-main-content {
+  grid-column: 1 / -1;
+  grid-row: 2;
 }
 
 .campaign-mobile-header {
@@ -956,6 +1009,116 @@ label:has(input[type="checkbox"]:disabled) {
   font-style: italic;
 }
 
+/* Campaign Tabs Responsive Styling */
+.campaign-tabs-desktop {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.campaign-tabs-desktop > div {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tab-button {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.85rem;
+  transition: all var(--transition-normal);
+}
+
+.tab-button > span {
+  font-size: 0.9rem;
+}
+
+/* Tablet screens - reduce padding and gap */
+@media (max-width: 1200px) {
+  .campaign-tabs-desktop > div {
+    gap: 0.4rem;
+  }
+
+  .tab-button {
+    padding: 0.5rem 1rem !important;
+    font-size: 0.8rem !important;
+  }
+
+  .tab-button > span {
+    font-size: 0.85rem !important;
+  }
+}
+
+/* Mobile screens - further optimize */
+@media (max-width: 880px) {
+  .campaign-tabs-desktop > div {
+    gap: 0.35rem;
+  }
+
+  .tab-button {
+    padding: 0.4rem 0.85rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  .tab-button > span {
+    font-size: 0.8rem !important;
+  }
+}
+
+/* Small mobile - compact layout */
+@media (max-width: 480px) {
+  .campaign-tabs-desktop {
+    margin-bottom: 0.5rem !important;
+  }
+
+  .campaign-tabs-desktop > div {
+    gap: 0.3rem;
+  }
+
+  .tab-button {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.65rem !important;
+    border-radius: 0.75rem !important;
+  }
+
+  .tab-button > span {
+    font-size: 0.65rem !important;
+  }
+}
+
+/* Ultra-wide screens - expand tabs */
+@media (min-width: 1600px) {
+  .campaign-tabs-desktop > div {
+    gap: 0.75rem;
+  }
+
+  .tab-button {
+    padding: 0.75rem 1.5rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  .tab-button > span {
+    font-size: 1.1rem !important;
+  }
+}
+
+/* Very large screens */
+@media (min-width: 1920px) {
+  .campaign-tabs-desktop > div {
+    gap: 1rem;
+  }
+
+  .tab-button {
+    padding: 0.875rem 1.75rem !important;
+    font-size: 1rem !important;
+  }
+
+  .tab-button > span {
+    font-size: 1.2rem !important;
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .container {
@@ -974,6 +1137,19 @@ label:has(input[type="checkbox"]:disabled) {
     flex-direction: column;
   }
 
+  .campaign-layout.layout-collapsed {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .campaign-layout.layout-collapsed .campaign-main {
+    display: block;
+  }
+
+  .campaign-layout.layout-collapsed .campaign-content-shell {
+    display: block;
+  }
+
   .campaign-sidebar {
     width: 100%;
     flex: 1 1 auto;
@@ -984,6 +1160,18 @@ label:has(input[type="checkbox"]:disabled) {
     display: block;
   }
 
+  .campaign-sidebar.mobile-open.collapsed {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .campaign-sidebar.collapsed .glass-panel {
+    padding: 0.75rem;
+    max-width: 100%;
+  }
+
   .campaign-sidebar .glass-panel {
     position: static !important;
     top: auto !important;
@@ -992,6 +1180,10 @@ label:has(input[type="checkbox"]:disabled) {
   .campaign-desktop-header,
   .campaign-view-switcher,
   .campaign-tabs-desktop {
+    display: none;
+  }
+
+  .character-list-collapse-btn {
     display: none;
   }
 
@@ -1059,6 +1251,132 @@ label:has(input[type="checkbox"]:disabled) {
   .dashboard-form-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .character-overview .glass-panel,
+  .character-sheet .glass-panel {
+    padding: 0.75rem;
+  }
+
+  .character-sheet h6 {
+    font-size: 1rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .campaign-main {
+    padding: 0;
+  }
+
+  .campaign-main .glass-panel {
+    border-radius: 0.75rem;
+  }
+
+  .character-overview-header {
+    padding: 0.75rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .character-overview-header > div:first-child {
+    font-size: 1.35rem !important;
+    letter-spacing: 1px !important;
+  }
+
+  .character-overview-image {
+    margin-bottom: 0.75rem;
+  }
+
+  .character-overview-image-asset,
+  .character-overview-image-upload {
+    width: 100%;
+    max-width: 240px;
+  }
+
+  .character-basic-info-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .character-basic-info-grid > div {
+    padding: 0.75rem !important;
+  }
+
+  .character-basic-info-grid > div > div:first-child {
+    font-size: 0.7rem !important;
+  }
+
+  .character-basic-info-grid > div > div:last-child {
+    font-size: 1rem !important;
+  }
+
+  .character-personality-grid {
+    gap: 0.75rem !important;
+  }
+
+  .character-personality-grid > div > div:last-child {
+    font-size: 0.85rem !important;
+    padding: 0.6rem !important;
+  }
+
+  .character-overview-right h6 {
+    font-size: 0.9rem !important;
+  }
+
+  .character-sheet-figure {
+    width: min(100%, 200px) !important;
+  }
+
+  .character-sheet-hero {
+    margin-bottom: 1rem !important;
+  }
+
+  .character-sheet-abilities {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.4rem !important;
+  }
+
+  .character-sheet-abilities > div {
+    padding: 0.4rem !important;
+  }
+
+  .character-sheet-abilities > div > div:first-child {
+    font-size: 0.6rem !important;
+  }
+
+  .character-sheet-abilities > div > div:nth-child(2) {
+    font-size: 1rem !important;
+  }
+
+  .character-sheet-abilities > div > div:last-child {
+    font-size: 0.7rem !important;
+  }
+
+  .character-sheet-combat {
+    gap: 0.6rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .character-sheet-combat > div {
+    padding: 0.6rem !important;
+  }
+
+  .character-sheet-combat > div > div:first-child {
+    font-size: 1rem !important;
+    margin-bottom: 0.35rem !important;
+  }
+
+  .character-sheet-combat > div > div:nth-child(2) {
+    font-size: 1.15rem !important;
+  }
+
+  .character-sheet-combat > div > div:last-child {
+    font-size: 0.6rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .character-sheet h6 {
+    font-size: 0.95rem !important;
+    margin-bottom: 0.6rem !important;
   }
 }
 
@@ -1328,16 +1646,29 @@ label:has(input[type="checkbox"]:disabled) {
   margin-bottom: 1rem;
   border-bottom: 1px solid rgba(212, 193, 156, 0.3);
   overflow-x: auto;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .character-panel-tabs .btn {
-  border-radius: 0;
-  border-bottom: none;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(212, 193, 156, 0.2);
   text-transform: capitalize;
-  padding: 0.75rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.85rem;
   white-space: nowrap;
   flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  transition: all var(--transition-normal);
+}
+
+.character-panel-tabs .btn.active {
+  background: rgba(212, 193, 156, 0.3);
+  border: 2px solid var(--primary-gold);
+  color: var(--text-gold);
+  font-weight: bold;
 }
 
 .character-panel-content {
@@ -1363,9 +1694,41 @@ label:has(input[type="checkbox"]:disabled) {
     grid-template-columns: 1fr;
     gap: 1.5rem;
   }
+
+  .character-overview-image-asset,
+  .character-overview-image-upload {
+    width: min(100%, 380px);
+  }
 }
 
 @media (max-width: 768px) {
+  .character-overview-header {
+    padding: 1rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .character-overview-header > div:first-child {
+    font-size: 1.5rem !important;
+  }
+
+  .character-overview-grid {
+    gap: 1rem !important;
+  }
+
+  .character-overview-image {
+    margin-bottom: 1rem;
+  }
+
+  .character-overview-image-asset,
+  .character-overview-image-upload {
+    width: min(100%, 280px);
+    max-width: 280px;
+  }
+
+  .character-personality-grid {
+    grid-template-columns: 1fr !important;
+  }
+
   .character-backstory-panel {
     padding: 1rem;
   }
@@ -1382,47 +1745,101 @@ label:has(input[type="checkbox"]:disabled) {
   }
 
   .character-sheet-hero {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "figure"
-      "abilities-left"
-      "abilities-right";
-    gap: 1rem;
-    justify-items: center;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1rem !important;
+    align-items: center !important;
   }
 
   .character-sheet-figure {
-    width: min(100%, 280px) !important;
+    width: min(100%, 240px) !important;
+    order: 1;
+  }
+
+  .limb-health-overlay {
+    padding: 0.2rem 0.4rem !important;
+    min-width: 50px !important;
+    font-size: 0.6rem !important;
+  }
+
+  .limb-health-overlay > div:first-child {
+    font-size: 0.65rem !important;
+    margin-bottom: 0.1rem !important;
+  }
+
+  .limb-health-overlay > div:last-child {
+    font-size: 0.55rem !important;
   }
 
   .character-sheet-abilities {
-    width: 100%;
-    max-width: 360px;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.5rem !important;
+    order: 2;
+  }
+
+  .character-sheet-abilities > div {
+    padding: 0.5rem !important;
+  }
+
+  .character-sheet-abilities > div > div:first-child {
+    font-size: 0.65rem !important;
+    margin-bottom: 0.15rem !important;
+  }
+
+  .character-sheet-abilities > div > div:nth-child(2) {
+    font-size: 1.1rem !important;
+    margin-bottom: 0.1rem !important;
+  }
+
+  .character-sheet-abilities > div > div:last-child {
+    font-size: 0.75rem !important;
   }
 
   .character-sheet-abilities-left {
-    grid-area: abilities-left;
+    order: 2;
   }
 
   .character-sheet-abilities-right {
-    grid-area: abilities-right;
-  }
-
-  .character-sheet-figure {
-    grid-area: figure;
+    order: 3;
   }
 
   .character-sheet-combat {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
   }
 
   .character-sheet-combat > div {
-    padding: 0.85rem;
+    padding: 0.75rem !important;
+  }
+
+  .character-sheet-combat > div > div:first-child {
+    font-size: 1.1rem !important;
+  }
+
+  .character-sheet-combat > div > div:nth-child(2) {
+    font-size: 1.25rem !important;
+  }
+
+  .character-sheet-combat > div > div:last-child {
+    font-size: 0.65rem !important;
   }
 
   .character-sheet-skills {
-    grid-template-columns: 1fr;
-    gap: 1rem;
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .character-sheet-skills > div {
+    padding: 0.75rem !important;
+  }
+
+  .character-sheet-skills h6 {
+    font-size: 0.9rem !important;
+    margin-bottom: 0.5rem !important;
   }
 }
 
@@ -1434,12 +1851,229 @@ label:has(input[type="checkbox"]:disabled) {
   .character-panel-tabs {
     flex-wrap: nowrap;
     overflow-x: auto;
+    gap: 0.35rem;
+    justify-content: flex-start;
   }
   
   .character-panel-tabs .btn {
-    min-width: 80px;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
+    min-width: 70px;
+    padding: 0.4rem 0.65rem !important;
+    font-size: 0.7rem !important;
+    border-radius: 0.75rem !important;
+  }
+
+  .character-panel-tabs .btn.active {
+    padding: 0.4rem 0.65rem !important;
+    font-size: 0.7rem !important;
+  }
+
+  /* Companion Tab - Mobile responsive: stack columns */
+  .companion-tab-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+
+  /* Armies Tab - Mobile responsive: single column */
+  .armies-tab-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  /* Inventory Tab - Mobile responsive: single column */
+  .inventory-tab-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+    max-height: none !important;
+  }
+
+  /* Skills Tab - responsive */
+  .glass-panel > div[style*="display: grid"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Tablet breakpoint for character tabs */
+@media (max-width: 1024px) and (min-width: 769px) {
+  /* Companion tab - single column on tablets */
+  .companion-tab-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+
+  /* Armies tab - max 2 columns on tablets if space permits */
+  .armies-tab-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
+  }
+
+  /* Inventory tab - single column on tablets */
+  .inventory-tab-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Tablet screens - optimize character tabs */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .character-panel-tabs {
+    gap: 0.4rem;
+  }
+
+  .character-panel-tabs .btn {
+    padding: 0.5rem 0.9rem !important;
+    font-size: 0.78rem !important;
+  }
+
+  .character-overview-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+}
+
+/* Standard desktop screens */
+@media (min-width: 1025px) and (max-width: 1400px) {
+  .character-panel-tabs {
+    gap: 0.5rem;
+  }
+
+  .character-panel-tabs .btn {
+    padding: 0.625rem 1.1rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  .character-overview-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 1.75rem;
+  }
+}
+
+/* Large desktop screens */
+@media (min-width: 1401px) and (max-width: 1599px) {
+  .character-panel-tabs {
+    gap: 0.6rem;
+  }
+
+  .character-panel-tabs .btn {
+    padding: 0.625rem 1.25rem !important;
+    font-size: 0.85rem !important;
+  }
+
+  .character-overview-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    gap: 2rem;
+  }
+}
+
+/* Ultra-wide optimizations - 1600px+ */
+@media (min-width: 1600px) {
+  .campaign-container {
+    max-width: 95vw;
+  }
+
+  .campaign-sidebar {
+    flex: 0 0 380px;
+  }
+
+  .campaign-sidebar.collapsed {
+    flex: 0 0 60px;
+  }
+
+  /* Character tabs - expand on ultra-wide */
+  .character-panel-tabs {
+    gap: 0.75rem;
+    justify-content: center;
+  }
+
+  .character-panel-tabs .btn {
+    padding: 0.75rem 1.5rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  .character-panel-tabs .btn.active {
+    padding: 0.75rem 1.5rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  /* Character overview - expand two-column layout */
+  .character-overview-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    gap: 2.5rem;
+  }
+
+  .character-overview-image-asset,
+  .character-overview-image-upload {
+    width: min(100%, 580px);
+  }
+
+  /* Allow more columns for armies on ultra-wide */
+  .armies-tab-grid {
+    grid-template-columns: repeat(auto-fill, minmax(450px, 1fr)) !important;
+  }
+
+  /* Allow 2 columns for inventory on ultra-wide */
+  .inventory-tab-grid {
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)) !important;
+  }
+
+  /* Keep companion at 2 columns on ultra-wide */
+  .companion-tab-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 2.5rem !important;
+  }
+}
+
+/* Very large screens - 1920px+ */
+@media (min-width: 1920px) {
+  .campaign-container {
+    max-width: 2200px;
+  }
+
+  .campaign-sidebar {
+    flex: 0 0 400px;
+  }
+
+  .campaign-sidebar.collapsed {
+    flex: 0 0 60px;
+  }
+
+  /* Character tabs - even bigger on 1920px+ */
+  .character-panel-tabs {
+    gap: 1rem;
+  }
+
+  .character-panel-tabs .btn {
+    padding: 0.875rem 1.75rem !important;
+    font-size: 1rem !important;
+  }
+
+  .character-panel-tabs .btn.active {
+    padding: 0.875rem 1.75rem !important;
+    font-size: 1rem !important;
+  }
+
+  /* Character overview - maximize space on 1920px+ */
+  .character-overview-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 3rem;
+  }
+
+  .character-overview-image-asset,
+  .character-overview-image-upload {
+    width: min(100%, 620px);
+  }
+
+  /* Allow even more columns for armies on very large screens */
+  .armies-tab-grid {
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)) !important;
+  }
+
+  /* Allow 3 columns for inventory on very large screens */
+  .inventory-tab-grid {
+    grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)) !important;
+  }
+
+  /* Companion at 2 columns with expanded spacing */
+  .companion-tab-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 3rem !important;
   }
 }
 

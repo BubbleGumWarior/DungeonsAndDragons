@@ -200,6 +200,7 @@ const CampaignView: React.FC = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
   const [showMobileCharacters, setShowMobileCharacters] = useState(false);
+  const [characterListCollapsed, setCharacterListCollapsed] = useState(false);
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
@@ -3045,7 +3046,7 @@ const CampaignView: React.FC = () => {
               className={`campaign-mobile-section ${mobileNavSection === 'campaign' ? 'active' : ''}`}
               onClick={() => setMobileNavSection('campaign')}
             >
-              Campaign View
+              Campaign View {mobileNavSection === 'campaign' ? '▼' : '▶'}
             </button>
             {mobileNavSection === 'campaign' && (
               <div className="campaign-mobile-submenu">
@@ -3072,7 +3073,7 @@ const CampaignView: React.FC = () => {
               className={`campaign-mobile-section ${mobileNavSection === 'character' ? 'active' : ''}`}
               onClick={() => setMobileNavSection('character')}
             >
-              Character View
+              Character View {mobileNavSection === 'character' ? '▼' : '▶'}
             </button>
             {mobileNavSection === 'character' && (
               <div className="campaign-mobile-submenu">
@@ -3214,10 +3215,14 @@ const CampaignView: React.FC = () => {
         </div>
 
         {/* Main Content Area with Character List */}
-        <div className="campaign-layout">
-          {/* Character List - Always Visible */}
-          <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''}`}>
-            <div className="glass-panel" style={{ position: 'sticky', top: '1rem' }}>
+        <div className={`campaign-layout ${characterListCollapsed ? 'layout-collapsed' : ''}`}>
+          {/* Character List - Collapsible */}
+          <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''} ${characterListCollapsed ? 'collapsed' : ''}`} style={{
+            display: 'flex',
+            flexDirection: 'column',
+            transition: 'all 0.3s ease'
+          }}>
+            <div className="glass-panel" style={{ position: 'sticky', top: '1rem', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               {/* DM Controls */}
               {user?.role === 'Dungeon Master' && (
                 <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
@@ -3253,20 +3258,56 @@ const CampaignView: React.FC = () => {
                   </button>
                 </div>
               )}
-              <div style={{ marginBottom: '1rem' }}>
-                <h6 style={{ margin: 0, marginBottom: '0.5rem' }}>👥 Characters ({characters.length})</h6>
-                {characters.length > 1 && (
-                  <div style={{ 
-                    fontSize: '0.65rem', 
-                    color: 'var(--text-muted)', 
-                    fontStyle: 'italic'
-                  }}>
-                    Use ↑ ↓ arrow keys to navigate
+
+              {/* Collapse Button - Inside Panel */}
+              <button
+                onClick={() => setCharacterListCollapsed(!characterListCollapsed)}
+                className="character-list-collapse-btn"
+                title={characterListCollapsed ? "Expand character list" : "Collapse character list"}
+                style={{
+                  alignSelf: 'center',
+                  marginBottom: '0.75rem',
+                  padding: '0.4rem 0.8rem',
+                  background: 'rgba(212, 193, 156, 0.15)',
+                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  borderRadius: '0.375rem',
+                  color: 'var(--text-gold)',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s ease',
+                  width: 'auto',
+                  minWidth: '80px',
+                  fontWeight: 'bold'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(212, 193, 156, 0.25)';
+                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(212, 193, 156, 0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                }}
+              >
+                {characterListCollapsed ? '▼ Show' : '▲ Hide'}
+              </button>
+
+              {/* Character List Content - Full List */}
+              {!characterListCollapsed && (
+                <>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <h6 style={{ margin: 0, marginBottom: '0.5rem' }}>👥 Characters ({characters.length})</h6>
+                    {characters.length > 1 && (
+                      <div style={{ 
+                        fontSize: '0.65rem', 
+                        color: 'var(--text-muted)', 
+                        fontStyle: 'italic'
+                      }}>
+                        Use ↑ ↓ arrow keys to navigate
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.25rem' }}>
-                {characters.map((character) => (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {characters.map((character) => (
                   <button
                     key={character.id}
                     onClick={() => {
@@ -3486,13 +3527,113 @@ const CampaignView: React.FC = () => {
                     })()}
                   </button>
                 ))}
-              </div>
+                    </div>
+                </>
+              )}
+
+              {/* Collapsed State - Show User's Own Character Health/Exp or DM Controls */}
+              {characterListCollapsed && selectedCharacter && (
+                <>
+                  {user?.role === 'Dungeon Master' ? (
+                    /* DM sees Add EXP and Rest buttons when collapsed */
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div style={{ 
+                        fontSize: '0.75rem', 
+                        color: 'var(--text-muted)', 
+                        marginBottom: '0.5rem',
+                        textAlign: 'center',
+                        fontWeight: 'bold'
+                      }}>
+                        👥 DM Controls
+                      </div>
+                    </div>
+                  ) : (
+                    /* Players see their own character's health/exp summary when collapsed */
+                    (() => {
+                      const character = characters.find(c => c.id === selectedCharacter);
+                      if (!character) return null;
+
+                      const health = calculateCharacterHealth(character);
+                      const healthColor = health.isDead 
+                        ? '#dc3545' 
+                        : health.percentage > 50 
+                        ? '#28a745' 
+                        : health.percentage > 25 
+                        ? '#ffc107' 
+                        : '#dc3545';
+
+                      return (
+                        <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {/* Character Name */}
+                          <div style={{ 
+                            textAlign: 'center',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-gold)',
+                            fontWeight: 'bold',
+                            marginBottom: '0.25rem'
+                          }}>
+                            {character.name}
+                          </div>
+
+                          {/* Health Bar - Compact */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <div style={{ fontSize: '0.8rem' }}>❤️</div>
+                            <div style={{
+                              flex: 1,
+                              height: '8px',
+                              background: 'rgba(0, 0, 0, 0.4)',
+                              borderRadius: '4px',
+                              overflow: 'hidden',
+                              border: '1px solid rgba(212, 193, 156, 0.3)',
+                              position: 'relative'
+                            }}>
+                              <div style={{
+                                width: `${health.percentage}%`,
+                                height: '100%',
+                                background: `linear-gradient(90deg, ${healthColor} 0%, ${healthColor}dd 100%)`,
+                                boxShadow: `0 0 4px ${healthColor}88`
+                              }} />
+                            </div>
+                            <div style={{ fontSize: '0.6rem', color: healthColor, fontWeight: 'bold', minWidth: '20px' }}>
+                              {health.percentage.toFixed(0)}%
+                            </div>
+                          </div>
+
+                          {/* EXP Bar - Compact */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <div style={{ fontSize: '0.8rem' }}>⭐</div>
+                            <div style={{
+                              flex: 1,
+                              height: '8px',
+                              background: 'rgba(0, 0, 0, 0.4)',
+                              borderRadius: '4px',
+                              overflow: 'hidden',
+                              border: '1px solid rgba(168, 85, 247, 0.3)',
+                              position: 'relative'
+                            }}>
+                              <div style={{
+                                width: `${getLevelProgress(character.level, character.experience_points || 0)}%`,
+                                height: '100%',
+                                background: 'linear-gradient(90deg, #a855f7 0%, #c084fc 100%)',
+                                boxShadow: '0 0 4px rgba(168, 85, 247, 0.5)'
+                              }} />
+                            </div>
+                            <div style={{ fontSize: '0.6rem', color: '#c084fc', fontWeight: 'bold', minWidth: '20px' }}>
+                              {getLevelProgress(character.level, character.experience_points || 0).toFixed(0)}%
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
+                </>
+              )}
             </div>
           </div>
 
           {mainView === 'campaign' && (
             <div className="campaign-main">
-
+              <div className="campaign-tabs-row">
             <div className="glass-panel campaign-tabs-desktop" style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                 {campaignTabs.map((tab) => (
@@ -3524,7 +3665,9 @@ const CampaignView: React.FC = () => {
                 ))}
               </div>
             </div>
+              </div>
 
+              <div className="campaign-main-content">
             {/* Campaign Tab Content */}
             {campaignTab === 'map' && (
               <div className="glass-panel">
@@ -6579,16 +6722,17 @@ const CampaignView: React.FC = () => {
               </div>
             )}
             </div>
+              </div>
           )}
 
         {/* Character Content (existing) */}
         {mainView === 'character' && (
           <div className="campaign-main">
-          <div>
           {/* Character Details Panel */}
-          {selectedCharacterData ? (
-              <div>
+            {selectedCharacterData ? (
+              <div className="campaign-content-shell">
                 {/* Character Tab Navigation */}
+                <div className="campaign-tabs-row">
                 <div className="glass-panel campaign-tabs-desktop" style={{ marginBottom: '1rem' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                     {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
@@ -6634,7 +6778,9 @@ const CampaignView: React.FC = () => {
                     )}
                   </div>
                 </div>
+                </div>
 
+                <div className="campaign-main-content">
                 {/* Tab Content */}
                 {activeTab === 'board' && (
                   <div className="glass-panel character-overview">
@@ -8417,6 +8563,7 @@ const CampaignView: React.FC = () => {
                     </div>
                   </div>
                 )}
+                </div>
               </div>
             ) : (
               <div className="glass-panel">
@@ -8427,7 +8574,6 @@ const CampaignView: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
           </div>
         )}
 
