@@ -292,17 +292,16 @@ const startServer = async () => {
         try {
           await migration.fn();
         } catch (error) {
-          console.error(`❌ Migration "${migration.name}" failed:`, error.message);
-          console.error('Full error:', error);
-          throw error;
+          console.warn(`⚠️  Migration "${migration.name}" failed (non-fatal):`, error.message);
+          // Continue with next migration instead of crashing
         }
       }
       
-      console.log('✅ Database migrations completed successfully');
+      console.log('✅ Migration phase completed (some migrations may have failed)');
     } catch (error) {
-      console.error('❌ Migration failed:', error.message);
-      console.error('Server startup aborted due to migration failure');
-      process.exit(1);
+      console.error('❌ Critical error during migrations:', error.message);
+      // Don't exit - let server start anyway so we can access the app
+      console.log('⚠️  Server continuing despite migration errors...');
     }
     
     // Create HTTP server (Railway handles SSL termination)
