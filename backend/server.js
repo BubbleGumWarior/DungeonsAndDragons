@@ -265,28 +265,40 @@ const startServer = async () => {
       const createBattleGoalsTable = require('./migrations/create_battle_goals_table');
       
       // Execute migrations in correct order
-      await createSkillsTable();
-      await createJournalTable();
-      await addSubclassSystem();
-      await addExperienceAndSkills();
-      await addArmyCategory();
-      await addKnightsCategory();
-      await addTroopCounts();
-      await addTotalRounds();
-      await addCancelledStatus();
-      await addFactionSupport();
-      await populateAllClasses();
-      await populateAllSubclasses();
-      await addPrimalBondClass();
-      await addPrimalBondSkills();
-      await addUniqueConstraintClassFeatures();
-      await fixClassFeaturesLevel0();
-      await addShadowSovereignClass();
-      await addShadowSovereignSkills();
-      await createBattleGoalsTable();
-      await fixEliteArmyCategories();
+      const migrations = [
+        { name: 'createSkillsTable', fn: createSkillsTable },
+        { name: 'createJournalTable', fn: createJournalTable },
+        { name: 'addSubclassSystem', fn: addSubclassSystem },
+        { name: 'addExperienceAndSkills', fn: addExperienceAndSkills },
+        { name: 'addArmyCategory', fn: addArmyCategory },
+        { name: 'addKnightsCategory', fn: addKnightsCategory },
+        { name: 'addTroopCounts', fn: addTroopCounts },
+        { name: 'addTotalRounds', fn: addTotalRounds },
+        { name: 'addCancelledStatus', fn: addCancelledStatus },
+        { name: 'addFactionSupport', fn: addFactionSupport },
+        { name: 'populateAllClasses', fn: populateAllClasses },
+        { name: 'populateAllSubclasses', fn: populateAllSubclasses },
+        { name: 'addPrimalBondClass', fn: addPrimalBondClass },
+        { name: 'addPrimalBondSkills', fn: addPrimalBondSkills },
+        { name: 'addUniqueConstraintClassFeatures', fn: addUniqueConstraintClassFeatures },
+        { name: 'fixClassFeaturesLevel0', fn: fixClassFeaturesLevel0 },
+        { name: 'addShadowSovereignClass', fn: addShadowSovereignClass },
+        { name: 'addShadowSovereignSkills', fn: addShadowSovereignSkills },
+        { name: 'createBattleGoalsTable', fn: createBattleGoalsTable },
+        { name: 'fixEliteArmyCategories', fn: fixEliteArmyCategories }
+      ];
       
-      console.log('Database migrations completed');
+      for (const migration of migrations) {
+        try {
+          await migration.fn();
+        } catch (error) {
+          console.error(`❌ Migration "${migration.name}" failed:`, error.message);
+          console.error('Full error:', error);
+          throw error;
+        }
+      }
+      
+      console.log('✅ Database migrations completed successfully');
     } catch (error) {
       console.error('❌ Migration failed:', error.message);
       console.error('Server startup aborted due to migration failure');
