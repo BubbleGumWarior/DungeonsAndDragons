@@ -46,7 +46,9 @@ backend/uploads/characters/
 
 # Build files
 dist/
-build/
+
+# Frontend build (Railway builds this)
+frontend/build/
 
 # Temporary files
 temp/

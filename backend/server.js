@@ -48,15 +48,25 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// CORS configuration - Allow all origins in production for public access
+// CORS configuration - Allow Railway and custom domain
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // In production, allow dungeonlair.ddns.net and any origin
+    // In production, allow specific domains
     if (process.env.NODE_ENV === 'production') {
-      return callback(null, true);
+      const allowedOrigins = [
+        'https://dungeonlair.co.za',
+        'https://www.dungeonlair.co.za',
+        'https://dungeonlair.ddns.net',
+        process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null
+      ].filter(Boolean);
+      
+      if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Allow all in production for now
     }
     
     // In development, only allow localhost
@@ -283,25 +293,13 @@ const startServer = async () => {
       process.exit(1);
     }
     
-    // Load SSL certificates with ABSOLUTE paths (following DungeonLair working example)
-    const privateKey = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-key.pem', 'utf8');
-    const certificate = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-crt.pem', 'utf8');
-    const ca = fs.readFileSync('d:/Coding/DungeonsAndDragons/Certs/dungeonlair.ddns.net-chain-only.pem', 'utf8');
-    
-    const credentials = { key: privateKey, cert: certificate, ca: ca };
-    
-    let server;
+    // Create HTTP server (Railway handles SSL termination)
+    let server = http.createServer(app);
     
     if (process.env.NODE_ENV === 'production') {
-      // HTTPS server with SSL certificates (production only)
-      server = https.createServer(credentials, app);
-      console.log(`🚀 HTTPS Server running on port ${PORT}`);
-      console.log(`🔒 SSL certificates loaded successfully`);
+      console.log(`🚀 HTTP Server starting (Railway handles SSL)`);
     } else {
-      // HTTP server (development)
-      server = http.createServer(app);
-      console.log(`🚀 HTTP Server running on port ${PORT}`);
-      console.log('⚠️  Running in development mode with HTTP server');
+      console.log(`🚀 HTTP Server starting in development mode`);
     }
     
     // Initialize Socket.IO

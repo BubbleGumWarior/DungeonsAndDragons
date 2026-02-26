@@ -1,0 +1,18 @@
+# Nixpacks configuration for single-service deployment
+# This builds frontend and runs backend
+
+[phases.setup]
+nixPkgs = ['nodejs_20', 'npm-9_x']
+
+[phases.install]
+cmds = [
+  'npm install',
+  'cd backend && npm install',
+  'cd frontend && npm install'
+]
+
+[phases.build]
+cmds = ['cd frontend && npm run build']
+
+[start]
+cmd = 'cd backend && node server.js'

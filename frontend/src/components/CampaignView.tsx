@@ -197,6 +197,9 @@ const CampaignView: React.FC = () => {
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
   const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia'>('map');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
+  const [showMobileCharacters, setShowMobileCharacters] = useState(false);
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
@@ -1016,6 +1019,31 @@ const CampaignView: React.FC = () => {
     } catch (error) {
       console.error('Error deleting journal entry:', error);
       alert('Failed to delete journal entry');
+    }
+  };
+
+  const handleToggleMonsterVisibility = async (monsterId: number) => {
+    try {
+      const updated = await monsterAPI.toggleVisibility(monsterId);
+      setMonsters(prev => prev.map(m => (m.id === updated.id ? updated : m)));
+      setToastMessage(updated.visible_to_players ? 'Monster is now visible to players' : 'Monster is now hidden from players');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error toggling monster visibility:', error);
+      alert('Failed to update monster visibility');
+    }
+  };
+
+  const handleDeleteMonster = async (monsterId: number) => {
+    if (!window.confirm('Delete this monster from the encyclopedia?')) return;
+    try {
+      await monsterAPI.deleteMonster(monsterId);
+      setMonsters(prev => prev.filter(m => m.id !== monsterId));
+      setToastMessage('Monster deleted');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error deleting monster:', error);
+      alert('Failed to delete monster');
     }
   };
 
@@ -2916,11 +2944,160 @@ const CampaignView: React.FC = () => {
 
   const selectedCharacterData = characters.find(c => c.id === selectedCharacter);
 
+  const campaignTabs = [
+    { key: 'map', label: 'Map', icon: '🗺️' },
+    { key: 'combat', label: 'Combat', icon: '⚔️' },
+    { key: 'battlefield', label: 'Battlefield', icon: '🏹' },
+    { key: 'news', label: 'News', icon: '📰' },
+    { key: 'journal', label: 'Journal', icon: '📖' },
+    { key: 'encyclopedia', label: 'Encyclopedia', icon: '📚' }
+  ] as const;
+
+  const characterTabConfig: Record<
+    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup',
+    { label: string; icon: string }
+  > = {
+    board: { label: 'Overview', icon: '📋' },
+    sheet: { label: 'Character Sheet', icon: '📊' },
+    inventory: { label: 'Inventory', icon: '🎒' },
+    skills: { label: 'Skills', icon: '✨' },
+    equip: { label: 'Equipment', icon: '🛡️' },
+    armies: { label: 'Armies', icon: '⚔️' },
+    companion: { label: 'Companion', icon: '🐾' },
+    levelup: { label: 'Level Up', icon: '⬆️' }
+  };
+
+  const availableCharacterTabs = selectedCharacterData
+    ? (canViewAllTabs(selectedCharacterData.id)
+        ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies',
+            ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
+            ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])
+          ] as const)
+        : (['board'] as const))
+    : ([] as const);
+
   return (
     <div className="container fade-in">
-      <div className="dashboard-container">
+      <div className="dashboard-container campaign-container">
+        <div className="campaign-mobile-header">
+          <button
+            type="button"
+            className="campaign-burger"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            ☰
+          </button>
+          <div className="campaign-mobile-title">{campaign.name}</div>
+          <button
+            type="button"
+            className="campaign-mobile-characters"
+            onClick={() => setShowMobileCharacters((prev) => !prev)}
+            aria-label="Toggle characters"
+          >
+            👥
+          </button>
+        </div>
+
+        <div
+          className={`campaign-mobile-overlay ${mobileNavOpen ? 'open' : ''}`}
+          onClick={() => setMobileNavOpen(false)}
+        />
+        <div className={`campaign-mobile-menu ${mobileNavOpen ? 'open' : ''}`}>
+          <div className="campaign-mobile-menu-panel">
+            <div className="campaign-mobile-menu-header">
+              <span>Menu</span>
+              <button
+                type="button"
+                className="campaign-mobile-close"
+                onClick={() => setMobileNavOpen(false)}
+                aria-label="Close navigation menu"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="campaign-mobile-actions">
+              <button
+                type="button"
+                className="campaign-mobile-action"
+                onClick={() => {
+                  setShowBackstoryModal(true);
+                  setMobileNavOpen(false);
+                }}
+              >
+                📜 Backstory
+              </button>
+              <button
+                type="button"
+                className="campaign-mobile-action"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  handleBackToDashboard();
+                }}
+              >
+                ← Back to Dashboard
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className={`campaign-mobile-section ${mobileNavSection === 'campaign' ? 'active' : ''}`}
+              onClick={() => setMobileNavSection('campaign')}
+            >
+              Campaign View
+            </button>
+            {mobileNavSection === 'campaign' && (
+              <div className="campaign-mobile-submenu">
+                {campaignTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    className={`campaign-mobile-link ${campaignTab === tab.key ? 'active' : ''}`}
+                    onClick={() => {
+                      setMainView('campaign');
+                      setCampaignTab(tab.key as typeof campaignTab);
+                      setMobileNavOpen(false);
+                    }}
+                  >
+                    <span className="campaign-mobile-icon">{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className={`campaign-mobile-section ${mobileNavSection === 'character' ? 'active' : ''}`}
+              onClick={() => setMobileNavSection('character')}
+            >
+              Character View
+            </button>
+            {mobileNavSection === 'character' && (
+              <div className="campaign-mobile-submenu">
+                {availableCharacterTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={`campaign-mobile-link ${activeTab === tab ? 'active' : ''}`}
+                    onClick={() => {
+                      setMainView('character');
+                      setActiveTab(tab);
+                      setMobileNavOpen(false);
+                    }}
+                  >
+                    <span className="campaign-mobile-icon">{characterTabConfig[tab].icon}</span>
+                    {characterTabConfig[tab].label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Header */}
-        <div className="app-header">
+        <div className="app-header campaign-desktop-header">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <div>
               <h1 className="app-title">{campaign.name}</h1>
@@ -2953,7 +3130,7 @@ const CampaignView: React.FC = () => {
         </div>
 
         {/* Main View Switcher */}
-        <div className="glass-panel" style={{ marginBottom: '1.5rem' }}>
+        <div className="glass-panel campaign-view-switcher" style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
             <button
               onClick={() => setMainView('campaign')}
@@ -3037,9 +3214,9 @@ const CampaignView: React.FC = () => {
         </div>
 
         {/* Main Content Area with Character List */}
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+        <div className="campaign-layout">
           {/* Character List - Always Visible */}
-          <div style={{ flex: '0 0 280px' }}>
+          <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''}`}>
             <div className="glass-panel" style={{ position: 'sticky', top: '1rem' }}>
               {/* DM Controls */}
               {user?.role === 'Dungeon Master' && (
@@ -3314,18 +3491,11 @@ const CampaignView: React.FC = () => {
           </div>
 
           {mainView === 'campaign' && (
-            <div style={{ flex: '1', minWidth: 0 }}>
+            <div className="campaign-main">
 
-            <div className="glass-panel" style={{ marginBottom: '1rem' }}>
+            <div className="glass-panel campaign-tabs-desktop" style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                {[
-                  { key: 'map', label: 'Map', icon: '🗺️' },
-                  { key: 'combat', label: 'Combat', icon: '⚔️' },
-                  { key: 'battlefield', label: 'Battlefield', icon: '🏹' },
-                  { key: 'news', label: 'News', icon: '📰' },
-                  { key: 'journal', label: 'Journal', icon: '📖' },
-                  { key: 'encyclopedia', label: 'Encyclopedia', icon: '📚' }
-                ].map((tab) => (
+                {campaignTabs.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setCampaignTab(tab.key as typeof campaignTab)}
@@ -6013,6 +6183,126 @@ const CampaignView: React.FC = () => {
               </div>
             )}
 
+            {campaignTab === 'news' && (
+              <div className="glass-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📰 Campaign News</h5>
+                  {user?.role === 'Dungeon Master' && (
+                    <button
+                      onClick={() => setShowAddJournalModal(true)}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#0ea5e9',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0284c7'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#0ea5e9'}
+                    >
+                      + Add News
+                    </button>
+                  )}
+                </div>
+
+                {journalEntries.length === 0 ? (
+                  <div style={{
+                    minHeight: '320px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '2px dashed rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    padding: '2.5rem'
+                  }}>
+                    <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>📰</div>
+                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No News Yet</h4>
+                    <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                      {user?.role === 'Dungeon Master'
+                        ? 'Share campaign updates with your players using "Add News".'
+                        : 'The DM hasn\'t posted any news yet.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {journalEntries.map(entry => (
+                      <div
+                        key={entry.id}
+                        onClick={() => {
+                          setSelectedJournalEntry(entry);
+                          setShowViewJournalModal(true);
+                        }}
+                        style={{
+                          display: 'flex',
+                          gap: '1rem',
+                          padding: '1rem',
+                          background: 'rgba(0, 0, 0, 0.25)',
+                          border: '1px solid rgba(212, 193, 156, 0.2)',
+                          borderRadius: '0.75rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--text-gold)';
+                          e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        {entry.image_url && (
+                          <div style={{
+                            width: '140px',
+                            minWidth: '140px',
+                            height: '90px',
+                            borderRadius: '0.5rem',
+                            backgroundImage: `url(${entry.image_url})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            border: '1px solid rgba(212, 193, 156, 0.2)'
+                          }} />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                            <h4 style={{
+                              margin: 0,
+                              fontSize: '1rem',
+                              fontWeight: 'bold',
+                              color: 'var(--text-gold)'
+                            }}>
+                              {entry.title}
+                            </h4>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {new Date(entry.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div style={{
+                            marginTop: '0.5rem',
+                            fontSize: '0.85rem',
+                            color: 'var(--text-secondary)',
+                            lineHeight: '1.5',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden'
+                          }}>
+                            {formatJournalText(entry.description)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
                       {campaignTab === 'journal' && (
               <div className="glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -6129,26 +6419,180 @@ const CampaignView: React.FC = () => {
                 )}
               </div>
             )}
+
+            {campaignTab === 'encyclopedia' && (
+              <div className="glass-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📚 Monster Encyclopedia</h5>
+                  {user?.role === 'Dungeon Master' && (
+                    <button
+                      onClick={() => setShowAddMonsterModal(true)}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#f59e0b',
+                        color: '#000000',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
+                    >
+                      + Add Monster
+                    </button>
+                  )}
+                </div>
+
+                {monsters.length === 0 ? (
+                  <div style={{
+                    minHeight: '320px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '2px dashed rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    padding: '2.5rem'
+                  }}>
+                    <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>🐉</div>
+                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Monsters Added</h4>
+                    <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                      {user?.role === 'Dungeon Master'
+                        ? 'Add creatures to build your campaign encyclopedia.'
+                        : 'The DM has not published any monsters yet.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+                    {monsters.map((monster: Monster) => {
+                      const imageUrl = monster.image_url
+                        ? (process.env.NODE_ENV === 'production' ? monster.image_url : `http://localhost:5000${monster.image_url}`)
+                        : null;
+
+                      return (
+                        <div
+                          key={monster.id}
+                          style={{
+                            background: 'rgba(0, 0, 0, 0.25)',
+                            border: '1px solid rgba(212, 193, 156, 0.2)',
+                            borderRadius: '0.75rem',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column'
+                          }}
+                        >
+                          {imageUrl && (
+                            <div
+                              onClick={() => setViewImageModal({ imageUrl, name: monster.name })}
+                              style={{
+                                height: '160px',
+                                backgroundImage: `url(${imageUrl})`,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center',
+                                cursor: 'pointer'
+                              }}
+                            />
+                          )}
+                          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '0.5rem' }}>
+                              <h4 style={{ margin: 0, color: 'var(--text-gold)', fontSize: '1rem' }}>{monster.name}</h4>
+                              {user?.role === 'Dungeon Master' && (
+                                <span style={{
+                                  fontSize: '0.7rem',
+                                  padding: '0.2rem 0.5rem',
+                                  borderRadius: '999px',
+                                  background: monster.visible_to_players ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                  border: `1px solid ${monster.visible_to_players ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'}`,
+                                  color: monster.visible_to_players ? '#4ade80' : '#f87171'
+                                }}>
+                                  {monster.visible_to_players ? 'Visible' : 'Hidden'}
+                                </span>
+                              )}
+                            </div>
+                            {monster.description && (
+                              <div style={{
+                                fontSize: '0.85rem',
+                                color: 'var(--text-secondary)',
+                                lineHeight: '1.5',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden'
+                              }}>
+                                {monster.description}
+                              </div>
+                            )}
+                            {monster.limb_health && (
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                HP: {monster.limb_health.chest} | AC: {monster.limb_ac?.chest || 10}
+                              </div>
+                            )}
+                          </div>
+                          {user?.role === 'Dungeon Master' && (
+                            <div style={{
+                              display: 'flex',
+                              gap: '0.5rem',
+                              padding: '0.75rem 1rem 1rem',
+                              borderTop: '1px solid rgba(212, 193, 156, 0.15)'
+                            }}>
+                              <button
+                                onClick={() => handleToggleMonsterVisibility(monster.id)}
+                                style={{
+                                  flex: 1,
+                                  padding: '0.4rem 0.6rem',
+                                  borderRadius: '0.5rem',
+                                  border: '1px solid rgba(212, 193, 156, 0.4)',
+                                  background: 'rgba(212, 193, 156, 0.15)',
+                                  color: 'var(--text-gold)',
+                                  cursor: 'pointer',
+                                  fontSize: '0.8rem'
+                                }}
+                              >
+                                {monster.visible_to_players ? 'Hide' : 'Show'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMonster(monster.id)}
+                                style={{
+                                  flex: 1,
+                                  padding: '0.4rem 0.6rem',
+                                  borderRadius: '0.5rem',
+                                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                                  background: 'rgba(239, 68, 68, 0.2)',
+                                  color: '#f87171',
+                                  cursor: 'pointer',
+                                  fontSize: '0.8rem'
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             </div>
           )}
 
         {/* Character Content (existing) */}
         {mainView === 'character' && (
-          <div style={{ flex: '1', minWidth: 0 }}>
+          <div className="campaign-main">
           <div>
           {/* Character Details Panel */}
           {selectedCharacterData ? (
               <div>
                 {/* Character Tab Navigation */}
-                <div className="glass-panel" style={{ marginBottom: '1rem' }}>
+                <div className="glass-panel campaign-tabs-desktop" style={{ marginBottom: '1rem' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                     {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
-                    {(canViewAllTabs(selectedCharacterData.id) 
-                      ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies', 
-                          ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
-                          ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])] as const)
-                      : (['board'] as const)
-                    ).map((tab) => (
+                    {availableCharacterTabs.map((tab) => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -6170,14 +6614,7 @@ const CampaignView: React.FC = () => {
                           textTransform: 'capitalize'
                         }}
                       >
-                        {tab === 'board' ? '📋 Overview' : 
-                         tab === 'sheet' ? '📊 Character Sheet' :
-                         tab === 'inventory' ? '🎒 Inventory' :
-                         tab === 'skills' ? '✨ Skills' :
-                         tab === 'armies' ? '⚔️ Armies' :
-                         tab === 'companion' ? '🐾 Companion' :
-                         tab === 'levelup' ? '⬆️ LEVEL UP!' :
-                         '🛡️ Equipment'}
+                        {characterTabConfig[tab].icon} {characterTabConfig[tab].label}
                       </button>
                     ))}
                     
@@ -6200,11 +6637,11 @@ const CampaignView: React.FC = () => {
 
                 {/* Tab Content */}
                 {activeTab === 'board' && (
-                  <div className="glass-panel">
+                  <div className="glass-panel character-overview">
                     <h6>📋 Character Overview</h6>
                     
                     {/* Character Name Header */}
-                    <div style={{
+                    <div className="character-overview-header" style={{
                       textAlign: 'center',
                       marginBottom: '2rem',
                       padding: '1.5rem',
@@ -6230,91 +6667,67 @@ const CampaignView: React.FC = () => {
                       }}>
                       </div>
                     </div>
-                    
-                    {/* Character Image */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      marginBottom: '2rem'
-                    }}>
-                      {selectedCharacterData.image_url ? (
-                        <img 
-                          src={process.env.NODE_ENV === 'production' ? selectedCharacterData.image_url : `http://localhost:5000${selectedCharacterData.image_url}`}
-                          alt={selectedCharacterData.name}
-                          style={{
-                            width: '250px',
-                            height: '250px',
-                            objectFit: 'cover',
-                            borderRadius: '12px',
-                            border: '3px solid rgba(212, 193, 156, 0.4)',
-                            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
-                            backgroundColor: 'rgba(0, 0, 0, 0.3)'
-                          }}
-                          onError={(e) => {
-                            console.error('Failed to load image:', selectedCharacterData.image_url);
-                            // Hide image on error
-                            (e.target as HTMLImageElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
-                          <button
-                            onClick={() => {
-                              const input = document.createElement('input');
-                              input.type = 'file';
-                              input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
-                              input.onchange = async (e) => {
-                                const file = (e.target as HTMLInputElement).files?.[0];
-                                if (file) {
-                                  // Create URL for preview
-                                  const url = URL.createObjectURL(file);
-                                  setImageToCrop({ file, url, characterId: selectedCharacterData.id });
-                                  setShowImageCropModal(true);
-                                  setImagePosition({ x: 50, y: 50 });
-                                  setImageScale(100);
-                                }
-                              };
-                              input.click();
-                            }}
-                            style={{
-                              width: '250px',
-                              height: '250px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '1rem',
-                              background: 'rgba(255, 255, 255, 0.05)',
-                              border: '3px dashed rgba(212, 193, 156, 0.3)',
-                              borderRadius: '12px',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s ease',
-                              color: 'var(--text-muted)'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
-                            }}
-                          >
-                            <div style={{ fontSize: '3rem', opacity: 0.5 }}>📷</div>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Upload Character Image</div>
-                            <div style={{ fontSize: '0.7rem' }}>Click to select an image</div>
-                          </button>
-                        )
-                      )}
-                    </div>
-                    
-                    {/* Basic Info Section - Styled Cards */}
-                    <div style={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-                      gap: '1rem',
-                      marginBottom: '2rem'
-                    }}>
+
+                    <div className="character-overview-grid">
+                      <div className="character-overview-left">
+                        {/* Character Image */}
+                        <div className="character-overview-image">
+                          {selectedCharacterData.image_url ? (
+                            <img 
+                              src={process.env.NODE_ENV === 'production' ? selectedCharacterData.image_url : `http://localhost:5000${selectedCharacterData.image_url}`}
+                              alt={selectedCharacterData.name}
+                              className="character-overview-image-asset"
+                              onError={(e) => {
+                                console.error('Failed to load image:', selectedCharacterData.image_url);
+                                // Hide image on error
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
+                              <button
+                                onClick={() => {
+                                  const input = document.createElement('input');
+                                  input.type = 'file';
+                                  input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
+                                  input.onchange = async (e) => {
+                                    const file = (e.target as HTMLInputElement).files?.[0];
+                                    if (file) {
+                                      // Create URL for preview
+                                      const url = URL.createObjectURL(file);
+                                      setImageToCrop({ file, url, characterId: selectedCharacterData.id });
+                                      setShowImageCropModal(true);
+                                      setImagePosition({ x: 50, y: 50 });
+                                      setImageScale(100);
+                                    }
+                                  };
+                                  input.click();
+                                }}
+                                className="character-overview-image-upload"
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                                }}
+                              >
+                                <div style={{ fontSize: '3rem', opacity: 0.5 }}>📷</div>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Upload Character Image</div>
+                                <div style={{ fontSize: '0.7rem' }}>Click to select an image</div>
+                              </button>
+                            )
+                          )}
+                        </div>
+
+                        {/* Basic Info Section - Styled Cards */}
+                        <div style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                          gap: '1rem',
+                          marginBottom: '2rem'
+                        }}>
                       <div style={{
                         padding: '1rem',
                         backgroundColor: 'rgba(255, 255, 255, 0.03)',
@@ -6438,31 +6851,32 @@ const CampaignView: React.FC = () => {
                           fontWeight: 'bold'
                         }}>{selectedCharacterData.background || 'None'}</div>
                       </div>
-                    </div>
-                    
-                    {selectedCharacterData.backstory && (
-                      <div style={{ marginTop: '2rem' }}>
-                        <h6 className="text-gold">Backstory</h6>
-                        {(() => {
-                          const pages = paginateBackstory(selectedCharacterData.backstory);
-                          const currentPage = Math.min(backstoryPage, pages.length - 1);
-                          
-                          // Calculate max height - account for line breaks AND text wrapping
-                          const calculatePageHeight = (text: string) => {
-                            const explicitLines = text.split('\n').length;
-                            // Average ~120 chars per line before wrapping at justify (more generous)
-                            const charsPerLine = 120;
-                            const wrappedLines = Math.ceil(text.length / charsPerLine);
-                            const totalLines = Math.max(explicitLines, wrappedLines);
-                            // 27 pixels per line (1.8 line height * 15px font)
-                            return totalLines * 27 + 50;
-                          };
-                          
-                          const heights = pages.map(page => calculatePageHeight(page));
-                          const maxHeight = Math.max(...heights, 300);
+                        </div>
+                      </div>
+                      <div className="character-overview-right">
+                        {selectedCharacterData.backstory && (
+                          <div style={{ marginTop: '2rem' }}>
+                            <h6 className="text-gold">Backstory</h6>
+                            {(() => {
+                              const pages = paginateBackstory(selectedCharacterData.backstory);
+                              const currentPage = Math.min(backstoryPage, pages.length - 1);
+                              
+                              // Calculate max height - account for line breaks AND text wrapping
+                              const calculatePageHeight = (text: string) => {
+                                const explicitLines = text.split('\n').length;
+                                // Average ~120 chars per line before wrapping at justify (more generous)
+                                const charsPerLine = 120;
+                                const wrappedLines = Math.ceil(text.length / charsPerLine);
+                                const totalLines = Math.max(explicitLines, wrappedLines);
+                                // 27 pixels per line (1.8 line height * 15px font)
+                                return totalLines * 27 + 50;
+                              };
+                              
+                              const heights = pages.map(page => calculatePageHeight(page));
+                              const maxHeight = Math.max(...heights, 300);
                           
                           return (
-                            <div style={{ 
+                            <div className="character-backstory-panel" style={{ 
                               padding: '1.5rem',
                               backgroundColor: 'rgba(255, 255, 255, 0.05)',
                               borderRadius: '12px',
@@ -6502,7 +6916,7 @@ const CampaignView: React.FC = () => {
                               </div>
 
                               {/* Page content */}
-                              <div style={{
+                              <div className="character-backstory-content" style={{
                                 height: `${maxHeight}px`,
                                 position: 'relative',
                                 overflow: 'visible'
@@ -6650,7 +7064,7 @@ const CampaignView: React.FC = () => {
                               )}
 
                               {/* Word count info */}
-                              <div style={{ 
+                              <div className="character-backstory-wordcount" style={{ 
                                 position: 'absolute',
                                 bottom: '0.5rem',
                                 right: '1rem',
@@ -6662,91 +7076,93 @@ const CampaignView: React.FC = () => {
                               </div>
                             </div>
                           );
-                        })()}
-                      </div>
-                    )}
+                            })()}
+                          </div>
+                        )}
 
-                    {/* Personality Traits, Ideals, Bonds, and Flaws */}
-                    {(selectedCharacterData.personality_traits || selectedCharacterData.ideals || selectedCharacterData.bonds || selectedCharacterData.flaws) && (
-                      <div style={{ marginTop: '2rem' }}>
-                        <h6 className="text-gold">Personality</h6>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-                          {selectedCharacterData.personality_traits && (
-                            <div>
-                              <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Personality Traits</strong>
-                              <div style={{ 
-                                padding: '0.75rem', 
-                                backgroundColor: 'rgba(212, 193, 156, 0.1)', 
-                                borderRadius: '6px', 
-                                border: '1px solid rgba(212, 193, 156, 0.2)',
-                                fontSize: '0.9rem',
-                                whiteSpace: 'pre-wrap',
-                                lineHeight: '1.5'
-                              }}>
-                                {selectedCharacterData.personality_traits}
-                              </div>
+                        {/* Personality Traits, Ideals, Bonds, and Flaws */}
+                        {(selectedCharacterData.personality_traits || selectedCharacterData.ideals || selectedCharacterData.bonds || selectedCharacterData.flaws) && (
+                          <div style={{ marginTop: '2rem' }}>
+                            <h6 className="text-gold">Personality</h6>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+                              {selectedCharacterData.personality_traits && (
+                                <div>
+                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Personality Traits</strong>
+                                  <div style={{ 
+                                    padding: '0.75rem', 
+                                    backgroundColor: 'rgba(212, 193, 156, 0.1)', 
+                                    borderRadius: '6px', 
+                                    border: '1px solid rgba(212, 193, 156, 0.2)',
+                                    fontSize: '0.9rem',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: '1.5'
+                                  }}>
+                                    {selectedCharacterData.personality_traits}
+                                  </div>
+                                </div>
+                              )}
+                              {selectedCharacterData.ideals && (
+                                <div>
+                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Ideals</strong>
+                                  <div style={{ 
+                                    padding: '0.75rem', 
+                                    backgroundColor: 'rgba(212, 193, 156, 0.1)', 
+                                    borderRadius: '6px', 
+                                    border: '1px solid rgba(212, 193, 156, 0.2)',
+                                    fontSize: '0.9rem',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: '1.5'
+                                  }}>
+                                    {selectedCharacterData.ideals}
+                                  </div>
+                                </div>
+                              )}
+                              {selectedCharacterData.bonds && (
+                                <div>
+                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Bonds</strong>
+                                  <div style={{ 
+                                    padding: '0.75rem', 
+                                    backgroundColor: 'rgba(212, 193, 156, 0.1)', 
+                                    borderRadius: '6px', 
+                                    border: '1px solid rgba(212, 193, 156, 0.2)',
+                                    fontSize: '0.9rem',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: '1.5'
+                                  }}>
+                                    {selectedCharacterData.bonds}
+                                  </div>
+                                </div>
+                              )}
+                              {selectedCharacterData.flaws && (
+                                <div>
+                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: '#ff6b6b' }}>Flaws</strong>
+                                  <div style={{ 
+                                    padding: '0.75rem', 
+                                    backgroundColor: 'rgba(220, 53, 69, 0.1)', 
+                                    borderRadius: '6px', 
+                                    border: '1px solid rgba(220, 53, 69, 0.2)',
+                                    fontSize: '0.9rem',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: '1.5'
+                                  }}>
+                                    {selectedCharacterData.flaws}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {selectedCharacterData.ideals && (
-                            <div>
-                              <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Ideals</strong>
-                              <div style={{ 
-                                padding: '0.75rem', 
-                                backgroundColor: 'rgba(212, 193, 156, 0.1)', 
-                                borderRadius: '6px', 
-                                border: '1px solid rgba(212, 193, 156, 0.2)',
-                                fontSize: '0.9rem',
-                                whiteSpace: 'pre-wrap',
-                                lineHeight: '1.5'
-                              }}>
-                                {selectedCharacterData.ideals}
-                              </div>
-                            </div>
-                          )}
-                          {selectedCharacterData.bonds && (
-                            <div>
-                              <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Bonds</strong>
-                              <div style={{ 
-                                padding: '0.75rem', 
-                                backgroundColor: 'rgba(212, 193, 156, 0.1)', 
-                                borderRadius: '6px', 
-                                border: '1px solid rgba(212, 193, 156, 0.2)',
-                                fontSize: '0.9rem',
-                                whiteSpace: 'pre-wrap',
-                                lineHeight: '1.5'
-                              }}>
-                                {selectedCharacterData.bonds}
-                              </div>
-                            </div>
-                          )}
-                          {selectedCharacterData.flaws && (
-                            <div>
-                              <strong style={{ display: 'block', marginBottom: '0.5rem', color: '#ff6b6b' }}>Flaws</strong>
-                              <div style={{ 
-                                padding: '0.75rem', 
-                                backgroundColor: 'rgba(220, 53, 69, 0.1)', 
-                                borderRadius: '6px', 
-                                border: '1px solid rgba(220, 53, 69, 0.2)',
-                                fontSize: '0.9rem',
-                                whiteSpace: 'pre-wrap',
-                                lineHeight: '1.5'
-                              }}>
-                                {selectedCharacterData.flaws}
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
 
                 {activeTab === 'sheet' && canViewAllTabs(selectedCharacterData.id) && (
-                  <div className="glass-panel">
+                  <div className="glass-panel character-sheet">
                     <h6>📊 Character Sheet</h6>
                     
                     {/* Character Figure with Ability Scores and Limb Health */}
-                    <div style={{ 
+                    <div className="character-sheet-hero" style={{ 
                       display: 'grid', 
                       gridTemplateColumns: '1fr 300px 1fr',
                       gap: '1.5rem',
@@ -6754,7 +7170,7 @@ const CampaignView: React.FC = () => {
                       marginBottom: '2rem'
                     }}>
                       {/* Left Column - Three Abilities (Smaller) */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div className="character-sheet-abilities character-sheet-abilities-left" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         {['str', 'dex', 'con'].map((ability) => {
                           const score = selectedCharacterData.abilities[ability as keyof typeof selectedCharacterData.abilities] as number;
                           const modifier = Math.floor((score - 10) / 2);
@@ -6795,7 +7211,7 @@ const CampaignView: React.FC = () => {
                       </div>
 
                       {/* Center - Character Figure with Limb Health */}
-                      <div style={{ position: 'relative', width: '300px' }}>
+                      <div className="character-sheet-figure" style={{ position: 'relative', width: '300px' }}>
                         <img 
                           src={FigureImage} 
                           alt="Character Figure" 
@@ -6989,7 +7405,7 @@ const CampaignView: React.FC = () => {
                       </div>
 
                       {/* Right Column - Three Abilities (Smaller) */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div className="character-sheet-abilities character-sheet-abilities-right" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         {['int', 'wis', 'cha'].map((ability) => {
                           const score = selectedCharacterData.abilities[ability as keyof typeof selectedCharacterData.abilities] as number;
                           const modifier = Math.floor((score - 10) / 2);
@@ -7031,7 +7447,7 @@ const CampaignView: React.FC = () => {
                     </div>
 
                     {/* Combat Stats */}
-                    <div style={{ 
+                    <div className="character-sheet-combat" style={{ 
                       display: 'grid', 
                       gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
                       gap: '1rem',
@@ -7100,12 +7516,17 @@ const CampaignView: React.FC = () => {
                     {/* Skills - Organized by Ability Score */}
                     <div>
                       <h6 className="text-gold">🎯 Skills by Ability Score</h6>
-                      <div style={{ 
+                      <div className="character-sheet-skills" style={{ 
                         display: 'grid', 
                         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
                         gap: '1.5rem' 
                       }}>
                         {(() => {
+                          const normalizeSkillName = (name: string) => name.toLowerCase().replace(/[\s_]+/g, '');
+                          const skillNameSet = new Set([
+                            ...(selectedCharacterData.skills || []),
+                            ...((characterSkills[selectedCharacterData.id] || []).map(skill => skill.name))
+                          ].map(normalizeSkillName));
                           const skillsByAbility = {
                             'str': { name: 'Strength', skills: ['Athletics'] },
                             'dex': { name: 'Dexterity', skills: ['Acrobatics', 'Sleight of Hand', 'Stealth'] },
@@ -7144,7 +7565,7 @@ const CampaignView: React.FC = () => {
                                 {/* Skills for this ability */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                   {skills.map(skill => {
-                                    const isProficient = selectedCharacterData.skills?.includes(skill.toLowerCase().replace(/\s+/g, '_')) || false;
+                                    const isProficient = skillNameSet.has(normalizeSkillName(skill));
                                     const totalModifier = baseModifier + (isProficient ? proficiencyBonus : 0);
 
                                     return (

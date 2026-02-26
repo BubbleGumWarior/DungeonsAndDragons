@@ -1,8 +1,23 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://dungeonlair.ddns.net/api' 
-  : 'http://localhost:5000/api';
+// Determine API base URL based on environment
+const getApiBaseUrl = () => {
+  // Check for explicit REACT_APP_API_URL (useful for Railway)
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // Production fallbacks
+  if (process.env.NODE_ENV === 'production') {
+    // Try dungeonlair.co.za first, then fallback to ddns.net
+    return 'https://dungeonlair.co.za/api';
+  }
+  
+  // Development default
+  return 'http://localhost:5000/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,

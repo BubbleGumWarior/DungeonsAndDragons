@@ -30,6 +30,7 @@ const Dashboard: React.FC = () => {
     campaign: null
   });
   const [campaignCharacters, setCampaignCharacters] = useState<{ [key: number]: Character[] }>({});
+  const [expandedDescriptions, setExpandedDescriptions] = useState<{ [key: number]: boolean }>({});
 
   useEffect(() => {
     if (user?.role === 'Dungeon Master') {
@@ -122,6 +123,14 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const toggleDescription = (campaignId: number, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setExpandedDescriptions((prev) => ({
+      ...prev,
+      [campaignId]: !prev[campaignId]
+    }));
+  };
+
   const getRoleColorClass = (role: string): string => {
     return role === 'Dungeon Master' ? 'text-gold' : 'text-secondary';
   };
@@ -164,7 +173,7 @@ const Dashboard: React.FC = () => {
 
         {user?.role === 'Dungeon Master' && (
           <div className="glass-panel success">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div className="dashboard-panel-header">
               <h4>🎲 Your Campaigns</h4>
               <button
                 onClick={() => setShowAddCampaign(true)}
@@ -176,9 +185,9 @@ const Dashboard: React.FC = () => {
             </div>
             
             {showAddCampaign && (
-              <div className="glass-panel info" style={{ marginBottom: '1rem' }}>
+              <div className="glass-panel info dashboard-add-form">
                 <h5>Create New Campaign</h5>
-                <div style={{ marginBottom: '1rem' }}>
+                <div className="dashboard-form-field">
                   <label className="form-label">Campaign Name</label>
                   <input
                     type="text"
@@ -189,7 +198,7 @@ const Dashboard: React.FC = () => {
                     required
                   />
                 </div>
-                <div style={{ marginBottom: '1rem' }}>
+                <div className="dashboard-form-field">
                   <label className="form-label">Description (Optional)</label>
                   <textarea
                     className="form-input"
@@ -200,7 +209,7 @@ const Dashboard: React.FC = () => {
                     style={{ resize: 'vertical' }}
                   />
                 </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
+                <div className="dashboard-form-actions">
                   <button
                     onClick={handleAddCampaign}
                     className="btn btn-primary"
@@ -231,95 +240,67 @@ const Dashboard: React.FC = () => {
             )}
 
             {campaigns.length > 0 && (
-              <div style={{ display: 'grid', gap: '1rem' }}>
+              <div className="campaign-grid">
                 {campaigns.map((campaign) => (
                   <div
                     key={campaign.id}
-                    className="glass-panel"
-                    style={{ 
-                      cursor: 'pointer', 
-                      transition: 'all 0.3s ease',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
-                      position: 'relative'
-                    }}
+                    className="glass-panel campaign-card"
                     onClick={(e) => handleCampaignClick(campaign, e)}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.4), 0 0 20px rgba(212, 193, 156, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-                    }}
                   >
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch' }}>
+                    {(() => {
+                      const isExpanded = !!expandedDescriptions[campaign.id];
+                      return (
+                    <div className="campaign-card-inner">
                       {/* Left Half - Description */}
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        <h5 className="text-gold" style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>{campaign.name}</h5>
+                      <div className="campaign-card-details">
+                        <h5 className="text-gold campaign-card-title">{campaign.name}</h5>
                         {campaign.description && (
-                          <div className="text-secondary" style={{ marginBottom: '0.5rem', flex: 1, textAlign: 'left' }}>
+                          <div className={`text-secondary campaign-card-description${isExpanded ? ' is-expanded' : ''}`}>
                             {campaign.description.split('\n').map((paragraph, index) => (
-                              paragraph.trim() && <p key={index} style={{ margin: '0.5rem 0', fontSize: '0.9rem', textAlign: 'left' }}>{paragraph}</p>
+                              paragraph.trim() && <p key={index} className="campaign-card-paragraph">{paragraph}</p>
                             ))}
                           </div>
                         )}
-                        <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>
+                        {campaign.description && (
+                          <button
+                            type="button"
+                            className="campaign-read-more"
+                            onClick={(event) => toggleDescription(campaign.id, event)}
+                          >
+                            {isExpanded ? 'Show less' : 'Read more'}
+                          </button>
+                        )}
+                        <p className="text-muted campaign-card-meta">
                           Created: {new Date(campaign.created_at).toLocaleDateString()}
                         </p>
                       </div>
 
                       {/* Right Half - Characters */}
-                      <div style={{ 
-                        flex: 1, 
-                        borderLeft: '1px solid rgba(212, 193, 156, 0.3)', 
-                        paddingLeft: '1rem',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}>
+                      <div className="campaign-card-characters">
                         <h6 className="text-gold" style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>Party Members</h6>
-                        <div style={{ 
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.5rem',
-                          flex: 1
-                        }}>
+                        <div className="campaign-card-members">
                           {campaignCharacters[campaign.id]?.map((character) => (
                             <div 
                               key={character.id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.75rem',
-                                padding: '0.5rem',
-                                background: 'rgba(0, 0, 0, 0.3)',
-                                borderRadius: '8px',
-                                border: '1px solid rgba(212, 193, 156, 0.2)'
-                              }}
+                              className="campaign-member"
                             >
                               <img 
                                 src={character.image_url || FigureImage} 
                                 alt={character.name}
-                                style={{
-                                  width: '50px',
-                                  height: '50px',
-                                  borderRadius: '50%',
-                                  objectFit: 'cover',
-                                  border: '2px solid rgba(212, 193, 156, 0.5)',
-                                  flexShrink: 0
-                                }}
+                                className="campaign-member-avatar"
                               />
-                              <div style={{ flex: 1, textAlign: 'left' }}>
-                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                              <div className="campaign-member-text">
+                                <div className="campaign-member-name">
                                   {character.name}
                                 </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                <div className="campaign-member-subtitle">
                                   Level {character.level} {character.class}
                                 </div>
                               </div>
                             </div>
                           ))}
                           {(!campaignCharacters[campaign.id] || campaignCharacters[campaign.id].length === 0) && (
-                            <p className="text-muted" style={{ fontSize: '0.75rem', gridColumn: '1 / -1' }}>
+                            <p className="text-muted campaign-empty">
                               No characters yet
                             </p>
                           )}
@@ -328,19 +309,15 @@ const Dashboard: React.FC = () => {
 
                       {/* Delete Button */}
                       <button
-                        className="delete-btn btn btn-danger"
+                        className="delete-btn btn btn-danger campaign-delete-btn"
                         onClick={(e) => handleDeleteCampaign(campaign, e)}
-                        style={{
-                          padding: '0.5rem',
-                          minWidth: 'auto',
-                          fontSize: '0.9rem',
-                          height: 'fit-content'
-                        }}
                         title="Delete Campaign"
                       >
                         🗑️
                       </button>
                     </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -368,102 +345,80 @@ const Dashboard: React.FC = () => {
             )}
 
             {campaigns.length > 0 && (
-              <div style={{ display: 'grid', gap: '1rem' }}>
+              <div className="campaign-grid">
                 {campaigns.map((campaign) => (
                   <div
                     key={campaign.id}
-                    className="glass-panel"
-                    style={{ 
-                      cursor: 'pointer', 
-                      transition: 'all 0.3s ease',
-                      border: '1px solid rgba(212, 193, 156, 0.3)'
-                    }}
+                    className="glass-panel campaign-card"
                     onClick={(e) => handleCampaignClick(campaign, e)}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.4), 0 0 20px rgba(212, 193, 156, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-                    }}
                   >
-                    <div style={{ display: 'flex', gap: '1rem' }}>
+                    {(() => {
+                      const isExpanded = !!expandedDescriptions[campaign.id];
+                      return (
+                    <div className="campaign-card-inner">
                       {/* Left Half - Description */}
-                      <div style={{ flex: 1 }}>
-                        <h5 className="text-gold" style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>{campaign.name}</h5>
+                      <div className="campaign-card-details">
+                        <h5 className="text-gold campaign-card-title">{campaign.name}</h5>
                         {campaign.description && (
-                          <div className="text-secondary" style={{ marginBottom: '0.5rem', textAlign: 'left' }}>
+                          <div className={`text-secondary campaign-card-description${isExpanded ? ' is-expanded' : ''}`}>
                             {campaign.description.split('\n').map((paragraph, index) => (
-                              paragraph.trim() && <p key={index} style={{ margin: '0.5rem 0', fontSize: '0.9rem', textAlign: 'left' }}>{paragraph}</p>
+                              paragraph.trim() && <p key={index} className="campaign-card-paragraph">{paragraph}</p>
                             ))}
                           </div>
                         )}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                          <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>
+                        {campaign.description && (
+                          <button
+                            type="button"
+                            className="campaign-read-more"
+                            onClick={(event) => toggleDescription(campaign.id, event)}
+                          >
+                            {isExpanded ? 'Show less' : 'Read more'}
+                          </button>
+                        )}
+                        <div className="campaign-card-footer">
+                          <p className="text-muted campaign-card-meta">
                             DM: {campaign.dm_username}
                           </p>
-                          <span className="text-gold" style={{ fontSize: '0.8rem' }}>
+                          <span className="text-gold campaign-cta">
                             Click to join →
                           </span>
                         </div>
                       </div>
 
                       {/* Right Half - Characters */}
-                      <div style={{ 
-                        flex: 1, 
-                        borderLeft: '1px solid rgba(212, 193, 156, 0.3)', 
-                        paddingLeft: '1rem'
-                      }}>
+                      <div className="campaign-card-characters">
                         <h6 className="text-gold" style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>Party Members</h6>
-                        <div style={{ 
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.5rem'
-                        }}>
+                        <div className="campaign-card-members">
                           {campaignCharacters[campaign.id]?.map((character) => (
                             <div 
                               key={character.id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.75rem',
-                                padding: '0.5rem',
-                                background: 'rgba(0, 0, 0, 0.3)',
-                                borderRadius: '8px',
-                                border: '1px solid rgba(212, 193, 156, 0.2)'
-                              }}
+                              className="campaign-member"
                             >
                               <img 
                                 src={character.image_url || FigureImage} 
                                 alt={character.name}
-                                style={{
-                                  width: '50px',
-                                  height: '50px',
-                                  borderRadius: '50%',
-                                  objectFit: 'cover',
-                                  border: '2px solid rgba(212, 193, 156, 0.5)',
-                                  flexShrink: 0
-                                }}
+                                className="campaign-member-avatar"
                               />
-                              <div style={{ flex: 1, textAlign: 'left' }}>
-                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                              <div className="campaign-member-text">
+                                <div className="campaign-member-name">
                                   {character.name}
                                 </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                <div className="campaign-member-subtitle">
                                   Level {character.level} {character.class}
                                 </div>
                               </div>
                             </div>
                           ))}
                           {(!campaignCharacters[campaign.id] || campaignCharacters[campaign.id].length === 0) && (
-                            <p className="text-muted" style={{ fontSize: '0.75rem', gridColumn: '1 / -1' }}>
+                            <p className="text-muted campaign-empty">
                               No characters yet
                             </p>
                           )}
                         </div>
                       </div>
                     </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>

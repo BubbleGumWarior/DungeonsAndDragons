@@ -52,7 +52,6 @@ const CharacterCreation: React.FC = () => {
   // Skill tooltip state
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
   const [skillData, setSkillData] = useState<Record<string, Skill>>({});
-  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [characterData, setCharacterData] = useState<CharacterData>({
     name: '',
