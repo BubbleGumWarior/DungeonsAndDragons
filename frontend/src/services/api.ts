@@ -9,8 +9,8 @@ const getApiBaseUrl = () => {
   
   // Production fallbacks
   if (process.env.NODE_ENV === 'production') {
-    // Try dungeonlair.co.za first, then fallback to ddns.net
-    return 'https://dungeonlair.co.za/api';
+    // Use www subdomain (primary domain)
+    return 'https://www.dungeonlair.co.za/api';
   }
   
   // Development default
