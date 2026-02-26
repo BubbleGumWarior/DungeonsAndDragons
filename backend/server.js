@@ -60,7 +60,9 @@ const corsOptions = {
         'https://dungeonlair.co.za',
         'https://www.dungeonlair.co.za',
         'https://dungeonlair.ddns.net',
-        process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null
+        'https://dungeonsanddragons-production-292a.up.railway.app',
+        process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null,
+        process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : null
       ].filter(Boolean);
       
       if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {

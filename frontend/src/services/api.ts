@@ -7,10 +7,9 @@ const getApiBaseUrl = () => {
     return process.env.REACT_APP_API_URL;
   }
   
-  // Production fallbacks
+  // Production: use relative URL (same domain as frontend)
   if (process.env.NODE_ENV === 'production') {
-    // Use www subdomain (primary domain)
-    return 'https://www.dungeonlair.co.za/api';
+    return '/api';
   }
   
   // Development default
