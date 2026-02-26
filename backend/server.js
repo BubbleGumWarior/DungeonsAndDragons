@@ -33,7 +33,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
-      connectSrc: ["'self'", "wss:", "ws:", "wss://dungeonlair.ddns.net", "https://dungeonlair.ddns.net"],
+      connectSrc: ["'self'", "wss:", "ws:", "https://www.dungeonlair.co.za", "https://dungeonlair.co.za", "wss://dungeonlair.ddns.net", "https://dungeonlair.ddns.net"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
     }
