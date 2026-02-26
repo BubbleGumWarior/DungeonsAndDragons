@@ -1,11 +1,4 @@
-const { Pool } = require('pg');
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'dungeonlair',
-  password: 'admin',
-  port: 5432,
-});
+const { pool } = require('../models/database');
 
 async function populateAllClassesData() {
   const client = await pool.connect();
