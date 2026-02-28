@@ -1097,6 +1097,36 @@ router.post('/:id/upload-image', authenticateToken, upload.single('image'), asyn
   }
 });
 
+// Delete character image (DM only)
+router.delete('/:id/image', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Check permissions - only DM can delete character images
+    const campaign = await Campaign.findById(character.campaign_id);
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    
+    if (!isDM) {
+      return res.status(403).json({ error: 'Only the dungeon master can delete character images' });
+    }
+
+    // Delete image from database
+    await Character.deleteImage(id);
+
+    res.json({
+      message: 'Character image deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting character image:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete character image' });
+  }
+});
+
 // Update character map position (Player for own character, DM for any character in their campaign)
 router.put('/:id/map-position', authenticateToken, async (req, res) => {
   try {

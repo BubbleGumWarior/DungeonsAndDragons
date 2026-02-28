@@ -476,6 +476,11 @@ export const characterAPI = {
     return response.data;
   },
 
+  deleteCharacterImage: async (characterId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/characters/${characterId}/image`);
+    return response.data;
+  },
+
   updateMapPosition: async (characterId: number, x: number, y: number): Promise<{ message: string; position: { x: number; y: number } }> => {
     const response = await api.put(`/characters/${characterId}/map-position`, { x, y });
     return response.data;

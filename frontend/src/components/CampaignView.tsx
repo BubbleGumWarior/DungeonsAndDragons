@@ -191,6 +191,11 @@ const CampaignView: React.FC = () => {
     characterName: ''
   });
 
+  const [deleteImageModal, setDeleteImageModal] = useState<{ isOpen: boolean; characterId: number | null }>({
+    isOpen: false,
+    characterId: null
+  });
+
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup'>('board');
@@ -6837,48 +6842,87 @@ const CampaignView: React.FC = () => {
                                 }}
                               />
                               {(user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
-                                <button
-                                  onClick={() => {
-                                    const input = document.createElement('input');
-                                    input.type = 'file';
-                                    input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
-                                    input.onchange = async (e) => {
-                                      const file = (e.target as HTMLInputElement).files?.[0];
-                                      if (file) {
-                                        const url = URL.createObjectURL(file);
-                                        setImageToCrop({ file, url, characterId: selectedCharacterData.id });
-                                        setShowImageCropModal(true);
-                                        setImagePosition({ x: 50, y: 50 });
-                                        setImageScale(100);
-                                      }
-                                    };
-                                    input.click();
-                                  }}
-                                  style={{
-                                    position: 'absolute',
-                                    bottom: '10px',
-                                    right: '10px',
-                                    padding: '0.5rem 1rem',
-                                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                                    color: 'var(--text-gold)',
-                                    border: '1px solid var(--primary-gold)',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                    fontWeight: 'bold',
-                                    transition: 'all 0.2s ease'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
-                                    e.currentTarget.style.transform = 'scale(1.05)';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-                                    e.currentTarget.style.transform = 'scale(1)';
-                                  }}
-                                >
-                                  ✏️ Change Image
-                                </button>
+                                <div style={{
+                                  position: 'absolute',
+                                  bottom: '10px',
+                                  right: '10px',
+                                  display: 'flex',
+                                  gap: '0.5rem'
+                                }}
+                                onMouseEnter={(e) => {
+                                  (e.currentTarget as HTMLElement).style.opacity = '1';
+                                }}
+                                onMouseLeave={(e) => {
+                                  (e.currentTarget as HTMLElement).style.opacity = '0';
+                                }}>
+                                  <button
+                                    onClick={() => {
+                                      const input = document.createElement('input');
+                                      input.type = 'file';
+                                      input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
+                                      input.onchange = async (e) => {
+                                        const file = (e.target as HTMLInputElement).files?.[0];
+                                        if (file) {
+                                          const url = URL.createObjectURL(file);
+                                          setImageToCrop({ file, url, characterId: selectedCharacterData.id });
+                                          setShowImageCropModal(true);
+                                          setImagePosition({ x: 50, y: 50 });
+                                          setImageScale(100);
+                                        }
+                                      };
+                                      input.click();
+                                    }}
+                                    style={{
+                                      padding: '0.5rem 1rem',
+                                      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                      color: 'var(--text-gold)',
+                                      border: '1px solid var(--primary-gold)',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 'bold',
+                                      transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+                                      e.currentTarget.style.transform = 'scale(1.05)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                                      e.currentTarget.style.transform = 'scale(1)';
+                                    }}
+                                  >
+                                    ✏️ Change Image
+                                  </button>
+                                  {user?.role === 'Dungeon Master' && (
+                                    <button
+                                      onClick={() => {
+                                        setDeleteImageModal({ isOpen: true, characterId: selectedCharacterData.id });
+                                      }}
+                                      style={{
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: 'rgba(200, 50, 50, 0.7)',
+                                        color: 'white',
+                                        border: '1px solid #c83232',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 'bold',
+                                        transition: 'all 0.2s ease'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.9)';
+                                        e.currentTarget.style.transform = 'scale(1.05)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.7)';
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                      }}
+                                    >
+                                      🗑️ Delete
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
                           ) : (
@@ -9999,6 +10043,32 @@ const CampaignView: React.FC = () => {
           cancelText="Cancel"
           onConfirm={confirmDeleteCharacter}
           onClose={() => setDeleteModal({ isOpen: false, characterId: null, characterName: '' })}
+          isDangerous={true}
+        />
+
+        {/* Delete Character Image Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={deleteImageModal.isOpen}
+          title="Delete Character Image"
+          message="Are you sure you want to delete this character's image? This action cannot be undone."
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={async () => {
+            if (deleteImageModal.characterId) {
+              try {
+                await characterAPI.deleteCharacterImage(deleteImageModal.characterId);
+                setToastMessage('Character image deleted successfully');
+                setTimeout(() => setToastMessage(null), 3000);
+                // Reload campaign to refresh character data
+                await loadCampaign(campaignName);
+              } catch (error: any) {
+                setToastMessage(`Failed to delete image: ${error.response?.data?.error || error.message}`);
+                setTimeout(() => setToastMessage(null), 3000);
+              }
+            }
+            setDeleteImageModal({ isOpen: false, characterId: null });
+          }}
+          onClose={() => setDeleteImageModal({ isOpen: false, characterId: null })}
           isDangerous={true}
         />
 
