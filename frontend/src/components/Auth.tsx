@@ -156,7 +156,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
     // Focus on the first field with an error
     if (Object.keys(errors).length > 0) {
       const firstErrorField = Object.keys(errors)[0];
-      const fieldRefs: Record<string, React.RefObject<HTMLInputElement>> = {
+      const fieldRefs: Record<string, React.RefObject<HTMLInputElement | null>> = {
         username: usernameInputRef,
         email: emailInputRef,
         password: passwordInputRef,
