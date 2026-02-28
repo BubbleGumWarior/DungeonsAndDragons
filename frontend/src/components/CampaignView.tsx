@@ -240,6 +240,7 @@ const CampaignView: React.FC = () => {
   const [imageToCrop, setImageToCrop] = useState<{ file: File; url: string; characterId: number } | null>(null);
   const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
   const [imageScale, setImageScale] = useState(100);
+  const [imageLoadError, setImageLoadError] = useState<Record<number, boolean>>({});
 
   // Character map positions state
   const [characterPositions, setCharacterPositions] = useState<Record<number, { x: number; y: number }>>({});
@@ -6865,16 +6866,16 @@ const CampaignView: React.FC = () => {
                       <div className="character-overview-left">
                         {/* Character Image */}
                         <div className="character-overview-image">
-                          {selectedCharacterData.image_url ? (
+                          {selectedCharacterData.image_url && !imageLoadError[selectedCharacterData.id] ? (
                             <div style={{ position: 'relative' }}>
                               <img 
-                                src={selectedCharacterData.image_url}
+                                src={getImageUrl(selectedCharacterData.image_url)}
                                 alt={selectedCharacterData.name}
                                 className="character-overview-image-asset"
                                 onError={(e) => {
                                   console.error('Failed to load image:', selectedCharacterData.image_url);
-                                  // Hide image on error
-                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  // Track the error and hide this image
+                                  setImageLoadError(prev => ({ ...prev, [selectedCharacterData.id]: true }));
                                 }}
                               />
                               {(user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
@@ -8923,7 +8924,7 @@ const CampaignView: React.FC = () => {
                 overflow: 'hidden'
               }}>
                 <img 
-                  src={selectedJournalEntry.image_url} 
+                  src={getImageUrl(selectedJournalEntry.image_url)} 
                   alt={selectedJournalEntry.title}
                   style={{
                     width: '100%',
@@ -10028,6 +10029,9 @@ const CampaignView: React.FC = () => {
                             // Upload the cropped image
                             await characterAPI.uploadCharacterImage(imageToCrop.characterId, croppedFile);
                             
+                            // Clear any image load error for this character
+                            setImageLoadError(prev => ({ ...prev, [imageToCrop.characterId]: false }));
+                            
                             // Reload campaign to refresh character data
                             if (campaignName) {
                               await loadCampaign(campaignName);
@@ -10095,6 +10099,10 @@ const CampaignView: React.FC = () => {
             if (deleteImageModal.characterId) {
               try {
                 await characterAPI.deleteCharacterImage(deleteImageModal.characterId);
+                
+                // Clear any image load error for this character
+                setImageLoadError(prev => ({ ...prev, [deleteImageModal.characterId!]: false }));
+                
                 setToastMessage('Character image deleted successfully');
                 setTimeout(() => setToastMessage(null), 3000);
                 // Reload campaign to refresh character data
