@@ -57,7 +57,7 @@ const CharacterCreation: React.FC = () => {
     name: '',
     race: '',
     class: '',
-    background: '',
+    background: 'Adventurer',
     abilities: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
     skills: [],
     equipment: [],
@@ -746,7 +746,7 @@ const CharacterCreation: React.FC = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1: return characterData.class.trim().length > 0; // Class selection
-      case 2: return characterData.name.trim().length > 0 && characterData.race && characterData.background; // Name, race, background
+      case 2: return characterData.name.trim().length > 0 && characterData.race; // Name, race
       case 3: return true; // Point buy - always allow proceeding even with default stats
       case 4: return true; // Skills - optional
       case 5: return true; // Backstory - optional
@@ -1225,7 +1225,7 @@ const CharacterCreation: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+              <div>
                 <div>
                   <label className="form-label">Race</label>
                   <select
@@ -1247,27 +1247,6 @@ const CharacterCreation: React.FC = () => {
                       ))}
                     </div>
                   )}
-                </div>
-
-                <div>
-                  <label className="form-label">Background</label>
-                  <select
-                    className="form-input"
-                    value={characterData.background}
-                    onChange={(e) => setCharacterData(prev => ({ ...prev, background: e.target.value }))}
-                    required
-                  >
-                    <option value="">Select a background...</option>
-                    {referenceData?.backgrounds.map(background => (
-                      <option key={background} value={background}>{background}</option>
-                    ))}
-                  </select>
-                  <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px' }}>
-                    <p className="text-muted" style={{ fontSize: '0.9rem', margin: 0 }}>
-                      Your background represents what your character did before becoming an adventurer. 
-                      It provides skill proficiencies, languages, and equipment.
-                    </p>
-                  </div>
                 </div>
               </div>
 

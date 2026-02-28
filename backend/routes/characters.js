@@ -398,7 +398,7 @@ router.get('/reference/data', async (req, res) => {
         { name: 'Wizard', hitDie: 6, primaryAbility: ['int'], savingThrows: ['int', 'wis'] }
       ],
       backgrounds: [
-        'Acolyte', 'Criminal', 'Folk Hero', 'Noble', 'Sage', 'Soldier',
+        'Adventurer', 'Acolyte', 'Criminal', 'Folk Hero', 'Noble', 'Sage', 'Soldier',
         'Charlatan', 'Entertainer', 'Guild Artisan', 'Hermit', 'Outlander', 'Sailor'
       ],
       skills: [
