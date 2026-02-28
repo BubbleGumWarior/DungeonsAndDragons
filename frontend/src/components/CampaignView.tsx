@@ -6805,8 +6805,44 @@ const CampaignView: React.FC = () => {
                       background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
                       borderRadius: '12px',
                       border: '2px solid rgba(212, 193, 156, 0.3)',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                      position: 'relative'
                     }}>
+                      {user?.role === 'Dungeon Master' && (
+                        <button
+                          onClick={() => {
+                            setDeleteModal({
+                              isOpen: true,
+                              characterId: selectedCharacterData.id,
+                              characterName: selectedCharacterData.name
+                            });
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '1rem',
+                            right: '1rem',
+                            padding: '0.5rem 1rem',
+                            backgroundColor: 'rgba(200, 50, 50, 0.7)',
+                            color: 'white',
+                            border: '1px solid #c83232',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.8rem',
+                            fontWeight: 'bold',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.9)';
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.7)';
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                        >
+                          🗑️ Delete Character
+                        </button>
+                      )}
                       <div style={{
                         fontSize: '2rem',
                         fontWeight: 'bold',
@@ -10024,7 +10060,7 @@ const CampaignView: React.FC = () => {
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)';
-                    e.currentTarget.style.boxShadow = 'none';
+                    (e.currentTarget.style.boxShadow as any) = '0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
                   }}
                 >
                   Upload Image
@@ -10060,7 +10096,9 @@ const CampaignView: React.FC = () => {
                 setToastMessage('Character image deleted successfully');
                 setTimeout(() => setToastMessage(null), 3000);
                 // Reload campaign to refresh character data
-                await loadCampaign(campaignName);
+                if (campaignName && typeof campaignName === 'string') {
+                  await loadCampaign(campaignName);
+                }
               } catch (error: any) {
                 setToastMessage(`Failed to delete image: ${error.response?.data?.error || error.message}`);
                 setTimeout(() => setToastMessage(null), 3000);

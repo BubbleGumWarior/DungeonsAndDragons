@@ -36,14 +36,27 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
   });
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const formRef = useRef<HTMLFormElement>(null);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordInputRef = useRef<HTMLInputElement>(null);
 
   // Clear errors when switching modes
   useEffect(() => {
     clearError();
     setValidationErrors({});
+    setAuthError(null);
   }, [mode, clearError]);
+
+  // Sync context error to local state
+  useEffect(() => {
+    if (error) {
+      setAuthError(error);
+    }
+  }, [error]);
 
   const validateField = (name: string, value: string): string => {
     switch (name) {
@@ -139,6 +152,24 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
     }
 
     setValidationErrors(errors);
+    
+    // Focus on the first field with an error
+    if (Object.keys(errors).length > 0) {
+      const firstErrorField = Object.keys(errors)[0];
+      const fieldRefs: Record<string, React.RefObject<HTMLInputElement>> = {
+        username: usernameInputRef,
+        email: emailInputRef,
+        password: passwordInputRef,
+        confirmPassword: confirmPasswordInputRef
+      };
+      
+      if (fieldRefs[firstErrorField]?.current) {
+        setTimeout(() => {
+          fieldRefs[firstErrorField].current?.focus();
+        }, 0);
+      }
+    }
+    
     return Object.keys(errors).length === 0;
   };
 
@@ -173,25 +204,69 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
     }
 
     try {
+      setAuthError(null);
+      
       if (mode === 'login') {
         await login(formData.email, formData.password);
-        
         // Navigate to dashboard or the page they were trying to access
         const from = location.state?.from?.pathname || '/dashboard';
         navigate(from, { replace: true });
       } else {
         await register(formData.username, formData.email, formData.password, formData.confirmPassword);
-        
         // Navigate to dashboard after successful registration
         navigate('/dashboard', { replace: true });
       }
-    } catch (err) {
-      // Error is handled by the context
+    } catch (err: any) {
+      // Error is already handled by the context and synced to authError
+      // The error message will be displayed in the UI
     }
   };
 
   const getFieldError = (fieldName: keyof ValidationErrors): string => {
     return touchedFields[fieldName] ? (validationErrors[fieldName] || '') : '';
+  };
+
+  const getDisplayErrorMessage = (error: string): { title: string; message: string } => {
+    // Map common error messages to more user-friendly versions with suggestions
+    const errorMap: Record<string, { title: string; message: string }> = {
+      'Email already registered': {
+        title: 'Email Already Registered',
+        message: 'This email is already in use. Please try logging in or use a different email address.'
+      },
+      'Username already taken': {
+        title: 'Username Unavailable',
+        message: 'This username is already taken. Please choose a different username.'
+      },
+      'Invalid credentials': {
+        title: 'Invalid Credentials',
+        message: 'The email or password you entered is incorrect. Please try again.'
+      },
+      'All fields are required': {
+        title: 'Missing Information',
+        message: 'Please fill in all required fields before submitting.'
+      },
+      'Passwords do not match': {
+        title: 'Password Mismatch',
+        message: 'The passwords you entered do not match. Please check and try again.'
+      },
+      'Invalid email format': {
+        title: 'Invalid Email',
+        message: 'Please enter a valid email address.'
+      },
+      'Email and password are required': {
+        title: 'Login Information Required',
+        message: 'Please enter both your email and password.'
+      },
+      'Internal server error': {
+        title: 'Server Error',
+        message: 'Something went wrong on our end. Please try again later.'
+      }
+    };
+
+    return errorMap[error] || {
+      title: 'An Error Occurred',
+      message: error
+    };
   };
 
   const getFieldClassName = (fieldName: keyof ValidationErrors): string => {
@@ -268,6 +343,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
                   type="text"
                   id="username"
                   name="username"
+                  ref={usernameInputRef}
                   value={formData.username}
                   onChange={handleInputChange}
                   onBlur={handleInputBlur}
@@ -291,6 +367,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
                 type="email"
                 id="email"
                 name="email"
+                ref={emailInputRef}
                 value={formData.email}
                 onChange={handleInputChange}
                 onBlur={handleInputBlur}
@@ -313,6 +390,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
                 type="password"
                 id="password"
                 name="password"
+                ref={passwordInputRef}
                 value={formData.password}
                 onChange={handleInputChange}
                 onBlur={handleInputBlur}
@@ -343,6 +421,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
                   type="password"
                   id="confirmPassword"
                   name="confirmPassword"
+                  ref={confirmPasswordInputRef}
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   onBlur={handleInputBlur}
@@ -358,9 +437,55 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
             )}
 
             {/* Error Display */}
-            {error && (
-              <div className="alert alert-error">
-                {error}
+            {authError && (
+              <div style={{
+                padding: '1rem',
+                marginBottom: '1rem',
+                backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                border: '2px solid #f44336',
+                borderRadius: '8px',
+                color: '#f44336',
+                fontSize: '0.95rem',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.75rem',
+                animation: 'slideDown 0.3s ease',
+                position: 'relative'
+              }}>
+                <span style={{ fontSize: '1.2rem', marginTop: '0.1rem' }}>⚠️</span>
+                <div style={{ flex: 1 }}>
+                  <strong>{getDisplayErrorMessage(authError).title}:</strong>{' '}
+                  {getDisplayErrorMessage(authError).message}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAuthError(null)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#f44336',
+                    cursor: 'pointer',
+                    fontSize: '1.2rem',
+                    padding: '0',
+                    marginTop: '-0.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '24px',
+                    height: '24px',
+                    transition: 'transform 0.2s ease',
+                    flexShrink: 0
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                >
+                  ×
+                </button>
               </div>
             )}
 
