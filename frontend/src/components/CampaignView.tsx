@@ -6883,7 +6883,9 @@ const CampaignView: React.FC = () => {
                                   bottom: '10px',
                                   right: '10px',
                                   display: 'flex',
-                                  gap: '0.5rem'
+                                  gap: '0.5rem',
+                                  opacity: 0,
+                                  transition: 'opacity 0.2s ease'
                                 }}
                                 onMouseEnter={(e) => {
                                   (e.currentTarget as HTMLElement).style.opacity = '1';
