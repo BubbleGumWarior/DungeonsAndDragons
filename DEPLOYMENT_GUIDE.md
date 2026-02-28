@@ -1,7 +1,7 @@
 # Deployment Guide - Internet Access
 
 ## Prerequisites
-✅ No-IP DDNS configured: `dungeonlair.ddns.net`
+✅ No-IP DDNS configured: `dungeonlair-game.ddns.net`
 ✅ Static local IP for your PC (recommended)
 ✅ Router port forwarding configured
 
@@ -42,7 +42,7 @@ $env:HOST="0.0.0.0"; npm start
 
 **Access your app:**
 - Locally: `http://localhost:3000`
-- Internet: `http://dungeonlair.ddns.net:3000`
+- Internet: `http://dungeonlair-game.ddns.net:3000`
 
 ---
 
@@ -62,7 +62,7 @@ $env:NODE_ENV="production"; npm start
 
 **Access your app:**
 - Locally: `http://localhost:5000`
-- Internet: `http://dungeonlair.ddns.net:5000`
+- Internet: `http://dungeonlair-game.ddns.net:5000`
 
 ---
 
@@ -77,7 +77,7 @@ Use Let's Encrypt for free HTTPS:
 # Visit: https://certbot.eff.org/instructions
 
 # Then get certificate
-certbot certonly --standalone -d dungeonlair.ddns.net
+certbot certonly --standalone -d dungeonlair-game.ddns.net
 ```
 
 Place certificates in `Certs/` folder and update `.env`:
@@ -100,7 +100,7 @@ Create `backend/.env` file:
 ```env
 NODE_ENV=production
 PORT=5000
-CORS_ORIGIN=http://dungeonlair.ddns.net,http://dungeonlair.ddns.net:3000,https://dungeonlair.ddns.net
+CORS_ORIGIN=http://dungeonlair-game.ddns.net,http://dungeonlair-game.ddns.net:3000,https://dungeonlair-game.ddns.net
 ```
 
 ---
@@ -128,7 +128,7 @@ CORS_ORIGIN=http://dungeonlair.ddns.net,http://dungeonlair.ddns.net:3000,https:/
 ## Current Configuration Status
 
 ✅ Backend listens on `0.0.0.0:5000` (all interfaces)
-✅ CORS configured for `dungeonlair.ddns.net`
+✅ CORS configured for `dungeonlair-game.ddns.net`
 ✅ Production mode serves frontend from backend
 ✅ WebSocket support included
 

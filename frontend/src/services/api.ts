@@ -53,6 +53,7 @@ export interface User {
   username: string;
   email: string;
   role: 'Dungeon Master' | 'Player';
+  created_at?: string;
 }
 
 export interface Campaign {
@@ -330,6 +331,16 @@ export const authAPI = {
 
   verifyToken: async (): Promise<{ valid: boolean; user: User }> => {
     const response = await api.get('/auth/verify');
+    return response.data;
+  },
+
+  getAllUsers: async (): Promise<{ users: User[] }> => {
+    const response = await api.get('/auth/admin/users');
+    return response.data;
+  },
+
+  deleteUser: async (userId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/auth/admin/users/${userId}`);
     return response.data;
   },
 };

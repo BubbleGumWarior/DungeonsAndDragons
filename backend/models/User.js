@@ -97,6 +97,15 @@ class User {
       throw error;
     }
   }
+
+  // Delete user by ID
+  static async deleteById(userId) {
+    try {
+      await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 module.exports = User;

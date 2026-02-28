@@ -5,6 +5,7 @@ import { CampaignProvider } from './contexts/CampaignContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
+import Admin from './components/Admin';
 import CampaignView from './components/CampaignView';
 import CharacterCreation from './components/CharacterCreation';
 import './App.css';
@@ -24,6 +25,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <Dashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin" 
+                element={
+                  <ProtectedRoute>
+                    <Admin />
                   </ProtectedRoute>
                 } 
               />

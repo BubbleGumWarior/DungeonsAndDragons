@@ -8,7 +8,7 @@ const helmetConfig = helmet({
     directives: {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
-      connectSrc: ["'self'", "wss:", "ws:", "wss://dungeonlair.ddns.net", "https://dungeonlair.ddns.net"],
+      connectSrc: ["'self'", "wss:", "ws:", "wss://dungeonlair-game.ddns.net", "https://dungeonlair-game.ddns.net"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
     }

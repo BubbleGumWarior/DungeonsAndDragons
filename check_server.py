@@ -12,7 +12,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-DOMAIN = "dungeonlair.ddns.net"
+DOMAIN = "dungeonlair-game.ddns.net"
 LOCAL_IP = "192.168.50.214"
 PORT_HTTPS = 443
 PORT_DEV = 5000

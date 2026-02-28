@@ -130,12 +130,12 @@ DungeonsAndDragons/
 
 ### 4. Production Deployment
 
-For production deployment on `dungeonlair.ddns.net`:
+For production deployment on `dungeonlair-game.ddns.net`:
 
 1. Update the `.env` file:
    ```env
    NODE_ENV=production
-   CORS_ORIGIN=https://dungeonlair.ddns.net
+   CORS_ORIGIN=https://dungeonlair-game.ddns.net
    ```
 
 2. Build the React app:
@@ -197,7 +197,7 @@ DB_PASSWORD=your_db_password
 JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_random
 
 # CORS Configuration
-CORS_ORIGIN=https://dungeonlair.ddns.net,http://localhost:3000
+CORS_ORIGIN=https://dungeonlair-game.ddns.net,http://localhost:3000
 
 # SSL Configuration
 SSL_CERT_PATH=../Certs/cert.pem

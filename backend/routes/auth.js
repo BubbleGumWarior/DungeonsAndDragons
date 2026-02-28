@@ -166,4 +166,45 @@ router.get('/verify', authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
 });
 
+// Get all users (admin only)
+router.get('/admin/users', authenticateToken, async (req, res) => {
+  try {
+    // Verify user is Dungeon Master
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const result = await User.getAll();
+    res.json({ users: result });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Delete user (admin only)
+router.delete('/admin/users/:userId', authenticateToken, async (req, res) => {
+  try {
+    // Verify user is Dungeon Master
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { userId } = req.params;
+
+    // Prevent deleting yourself
+    if (parseInt(userId) === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    // Delete the user
+    await User.deleteById(userId);
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
 module.exports = router;

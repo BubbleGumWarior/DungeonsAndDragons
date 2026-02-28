@@ -5,7 +5,7 @@ const corsOptions = {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // In production, allow dungeonlair.ddns.net and any origin
+    // In production, allow dungeonlair-game.ddns.net and any origin
     if (process.env.NODE_ENV === 'production') {
       return callback(null, true);
     }

@@ -33,7 +33,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
-      connectSrc: ["'self'", "wss:", "ws:", "https://www.dungeonlair.co.za", "https://dungeonlair.co.za", "wss://dungeonlair.ddns.net", "https://dungeonlair.ddns.net"],
+      connectSrc: ["'self'", "wss:", "ws:", "https://www.dungeonlair.co.za", "https://dungeonlair.co.za", "wss://dungeonlair-game.ddns.net", "https://dungeonlair-game.ddns.net"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
     }
@@ -59,7 +59,7 @@ const corsOptions = {
       const allowedOrigins = [
         'https://dungeonlair.co.za',
         'https://www.dungeonlair.co.za',
-        'https://dungeonlair.ddns.net',
+        'https://dungeonlair-game.ddns.net',
         'https://dungeonsanddragons-production-292a.up.railway.app',
         process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null,
         process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : null

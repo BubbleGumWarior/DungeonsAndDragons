@@ -430,7 +430,15 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
-        <div className="text-center mt-lg">
+        <div className="text-center mt-lg" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {user?.role === 'Dungeon Master' && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="btn btn-primary"
+            >
+              👑 Admin Panel
+            </button>
+          )}
           <button
             onClick={handleLogout}
             className="btn btn-secondary"
