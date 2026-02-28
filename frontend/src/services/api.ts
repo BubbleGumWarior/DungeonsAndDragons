@@ -95,7 +95,9 @@ export interface Character {
   ideals: string;
   bonds: string;
   flaws: string;
-  image_url?: string;
+  image_url?: string; // Base64 data URL if image exists in database, or file path for legacy images
+  image_data?: Uint8Array; // Binary image data (removed before returning to client)
+  image_mime_type?: string; // Image MIME type (removed before returning to client)
   map_position_x?: number;
   map_position_y?: number;
   battle_position_x?: number;

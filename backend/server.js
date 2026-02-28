@@ -265,6 +265,7 @@ const startServer = async () => {
       const addShadowSovereignClass = require('./migrations/add_shadow_sovereign_class');
       const addShadowSovereignSkills = require('./migrations/add_shadow_sovereign_skills');
       const createBattleGoalsTable = require('./migrations/create_battle_goals_table');
+      const addImageDataToCharacters = require('./migrations/add_image_data_to_characters');
       
       // Execute migrations in correct order
       const migrations = [
@@ -287,7 +288,8 @@ const startServer = async () => {
         { name: 'addShadowSovereignClass', fn: addShadowSovereignClass },
         { name: 'addShadowSovereignSkills', fn: addShadowSovereignSkills },
         { name: 'createBattleGoalsTable', fn: createBattleGoalsTable },
-        { name: 'fixEliteArmyCategories', fn: fixEliteArmyCategories }
+        { name: 'fixEliteArmyCategories', fn: fixEliteArmyCategories },
+        { name: 'addImageDataToCharacters', fn: addImageDataToCharacters }
       ];
       
       for (const migration of migrations) {

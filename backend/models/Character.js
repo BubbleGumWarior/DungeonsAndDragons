@@ -14,6 +14,18 @@ class Character {
     return field;
   }
 
+  // Convert image binary data to base64 data URL
+  static convertImageToDataUrl(character) {
+    if (character && character.image_data) {
+      const base64 = character.image_data.toString('base64');
+      character.image_url = `data:${character.image_mime_type};base64,${base64}`;
+      // Remove the raw binary data from the response to reduce payload size
+      delete character.image_data;
+      delete character.image_mime_type;
+    }
+    return character;
+  }
+
   // Create a new character
   static async create(characterData) {
     const {
@@ -88,6 +100,9 @@ class Character {
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       
+      // Convert image data to data URL
+      this.convertImageToDataUrl(character);
+      
       return character;
     } catch (error) {
       throw error;
@@ -115,6 +130,9 @@ class Character {
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       
+      // Convert image data to data URL
+      this.convertImageToDataUrl(character);
+      
       return character;
     } catch (error) {
       throw error;
@@ -138,6 +156,7 @@ class Character {
         character.skills = this.parseJsonField(character.skills);
         character.equipment = this.parseJsonField(character.equipment);
         character.spells = this.parseJsonField(character.spells);
+        this.convertImageToDataUrl(character);
         return character;
       });
     } catch (error) {
@@ -162,6 +181,7 @@ class Character {
         character.skills = this.parseJsonField(character.skills);
         character.equipment = this.parseJsonField(character.equipment);
         character.spells = this.parseJsonField(character.spells);
+        this.convertImageToDataUrl(character);
         return character;
       });
     } catch (error) {
@@ -250,6 +270,45 @@ class Character {
         [characterId, playerId]
       );
       return result.rows.length > 0;
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  // Store image data for a character
+  static async storeImage(characterId, imageBuffer, mimeType) {
+    try {
+      const result = await pool.query(
+        `UPDATE characters SET image_data = $1, image_mime_type = $2 WHERE id = $3 RETURNING id, image_mime_type`,
+        [imageBuffer, mimeType, characterId]
+      );
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  // Get image data for a character
+  static async getImage(characterId) {
+    try {
+      const result = await pool.query(
+        `SELECT image_data, image_mime_type FROM characters WHERE id = $1`,
+        [characterId]
+      );
+      if (result.rows.length === 0) return null;
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  // Delete image data for a character
+  static async deleteImage(characterId) {
+    try {
+      await pool.query(
+        `UPDATE characters SET image_data = NULL, image_mime_type = NULL WHERE id = $1`,
+        [characterId]
+      );
     } catch (error) {
       throw error;
     }

@@ -2,33 +2,15 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { pool } = require('../models/database');
 const Character = require('../models/Character');
 const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
 const { authenticateToken } = require('../middleware/auth');
 
-// Configure multer for character image uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'characters');
-    // Ensure directory exists
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Create unique filename: characterId_timestamp.ext
-    const uniqueSuffix = Date.now();
-    const ext = path.extname(file.originalname);
-    cb(null, `character_${req.params.id}_${uniqueSuffix}${ext}`);
-  }
-});
-
+// Configure multer for in-memory character image uploads (stored in database)
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
@@ -1049,7 +1031,31 @@ router.post('/:id/create-custom-item', authenticateToken, async (req, res) => {
   }
 });
 
-// Upload character image (Player for own character, DM for any character in their campaign)
+// Get character image as base64 data URL
+router.get('/:id/image', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const imageData = await Character.getImage(id);
+    if (!imageData || !imageData.image_data) {
+      return res.status(404).json({ error: 'No image found for this character' });
+    }
+
+    // Convert binary data to base64 data URL
+    const base64Image = imageData.image_data.toString('base64');
+    const dataUrl = `data:${imageData.image_mime_type};base64,${base64Image}`;
+
+    res.json({
+      image_url: dataUrl,
+      mime_type: imageData.image_mime_type
+    });
+  } catch (error) {
+    console.error('Error retrieving character image:', error);
+    res.status(500).json({ error: 'Failed to retrieve character image' });
+  }
+});
+
+// Update character image (Player for own character, DM for any character in their campaign)
 router.post('/:id/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -1060,8 +1066,6 @@ router.post('/:id/upload-image', authenticateToken, upload.single('image'), asyn
     
     const character = await Character.findById(id);
     if (!character) {
-      // Clean up uploaded file if character not found
-      fs.unlinkSync(req.file.path);
       return res.status(404).json({ error: 'Character not found' });
     }
 
@@ -1071,39 +1075,23 @@ router.post('/:id/upload-image', authenticateToken, upload.single('image'), asyn
     const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
     
     if (!isOwner && !isDM) {
-      // Clean up uploaded file if unauthorized
-      fs.unlinkSync(req.file.path);
       return res.status(403).json({ error: 'Only the character owner or dungeon master can upload character images' });
     }
 
-    // Delete old image if it exists
-    if (character.image_url) {
-      const oldImagePath = path.join(__dirname, '..', 'uploads', 'characters', path.basename(character.image_url));
-      if (fs.existsSync(oldImagePath)) {
-        try {
-          fs.unlinkSync(oldImagePath);
-        } catch (err) {
-          console.error('Error deleting old image:', err);
-        }
-      }
-    }
+    // Store image in database
+    const mimeType = req.file.mimetype;
+    await Character.storeImage(id, req.file.buffer, mimeType);
 
-    // Update character with new image URL (relative path)
-    const imageUrl = `/uploads/characters/${req.file.filename}`;
-    const updatedCharacter = await Character.update(id, {
-      image_url: imageUrl
-    });
+    // Create data URL for client-side display
+    const base64Image = req.file.buffer.toString('base64');
+    const dataUrl = `data:${mimeType};base64,${base64Image}`;
 
     res.json({
       message: 'Character image uploaded successfully',
-      image_url: imageUrl,
-      character: updatedCharacter
+      image_url: dataUrl,
+      character: { id, image_mime_type: mimeType }
     });
   } catch (error) {
-    // Clean up uploaded file on error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     console.error('Error uploading character image:', error);
     res.status(500).json({ error: error.message || 'Failed to upload character image' });
   }

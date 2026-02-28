@@ -346,6 +346,16 @@ const CampaignView: React.FC = () => {
   const [newParticipantTeamMode, setNewParticipantTeamMode] = useState<'existing' | 'new'>('existing');
   const [newParticipantTeamSelection, setNewParticipantTeamSelection] = useState<string>('');
 
+  // Helper function to get correct image URL (handles both data URLs from DB and file paths)
+  const getImageUrl = (imageUrl: string | undefined): string | undefined => {
+    if (!imageUrl) return undefined;
+    // If it's already a data URL (starts with 'data:'), return as-is
+    if (imageUrl.startsWith('data:')) return imageUrl;
+    // If it's a file path, add localhost prefix in development
+    if (process.env.NODE_ENV === 'production') return imageUrl;
+    return `http://localhost:5000${imageUrl}`;
+  };
+
   const getBattleParticipantName = useCallback((participant: BattleParticipant) => {
     return participant.temp_army_name || participant.army_name || `Army #${participant.id}`;
   }, []);
@@ -3767,7 +3777,7 @@ const CampaignView: React.FC = () => {
                             background: 'rgba(0, 0, 0, 0.3)'
                           }}>
                             <img 
-                              src={process.env.NODE_ENV === 'production' ? character.image_url : `http://localhost:5000${character.image_url}`}
+                              src={getImageUrl(character.image_url)}
                               alt={character.name}
                               style={{
                                 width: '100%',
@@ -4217,9 +4227,7 @@ const CampaignView: React.FC = () => {
                     const combatStarted = currentTurnIndex >= 0;
                     const canMove = isDM || (combatStarted && isOwner && isTheirTurn);
                     
-                    const imageUrl = (character?.image_url || monsterTemplate?.image_url)
-                      ? (process.env.NODE_ENV === 'production' ? (character?.image_url || monsterTemplate?.image_url) : `http://localhost:5000${character?.image_url || monsterTemplate?.image_url}`)
-                      : null;
+                    const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url);
                     
                     const name = combatant.name;
                     const displayName = character ? `${name} (${character.player_name})` : name;
@@ -6612,9 +6620,7 @@ const CampaignView: React.FC = () => {
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
                     {monsters.map((monster: Monster) => {
-                      const imageUrl = monster.image_url
-                        ? (process.env.NODE_ENV === 'production' ? monster.image_url : `http://localhost:5000${monster.image_url}`)
-                        : null;
+                      const imageUrl = getImageUrl(monster.image_url);
 
                       return (
                         <div
@@ -6819,16 +6825,62 @@ const CampaignView: React.FC = () => {
                         {/* Character Image */}
                         <div className="character-overview-image">
                           {selectedCharacterData.image_url ? (
-                            <img 
-                              src={process.env.NODE_ENV === 'production' ? selectedCharacterData.image_url : `http://localhost:5000${selectedCharacterData.image_url}`}
-                              alt={selectedCharacterData.name}
-                              className="character-overview-image-asset"
-                              onError={(e) => {
-                                console.error('Failed to load image:', selectedCharacterData.image_url);
-                                // Hide image on error
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
+                            <div style={{ position: 'relative' }}>
+                              <img 
+                                src={selectedCharacterData.image_url}
+                                alt={selectedCharacterData.name}
+                                className="character-overview-image-asset"
+                                onError={(e) => {
+                                  console.error('Failed to load image:', selectedCharacterData.image_url);
+                                  // Hide image on error
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                              {(user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
+                                <button
+                                  onClick={() => {
+                                    const input = document.createElement('input');
+                                    input.type = 'file';
+                                    input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
+                                    input.onchange = async (e) => {
+                                      const file = (e.target as HTMLInputElement).files?.[0];
+                                      if (file) {
+                                        const url = URL.createObjectURL(file);
+                                        setImageToCrop({ file, url, characterId: selectedCharacterData.id });
+                                        setShowImageCropModal(true);
+                                        setImagePosition({ x: 50, y: 50 });
+                                        setImageScale(100);
+                                      }
+                                    };
+                                    input.click();
+                                  }}
+                                  style={{
+                                    position: 'absolute',
+                                    bottom: '10px',
+                                    right: '10px',
+                                    padding: '0.5rem 1rem',
+                                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                    color: 'var(--text-gold)',
+                                    border: '1px solid var(--primary-gold)',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+                                    e.currentTarget.style.transform = 'scale(1.05)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                                    e.currentTarget.style.transform = 'scale(1)';
+                                  }}
+                                >
+                                  ✏️ Change Image
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
                               <button
