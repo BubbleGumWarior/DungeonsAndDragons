@@ -22,6 +22,9 @@ class Character {
       // Remove the raw binary data from the response to reduce payload size
       delete character.image_data;
       delete character.image_mime_type;
+    } else if (character && character.image_url && character.image_url.startsWith('/uploads/')) {
+      // Old filesystem path with no image_data - clear it to avoid 404 errors
+      character.image_url = null;
     }
     return character;
   }

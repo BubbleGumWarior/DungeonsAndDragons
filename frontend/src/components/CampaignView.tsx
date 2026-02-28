@@ -6873,8 +6873,7 @@ const CampaignView: React.FC = () => {
                                 alt={selectedCharacterData.name}
                                 className="character-overview-image-asset"
                                 onError={(e) => {
-                                  console.error('Failed to load image:', selectedCharacterData.image_url);
-                                  // Track the error and hide this image
+                                  // Silently handle image load errors (likely old filesystem paths)
                                   setImageLoadError(prev => ({ ...prev, [selectedCharacterData.id]: true }));
                                 }}
                               />
