@@ -917,6 +917,59 @@ const startServer = async () => {
         }
       });
       
+      // Handle ability score updates
+      socket.on('abilityUpdated', (data) => {
+        try {
+          const { campaignId, characterId, ability, newScore } = data;
+          // Broadcast to all users in the campaign
+          io.to(`campaign_${campaignId}`).emit('abilityUpdated', {
+            campaignId,
+            characterId,
+            ability,
+            newScore,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('Error handling ability update:', error);
+        }
+      });
+
+      // Handle skill proficiency updates
+      socket.on('skillProficiencyToggled', (data) => {
+        console.log('📥 Backend received skillProficiencyToggled event');
+        console.log('📥 Data received:', data);
+        console.log('📥 Data type:', typeof data);
+        console.log('📥 Data keys:', Object.keys(data || {}));
+        try {
+          const { campaignId, characterId, skillName, isAdding } = data;
+          console.log(`📥 Parsed values - campaignId: ${campaignId}, characterId: ${characterId}, skillName: ${skillName}, isAdding: ${isAdding}`);
+          
+          const roomName = `campaign_${campaignId}`;
+          console.log(`📊 About to broadcast to room: ${roomName}`);
+          
+          // Get room info
+          if (io.sockets.adapter.rooms.has(roomName)) {
+            const room = io.sockets.adapter.rooms.get(roomName);
+            console.log(`📊 Room ${roomName} has ${room.size} sockets`);
+          } else {
+            console.log(`⚠️ Room ${roomName} does not exist!`);
+          }
+          
+          // Broadcast to all users in the campaign
+          console.log(`📤 Broadcasting skillProficiencyToggled to ${roomName}`);
+          io.to(roomName).emit('skillProficiencyToggled', {
+            campaignId,
+            characterId,
+            skillName,
+            isAdding,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`✨ Skill proficiency toggled: ${skillName} (${isAdding ? 'added' : 'removed'})`);
+        } catch (error) {
+          console.error('Error handling skill proficiency toggle:', error);
+        }
+      });
+      
       socket.on('disconnect', (reason) => {
         console.log(`👋 User disconnected: ${socket.id}, reason: ${reason}`);
         // Remove from user socket map

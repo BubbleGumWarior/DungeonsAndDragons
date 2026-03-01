@@ -508,8 +508,17 @@ router.get('/battles/invitations/player/:playerId/campaign/:campaignId', authent
   try {
     const { playerId, campaignId } = req.params;
     
-    // Only allow player themselves or DM to view
-    if (req.user.id !== parseInt(playerId) && req.user.role !== 'Dungeon Master') {
+    // Verify campaign exists
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    // Only allow player themselves or the campaign's DM
+    const isOwnPlayer = req.user.id === parseInt(playerId);
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    
+    if (!isOwnPlayer && !isDM) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
     

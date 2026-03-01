@@ -450,7 +450,14 @@ router.get('/:id/equipment-details', authenticateToken, async (req, res) => {
 
     // Check if user owns this character or is the DM
     const campaign = await Campaign.findById(character.campaign_id);
-    if (character.player_id !== req.user.id && campaign.dungeon_master_id !== req.user.id) {
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    const isOwner = character.player_id === req.user.id;
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    
+    if (!isOwner && !isDM) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -480,7 +487,14 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
 
     // Check permissions
     const campaign = await Campaign.findById(character.campaign_id);
-    if (character.player_id !== req.user.id && campaign.dungeon_master_id !== req.user.id) {
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    const isOwner = character.player_id === req.user.id;
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    
+    if (!isOwner && !isDM) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

@@ -18,27 +18,32 @@ const { pool } = require('../models/database');
 const initializeSocketHandlers = (io, battleMovementState, battleCombatState, userSocketMap) => {
   io.on('connection', (socket) => {
     console.log(`👤 User connected: ${socket.id}`);
+    console.log('🔍 About to start try block');
     
-    // Add error handler for this socket
-    socket.on('error', (error) => {
-      console.error(`Socket error for ${socket.id}:`, error);
-    });
-    
-    // Register user ID with socket
-    socket.on('registerUser', (userId) => {
-      try {
-        userSocketMap.set(userId, socket.id);
-        console.log(`🔗 Registered user ${userId} with socket ${socket.id}`);
-      } catch (error) {
-        console.error(`Error registering user ${userId}:`, error);
-      }
-    });
-    
-    // Join campaign room for real-time updates
-    socket.on('joinCampaign', (campaignId) => {
-      try {
-        socket.join(`campaign_${campaignId}`);
-        console.log(`👥 User ${socket.id} joined campaign ${campaignId}`);
+    try {
+      console.log('✅ Inside try block');
+      // Add error handler for this socket
+      socket.on('error', (error) => {
+        console.error(`Socket error for ${socket.id}:`, error);
+      });
+      console.log('✅ Error handler registered');
+      
+      // Register user ID with socket
+      socket.on('registerUser', (userId) => {
+        try {
+          userSocketMap.set(userId, socket.id);
+          console.log(`🔗 Registered user ${userId} with socket ${socket.id}`);
+        } catch (error) {
+          console.error(`Error registering user ${userId}:`, error);
+        }
+      });
+      
+      // Join campaign room for real-time updates
+      socket.on('joinCampaign', (campaignId) => {
+        try {
+          socket.join(`campaign_${campaignId}`);
+          console.log(`👥 User ${socket.id} joined campaign ${campaignId}`);
+          console.log(`📋 Socket rooms:`, Array.from(socket.rooms));
         
         // Send current battle movement state for this campaign
         if (battleMovementState[campaignId]) {
@@ -75,6 +80,13 @@ const initializeSocketHandlers = (io, battleMovementState, battleCombatState, us
     // Equipment updates
     require('./handlers/equipmentHandlers')(socket, io);
     
+    // Character updates (abilities, skills, etc.)
+    console.log('📦 Loading character handlers...');
+    const characterHandlers = require('./handlers/characterHandlers');
+    console.log('📦 Character handlers module loaded:', typeof characterHandlers);
+    characterHandlers(socket, io);
+    console.log('📦 Character handlers called');
+    
     // Movement handlers
     require('./handlers/movementHandlers')(socket, io, battleMovementState);
     
@@ -95,6 +107,10 @@ const initializeSocketHandlers = (io, battleMovementState, battleCombatState, us
         }
       }
     });
+    
+    } catch (error) {
+      console.error(`❌ Error initializing socket handlers for ${socket.id}:`, error);
+    }
   });
 
   // Add error handler for Socket.IO server

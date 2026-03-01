@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
@@ -210,6 +210,13 @@ const CampaignView: React.FC = () => {
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
   const [socket, setSocket] = useState<any>(null);
+  
+  // Ref to store current campaign for socket listeners (avoids stale closure)
+  const currentCampaignRef = useRef(currentCampaign);
+  useEffect(() => {
+    currentCampaignRef.current = currentCampaign;
+  }, [currentCampaign]);
+  
   const [draggedItem, setDraggedItem] = useState<{ item: InventoryItem; fromSlot?: string } | null>(null);
   const [showUnequipZone, setShowUnequipZone] = useState(false);
   const [inventoryFilter, setInventoryFilter] = useState<'all' | 'weapon' | 'armor' | 'tool'>('all');
@@ -241,6 +248,9 @@ const CampaignView: React.FC = () => {
   const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
   const [imageScale, setImageScale] = useState(100);
   const [imageLoadError, setImageLoadError] = useState<Record<number, boolean>>({});
+
+  // Character data overrides for real-time updates (to avoid reloading and resetting tabs)
+  const [characterDataOverrides, setCharacterDataOverrides] = useState<Record<number, Partial<Character>>>({});
 
   // Character map positions state
   const [characterPositions, setCharacterPositions] = useState<Record<number, { x: number; y: number }>>({});
@@ -1188,6 +1198,123 @@ const CampaignView: React.FC = () => {
     }
   };
 
+  // Ability Score Management Functions
+  const handleUpdateAbility = async (characterId: number, ability: string, increment: number) => {
+    try {
+      // Get current character data (check overrides first, then base data)
+      const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
+      if (!currentCharacter || !socket || !currentCampaign) return;
+
+      // Get the most up-to-date ability score (from overrides if available)
+      const characterOverride = characterDataOverrides[characterId];
+      const currentAbilities = characterOverride?.abilities || currentCharacter.abilities;
+      const currentScore = currentAbilities[ability as keyof typeof currentAbilities] as number;
+      const newScore = currentScore + increment;
+
+      // Clamp between 1 and 20 (standard D&D rules)
+      if (newScore < 1 || newScore > 20) {
+        alert('Ability scores must be between 1 and 20');
+        return;
+      }
+
+      // Update the character
+      const updatedAbilities = {
+        ...currentAbilities,
+        [ability]: newScore
+      };
+
+      await characterAPI.update(characterId, { abilities: updatedAbilities });
+      
+      // Update local state immediately for instant feedback
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          abilities: {
+            ...(prev[characterId]?.abilities || currentCharacter.abilities),
+            [ability]: newScore
+          }
+        }
+      }));
+      
+      // Emit socket event to update all other users
+      console.log('📡 Socket state:', { 
+        socketExists: !!socket, 
+        socketConnected: socket?.connected,
+        socketId: socket?.id 
+      });
+      
+      socket.emit('abilityUpdated', {
+        campaignId: currentCampaign.campaign.id,
+        characterId,
+        ability,
+        newScore,
+        timestamp: new Date().toISOString()
+      });
+      
+      console.log('📤 Emitted abilityUpdated:', { 
+        campaignId: currentCampaign.campaign.id, 
+        characterId, 
+        ability, 
+        newScore 
+      });
+      
+      setToastMessage(`${ability.toUpperCase()} updated to ${newScore}`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error updating ability:', error);
+      alert('Failed to update ability score');
+    }
+  };
+
+  // Skill Proficiency Toggle (for dungeonmaster to add/remove proficiency)
+  const handleToggleSkillProficiency = async (characterId: number, skillName: string) => {
+    try {
+      const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
+      if (!currentCharacter || !socket || !currentCampaign) return;
+
+      // Get the most up-to-date skills (from overrides if available)
+      const characterOverride = characterDataOverrides[characterId];
+      const currentSkills = (characterOverride?.skills || currentCharacter.skills || []) as string[];
+      const skillExists = currentSkills.includes(skillName);
+
+      const newSkills = skillExists
+        ? currentSkills.filter(s => s !== skillName)
+        : [...currentSkills, skillName];
+
+      // Update the character
+      await characterAPI.update(characterId, {
+        skills: newSkills
+      });
+
+      // Update local state immediately for instant feedback
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          skills: newSkills
+        }
+      }));
+
+      // Emit socket event to update all other users
+      const skillEventData = {
+        campaignId: currentCampaign.campaign.id,
+        characterId,
+        skillName,
+        isAdding: !skillExists,
+        timestamp: new Date().toISOString()
+      };
+      console.log('📤 Emitting skillProficiencyToggled:', skillEventData);
+      socket.emit('skillProficiencyToggled', skillEventData);
+      
+      setToastMessage(skillExists ? `${skillName} proficiency removed` : `${skillName} proficiency added`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error toggling skill proficiency:', error);
+      alert('Failed to update skill proficiency');
+    }
+  };
+
   // Experience Management Functions
   const handleGrantExperience = async () => {
     if (!currentCampaign || selectedCharactersForExp.length === 0 || expAmount <= 0) {
@@ -1605,10 +1732,17 @@ const CampaignView: React.FC = () => {
       // Register user ID for targeted notifications
       if (user) {
         newSocket.emit('registerUser', user.id);
+        console.log('🔗 Registered user:', user.id);
       }
       
       // Join campaign room
       newSocket.emit('joinCampaign', currentCampaign.campaign.id);
+      console.log('👥 Joined campaign room:', currentCampaign.campaign.id);
+      
+      // Debug: Listen to ALL socket events
+      newSocket.onAny((eventName, ...args) => {
+        console.log(`🔔 Socket received event: "${eventName}"`, args);
+      });
       
       // Listen for equipment updates
       newSocket.on('equipmentChanged', (data: {
@@ -1633,66 +1767,24 @@ const CampaignView: React.FC = () => {
         isCustom?: boolean;
         timestamp: string;
       }) => {
-        // If an item was unequipped, refresh equipped items first
-        if (data.unequippedFrom) {
-          loadEquippedItems(data.characterId);
-        }
-        
-        // Force clear the equipment details cache for the affected character to ensure fresh data
+        // Clear equipment details cache for affected characters to force refresh on next load
         setEquipmentDetails(prev => {
           const updated = { ...prev };
           delete updated[data.characterId];
+          if (selectedCharacter && selectedCharacter !== data.characterId) {
+            delete updated[selectedCharacter];
+          }
           return updated;
         });
         
-        // Refresh the campaign data to update character.equipment arrays
-        if (campaignName) {
-          loadCampaign(campaignName).then(() => {
-            // After campaign data is refreshed, reload equipment details for the affected character
-            loadEquipmentDetails(data.characterId);
-            
-            // Also refresh equipment details for the currently selected character if it's different
-            // This ensures the UI updates properly when viewing a character whose inventory was modified
-            if (selectedCharacter && selectedCharacter !== data.characterId) {
-              // Clear cache for selected character too in case they have the same item
-              setEquipmentDetails(prev => {
-                const updated = { ...prev };
-                delete updated[selectedCharacter];
-                return updated;
-              });
-              loadEquipmentDetails(selectedCharacter);
-            }
-            
-            // If we're currently viewing the affected character, also refresh equipped items
-            // to ensure the equipment screen shows updated data
-            if (selectedCharacter === data.characterId) {
-              loadEquippedItems(data.characterId);
-            }
-          }).catch((error) => {
-            console.error('Error reloading campaign after inventory change:', error);
-            // Fallback: still try to load equipment details
-            loadEquipmentDetails(data.characterId);
-            if (selectedCharacter && selectedCharacter !== data.characterId) {
-              // Clear cache for selected character too
-              setEquipmentDetails(prev => {
-                const updated = { ...prev };
-                delete updated[selectedCharacter];
-                return updated;
-              });
-              loadEquipmentDetails(selectedCharacter);
-            }
-          });
-        } else {
-          // If no campaign name, just refresh equipment details
+        // Only reload equipment details if currently viewing the affected character
+        // This prevents unnecessary refreshes and maintains UI state
+        if (selectedCharacter === data.characterId) {
           loadEquipmentDetails(data.characterId);
-          if (selectedCharacter && selectedCharacter !== data.characterId) {
-            // Clear cache for selected character too
-            setEquipmentDetails(prev => {
-              const updated = { ...prev };
-              delete updated[selectedCharacter];
-              return updated;
-            });
-            loadEquipmentDetails(selectedCharacter);
+          
+          // If an item was unequipped, also refresh equipped items
+          if (data.unequippedFrom) {
+            loadEquippedItems(data.characterId);
           }
         }
         
@@ -1862,28 +1954,6 @@ const CampaignView: React.FC = () => {
         setCombatants(data.combatants);
         setInitiativeOrder(data.initiativeOrder);
         setCurrentTurnIndex(data.currentTurnIndex);
-        // Reload campaign to get updated combat_active flags
-        if (campaignName) {
-          loadCampaign(campaignName);
-        }
-      });
-
-      // Listen for turn advanced (initiative moves to next combatant)
-      newSocket.on('turnAdvanced', (data: {
-        currentCharacterId: number | string;
-        initiativeOrder: (number | string)[];
-        currentTurnIndex: number;
-        resetMovementFor: number | string;
-        movementSpeed: number;
-        timestamp: string;
-      }) => {
-        setInitiativeOrder(data.initiativeOrder);
-        setCurrentTurnIndex(data.currentTurnIndex);
-        // Reset movement only for the current character (works for both characters and monsters)
-        setRemainingMovement(prev => ({
-          ...prev,
-          [data.resetMovementFor]: data.movementSpeed
-        }));
       });
 
       // Listen for combat reset (DM clears all combatants)
@@ -1894,10 +1964,6 @@ const CampaignView: React.FC = () => {
         setCombatants([]);
         setInitiativeOrder([]);
         setCurrentTurnIndex(-1);
-        // Reload campaign to get updated combat_active flags
-        if (campaignName) {
-          loadCampaign(campaignName);
-        }
       });
 
       // Listen for army created
@@ -2012,21 +2078,61 @@ const CampaignView: React.FC = () => {
       // Listen for experience granted
       newSocket.on('experienceGranted', (data: { campaignId: number; characters: any[]; expAmount: number; timestamp: string }) => {
         console.log('Experience granted:', data);
-        // Reload campaign data to update all character EXP values
-        if (currentCampaign && currentCampaign.campaign.id === data.campaignId && campaignName) {
-          loadCampaign(campaignName);
+        // Update character experience without reloading entire campaign
+        if (currentCampaign && currentCampaign.campaign.id === data.campaignId) {
+          // Update each character's experience points in the campaign
+          data.characters.forEach(charData => {
+            setCharacterDataOverrides(prev => {
+              const baseChar = currentCampaign.characters.find(c => c.id === charData.id);
+              return {
+                ...prev,
+                [charData.id]: {
+                  ...prev[charData.id],
+                  experience_points:charData.experience_points
+                }
+              };
+            });
+          });
+          
+          // Show toast notification
+          const activeChar = data.characters[0];
+          if (activeChar) {
+            const charName = currentCampaign.characters.find(c => c.id === activeChar.id)?.name || 'Character';
+            setToastMessage(`${charName} gained ${data.expAmount} experience!`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }
         }
       });
       
       // Listen for character leveled up
       newSocket.on('characterLeveledUp', (data: { characterId: number; newLevel: number; newHP: number; experiencePoints: number; skillGained: any; timestamp: string }) => {
         console.log('Character leveled up:', data);
-        // Reload campaign data to update character level, HP, and EXP (reset to 0)
-        if (currentCampaign && campaignName) {
-          loadCampaign(campaignName);
-          // If this is the selected character, also reload their skills
+        // Update character level, HP, and experience without reloading entire campaign
+        if (currentCampaign) {
+          // Update character stats using override state
+          setCharacterDataOverrides(prev => {
+            const baseChar = currentCampaign.characters.find(c => c.id === data.characterId);
+            return {
+              ...prev,
+              [data.characterId]: {
+                ...prev[data.characterId],
+                level: data.newLevel,
+                hp: data.newHP,
+                experience_points: data.experiencePoints
+              }
+            };
+          });
+          
+          // Reload skills if this is the selected character
           if (selectedCharacter === data.characterId) {
             loadCharacterSkills(data.characterId);
+          }
+          
+          // Show toast notification
+          const character = currentCampaign.characters.find(c => c.id === data.characterId);
+          if (character) {
+            setToastMessage(`${character.name} leveled up to Level ${data.newLevel}!`);
+            setTimeout(() => setToastMessage(null), 3000);
           }
         }
       });
@@ -2109,15 +2215,110 @@ const CampaignView: React.FC = () => {
           setShowGoalResolutionModal(false);
         }
       });
+
+      // Listen for ability score updates (DM modified a character's ability)
+      newSocket.on('abilityUpdated', (data: {
+        campaignId: number;
+        characterId: number;
+        ability: string;
+        newScore: number;
+        timestamp: string;
+      }) => {
+        console.log('🔔 Received abilityUpdated event:', data);
+        const campaign = currentCampaignRef.current;
+        // Update the character in the campaign data without reloading
+        if (campaign && campaign.campaign.id === data.campaignId) {
+          console.log('✅ Updating character abilities for character', data.characterId);
+          // Update character's abilities using override state (preserves tabs and UI state)
+          setCharacterDataOverrides(prev => {
+            const baseChar = campaign.characters.find(c => c.id === data.characterId);
+            const prevOverride = prev[data.characterId] || {};
+            const currentAbilities = (prevOverride.abilities || baseChar?.abilities || {}) as any;
+            
+            const updated: Record<number, Partial<Character>> = {
+              ...prev,
+              [data.characterId]: {
+                ...prevOverride,
+                abilities: {
+                  ...currentAbilities,
+                  [data.ability]: data.newScore
+                }
+              }
+            };
+            
+            console.log('📝 Updated overrides:', updated);
+            return updated;
+          });
+
+          // Show toast notification
+          const character = campaign.characters.find(c => c.id === data.characterId);
+          if (character) {
+            setToastMessage(`${character.name}'s ${data.ability.toUpperCase()} updated to ${data.newScore}`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }
+        } else {
+          console.log('❌ Campaign mismatch or no campaign:', { 
+            hasCampaign: !!campaign, 
+            currentCampaignId: campaign?.campaign.id, 
+            dataCampaignId: data.campaignId 
+          });
+        }
+      });
+
+      // Listen for skill proficiency updates (DM added/removed a skill proficiency)
+      newSocket.on('skillProficiencyToggled', (data: {
+        campaignId: number;
+        characterId: number;
+        skillName: string;
+        isAdding: boolean;
+        timestamp: string;
+      }) => {
+        console.log('📥 Frontend received skillProficiencyToggled:', data);
+        const campaign = currentCampaignRef.current;
+        // Update the character in the campaign data without reloading
+        if (campaign && campaign.campaign.id === data.campaignId) {
+          // Update character's skills using override state (preserves tabs and UI state)
+          setCharacterDataOverrides(prev => {
+            const characterOverride = prev[data.characterId];
+            const baseCharacter = campaign.characters.find(c => c.id === data.characterId);
+            const currentSkills = (characterOverride?.skills || baseCharacter?.skills || []) as string[];
+            const skillExists = currentSkills.includes(data.skillName);
+            
+            let newSkills = currentSkills;
+            if (data.isAdding && !skillExists) {
+              newSkills = [...currentSkills, data.skillName];
+            } else if (!data.isAdding && skillExists) {
+              newSkills = currentSkills.filter((s: string) => s !== data.skillName);
+            }
+
+            return {
+              ...prev,
+              [data.characterId]: {
+                ...characterOverride,
+                skills: newSkills
+              }
+            };
+          });
+
+          // Show toast notification
+          const character = campaign.characters.find(c => c.id === data.characterId);
+          if (character) {
+            const action = data.isAdding ? 'added' : 'removed';
+            setToastMessage(`${character.name}'s ${data.skillName} proficiency ${action}`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }
+        }
+      });
       
       setSocket(newSocket);
       
       return () => {
+        console.log('🔌 Disconnecting socket from campaign', currentCampaign.campaign.id);
         newSocket.emit('leaveCampaign', currentCampaign.campaign.id);
         newSocket.disconnect();
       };
     }
-  }, [campaignTab, currentCampaign, loadCharacterSkills, loadEquippedItems, loadEquipmentDetails, campaignName, loadCampaign, refreshActiveBattle, selectedCharacter, user, activeBattle]);
+  }, [currentCampaign?.campaign.id, user?.id]); // Only recreate socket when campaign or user changes
 
   // Load equipped items when character changes
   useEffect(() => {
@@ -2959,7 +3160,20 @@ const CampaignView: React.FC = () => {
 
   const { campaign, characters } = currentCampaign;
 
-  const selectedCharacterData = characters.find(c => c.id === selectedCharacter);
+  // Get selected character and merge with any real-time overrides
+  const baseCharacterData = selectedCharacter !== null ? characters.find(c => c.id === selectedCharacter) : undefined;
+  const selectedCharacterData = baseCharacterData && selectedCharacter !== null
+    ? {
+        ...baseCharacterData,
+        ...(characterDataOverrides[selectedCharacter] || {}),
+        // Ensure nested objects are merged properly
+        abilities: {
+          ...baseCharacterData.abilities,
+          ...(characterDataOverrides[selectedCharacter]?.abilities || {})
+        },
+        skills: characterDataOverrides[selectedCharacter]?.skills || baseCharacterData.skills
+      }
+    : baseCharacterData;
 
   const campaignTabs = [
     { key: 'map', label: 'Map', icon: '🗺️' },
@@ -7474,9 +7688,51 @@ const CampaignView: React.FC = () => {
                                 fontSize: '1.25rem', 
                                 fontWeight: 'bold', 
                                 color: 'white',
-                                marginBottom: '0.125rem'
+                                marginBottom: '0.125rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: user?.role === 'Dungeon Master' ? '0.5rem' : '0'
                               }}>
+                                {user?.role === 'Dungeon Master' && (
+                                  <button
+                                    onClick={() => handleUpdateAbility(selectedCharacterData.id, ability, -1)}
+                                    disabled={score <= 1}
+                                    style={{
+                                      background: 'rgba(239, 68, 68, 0.3)',
+                                      border: '1px solid rgba(239, 68, 68, 0.5)',
+                                      color: score <= 1 ? 'rgba(255, 255, 255, 0.3)' : '#fca5a5',
+                                      borderRadius: '4px',
+                                      padding: '0.25rem 0.4rem',
+                                      cursor: score <= 1 ? 'not-allowed' : 'pointer',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 'bold',
+                                      flex: '0 0 auto'
+                                    }}
+                                  >
+                                    −
+                                  </button>
+                                )}
                                 {score}
+                                {user?.role === 'Dungeon Master' && (
+                                  <button
+                                    onClick={() => handleUpdateAbility(selectedCharacterData.id, ability, 1)}
+                                    disabled={score >= 20}
+                                    style={{
+                                      background: 'rgba(34, 197, 94, 0.3)',
+                                      border: '1px solid rgba(34, 197, 94, 0.5)',
+                                      color: score >= 20 ? 'rgba(255, 255, 255, 0.3)' : '#86efac',
+                                      borderRadius: '4px',
+                                      padding: '0.25rem 0.4rem',
+                                      cursor: score >= 20 ? 'not-allowed' : 'pointer',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 'bold',
+                                      flex: '0 0 auto'
+                                    }}
+                                  >
+                                    +
+                                  </button>
+                                )}
                               </div>
                               <div style={{ 
                                 fontSize: '0.85rem', 
@@ -7709,9 +7965,51 @@ const CampaignView: React.FC = () => {
                                 fontSize: '1.25rem', 
                                 fontWeight: 'bold', 
                                 color: 'white',
-                                marginBottom: '0.125rem'
+                                marginBottom: '0.125rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: user?.role === 'Dungeon Master' ? '0.5rem' : '0'
                               }}>
+                                {user?.role === 'Dungeon Master' && (
+                                  <button
+                                    onClick={() => handleUpdateAbility(selectedCharacterData.id, ability, -1)}
+                                    disabled={score <= 1}
+                                    style={{
+                                      background: 'rgba(239, 68, 68, 0.3)',
+                                      border: '1px solid rgba(239, 68, 68, 0.5)',
+                                      color: score <= 1 ? 'rgba(255, 255, 255, 0.3)' : '#fca5a5',
+                                      borderRadius: '4px',
+                                      padding: '0.25rem 0.4rem',
+                                      cursor: score <= 1 ? 'not-allowed' : 'pointer',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 'bold',
+                                      flex: '0 0 auto'
+                                    }}
+                                  >
+                                    −
+                                  </button>
+                                )}
                                 {score}
+                                {user?.role === 'Dungeon Master' && (
+                                  <button
+                                    onClick={() => handleUpdateAbility(selectedCharacterData.id, ability, 1)}
+                                    disabled={score >= 20}
+                                    style={{
+                                      background: 'rgba(34, 197, 94, 0.3)',
+                                      border: '1px solid rgba(34, 197, 94, 0.5)',
+                                      color: score >= 20 ? 'rgba(255, 255, 255, 0.3)' : '#86efac',
+                                      borderRadius: '4px',
+                                      padding: '0.25rem 0.4rem',
+                                      cursor: score >= 20 ? 'not-allowed' : 'pointer',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 'bold',
+                                      flex: '0 0 auto'
+                                    }}
+                                  >
+                                    +
+                                  </button>
+                                )}
                               </div>
                               <div style={{ 
                                 fontSize: '0.85rem', 
@@ -7871,16 +8169,39 @@ const CampaignView: React.FC = () => {
                                           {skill}
                                         </span>
                                         <div style={{
-                                          background: isProficient ? 'var(--primary-gold)' : 'rgba(255, 255, 255, 0.1)',
-                                          color: isProficient ? 'var(--background-dark)' : 'var(--text-gold)',
-                                          padding: '0.2rem 0.5rem',
-                                          borderRadius: '12px',
-                                          fontWeight: 'bold',
-                                          fontSize: '0.8rem',
-                                          minWidth: '35px',
-                                          textAlign: 'center'
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: user?.role === 'Dungeon Master' ? '0.5rem' : '0'
                                         }}>
-                                          {totalModifier >= 0 ? '+' : ''}{totalModifier}
+                                          {user?.role === 'Dungeon Master' && (
+                                            <button
+                                              onClick={() => handleToggleSkillProficiency(selectedCharacterData.id, skill)}
+                                              style={{
+                                                background: isProficient ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)',
+                                                border: isProficient ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(34, 197, 94, 0.5)',
+                                                color: isProficient ? '#fca5a5' : '#86efac',
+                                                borderRadius: '4px',
+                                                padding: '0.2rem 0.4rem',
+                                                cursor: 'pointer',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 'bold'
+                                              }}
+                                            >
+                                              {isProficient ? '−' : '+'}
+                                            </button>
+                                          )}
+                                          <div style={{
+                                            background: isProficient ? 'var(--primary-gold)' : 'rgba(255, 255, 255, 0.1)',
+                                            color: isProficient ? 'var(--background-dark)' : 'var(--text-gold)',
+                                            padding: '0.2rem 0.5rem',
+                                            borderRadius: '12px',
+                                            fontWeight: 'bold',
+                                            fontSize: '0.8rem',
+                                            minWidth: '35px',
+                                            textAlign: 'center'
+                                          }}>
+                                            {totalModifier >= 0 ? '+' : ''}{totalModifier}
+                                          </div>
                                         </div>
                                       </div>
                                     );
