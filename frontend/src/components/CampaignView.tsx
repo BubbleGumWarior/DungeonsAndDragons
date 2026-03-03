@@ -2145,7 +2145,6 @@ const CampaignView: React.FC = () => {
           // Update each character's experience points in the campaign
           data.characters.forEach(charData => {
             setCharacterDataOverrides(prev => {
-              const baseChar = currentCampaign.characters.find(c => c.id === charData.id);
               return {
                 ...prev,
                 [charData.id]: {
@@ -2173,7 +2172,6 @@ const CampaignView: React.FC = () => {
         if (currentCampaign) {
           // Update character stats using override state
           setCharacterDataOverrides(prev => {
-            const baseChar = currentCampaign.characters.find(c => c.id === data.characterId);
             return {
               ...prev,
               [data.characterId]: {
@@ -2380,6 +2378,7 @@ const CampaignView: React.FC = () => {
         newSocket.disconnect();
       };
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCampaign?.campaign.id, user?.id]); // Only recreate socket when campaign or user changes
 
   // Load equipped items when character changes
