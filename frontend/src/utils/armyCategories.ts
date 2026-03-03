@@ -91,17 +91,39 @@ export const getArmyCategoryPresets = (category: string): ArmyStats => {
   return presets[category] || { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
 };
 
-// Get army movement speed based on category (in feet for battlefield display)
-// Note: Battlefield distances are 10x combat (50ft on battlefield = 5ft in combat)
+// Get army movement speed based on category (in feet per round)
 export const getArmyMovementSpeed = (category: string): number => {
-  // Artillery: 50ft per round
-  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
-  if (artilleryTypes.includes(category)) return 50;
-  
-  // Cavalry: 300ft per round
-  const cavalryTypes = ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Knights', 'Mounted Archers'];
-  if (cavalryTypes.includes(category)) return 300;
-  
-  // Infantry and others: 100ft per round
-  return 100;
+  const speeds: Record<string, number> = {
+    // Elite
+    'Royal Guard': 60,
+    'Knights': 150,
+    'Assassins': 100,
+    // Infantry
+    'Swordsmen': 80,
+    'Shield Wall': 60,
+    'Spear Wall': 60,
+    'Pikemen': 80,
+    'Heavy Infantry': 60,
+    'Light Infantry': 100,
+    // Archers
+    'Longbowmen': 60,
+    'Crossbowmen': 60,
+    'Skirmishers': 60,
+    'Mounted Archers': 150,
+    // Cavalry
+    'Shock Cavalry': 180,
+    'Heavy Cavalry': 120,
+    'Light Cavalry': 180,
+    'Lancers': 150,
+    // Artillery
+    'Catapults': 60,
+    'Trebuchets': 50,
+    'Ballistae': 60,
+    'Siege Towers': 25,
+    'Bombards': 50,
+    // Specialists
+    'Scouts': 200,
+    'Spies': 100,
+  };
+  return speeds[category] ?? 100;
 };

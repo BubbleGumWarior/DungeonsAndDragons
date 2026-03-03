@@ -431,6 +431,12 @@ router.post('/battles/:id/participants', authenticateToken, async (req, res) => 
     }
     
     participantData.battle_id = id;
+
+    // Resolve faction color automatically if not explicitly provided
+    if (!participantData.faction_color) {
+      participantData.faction_color = await resolveFactionColor(id, participantData.team_name);
+    }
+
     const participant = await Battle.addParticipant(participantData);
     
     // Emit socket event

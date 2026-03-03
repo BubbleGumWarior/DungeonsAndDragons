@@ -108,19 +108,41 @@ const getArmyCategoryPresets = (category: string): { equipment: number; discipli
   return presets[category] || { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
 };
 
-// Get army movement speed based on category (in feet for battlefield display)
-// Note: Battlefield distances are 10x combat (50ft on battlefield = 5ft in combat)
+// Get army movement speed based on category (in feet per round)
 const getArmyMovementSpeed = (category: string): number => {
-  // Artillery: 50ft per round
-  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
-  if (artilleryTypes.includes(category)) return 50;
-
-  // Cavalry: 300ft per round
-  const cavalryTypes = ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Knights', 'Mounted Archers'];
-  if (cavalryTypes.includes(category)) return 300;
-
-  // Infantry and others: 100ft per round
-  return 100;
+  const speeds: Record<string, number> = {
+    // Elite
+    'Royal Guard': 60,
+    'Knights': 150,
+    'Assassins': 100,
+    // Infantry
+    'Swordsmen': 80,
+    'Shield Wall': 60,
+    'Spear Wall': 60,
+    'Pikemen': 80,
+    'Heavy Infantry': 60,
+    'Light Infantry': 100,
+    // Archers
+    'Longbowmen': 60,
+    'Crossbowmen': 60,
+    'Skirmishers': 60,
+    'Mounted Archers': 150,
+    // Cavalry
+    'Shock Cavalry': 180,
+    'Heavy Cavalry': 120,
+    'Light Cavalry': 180,
+    'Lancers': 150,
+    // Artillery
+    'Catapults': 60,
+    'Trebuchets': 50,
+    'Ballistae': 60,
+    'Siege Towers': 25,
+    'Bombards': 50,
+    // Specialists
+    'Scouts': 200,
+    'Spies': 100,
+  };
+  return speeds[category] ?? 100;
 };
 
 const BATTLEFIELD_FEET_PER_PERCENT = 20 / 3;
@@ -6056,654 +6078,610 @@ const CampaignView: React.FC = () => {
                                   ...getVisibility(openKeys.includes('selection'))
                                 }}
                               >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🎯 Goal Selection</h5>
-                                  <button
-                                    onClick={() => setShowGoalSelectionModal(false)}
-                                    style={{
-                                      padding: '0.5rem 1rem',
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '2px solid rgba(239, 68, 68, 0.5)',
-                                      borderRadius: '0.5rem',
-                                      color: '#f87171',
-                                      fontWeight: 'bold',
-                                      cursor: 'pointer',
-                                      fontSize: '0.9rem'
-                                    }}
-                                  >
-                                    ✕ Close
-                                  </button>
-                                </div>
-                                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                                  {(() => {
-                                    const selectable = getSelectableParticipants();
-                                    const selectedParticipant = selectedGoalArmyId
-                                      ? (activeBattle.participants || []).find(p => p.id === selectedGoalArmyId)
-                                      : selectable[0];
-                                    
-                                    const selectedCategory = selectedParticipant
-                                      ? getParticipantCategory(selectedParticipant)
-                                      : 'Swordsmen';
-                                    
-                                    // DEBUG: Log category info
-                                    console.log(`🔍 Battle Goal Selection Debug:`, {
-                                      participantId: selectedParticipant?.id,
-                                      participantName: selectedParticipant?.temp_army_name || selectedParticipant?.army_name,
-                                      is_temporary: selectedParticipant?.is_temporary,
-                                      temp_army_category: selectedParticipant?.temp_army_category,
-                                      army_category: selectedParticipant?.army_category,
-                                      finalSelectedCategory: selectedCategory,
-                                      allParticipantData: selectedParticipant ? {
-                                        id: selectedParticipant.id,
-                                        army_name: selectedParticipant.army_name,
-                                        team_name: selectedParticipant.team_name,
-                                        current_troops: selectedParticipant.current_troops,
-                                        is_temporary: selectedParticipant.is_temporary,
-                                        temp_army_category: selectedParticipant.temp_army_category,
-                                        army_category: selectedParticipant.army_category
-                                      } : null
-                                    });
-                                    
-                                    const selectedGoal = selectedParticipant
-                                      ? battleGoals.find(g => g.participant_id === selectedParticipant.id)
-                                      : undefined;
-                                    const enemyTargets = selectedParticipant
-                                      ? (activeBattle.participants || []).filter(p => p.team_name !== selectedParticipant.team_name && (p.current_troops || 0) > 0)
-                                      : [];
+                                {/* ── GOAL SELECTION PANEL ── */}
+                                {(() => {
+                                  const selectable = getSelectableParticipants();
+                                  const selectedParticipant = selectedGoalArmyId
+                                    ? (activeBattle.participants || []).find(p => p.id === selectedGoalArmyId)
+                                    : selectable[0];
+                                  const selectedCategory = selectedParticipant
+                                    ? getParticipantCategory(selectedParticipant)
+                                    : 'Swordsmen';
+                                  const selectedGoal = selectedParticipant
+                                    ? battleGoals.find(g => g.participant_id === selectedParticipant.id)
+                                    : undefined;
+                                  const enemyTargets = selectedParticipant
+                                    ? (activeBattle.participants || []).filter(p => p.team_name !== selectedParticipant.team_name && (p.current_troops || 0) > 0)
+                                    : [];
 
-                                    const getParticipantScore = (p?: BattleParticipant | null) => {
-                                      if (!p) return 0;
-                                      if (typeof p.current_score === 'number') return p.current_score;
-                                      if (typeof p.base_score === 'number') return p.base_score;
-                                      return 0;
-                                    };
+                                  const getParticipantScore = (p?: BattleParticipant | null) => {
+                                    if (!p) return 0;
+                                    if (typeof p.current_score === 'number') return p.current_score;
+                                    if (typeof p.base_score === 'number') return p.base_score;
+                                    return 0;
+                                  };
+                                  const getScoreRequirementText = (req?: { method: 'ahead' | 'behind'; delta: number }) => {
+                                    if (!req) return '';
+                                    return req.method === 'ahead'
+                                      ? `Requires score +${req.delta} vs target`
+                                      : `Requires score −${req.delta} vs target`;
+                                  };
+                                  const meetsScoreRequirement = (req: { method: 'ahead' | 'behind'; delta: number }, atk: number, def: number) => {
+                                    const d = atk - def;
+                                    return req.method === 'ahead' ? d >= req.delta : d <= -req.delta;
+                                  };
+                                  const evaluateScoreEligibility = (
+                                    goal: typeof BATTLE_GOALS.attacking[number],
+                                    attackerScore: number,
+                                    selectedTarget: BattleParticipant | undefined,
+                                    targets: BattleParticipant[],
+                                    requireSelectedTarget = false
+                                  ) => {
+                                    if (!goal.score_requirement || goal.target_type !== 'enemy') return { eligible: true, reason: '' };
+                                    const reason = getScoreRequirementText(goal.score_requirement);
+                                    if (selectedTarget) {
+                                      return { eligible: meetsScoreRequirement(goal.score_requirement, attackerScore, getParticipantScore(selectedTarget)), reason };
+                                    }
+                                    if (requireSelectedTarget) return { eligible: false, reason: 'Select a target to confirm score requirement.' };
+                                    if (!targets || targets.length === 0) return { eligible: false, reason };
+                                    return { eligible: targets.some(t => meetsScoreRequirement(goal.score_requirement!, attackerScore, getParticipantScore(t))), reason };
+                                  };
+                                  const getRangeInfo = (attacker: BattleParticipant, target: BattleParticipant) => {
+                                    const rangeFeet = getArmyRangeFeet(getParticipantCategory(attacker));
+                                    const distanceFeet = getBattlefieldDistanceFeet(attacker, target);
+                                    return { rangeFeet, distanceFeet, inRange: distanceFeet <= rangeFeet };
+                                  };
+                                  const evaluateRangeEligibility = (
+                                    goal: typeof BATTLE_GOALS.attacking[number],
+                                    attacker: BattleParticipant | undefined,
+                                    selectedTarget: BattleParticipant | undefined,
+                                    targets: BattleParticipant[],
+                                    requireSelectedTarget = false
+                                  ) => {
+                                    if (!attacker || goal.target_type !== 'enemy') return { eligible: true, reason: '', rangeFeet: 0 };
+                                    const rangeFeet = getArmyRangeFeet(getParticipantCategory(attacker));
+                                    if (selectedTarget) {
+                                      const distanceFeet = getBattlefieldDistanceFeet(attacker, selectedTarget);
+                                      const eligible = distanceFeet <= rangeFeet;
+                                      return { eligible, reason: eligible ? '' : `Out of range (${distanceFeet.toFixed(0)}ft > ${rangeFeet}ft)`, rangeFeet };
+                                    }
+                                    if (requireSelectedTarget) return { eligible: false, reason: `Select a target within ${rangeFeet}ft.`, rangeFeet };
+                                    if (!targets || targets.length === 0) return { eligible: false, reason: `No enemies within ${rangeFeet}ft.`, rangeFeet };
+                                    const anyEligible = targets.some(t => getBattlefieldDistanceFeet(attacker, t) <= rangeFeet);
+                                    return { eligible: anyEligible, reason: anyEligible ? '' : `No enemies within ${rangeFeet}ft.`, rangeFeet };
+                                  };
 
-                                    const getScoreRequirementText = (requirement?: { method: 'ahead' | 'behind'; delta: number }) => {
-                                      if (!requirement) return '';
-                                      return requirement.method === 'ahead'
-                                        ? `Requires score +${requirement.delta} vs target`
-                                        : `Requires score -${requirement.delta} vs target`;
-                                    };
+                                  const SECTION_META: Record<string, { label: string; icon: string; accentColor: string; dimColor: string; borderColor: string }> = {
+                                    attacking: { label: 'Attacking', icon: '⚔️', accentColor: 'rgba(239, 68, 68, 0.85)', dimColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.5)' },
+                                    defending: { label: 'Defending', icon: '🛡️', accentColor: 'rgba(59, 130, 246, 0.85)', dimColor: 'rgba(59, 130, 246, 0.12)', borderColor: 'rgba(59, 130, 246, 0.5)' },
+                                    logistics: { label: 'Logistics', icon: '📦', accentColor: 'rgba(34, 197, 94, 0.85)', dimColor: 'rgba(34, 197, 94, 0.12)', borderColor: 'rgba(34, 197, 94, 0.5)' },
+                                    commander: { label: 'Commander', icon: '👑', accentColor: 'rgba(168, 85, 247, 0.85)', dimColor: 'rgba(168, 85, 247, 0.12)', borderColor: 'rgba(168, 85, 247, 0.5)' },
+                                    unique: { label: 'Unique', icon: '✨', accentColor: 'rgba(234, 179, 8, 0.85)', dimColor: 'rgba(234, 179, 8, 0.12)', borderColor: 'rgba(234, 179, 8, 0.5)' }
+                                  };
 
-                                    const meetsScoreRequirement = (
-                                      requirement: { method: 'ahead' | 'behind'; delta: number },
-                                      attackerScore: number,
-                                      targetScore: number
-                                    ) => {
-                                      const delta = attackerScore - targetScore;
-                                      return requirement.method === 'ahead'
-                                        ? delta >= requirement.delta
-                                        : delta <= -requirement.delta;
-                                    };
+                                  const attackerScore = selectedParticipant ? getParticipantScore(selectedParticipant) : 0;
+                                  const activeTab = (selectedParticipant && goalSelections[selectedParticipant.id]?.activeTab) || 'attacking' as 'attacking' | 'defending' | 'logistics' | 'commander' | 'unique';
 
-                                    const evaluateScoreEligibility = (
-                                      goal: typeof BATTLE_GOALS.attacking[number],
-                                      attackerScore: number,
-                                      selectedTarget: BattleParticipant | undefined,
-                                      targets: BattleParticipant[],
-                                      requireSelectedTarget = false
-                                    ) => {
-                                      if (!goal.score_requirement || goal.target_type !== 'enemy') {
-                                        return { eligible: true, reason: '' };
-                                      }
+                                  const getEligibleCountForSection = (section: string) => {
+                                    if (!selectedParticipant) return 0;
+                                    const goals = (BATTLE_GOALS as any)[section] || [];
+                                    return goals.filter((goal: any) => {
+                                      if (!isGoalEligible(goal, selectedCategory)) return false;
+                                      const se = evaluateScoreEligibility(goal, attackerScore, undefined, enemyTargets);
+                                      if (!se.eligible) return false;
+                                      const re = evaluateRangeEligibility(goal, selectedParticipant, undefined, enemyTargets);
+                                      return re.eligible;
+                                    }).length;
+                                  };
 
-                                      const reason = getScoreRequirementText(goal.score_requirement);
+                                  const hasEligibleGoals = (['attacking', 'defending', 'logistics', 'commander', 'unique'] as const).some(s => getEligibleCountForSection(s) > 0);
 
-                                      if (selectedTarget) {
-                                        const targetScore = getParticipantScore(selectedTarget);
-                                        return {
-                                          eligible: meetsScoreRequirement(goal.score_requirement, attackerScore, targetScore),
-                                          reason
-                                        };
-                                      }
+                                  const teamMap: Record<string, { total: number; selected: number; color: string }> = {};
+                                  (activeBattle.participants || []).forEach(p => {
+                                    if ((p.current_troops || 0) <= 0) return;
+                                    if (!teamMap[p.team_name]) teamMap[p.team_name] = { total: 0, selected: 0, color: p.faction_color || (p.team_name === 'A' ? '#3b82f6' : '#ef4444') };
+                                    teamMap[p.team_name].total += 1;
+                                    if (p.has_selected_goal) teamMap[p.team_name].selected += 1;
+                                  });
 
-                                      if (requireSelectedTarget) {
-                                        return { eligible: false, reason: 'Select a target to meet the score requirement.' };
-                                      }
+                                  return (
+                                    <>
+                                      {/* ── Header ── */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                                          <span style={{ fontSize: '1.3rem' }}>🎯</span>
+                                          <h5 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Goal Selection</h5>
+                                          <span style={{
+                                            padding: '0.2rem 0.6rem',
+                                            background: 'rgba(234, 179, 8, 0.15)',
+                                            border: '1px solid rgba(234, 179, 8, 0.4)',
+                                            borderRadius: '999px',
+                                            color: '#facc15',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold'
+                                          }}>
+                                            Round {activeBattle.current_round}/{activeBattle.total_rounds || 5}
+                                          </span>
+                                        </div>
+                                        {/* Waiting-on pills */}
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                          {Object.entries(teamMap).map(([teamName, stats]) => (
+                                            <div key={teamName} style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.35rem',
+                                              padding: '0.25rem 0.65rem',
+                                              borderRadius: '999px',
+                                              background: stats.selected === stats.total ? 'rgba(34, 197, 94, 0.15)' : 'rgba(234, 179, 8, 0.12)',
+                                              border: `1px solid ${stats.selected === stats.total ? 'rgba(34, 197, 94, 0.45)' : 'rgba(234, 179, 8, 0.4)'}`,
+                                            }}>
+                                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: stats.color, boxShadow: `0 0 6px ${stats.color}` }} />
+                                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: stats.selected === stats.total ? '#4ade80' : '#facc15' }}>
+                                                {teamName}: {stats.selected}/{stats.total}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <button
+                                          onClick={() => setShowGoalSelectionModal(false)}
+                                          style={{
+                                            padding: '0.4rem 0.8rem',
+                                            background: 'rgba(100, 100, 120, 0.2)',
+                                            border: '1px solid rgba(150, 150, 170, 0.4)',
+                                            borderRadius: '0.4rem',
+                                            color: '#94a3b8',
+                                            cursor: 'pointer',
+                                            fontSize: '0.9rem',
+                                            lineHeight: 1
+                                          }}
+                                        >✕</button>
+                                      </div>
 
-                                      if (!targets || targets.length === 0) {
-                                        return { eligible: false, reason };
-                                      }
+                                      {/* ── Main Body ── */}
+                                      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '1.25rem', alignItems: 'start' }}>
 
-                                      const anyEligible = targets.some(target =>
-                                        meetsScoreRequirement(goal.score_requirement!, attackerScore, getParticipantScore(target))
-                                      );
-                                      return { eligible: anyEligible, reason };
-                                    };
-
-                                    const getRangeInfo = (attacker: BattleParticipant, target: BattleParticipant) => {
-                                      const rangeFeet = getArmyRangeFeet(getParticipantCategory(attacker));
-                                      const distanceFeet = getBattlefieldDistanceFeet(attacker, target);
-                                      return {
-                                        rangeFeet,
-                                        distanceFeet,
-                                        inRange: distanceFeet <= rangeFeet
-                                      };
-                                    };
-
-                                    const evaluateRangeEligibility = (
-                                      goal: typeof BATTLE_GOALS.attacking[number],
-                                      attacker: BattleParticipant | undefined,
-                                      selectedTarget: BattleParticipant | undefined,
-                                      targets: BattleParticipant[],
-                                      requireSelectedTarget = false
-                                    ) => {
-                                      if (!attacker || goal.target_type !== 'enemy') {
-                                        return { eligible: true, reason: '', rangeFeet: 0 };
-                                      }
-
-                                      const rangeFeet = getArmyRangeFeet(getParticipantCategory(attacker));
-
-                                      if (selectedTarget) {
-                                        const distanceFeet = getBattlefieldDistanceFeet(attacker, selectedTarget);
-                                        const eligible = distanceFeet <= rangeFeet;
-                                        return {
-                                          eligible,
-                                          reason: eligible
-                                            ? ''
-                                            : `Target out of range (${distanceFeet.toFixed(0)}ft > ${rangeFeet}ft).`,
-                                          rangeFeet
-                                        };
-                                      }
-
-                                      if (requireSelectedTarget) {
-                                        return { eligible: false, reason: `Select a target within ${rangeFeet}ft.`, rangeFeet };
-                                      }
-
-                                      if (!targets || targets.length === 0) {
-                                        return { eligible: false, reason: `No enemies within ${rangeFeet}ft.`, rangeFeet };
-                                      }
-
-                                      const anyEligible = targets.some(target =>
-                                        getBattlefieldDistanceFeet(attacker, target) <= rangeFeet
-                                      );
-                                      return {
-                                        eligible: anyEligible,
-                                        reason: anyEligible ? '' : `No enemies within ${rangeFeet}ft.`,
-                                        rangeFeet
-                                      };
-                                    };
-
-                                    const hasEligibleGoals = (() => {
-                                      if (!selectedParticipant) return false;
-                                      const attackerScore = getParticipantScore(selectedParticipant);
-                                      const sections: Array<'attacking' | 'defending' | 'logistics' | 'commander' | 'unique'> = [
-                                        'attacking',
-                                        'defending',
-                                        'logistics',
-                                        'commander',
-                                        'unique'
-                                      ];
-                                      return sections.some(section =>
-                                        (BATTLE_GOALS[section] || []).some(goal => {
-                                          const categoryEligible = isGoalEligible(goal, selectedCategory);
-                                          if (!categoryEligible) return false;
-                                          const scoreEligibility = evaluateScoreEligibility(
-                                            goal,
-                                            attackerScore,
-                                            undefined,
-                                            enemyTargets
-                                          );
-                                          if (!scoreEligibility.eligible) return false;
-                                          const rangeEligibility = evaluateRangeEligibility(
-                                            goal,
-                                            selectedParticipant,
-                                            undefined,
-                                            enemyTargets
-                                          );
-                                          return rangeEligibility.eligible;
-                                        })
-                                      );
-                                    })();
-
-                                    return (
-                                      <>
-                                        <div style={{ flex: '1 1 260px', minWidth: '220px' }}>
-                                          <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Your Armies</div>
-                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                            {selectable.length === 0 && (
-                                              <div style={{ color: 'var(--text-muted)' }}>No eligible armies this round.</div>
-                                            )}
-                                            {selectable.map(participant => (
+                                        {/* ── Left: Army List ── */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                          <div style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            letterSpacing: '0.1em',
+                                            textTransform: 'uppercase',
+                                            color: '#94a3b8',
+                                            marginBottom: '0.25rem'
+                                          }}>Your Armies</div>
+                                          {selectable.length === 0 && (
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No eligible armies.</div>
+                                          )}
+                                          {selectable.map(participant => {
+                                            const isActive = participant.id === (selectedGoalArmyId ?? selectable[0]?.id);
+                                            const fColor = participant.faction_color || (participant.team_name === 'A' ? '#3b82f6' : '#ef4444');
+                                            return (
                                               <button
                                                 key={participant.id}
                                                 onClick={() => setSelectedGoalArmyId(participant.id)}
                                                 style={{
+                                                  position: 'relative',
                                                   textAlign: 'left',
-                                                  padding: '0.6rem 0.8rem',
+                                                  padding: '0.6rem 0.75rem 0.6rem 1rem',
                                                   borderRadius: '0.6rem',
-                                                  border: participant.id === selectedGoalArmyId
-                                                    ? '2px solid rgba(234, 179, 8, 0.9)'
-                                                    : '1px solid rgba(212, 193, 156, 0.3)',
-                                                  background: participant.has_selected_goal
-                                                    ? 'rgba(34, 197, 94, 0.2)'
-                                                    : 'rgba(255, 255, 255, 0.03)',
+                                                  border: isActive
+                                                    ? `2px solid ${fColor}`
+                                                    : '1px solid rgba(255,255,255,0.08)',
+                                                  background: isActive
+                                                    ? `linear-gradient(135deg, ${fColor}22, rgba(0,0,0,0.3))`
+                                                    : 'rgba(255,255,255,0.03)',
                                                   color: '#e2e8f0',
-                                                  cursor: 'pointer'
+                                                  cursor: 'pointer',
+                                                  overflow: 'hidden',
+                                                  transition: 'all 0.15s ease'
                                                 }}
                                               >
-                                                <div style={{ fontWeight: 'bold' }}>{getBattleParticipantName(participant)}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                  {participant.has_selected_goal ? '✅ Goal selected' : '⏳ Needs goal'}
+                                                {/* faction color left bar */}
+                                                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '4px', background: fColor, borderRadius: '0.6rem 0 0 0.6rem' }} />
+                                                <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                  {getBattleParticipantName(participant)}
+                                                </div>
+                                                <div style={{ fontSize: '0.72rem', color: participant.has_selected_goal ? '#4ade80' : '#facc15', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                                  {participant.has_selected_goal ? '✅ Locked' : '⏳ Needs goal'}
+                                                </div>
+                                                <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.1rem' }}>
+                                                  {getParticipantCategory(participant)} · {(participant.current_troops || 0).toLocaleString()} troops
                                                 </div>
                                               </button>
-                                            ))}
-                                          </div>
+                                            );
+                                          })}
                                         </div>
 
-                                        <div style={{ flex: '2 1 520px', minWidth: '320px', overflow: 'visible', display: 'flex', flexDirection: 'column' }}>
-                                          {selectedParticipant ? (
-                                            <>
-                                              <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '1rem' }}>
-                                                {getBattleParticipantName(selectedParticipant)} · {selectedCategory}
-                                                <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#94a3b8' }}>
-                                                  {getArmyRangeLabel(selectedCategory)}
+                                        {/* ── Right: Goal Browser ── */}
+                                        {selectedParticipant ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
+
+                                            {/* Army info bar */}
+                                            <div style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.75rem',
+                                              padding: '0.65rem 1rem',
+                                              background: 'rgba(0,0,0,0.3)',
+                                              border: `1px solid ${selectedParticipant.faction_color || 'rgba(212,193,156,0.25)'}`,
+                                              borderRadius: '0.6rem',
+                                              flexWrap: 'wrap'
+                                            }}>
+                                              <div style={{ fontWeight: 800, color: 'var(--text-gold)', fontSize: '0.95rem' }}>
+                                                {getBattleParticipantName(selectedParticipant)}
+                                              </div>
+                                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>·</span>
+                                              <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>{selectedCategory}</span>
+                                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{getArmyRangeLabel(selectedCategory)}</span>
+                                              <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+                                                <span style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd', fontSize: '0.75rem' }}>
+                                                  Score {getParticipantScore(selectedParticipant)}
+                                                </span>
+                                                <span style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', color: '#86efac', fontSize: '0.75rem' }}>
+                                                  {(selectedParticipant.current_troops || 0).toLocaleString()} troops
                                                 </span>
                                               </div>
-                                              {selectedGoal && (
-                                                <div style={{ marginBottom: '1rem', padding: '0.6rem', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.4)', borderRadius: '0.4rem', color: '#4ade80' }}>
-                                                  ✅ Selected: {selectedGoal.goal_name}{selectedGoal.target_army_name ? ` → ${selectedGoal.target_army_name}` : ''}
-                                                </div>
-                                              )}
+                                            </div>
 
-                                              {/* Tab Navigation */}
-                                              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem', borderBottom: '2px solid rgba(212, 193, 156, 0.2)', width: '100%', overflowX: 'visible', overflowY: 'visible', position: 'relative', zIndex: 100 }}>
-                                                {(['attacking', 'defending', 'logistics', 'commander', 'unique'] as const).map(section => {
-                                                  const isActive = goalSelections[selectedParticipant.id]?.activeTab === section;
-                                                  return (
-                                                    <button
-                                                      key={section}
-                                                      onClick={() => {
-                                                        setGoalSelections(prev => ({
-                                                          ...prev,
-                                                          [selectedParticipant.id]: {
-                                                            ...prev[selectedParticipant.id],
-                                                            activeTab: section
-                                                          }
-                                                        }));
-                                                      }}
-                                                      style={{
-                                                        flex: '0 0 auto',
-                                                        minWidth: 'fit-content',
-                                                        padding: '0.9rem 1.2rem',
-                                                        whiteSpace: 'nowrap',
-                                                        fontWeight: isActive ? 'bold' : 'normal',
-                                                        background: isActive ? 'rgba(234, 179, 8, 0.2)' : 'rgba(255, 255, 255, 0.01)',
-                                                        border: '1px solid rgba(212, 193, 156, 0.2)',
-                                                        borderBottom: isActive ? '2px solid var(--border-gold)' : '1px solid rgba(212, 193, 156, 0.2)',
-                                                        color: isActive ? 'var(--text-gold)' : 'var(--text-muted)',
-                                                        cursor: 'pointer',
-                                                        borderRadius: '0.3rem 0.3rem 0 0',
-                                                        fontSize: '0.85rem',
-                                                        transition: 'all 0.2s ease',
-                                                        pointerEvents: 'auto',
-                                                        position: 'relative',
-                                                        zIndex: 101,
-                                                        userSelect: 'none'
-                                                      }}
-                                                    >
-                                                      {section === 'attacking' && '⚔️ Attacking'}
-                                                      {section === 'defending' && '🛡️ Defending'}
-                                                      {section === 'logistics' && '📦 Logistics'}
-                                                      {section === 'commander' && '👑 Commander'}
-                                                      {section === 'unique' && '✨ Unique'}
-                                                    </button>
-                                                  );
-                                                })}
+                                            {/* Locked goal banner */}
+                                            {selectedGoal && (
+                                              <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.6rem',
+                                                padding: '0.65rem 1rem',
+                                                background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(22,163,74,0.1))',
+                                                border: '2px solid rgba(34,197,94,0.5)',
+                                                borderRadius: '0.6rem',
+                                                color: '#4ade80',
+                                                fontWeight: 700
+                                              }}>
+                                                <span style={{ fontSize: '1.1rem' }}>✅</span>
+                                                <span>Goal locked: <span style={{ color: '#86efac' }}>{selectedGoal.goal_name}</span>{selectedGoal.target_army_name ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> → {selectedGoal.target_army_name}</span> : ''}</span>
                                               </div>
+                                            )}
 
-                                              {/* Goals for Active Tab */}
-                                              {(() => {
-                                                const activeTab = (goalSelections[selectedParticipant.id]?.activeTab || 'attacking') as 'attacking' | 'defending' | 'logistics' | 'commander' | 'unique';
-                                                const goals = BATTLE_GOALS[activeTab];
-                                                
-                                                // Handle empty categories
-                                                if (!goals || goals.length === 0) {
-                                                  return (
-                                                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                                      <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                                                        {activeTab === 'commander' && '👑'}
-                                                        {activeTab === 'unique' && '✨'}
-                                                      </div>
-                                                      <div>Coming Soon...</div>
-                                                    </div>
-                                                  );
-                                                }
-                                                
+                                            {/* Section tabs */}
+                                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                              {(['attacking', 'defending', 'logistics', 'commander', 'unique'] as const).map(section => {
+                                                const meta = SECTION_META[section];
+                                                const isActive = (goalSelections[selectedParticipant.id]?.activeTab || 'attacking') === section;
+                                                const eligibleCount = getEligibleCountForSection(section);
                                                 return (
-                                                  <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                                                    {goals.map(goal => {
-                                                      const isCategoryEligible = isGoalEligible(goal, selectedCategory);
-                                                      const attackerScore = getParticipantScore(selectedParticipant);
-                                                      const selection = goalSelections[selectedParticipant.id];
-                                                      const selectedTarget = selection?.targetId
-                                                        ? enemyTargets.find(t => t.id === selection.targetId)
-                                                        : undefined;
-                                                      const scoreEligibility = evaluateScoreEligibility(
-                                                        goal,
-                                                        attackerScore,
-                                                        selectedTarget,
-                                                        enemyTargets
-                                                      );
-                                                      const rangeEligibility = evaluateRangeEligibility(
-                                                        goal,
-                                                        selectedParticipant,
-                                                        selectedTarget,
-                                                        enemyTargets
-                                                      );
-                                                      const isEligible = isCategoryEligible && scoreEligibility.eligible && rangeEligibility.eligible;
-                                                      const lockReason = !isCategoryEligible
-                                                        ? (goal.lock_reason || 'Not eligible for this unit')
-                                                        : (!scoreEligibility.eligible ? scoreEligibility.reason : (!rangeEligibility.eligible ? rangeEligibility.reason : ''));
-                                                      const isSelected = goalSelections[selectedParticipant.id]?.goalKey === goal.key;
-                                                      const scoreRequirementText = goal.score_requirement
-                                                        ? getScoreRequirementText(goal.score_requirement)
-                                                        : '';
-                                                      
-                                                      // DEBUG: Log eligibility check for each goal
-                                                      console.log(
-                                                        `  ✓ Goal "${goal.name}": eligible=${isEligible}, category="${selectedCategory}", allowed_categories=${goal.eligible_categories}, score_eligible=${scoreEligibility.eligible}`
-                                                      );
-                                                      
+                                                  <button
+                                                    key={section}
+                                                    onClick={() => setGoalSelections(prev => ({
+                                                      ...prev,
+                                                      [selectedParticipant.id]: { ...prev[selectedParticipant.id], activeTab: section }
+                                                    }))}
+                                                    style={{
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      gap: '0.35rem',
+                                                      padding: '0.45rem 0.85rem',
+                                                      borderRadius: '999px',
+                                                      border: isActive ? `2px solid ${meta.accentColor}` : '1px solid rgba(255,255,255,0.1)',
+                                                      background: isActive ? meta.dimColor : 'rgba(255,255,255,0.03)',
+                                                      color: isActive ? meta.accentColor : '#94a3b8',
+                                                      fontWeight: isActive ? 700 : 400,
+                                                      fontSize: '0.82rem',
+                                                      cursor: 'pointer',
+                                                      transition: 'all 0.15s ease',
+                                                      userSelect: 'none'
+                                                    }}
+                                                  >
+                                                    <span>{meta.icon}</span>
+                                                    <span>{meta.label}</span>
+                                                    {eligibleCount > 0 && (
+                                                      <span style={{
+                                                        padding: '0.05rem 0.4rem',
+                                                        borderRadius: '999px',
+                                                        background: isActive ? meta.accentColor : 'rgba(255,255,255,0.12)',
+                                                        color: isActive ? '#000' : '#e2e8f0',
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 700,
+                                                        minWidth: '1.2rem',
+                                                        textAlign: 'center',
+                                                        lineHeight: '1.4'
+                                                      }}>{eligibleCount}</span>
+                                                    )}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {/* Goal cards */}
+                                            {(() => {
+                                              const goals = (BATTLE_GOALS as any)[activeTab] as (typeof BATTLE_GOALS.attacking[number])[] | undefined;
+                                              const meta = SECTION_META[activeTab];
+                                              if (!goals || goals.length === 0) {
+                                                return (
+                                                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', borderRadius: '0.75rem' }}>
+                                                    <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{meta.icon}</div>
+                                                    <div style={{ fontSize: '0.9rem' }}>Coming Soon</div>
+                                                  </div>
+                                                );
+                                              }
+                                              const selection = goalSelections[selectedParticipant.id];
+                                              const selectedTarget = selection?.targetId ? enemyTargets.find(t => t.id === selection.targetId) : undefined;
+                                              return (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                                                  {goals.map(goal => {
+                                                    const isCatOk = isGoalEligible(goal, selectedCategory);
+                                                    const scoreElig = evaluateScoreEligibility(goal, attackerScore, selectedTarget, enemyTargets);
+                                                    const rangeElig = evaluateRangeEligibility(goal, selectedParticipant, selectedTarget, enemyTargets);
+                                                    const isEligible = isCatOk && scoreElig.eligible && rangeElig.eligible;
+                                                    const isSelected = selection?.goalKey === goal.key;
+
+                                                    // Determine lock chips to show
+                                                    const lockChips: Array<{ label: string; color: string; bg: string; border: string }> = [];
+                                                    if (!isCatOk) lockChips.push({ label: goal.lock_reason || 'Wrong unit type', color: '#c084fc', bg: 'rgba(168,85,247,0.15)', border: 'rgba(168,85,247,0.45)' });
+                                                    if (isCatOk && !scoreElig.eligible) lockChips.push({ label: scoreElig.reason, color: '#93c5fd', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.45)' });
+                                                    if (isCatOk && scoreElig.eligible && !rangeElig.eligible) lockChips.push({ label: rangeElig.reason, color: '#f87171', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.45)' });
+
+                                                    return (
+                                                      <button
+                                                        key={goal.key}
+                                                        onClick={() => {
+                                                          if (!isEligible) return;
+                                                          setGoalSelections(prev => ({
+                                                            ...prev,
+                                                            [selectedParticipant.id]: { ...prev[selectedParticipant.id], goalKey: goal.key }
+                                                          }));
+                                                        }}
+                                                        disabled={!isEligible}
+                                                        style={{
+                                                          textAlign: 'left',
+                                                          padding: '0.75rem 1rem',
+                                                          borderRadius: '0.65rem',
+                                                          border: isSelected
+                                                            ? `2px solid ${meta.accentColor}`
+                                                            : isEligible
+                                                            ? `1px solid ${meta.borderColor}`
+                                                            : '1px solid rgba(255,255,255,0.07)',
+                                                          background: isSelected
+                                                            ? `linear-gradient(135deg, ${meta.dimColor}, rgba(0,0,0,0.2))`
+                                                            : isEligible
+                                                            ? 'rgba(255,255,255,0.04)'
+                                                            : 'rgba(0,0,0,0.2)',
+                                                          cursor: isEligible ? 'pointer' : 'default',
+                                                          opacity: isEligible ? 1 : 0.65,
+                                                          transition: 'all 0.15s ease',
+                                                          position: 'relative'
+                                                        }}
+                                                      >
+                                                        {/* section accent left bar */}
+                                                        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px', background: isEligible ? meta.accentColor : 'rgba(255,255,255,0.1)' }} />
+                                                        <div style={{ marginLeft: '0.25rem' }}>
+                                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                                                            <span style={{ fontWeight: 700, color: isSelected ? meta.accentColor : isEligible ? '#e2e8f0' : '#64748b', fontSize: '0.9rem' }}>
+                                                              {isSelected && <span style={{ marginRight: '0.3rem' }}>✓</span>}{goal.name}
+                                                            </span>
+                                                            {goal.target_type === 'enemy' && isEligible && rangeElig.rangeFeet > 0 && (
+                                                              <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', background: 'rgba(147,197,253,0.12)', border: '1px solid rgba(147,197,253,0.35)', color: '#93c5fd', fontSize: '0.65rem', fontWeight: 600 }}>
+                                                                ⬤ {rangeElig.rangeFeet}ft range
+                                                              </span>
+                                                            )}
+                                                            {goal.score_requirement && isEligible && (
+                                                              <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', color: '#93c5fd', fontSize: '0.65rem', fontWeight: 600 }}>
+                                                                {getScoreRequirementText(goal.score_requirement)}
+                                                              </span>
+                                                            )}
+                                                            {goal.key === 'assassinate_commander' && (
+                                                              <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5', fontSize: '0.65rem', fontWeight: 600 }}>
+                                                                Halves target score
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                          <div style={{ fontSize: '0.78rem', color: isEligible ? '#94a3b8' : '#475569', lineHeight: 1.4 }}>
+                                                            {goal.description}
+                                                          </div>
+                                                          {/* Inline lock chips */}
+                                                          {lockChips.length > 0 && (
+                                                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.45rem' }}>
+                                                              {lockChips.map((chip, i) => (
+                                                                <span key={i} style={{
+                                                                  display: 'inline-flex',
+                                                                  alignItems: 'center',
+                                                                  gap: '0.25rem',
+                                                                  padding: '0.15rem 0.55rem',
+                                                                  borderRadius: '999px',
+                                                                  background: chip.bg,
+                                                                  border: `1px solid ${chip.border}`,
+                                                                  color: chip.color,
+                                                                  fontSize: '0.68rem',
+                                                                  fontWeight: 600
+                                                                }}>
+                                                                  🔒 {chip.label}
+                                                                </span>
+                                                              ))}
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
+                                              );
+                                            })()}
+
+                                            {/* Target picker */}
+                                            {(() => {
+                                              const selection = goalSelections[selectedParticipant.id];
+                                              if (!selection?.goalKey) return null;
+                                              const goal = findGoalByKey(selection.goalKey);
+                                              if (!goal || goal.target_type !== 'enemy') return null;
+                                              const isTargetEligible = (target: BattleParticipant) => {
+                                                const scoreOk = !goal.score_requirement || meetsScoreRequirement(goal.score_requirement, attackerScore, getParticipantScore(target));
+                                                return scoreOk && getRangeInfo(selectedParticipant, target).inRange;
+                                              };
+                                              const rangeFeet = getArmyRangeFeet(selectedCategory);
+                                              return (
+                                                <div>
+                                                  <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                                                    Select Target Army
+                                                  </div>
+                                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                                    {enemyTargets.length === 0 && (
+                                                      <div style={{ color: '#64748b', fontSize: '0.82rem' }}>No enemy armies in range.</div>
+                                                    )}
+                                                    {enemyTargets.map(target => {
+                                                      const distFt = Math.round(getBattlefieldDistanceFeet(selectedParticipant, target));
+                                                      const eligible = isTargetEligible(target);
+                                                      const isChosen = selection.targetId === target.id;
+                                                      const targetColor = target.faction_color || '#ef4444';
                                                       return (
                                                         <button
-                                                          key={goal.key}
-                                                          onClick={() => {
-                                                            if (isEligible) {
-                                                              setGoalSelections(prev => ({
-                                                                ...prev,
-                                                                [selectedParticipant.id]: {
-                                                                  ...prev[selectedParticipant.id],
-                                                                  goalKey: goal.key
-                                                                }
-                                                              }));
-                                                            }
-                                                          }}
-                                                          disabled={!isEligible}
-                                                          title={!isEligible ? lockReason : ''}
+                                                          key={target.id}
+                                                          onClick={() => eligible && setGoalSelections(prev => ({
+                                                            ...prev,
+                                                            [selectedParticipant.id]: { ...prev[selectedParticipant.id], targetId: target.id }
+                                                          }))}
+                                                          disabled={!eligible}
                                                           style={{
-                                                            textAlign: 'left',
-                                                            padding: '0.7rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '0.65rem',
+                                                            padding: '0.55rem 0.75rem',
                                                             borderRadius: '0.5rem',
-                                                            border: isSelected
-                                                              ? '2px solid rgba(234, 179, 8, 0.9)'
-                                                              : isEligible
-                                                              ? '1px solid rgba(212, 193, 156, 0.3)'
-                                                              : '1px solid rgba(139, 92, 246, 0.3)',
-                                                            background: isSelected
-                                                              ? 'rgba(234, 179, 8, 0.1)'
-                                                              : isEligible
-                                                              ? 'rgba(255, 255, 255, 0.03)'
-                                                              : 'rgba(139, 92, 246, 0.08)',
-                                                            color: isEligible ? '#e2e8f0' : 'rgba(226, 232, 240, 0.6)',
-                                                            cursor: isEligible ? 'pointer' : 'not-allowed',
-                                                            opacity: isEligible ? 1 : 0.7
+                                                            border: isChosen
+                                                              ? `2px solid ${targetColor}`
+                                                              : eligible
+                                                              ? `1px solid ${targetColor}66`
+                                                              : '1px solid rgba(255,255,255,0.07)',
+                                                            background: isChosen
+                                                              ? `${targetColor}22`
+                                                              : eligible
+                                                              ? 'rgba(255,255,255,0.03)'
+                                                              : 'rgba(0,0,0,0.2)',
+                                                            cursor: eligible ? 'pointer' : 'default',
+                                                            opacity: eligible ? 1 : 0.5,
+                                                            textAlign: 'left'
                                                           }}
                                                         >
-                                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                            <div style={{ flex: 1 }}>
-                                                              <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                                                <span>{isSelected && '✓ '}{goal.name}</span>
-                                                                {scoreRequirementText && (
-                                                                  <span
-                                                                    title={scoreRequirementText}
-                                                                    style={{
-                                                                      padding: '0.15rem 0.4rem',
-                                                                      borderRadius: '999px',
-                                                                      background: 'rgba(148, 163, 184, 0.2)',
-                                                                      border: '1px solid rgba(148, 163, 184, 0.45)',
-                                                                      color: '#e2e8f0',
-                                                                      fontSize: '0.65rem',
-                                                                      letterSpacing: '0.03em',
-                                                                      textTransform: 'uppercase'
-                                                                    }}
-                                                                  >
-                                                                    Score req
-                                                                  </span>
-                                                                )}
-                                                                {goal.key === 'assassinate_commander' && (
-                                                                  <span
-                                                                    title="Halves target score on success"
-                                                                    style={{
-                                                                      padding: '0.15rem 0.4rem',
-                                                                      borderRadius: '999px',
-                                                                      background: 'rgba(239, 68, 68, 0.18)',
-                                                                      border: '1px solid rgba(239, 68, 68, 0.45)',
-                                                                      color: '#fecaca',
-                                                                      fontSize: '0.65rem',
-                                                                      letterSpacing: '0.03em',
-                                                                      textTransform: 'uppercase'
-                                                                    }}
-                                                                  >
-                                                                    Halves target score
-                                                                  </span>
-                                                                )}
-                                                              </div>
-                                                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                                {goal.description}
-                                                              </div>
-                                                              {goal.target_type === 'enemy' && rangeEligibility.rangeFeet > 0 && (
-                                                                <div style={{ fontSize: '0.7rem', color: '#93c5fd', marginTop: '0.2rem' }}>
-                                                                  Range: {rangeEligibility.rangeFeet}ft
-                                                                </div>
-                                                              )}
-                                                              {scoreRequirementText && (
-                                                                <div style={{ fontSize: '0.7rem', color: '#cbd5f5', marginTop: '0.2rem' }}>
-                                                                  {scoreRequirementText}
-                                                                </div>
-                                                              )}
+                                                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: targetColor, flexShrink: 0 }} />
+                                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: '0.83rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                              {getBattleParticipantName(target)}
                                                             </div>
-                                                            {!isEligible && (
-                                                              <div style={{ fontSize: '1.2rem' }} title={lockReason || 'Not eligible'}>
-                                                                🔒
-                                                              </div>
-                                                            )}
+                                                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                                              Score {getParticipantScore(target)} · {(target.current_troops || 0).toLocaleString()} troops
+                                                            </div>
+                                                          </div>
+                                                          <div style={{
+                                                            padding: '0.2rem 0.5rem',
+                                                            borderRadius: '0.3rem',
+                                                            background: distFt <= rangeFeet ? 'rgba(74,222,128,0.12)' : 'rgba(239,68,68,0.12)',
+                                                            border: `1px solid ${distFt <= rangeFeet ? 'rgba(74,222,128,0.35)' : 'rgba(239,68,68,0.35)'}`,
+                                                            color: distFt <= rangeFeet ? '#86efac' : '#f87171',
+                                                            fontSize: '0.72rem',
+                                                            fontWeight: 600,
+                                                            whiteSpace: 'nowrap'
+                                                          }}>
+                                                            {distFt}ft {distFt <= rangeFeet ? '✓' : '✗'}
                                                           </div>
                                                         </button>
                                                       );
                                                     })}
                                                   </div>
-                                                );
-                                              })()}
+                                                </div>
+                                              );
+                                            })()}
 
+                                            {/* Action row */}
+                                            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', paddingTop: '0.25rem' }}>
                                               {(() => {
                                                 const selection = goalSelections[selectedParticipant.id];
-                                                if (!selection?.goalKey) return null;
-                                                const goal = findGoalByKey(selection.goalKey);
-                                                if (!goal || goal.target_type !== 'enemy') return null;
-                                                const attackerScore = getParticipantScore(selectedParticipant);
-                                                const isTargetEligible = (target: BattleParticipant) => {
-                                                  const scoreOk = !goal.score_requirement || meetsScoreRequirement(
-                                                    goal.score_requirement,
-                                                    attackerScore,
-                                                    getParticipantScore(target)
-                                                  );
-                                                  const rangeInfo = getRangeInfo(selectedParticipant, target);
-                                                  return scoreOk && rangeInfo.inRange;
-                                                };
+                                                const canLock = !!selection?.goalKey && (() => {
+                                                  const g = findGoalByKey(selection.goalKey);
+                                                  return !(g?.target_type === 'enemy' && !selection.targetId);
+                                                })();
                                                 return (
-                                                  <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
-                                                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Target Army</label>
-                                                    <select
-                                                      value={selection.targetId || ''}
-                                                      onChange={(e) => {
-                                                        const targetId = e.target.value ? parseInt(e.target.value, 10) : null;
-                                                        setGoalSelections(prev => ({
-                                                          ...prev,
-                                                          [selectedParticipant.id]: {
-                                                            ...prev[selectedParticipant.id],
-                                                            targetId
-                                                          }
-                                                        }));
-                                                      }}
-                                                      style={{
-                                                        width: '100%',
-                                                        padding: '0.5rem 0.7rem',
-                                                        borderRadius: '0.5rem',
-                                                        border: '1px solid rgba(212, 193, 156, 0.4)',
-                                                        background: 'rgba(0,0,0,0.4)',
-                                                        color: '#e2e8f0'
-                                                      }}
-                                                    >
-                                                      <option value="">Select target</option>
-                                                      {enemyTargets.map(target => {
-                                                        const distanceFeet = Math.round(getBattlefieldDistanceFeet(selectedParticipant, target));
-                                                        return (
-                                                          <option key={target.id} value={target.id} disabled={!isTargetEligible(target)}>
-                                                            {getBattleParticipantName(target)} · {distanceFeet}ft
-                                                          </option>
-                                                        );
-                                                      })}
-                                                    </select>
-                                                  </div>
-                                                );
-                                              })()}
-
-                                              <button
-                                                onClick={async () => {
-                                                  if (!selectedParticipant) return;
-                                                  const selection = goalSelections[selectedParticipant.id];
-                                                  if (!selection?.goalKey) return;
-                                                  const goal = findGoalByKey(selection.goalKey);
-                                                  if (goal?.target_type === 'enemy' && !selection.targetId) return;
-
-                                                  if (goal?.score_requirement && goal.target_type === 'enemy') {
-                                                    const selectedTarget = selection.targetId
-                                                      ? enemyTargets.find(t => t.id === selection.targetId)
-                                                      : undefined;
-                                                    const scoreCheck = evaluateScoreEligibility(
-                                                      goal,
-                                                      getParticipantScore(selectedParticipant),
-                                                      selectedTarget,
-                                                      enemyTargets,
-                                                      true
-                                                    );
-                                                    if (!scoreCheck.eligible) {
-                                                      setToastMessage(scoreCheck.reason || 'Score requirement not met.');
-                                                      setTimeout(() => setToastMessage(null), 3000);
-                                                      return;
-                                                    }
-                                                  }
-
-                                                  if (goal?.target_type === 'enemy') {
-                                                    const selectedTarget = selection.targetId
-                                                      ? enemyTargets.find(t => t.id === selection.targetId)
-                                                      : undefined;
-                                                    const rangeCheck = evaluateRangeEligibility(
-                                                      goal,
-                                                      selectedParticipant,
-                                                      selectedTarget,
-                                                      enemyTargets,
-                                                      true
-                                                    );
-                                                    if (!rangeCheck.eligible) {
-                                                      setToastMessage(rangeCheck.reason || 'Target out of range.');
-                                                      setTimeout(() => setToastMessage(null), 3000);
-                                                      return;
-                                                    }
-                                                  }
-
-                                                  try {
-                                                    await battleAPI.setGoal(activeBattle.id, {
-                                                      participant_id: selectedParticipant.id,
-                                                      goal_key: selection.goalKey,
-                                                      target_participant_id: selection.targetId || null
-                                                    });
-                                                    const updated = await battleAPI.getBattle(activeBattle.id);
-                                                    setActiveBattle(updated);
-                                                    const goals = await battleAPI.getGoals(activeBattle.id, activeBattle.current_round);
-                                                    setBattleGoals(goals);
-                                                  } catch (error) {
-                                                    console.error('Error setting goal:', error);
-                                                  }
-                                                }}
-                                                style={{
-                                                  marginTop: '1rem',
-                                                  padding: '0.55rem 1.2rem',
-                                                  background: 'rgba(34, 197, 94, 0.25)',
-                                                  border: '1px solid rgba(34, 197, 94, 0.5)',
-                                                  borderRadius: '0.6rem',
-                                                  color: '#4ade80',
-                                                  cursor: 'pointer',
-                                                  fontWeight: 'bold'
-                                                }}
-                                              >
-                                                🔒 Lock Goal
-                                              </button>
-
-                                              {!hasEligibleGoals && (
-                                                <div style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: '0.5rem', background: 'rgba(148, 163, 184, 0.12)', border: '1px solid rgba(148, 163, 184, 0.4)', color: '#cbd5f5' }}>
-                                                  <div style={{ fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                                                    No eligible goals in range. You can skip this round.
-                                                  </div>
                                                   <button
                                                     onClick={async () => {
                                                       if (!selectedParticipant) return;
+                                                      const sel = goalSelections[selectedParticipant.id];
+                                                      if (!sel?.goalKey) return;
+                                                      const goal = findGoalByKey(sel.goalKey);
+                                                      if (goal?.target_type === 'enemy' && !sel.targetId) return;
+                                                      if (goal?.score_requirement && goal.target_type === 'enemy') {
+                                                        const selTarget = sel.targetId ? enemyTargets.find(t => t.id === sel.targetId) : undefined;
+                                                        const sc = evaluateScoreEligibility(goal, getParticipantScore(selectedParticipant), selTarget, enemyTargets, true);
+                                                        if (!sc.eligible) { setToastMessage(sc.reason || 'Score requirement not met.'); setTimeout(() => setToastMessage(null), 3000); return; }
+                                                      }
+                                                      if (goal?.target_type === 'enemy') {
+                                                        const selTarget = sel.targetId ? enemyTargets.find(t => t.id === sel.targetId) : undefined;
+                                                        const rc = evaluateRangeEligibility(goal, selectedParticipant, selTarget, enemyTargets, true);
+                                                        if (!rc.eligible) { setToastMessage(rc.reason || 'Target out of range.'); setTimeout(() => setToastMessage(null), 3000); return; }
+                                                      }
                                                       try {
-                                                        await battleAPI.setGoal(activeBattle.id, {
-                                                          participant_id: selectedParticipant.id,
-                                                          goal_key: 'skip_goal',
-                                                          target_participant_id: null
-                                                        });
+                                                        await battleAPI.setGoal(activeBattle.id, { participant_id: selectedParticipant.id, goal_key: sel.goalKey, target_participant_id: sel.targetId || null });
                                                         const updated = await battleAPI.getBattle(activeBattle.id);
                                                         setActiveBattle(updated);
                                                         const goals = await battleAPI.getGoals(activeBattle.id, activeBattle.current_round);
                                                         setBattleGoals(goals);
-                                                      } catch (error) {
-                                                        console.error('Error skipping goal:', error);
-                                                      }
+                                                      } catch (e) { console.error('Error setting goal:', e); }
                                                     }}
+                                                    disabled={!canLock}
                                                     style={{
-                                                      padding: '0.45rem 1rem',
-                                                      background: 'rgba(148, 163, 184, 0.18)',
-                                                      border: '1px solid rgba(148, 163, 184, 0.5)',
-                                                      borderRadius: '0.5rem',
-                                                      color: '#e2e8f0',
-                                                      cursor: 'pointer',
-                                                      fontWeight: 'bold'
+                                                      padding: '0.6rem 1.5rem',
+                                                      background: canLock
+                                                        ? 'linear-gradient(135deg, rgba(34,197,94,0.4), rgba(22,163,74,0.3))'
+                                                        : 'rgba(30,30,40,0.5)',
+                                                      border: canLock ? '2px solid rgba(34,197,94,0.6)' : '1px solid rgba(255,255,255,0.08)',
+                                                      borderRadius: '0.6rem',
+                                                      color: canLock ? '#4ade80' : '#475569',
+                                                      fontWeight: 800,
+                                                      fontSize: '0.9rem',
+                                                      cursor: canLock ? 'pointer' : 'not-allowed',
+                                                      letterSpacing: '0.03em',
+                                                      transition: 'all 0.15s ease'
                                                     }}
                                                   >
-                                                    ⏭️ Skip Goal
+                                                    🔒 Lock In Goal
                                                   </button>
-                                                </div>
+                                                );
+                                              })()}
+
+                                              {!hasEligibleGoals && (
+                                                <button
+                                                  onClick={async () => {
+                                                    if (!selectedParticipant) return;
+                                                    try {
+                                                      await battleAPI.setGoal(activeBattle.id, { participant_id: selectedParticipant.id, goal_key: 'skip_goal', target_participant_id: null });
+                                                      const updated = await battleAPI.getBattle(activeBattle.id);
+                                                      setActiveBattle(updated);
+                                                      const goals = await battleAPI.getGoals(activeBattle.id, activeBattle.current_round);
+                                                      setBattleGoals(goals);
+                                                    } catch (e) { console.error('Error skipping goal:', e); }
+                                                  }}
+                                                  style={{
+                                                    padding: '0.6rem 1.2rem',
+                                                    background: 'rgba(148,163,184,0.1)',
+                                                    border: '1px solid rgba(148,163,184,0.35)',
+                                                    borderRadius: '0.6rem',
+                                                    color: '#94a3b8',
+                                                    fontWeight: 700,
+                                                    fontSize: '0.85rem',
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >
+                                                  ⏭ Skip (No eligible goals)
+                                                </button>
                                               )}
-                                            </>
-                                          ) : (
-                                            <div style={{ color: 'var(--text-muted)' }}>Select an army to choose goals.</div>
-                                          )}
-                                        </div>
+                                            </div>
 
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-
-                                {/* Waiting On Section - Below the flex container */}
-                                <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '2px solid rgba(212, 193, 156, 0.2)' }}>
-                                  <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Waiting On</div>
-                                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                                    {(() => {
-                                      const teamMap: Record<string, { total: number; selected: number }> = {};
-                                      (activeBattle.participants || []).forEach(p => {
-                                        if ((p.current_troops || 0) <= 0) return;
-                                        if (!teamMap[p.team_name]) {
-                                          teamMap[p.team_name] = { total: 0, selected: 0 };
-                                        }
-                                        teamMap[p.team_name].total += 1;
-                                        if (p.has_selected_goal) teamMap[p.team_name].selected += 1;
-                                      });
-
-                                      return Object.entries(teamMap).map(([teamName, stats]) => (
-                                        <div key={teamName} style={{ marginBottom: '0.5rem', color: '#e2e8f0' }}>
-                                          <div style={{ fontWeight: 'bold' }}>{teamName}</div>
-                                          <div style={{ fontSize: '0.8rem', color: stats.selected === stats.total ? '#4ade80' : '#facc15' }}>
-                                            {stats.selected}/{stats.total} armies ready
                                           </div>
-                                        </div>
-                                      ));
-                                    })()}
-                                  </div>
-                                </div>
+                                        ) : (
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: '#475569', fontSize: '0.9rem' }}>
+                                            Select an army on the left.
+                                          </div>
+                                        )}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
 
                               {showGoalResolutionModal && (
