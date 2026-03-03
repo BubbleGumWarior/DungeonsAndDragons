@@ -270,6 +270,8 @@ const startServer = async () => {
       const addImageDataToCharacters = require('./migrations/add_image_data_to_characters');
       const cleanupOldImagePaths = require('./migrations/cleanup_old_image_paths');
       const addMountsTable = require('./migrations/add_mounts_table');
+      const addCharlatanClass = require('./migrations/add_charlatan_class');
+      const addCharlatanSkills = require('./migrations/add_charlatan_skills');
       
       // Execute migrations in correct order
       const migrations = [
@@ -295,7 +297,9 @@ const startServer = async () => {
         { name: 'fixEliteArmyCategories', fn: fixEliteArmyCategories },
         { name: 'addImageDataToCharacters', fn: addImageDataToCharacters },
         { name: 'cleanupOldImagePaths', fn: cleanupOldImagePaths },
-        { name: 'addMountsTable', fn: addMountsTable }
+        { name: 'addMountsTable', fn: addMountsTable },
+        { name: 'addCharlatanClass', fn: addCharlatanClass },
+        { name: 'addCharlatanSkills', fn: addCharlatanSkills }
       ];
       
       for (const migration of migrations) {

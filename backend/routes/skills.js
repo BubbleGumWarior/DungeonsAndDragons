@@ -224,6 +224,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       'Shadow Sovereign': 10,
       'Reaver': 8,
       'Bard': 8,
+      'Charlatan': 8,
       'Cleric': 8,
       'Druid': 8,
       'Monk': 8,
@@ -287,6 +288,8 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       
       if (subclassResult.rows.length > 0) {
         const subclassName = subclassResult.rows[0].name;
+        // Strip a leading "The " so "The High Roller" → "High Roller" to match "Skill (High Roller)"
+        const shortSubclassName = subclassName.replace(/^The\s+/i, '');
         
         // Look for skills that have the subclass name in the name (e.g., "Crusader Might (Vanguard)")
         skillResult = await pool.query(`
@@ -295,7 +298,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
             AND level_requirement = $2
             AND (name ILIKE $3 OR name ILIKE $4)
           LIMIT 1
-        `, [character.class, newLevel, `%${subclassName}%`, `%(${subclassName.split(' ').pop()})%`]);
+        `, [character.class, newLevel, `%(${shortSubclassName})%`, `%${subclassName}%`]);
       }
     }
     
@@ -497,9 +500,11 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       if (subclassResult.rows.length > 0) {
         const subclassName = subclassResult.rows[0].name;
         const className = subclassResult.rows[0].class;
+        // Strip a leading "The " so "The High Roller" → "High Roller" to match "Skill (High Roller)"
+        const shortSubclassName = subclassName.replace(/^The\s+/i, '');
         
         // Special handling for Primal Bond subclasses (they use beast names in skills)
-        let searchPatterns = [`%${subclassName}%`, `%(${subclassName.split(' ').pop()})%`];
+        let searchPatterns = [`%(${shortSubclassName})%`, `%${subclassName}%`];
         
         if (className === 'Primal Bond' && beastSelection && beastSelection.beastType) {
           // For Primal Bond, use the specific beast type selected
@@ -540,11 +545,13 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     
     // If no subclass-specific skill found, look for general class skill
     if (!skillGained) {
-      // For Primal Bond, we need to exclude beast-specific skills that don't match this character's beast
+      // Exclude subclass-specific skills (name contains "(Subclass)") for non-Primal-Bond classes
+      // Primal Bond has its own beast-name logic handled below
       let query = `
         SELECT * FROM skills
         WHERE (class_restriction = $1 OR class_restriction IS NULL)
           AND level_requirement = $2
+          ${character.class !== 'Primal Bond' ? "AND name NOT LIKE '%(%)%'" : ''}
       `;
       let queryParams = [character.class, newLevel];
       

@@ -1430,13 +1430,10 @@ const CampaignView: React.FC = () => {
 
     try {
       await skillAPI.grantExperience(currentCampaign.campaign.id, selectedCharactersForExp, expAmount);
-      // Reload campaign to update character data
-      await loadCampaign(campaignName!);
+      // Close modal — the socket 'experienceGranted' event will reload campaign data and show the toast for all users
       setShowGrantExpModal(false);
       setSelectedCharactersForExp([]);
       setExpAmount(100);
-      setToastMessage(`Granted ${expAmount} EXP to ${selectedCharactersForExp.length} character(s)!`);
-      setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error granting experience:', error);
       alert('Failed to grant experience');
@@ -1485,9 +1482,7 @@ const CampaignView: React.FC = () => {
         beastSelection: levelUpData.beastSelection || undefined,
         abilityIncreases: levelUpData.abilityIncreases
       });
-      // Reload campaign to update character data
-      await loadCampaign(campaignName!);
-      
+      // Campaign reload is handled by the 'characterLeveledUp' socket event for all users
       setShowLevelUpModal(false);
       setLevelUpInfo(null);
       
@@ -2243,54 +2238,63 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('experienceGranted', (data: { campaignId: number; characters: any[]; expAmount: number; timestamp: string }) => {
         console.log('Experience granted:', data);
-        // Update character experience without reloading entire campaign
         if (currentCampaign && currentCampaign.campaign.id === data.campaignId) {
-          // Update each character's experience points in the campaign
+          // Immediately update overrides for instant visual feedback
           data.characters.forEach(charData => {
-            setCharacterDataOverrides(prev => {
-              return {
-                ...prev,
-                [charData.id]: {
-                  ...prev[charData.id],
-                  experience_points:charData.experience_points
-                }
-              };
-            });
+            setCharacterDataOverrides(prev => ({
+              ...prev,
+              [charData.id]: {
+                ...prev[charData.id],
+                experience_points: charData.experience_points
+              }
+            }));
           });
-          
-          // Show toast notification
-          const activeChar = data.characters[0];
-          if (activeChar) {
-            const charName = currentCampaign.characters.find(c => c.id === activeChar.id)?.name || 'Character';
-            setToastMessage(`${charName} gained ${data.expAmount} experience!`);
-            setTimeout(() => setToastMessage(null), 3000);
+
+          // Reload full campaign data so character cards/lists reflect new EXP for all users
+          if (campaignName) {
+            loadCampaign(campaignName).catch(err =>
+              console.error('Failed to reload campaign after EXP grant:', err)
+            );
           }
+
+          // Show toast notification for all connected users
+          if (data.characters.length === 1) {
+            const charName = currentCampaign.characters.find(c => c.id === data.characters[0].id)?.name || 'Character';
+            setToastMessage(`${charName} gained ${data.expAmount} EXP!`);
+          } else {
+            setToastMessage(`${data.characters.length} characters each gained ${data.expAmount} EXP!`);
+          }
+          setTimeout(() => setToastMessage(null), 3000);
         }
       });
       
       // Listen for character leveled up
       newSocket.on('characterLeveledUp', (data: { characterId: number; newLevel: number; newHP: number; experiencePoints: number; skillGained: any; timestamp: string }) => {
         console.log('Character leveled up:', data);
-        // Update character level, HP, and experience without reloading entire campaign
         if (currentCampaign) {
-          // Update character stats using override state
-          setCharacterDataOverrides(prev => {
-            return {
-              ...prev,
-              [data.characterId]: {
-                ...prev[data.characterId],
-                level: data.newLevel,
-                hp: data.newHP,
-                experience_points: data.experiencePoints
-              }
-            };
-          });
-          
+          // Immediately update overrides for instant visual feedback
+          setCharacterDataOverrides(prev => ({
+            ...prev,
+            [data.characterId]: {
+              ...prev[data.characterId],
+              level: data.newLevel,
+              hp: data.newHP,
+              experience_points: data.experiencePoints
+            }
+          }));
+
+          // Reload full campaign data so character cards reflect new level for all users (including DM)
+          if (campaignName) {
+            loadCampaign(campaignName).catch(err =>
+              console.error('Failed to reload campaign after level up:', err)
+            );
+          }
+
           // Reload skills if this is the selected character
           if (selectedCharacter === data.characterId) {
             loadCharacterSkills(data.characterId);
           }
-          
+
           // Show toast notification
           const character = currentCampaign.characters.find(c => c.id === data.characterId);
           if (character) {

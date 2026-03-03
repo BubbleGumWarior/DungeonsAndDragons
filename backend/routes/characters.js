@@ -376,6 +376,7 @@ router.get('/reference/data', async (req, res) => {
         { name: 'Rogue', hitDie: 8, primaryAbility: ['dex'], savingThrows: ['dex', 'int'] },
         { name: 'Shadow Sovereign', hitDie: 10, primaryAbility: ['dex'], savingThrows: ['dex', 'con'] },
         { name: 'Sorcerer', hitDie: 6, primaryAbility: ['cha'], savingThrows: ['con', 'cha'] },
+        { name: 'Charlatan', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['dex', 'cha'] },
         { name: 'Warlock', hitDie: 8, primaryAbility: ['cha'], savingThrows: ['wis', 'cha'] },
         { name: 'Wizard', hitDie: 6, primaryAbility: ['int'], savingThrows: ['int', 'wis'] }
       ],

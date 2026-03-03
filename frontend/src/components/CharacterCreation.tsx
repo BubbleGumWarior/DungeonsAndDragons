@@ -605,6 +605,37 @@ const CharacterCreation: React.FC = () => {
         { level: 19, features: 'Ability Score Improvement' },
         { level: 20, features: 'Signature Spells' }
       ]
+    },
+    'Charlatan': {
+      description: 'A master of misdirection, sleight of hand, and spectacle. The Charlatan never casts a spell — yet crowds swear they witnessed miracles. Uses Tricks (recharge on short rest) instead of spell slots.',
+      features: ['Read the Room', 'Card Throw', 'Misdirection', 'Flash Flourish'],
+      subclasses: [
+        { name: 'The High Roller', color: '#F59E0B', description: 'Luck manipulator who bends probability and crits' },
+        { name: 'The Phantom Joker', color: '#6366F1', description: 'Stealth and decoys — smoke, mirrors, and speed' },
+        { name: 'The Pyrotechnician', color: '#EF4444', description: 'Carnival explosives and trick gadget specialist' }
+      ],
+      levelProgression: [
+        { level: 1, features: 'Read the Room (CHA for Insight/Perception), Card Throw (1d6 finesse ranged 30/90 ft), 2 Tricks/short rest' },
+        { level: 2, features: 'Misdirection (reaction, 1 Trick: force attacker reroll take lower)' },
+        { level: 3, features: 'Stacked Deck (High Roller) / Illusion Double (Phantom Joker) / Explosive Cards (Pyrotechnician), 3 Tricks/short rest' },
+        { level: 4, features: 'Ability Score Improvement' },
+        { level: 5, features: 'Flash Flourish (spend 1 Trick on Card Throw hit: +2d6 dmg, blind target Con save), Card Throw → 1d8' },
+        { level: 6, features: 'Loaded Odds (High Roller) / Smoke Vanish (Phantom Joker) / Smoke Bomb (Pyrotechnician), 4 Tricks/short rest' },
+        { level: 7, features: 'Evasion of Blame (succeed Dex save → take no damage instead of half)' },
+        { level: 8, features: 'Ability Score Improvement' },
+        { level: 9, features: 'Grand Display (action, 2 Tricks: 20 ft Wis save → Frightened or Charmed 1 min), 4 Tricks/short rest' },
+        { level: 10, features: 'Cheat Fate (High Roller) / Shadow Step (Phantom Joker) / Shrapnel Burst (Pyrotechnician), 5 Tricks/short rest' },
+        { level: 11, features: 'Impossible Escape (reaction, 2 Tricks: auto-escape restrain/grapple + move half speed), Card Throw → 1d10' },
+        { level: 12, features: 'Ability Score Improvement' },
+        { level: 13, features: 'Master of Falsehood (Expertise: Deception & Sleight of Hand)' },
+        { level: 14, features: 'House Always Wins (High Roller) / Joker\'s Last Laugh (Phantom Joker) / Trick Presents (Pyrotechnician), 6 Tricks/short rest' },
+        { level: 15, features: 'Dramatic Reversal (1/long rest: survive at 1 HP instead of 0, immediately take a bonus turn)' },
+        { level: 16, features: 'Ability Score Improvement' },
+        { level: 17, features: 'Supreme Misdirection (2 Tricks: turn a critical hit into a normal hit), Card Throw → 1d12' },
+        { level: 18, features: 'Miracle Run (High Roller) / Endless Doubles (Phantom Joker) / Grand Finale (Pyrotechnician), 7 Tricks/short rest' },
+        { level: 19, features: 'Ability Score Improvement' },
+        { level: 20, features: 'The Greatest Show (start of combat: regain 2 Tricks; once per turn use a Trick without expending it), 8 Tricks/short rest' }
+      ]
     }
   };
 
