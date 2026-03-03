@@ -8486,23 +8486,22 @@ const CampaignView: React.FC = () => {
                             legs: Math.floor(baseHitPoints * limbHealthRatios.legs)
                           };
                           
-                          // Get limb AC from equipped items
+                          // Get limb AC from equipped items (item bonuses only from backend)
                           const rawLimbAC = limbAC[selectedCharacterData.id];
                           const baseAC = selectedCharacterData.armor_class || 10;
-                          const characterLimbAC = rawLimbAC ? {
-                            head: rawLimbAC.head,
-                            chest: rawLimbAC.chest,
-                            hands: (rawLimbAC.hands || 0) + 3 + baseAC,
-                            main_hand: (rawLimbAC.main_hand || 0) + 3 + baseAC,
-                            off_hand: (rawLimbAC.off_hand || 0) + 3 + baseAC,
-                            feet: (rawLimbAC.feet || 0) + 6 + baseAC
-                          } : {
-                            head: 12,               // Head base AC 12
-                            chest: baseAC,          // Torso = character's full AC
-                            hands: 3 + baseAC,      // Arms = 3 + armor class
-                            main_hand: 3 + baseAC,
-                            off_hand: 3 + baseAC,
-                            feet: 6 + baseAC        // Legs = 6 + armor class
+                          const helmAC      = rawLimbAC?.head      ?? 0;
+                          const chestAC     = rawLimbAC?.chest     ?? 0;
+                          const mainHandAC  = rawLimbAC?.main_hand ?? 0;
+                          const offHandAC   = rawLimbAC?.off_hand  ?? 0;
+                          const feetAC      = rawLimbAC?.feet      ?? 0;
+                          // Formula: Head = 100% AC + helmet, Arms = 25% AC + gloves/shield, Legs = 50% AC + leggings, Torso = 100% AC + chestpiece
+                          const characterLimbAC = {
+                            head:      Math.round(baseAC * 1.00) + helmAC,
+                            chest:     Math.round(baseAC * 1.00) + chestAC,
+                            hands:     Math.round(baseAC * 0.25) + Math.max(mainHandAC, offHandAC),
+                            main_hand: Math.round(baseAC * 0.25) + mainHandAC,
+                            off_hand:  Math.round(baseAC * 0.25) + offHandAC,
+                            feet:      Math.round(baseAC * 0.50) + feetAC
                           };
                           
                           // Helper function to get health color based on percentage
@@ -8775,7 +8774,7 @@ const CampaignView: React.FC = () => {
                         position: 'relative',
                         cursor: 'help'
                       }}
-                      title={`Limb-Specific Armor Class:\n\n• Head: Base AC 12 + Helmet AC\n  Current: ${(limbAC[selectedCharacterData.id]?.head || 12)} (${(limbAC[selectedCharacterData.id]?.head || 12) > 12 ? `12 base + ${(limbAC[selectedCharacterData.id]?.head || 12) - 12} helmet` : '12 base, no helmet'})\n\n• Torso: Character Base AC or Chest Armor AC\n  Current: ${(limbAC[selectedCharacterData.id]?.chest || selectedCharacterData.armor_class || 10)}\n\n• Arms: 3 + Armor Class base (+ equipped item AC)\n\n• Legs: 6 + Armor Class base (+ equipped item AC)\n\nNote: Arms and legs use the character's base AC as natural protection.`}
+                      title={`Limb-Specific Armor Class (Base AC = ${selectedCharacterData.armor_class || 10}):\n\n• Head:  100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Helmet bonus (${limbAC[selectedCharacterData.id]?.head ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.head ?? 0)}\n• Torso: 100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Chestpiece bonus (${limbAC[selectedCharacterData.id]?.chest ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.chest ?? 0)}\n• Arms:   25% AC (${Math.round((selectedCharacterData.armor_class||10)*0.25)}) + Gloves/Shield bonus (${Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}) = ${Math.round((selectedCharacterData.armor_class||10)*0.25) + Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}\n• Legs:   50% AC (${Math.round((selectedCharacterData.armor_class||10)*0.50)}) + Leggings bonus (${limbAC[selectedCharacterData.id]?.feet ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*0.50) + (limbAC[selectedCharacterData.id]?.feet ?? 0)}`}
                       >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Armor Class
@@ -8830,7 +8829,7 @@ const CampaignView: React.FC = () => {
                           )}
                         </div>
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                          Arms: 3+AC base | Legs: 6+AC base | Other limbs from equipped items.
+                          Head & Torso: 100% AC | Arms: 25% AC | Legs: 50% AC | + equipped item bonuses.
                         </div>
                       </div>
 

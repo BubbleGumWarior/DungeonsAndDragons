@@ -515,38 +515,28 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
       }
     }
     
-    // Calculate limb-specific AC
+    // Calculate limb-specific AC (item bonuses only — base AC percentages applied on the frontend)
     const limbAC = {
-      head: 12,    // Head has base AC of 12 (harder to hit)
-      chest: character.armor_class || 10,  // Only chest gets character's base AC
-      main_hand: 0,    // Default AC 0 for main hand
-      off_hand: 0,     // Default AC 0 for off hand
-      feet: 0      // Default AC 0 for unarmored feet
+      head: 0,       // Helmet item AC bonus
+      chest: 0,      // Chest armour item AC bonus
+      main_hand: 0,  // Shield / gauntlet item AC bonus (main hand)
+      off_hand: 0,   // Shield / gauntlet item AC bonus (off hand)
+      feet: 0        // Leggings / boots item AC bonus
     };
     
     // Apply armor bonuses from equipped items
     for (const [slot, item] of Object.entries(equippedWithSlots)) {
       if (item && item.limb_armor_class) {
-        // Add AC from this item to the appropriate limbs
         for (const [limb, ac] of Object.entries(item.limb_armor_class)) {
-          // Special handling for shields and hand armor
           if (limb === 'hands') {
-            // Apply shield/hand armor to the specific hand slot where it's equipped
+            // Apply to the specific hand slot where it's equipped
             if (slot === 'main_hand') {
               limbAC.main_hand = ac;
             } else if (slot === 'off_hand') {
               limbAC.off_hand = ac;
             }
-          } else if (limb === 'head') {
-            // Add helmet AC to the base head AC of 12
-            limbAC.head = 12 + ac;
           } else if (limbAC.hasOwnProperty(limb)) {
-            // For chest armor, replace the base AC; for other limbs, set the AC
-            if (limb === 'chest') {
-              limbAC[limb] = ac;
-            } else {
-              limbAC[limb] = ac;
-            }
+            limbAC[limb] = ac;
           }
         }
       }
