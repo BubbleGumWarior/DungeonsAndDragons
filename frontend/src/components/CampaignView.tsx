@@ -259,6 +259,12 @@ const CampaignView: React.FC = () => {
   useEffect(() => {
     currentCampaignRef.current = currentCampaign;
   }, [currentCampaign]);
+
+  // Ref to store selected character for socket listeners (avoids stale closure)
+  const selectedCharacterRef = useRef(selectedCharacter);
+  useEffect(() => {
+    selectedCharacterRef.current = selectedCharacter;
+  }, [selectedCharacter]);
   
   const [draggedItem, setDraggedItem] = useState<{ item: InventoryItem; fromSlot?: string } | null>(null);
   const [touchDragPosition, setTouchDragPosition] = useState<{ x: number; y: number } | null>(null);
@@ -2184,10 +2190,12 @@ const CampaignView: React.FC = () => {
 
       // Listen for battle invitation sent
       newSocket.on('battleInvitationSent', (data: { battleId: number; invitations: any[]; timestamp: string }) => {
-        if (currentCampaign && selectedCharacter) {
-          const character = currentCampaign.characters.find(c => c.id === selectedCharacter);
+        const campaign = currentCampaignRef.current;
+        const charId = selectedCharacterRef.current;
+        if (campaign && charId) {
+          const character = campaign.characters.find(c => c.id === charId);
           if (character) {
-            battleAPI.getPlayerInvitations(character.player_id, currentCampaign.campaign.id)
+            battleAPI.getPlayerInvitations(character.player_id, campaign.campaign.id)
               .then((invitations) => {
                 // Deduplicate: Keep only the latest invitation per battle_id
                 const uniqueInvitations = invitations.reduce((acc: any[], curr: any) => {
@@ -2206,6 +2214,7 @@ const CampaignView: React.FC = () => {
                 setPendingInvitations(uniqueInvitations);
                 // Auto-open modal when new invitation is received
                 if (uniqueInvitations.length > 0) {
+                  console.log('🗡️ Opening battle invitations modal for', uniqueInvitations.length, 'invitation(s)');
                   setShowBattleInvitationsModal(true);
                 }
               })
