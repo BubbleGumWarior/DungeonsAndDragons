@@ -416,6 +416,7 @@ const CampaignView: React.FC = () => {
   const [showBattleSummaryModal, setShowBattleSummaryModal] = useState(false);
   const [battleSummary, setBattleSummary] = useState<any>(null);
   const [hoveredBattlefieldParticipantId, setHoveredBattlefieldParticipantId] = useState<number | null>(null);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
   const [selectedPlayersToInvite, setSelectedPlayersToInvite] = useState<number[]>([]);
   const [inviteTeamName, setInviteTeamName] = useState<string>('');
   const [inviteTeamMode, setInviteTeamMode] = useState<'existing' | 'new'>('existing');
@@ -2236,6 +2237,10 @@ const CampaignView: React.FC = () => {
       });
       
       // Listen for experience granted
+      newSocket.on('campaignUsersOnline', (data: { campaignId: number; onlineUserIds: number[] }) => {
+        setOnlineUserIds(new Set(data.onlineUserIds));
+      });
+
       newSocket.on('experienceGranted', (data: { campaignId: number; characters: any[]; expAmount: number; timestamp: string }) => {
         console.log('Experience granted:', data);
         // Update character experience without reloading entire campaign
@@ -3901,7 +3906,7 @@ const CampaignView: React.FC = () => {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div className="text-gold" style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: onlineUserIds.has(character.player_id) ? 'var(--text-gold)' : 'white' }}>
                         {character.name}
                       </div>
                       {characters.length > 1 && selectedCharacter === character.id && (

@@ -351,8 +351,24 @@ const startServer = async () => {
   // Structure: { campaignId: { partyMemberIds: number[], partyPosition: { x, y } } }
   const partyGroupState = {};
 
+  // Ensure campaigns table has party group columns (idempotent migration)
+  try {
+    await pool.query(`
+      ALTER TABLE campaigns
+        ADD COLUMN IF NOT EXISTS party_member_ids JSONB DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS party_position JSONB DEFAULT '{"x":50,"y":50}'::jsonb
+    `);
+    console.log('✅ Party group columns ensured on campaigns table');
+  } catch (err) {
+    console.warn('⚠️  Could not add party group columns:', err.message);
+  }
+
   // Map user IDs to socket IDs for targeted notifications
   const userSocketMap = new Map();
+
+  // Track online users per campaign for presence indicators
+  // Structure: { campaignId: Set<userId> }
+  const campaignPresence = {};
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {
@@ -367,17 +383,37 @@ const startServer = async () => {
       socket.on('registerUser', (userId) => {
         try {
           userSocketMap.set(userId, socket.id);
+          socket.userId = userId;
           console.log(`🔗 Registered user ${userId} with socket ${socket.id}`);
+          // If user already joined a campaign, update presence now
+          if (socket.campaignId) {
+            if (!campaignPresence[socket.campaignId]) campaignPresence[socket.campaignId] = new Set();
+            campaignPresence[socket.campaignId].add(userId);
+            io.to(`campaign_${socket.campaignId}`).emit('campaignUsersOnline', {
+              campaignId: socket.campaignId,
+              onlineUserIds: Array.from(campaignPresence[socket.campaignId])
+            });
+          }
         } catch (error) {
           console.error(`Error registering user ${userId}:`, error);
         }
       });
       
       // Join campaign room for real-time updates
-      socket.on('joinCampaign', (campaignId) => {
+      socket.on('joinCampaign', async (campaignId) => {
         try {
           socket.join(`campaign_${campaignId}`);
+          socket.campaignId = campaignId;
           console.log(`👥 User ${socket.id} joined campaign ${campaignId}`);
+          // Update presence tracking
+          if (socket.userId) {
+            if (!campaignPresence[campaignId]) campaignPresence[campaignId] = new Set();
+            campaignPresence[campaignId].add(socket.userId);
+            io.to(`campaign_${campaignId}`).emit('campaignUsersOnline', {
+              campaignId,
+              onlineUserIds: Array.from(campaignPresence[campaignId])
+            });
+          }
           
           // Send current battle movement state for this campaign
           if (battleMovementState[campaignId]) {
@@ -397,6 +433,23 @@ const startServer = async () => {
             console.log(`⚔️ Sent combat state to user ${socket.id} for campaign ${campaignId}`);
           }
 
+          // Restore party group from DB if not already in memory
+          if (!partyGroupState[campaignId]) {
+            try {
+              const pgRes = await pool.query(
+                'SELECT party_member_ids, party_position FROM campaigns WHERE id = $1',
+                [campaignId]
+              );
+              if (pgRes.rows.length > 0) {
+                partyGroupState[campaignId] = {
+                  partyMemberIds: pgRes.rows[0].party_member_ids || [],
+                  partyPosition: pgRes.rows[0].party_position || { x: 50, y: 50 }
+                };
+              }
+            } catch (dbErr) {
+              console.warn('Could not load party group from DB:', dbErr.message);
+            }
+          }
           if (partyGroupState[campaignId]) {
             socket.emit('partyGroupSync', {
               partyMemberIds: partyGroupState[campaignId].partyMemberIds,
@@ -413,6 +466,14 @@ const startServer = async () => {
       socket.on('leaveCampaign', (campaignId) => {
         try {
           socket.leave(`campaign_${campaignId}`);
+          // Update presence tracking
+          if (socket.userId && campaignPresence[campaignId]) {
+            campaignPresence[campaignId].delete(socket.userId);
+            io.to(`campaign_${campaignId}`).emit('campaignUsersOnline', {
+              campaignId,
+              onlineUserIds: Array.from(campaignPresence[campaignId])
+            });
+          }
           console.log(`👋 User ${socket.id} left campaign ${campaignId}`);
         } catch (error) {
           console.error(`Error leaving campaign ${campaignId}:`, error);
@@ -503,7 +564,7 @@ const startServer = async () => {
       });
 
       // Handle party group membership updates
-      socket.on('partyGroupUpdate', (data) => {
+      socket.on('partyGroupUpdate', async (data) => {
         try {
           const { campaignId, partyMemberIds, partyPosition } = data;
           partyGroupState[campaignId] = {
@@ -517,6 +578,20 @@ const startServer = async () => {
             timestamp: new Date().toISOString()
           });
 
+          // Persist to database
+          try {
+            await pool.query(
+              'UPDATE campaigns SET party_member_ids = $1, party_position = $2 WHERE id = $3',
+              [
+                JSON.stringify(partyGroupState[campaignId].partyMemberIds),
+                JSON.stringify(partyGroupState[campaignId].partyPosition),
+                campaignId
+              ]
+            );
+          } catch (dbErr) {
+            console.warn('Could not persist party group update:', dbErr.message);
+          }
+
           console.log(`👥 Party group updated in campaign ${campaignId}: ${partyGroupState[campaignId].partyMemberIds.length} members`);
         } catch (error) {
           console.error('Error handling party group update:', error);
@@ -524,7 +599,7 @@ const startServer = async () => {
       });
 
       // Handle party token movement
-      socket.on('partyGroupMove', (data) => {
+      socket.on('partyGroupMove', async (data) => {
         try {
           const { campaignId, x, y } = data;
 
@@ -542,6 +617,16 @@ const startServer = async () => {
             y,
             timestamp: new Date().toISOString()
           });
+
+          // Persist position to database
+          try {
+            await pool.query(
+              'UPDATE campaigns SET party_position = $1 WHERE id = $2',
+              [JSON.stringify({ x, y }), campaignId]
+            );
+          } catch (dbErr) {
+            console.warn('Could not persist party position:', dbErr.message);
+          }
 
           console.log(`👥 Party token moved in campaign ${campaignId} to (${x.toFixed(2)}, ${y.toFixed(2)})`);
         } catch (error) {
@@ -1042,6 +1127,14 @@ const startServer = async () => {
             console.log(`🗑️ Removed user ${userId} from socket map`);
             break;
           }
+        }
+        // Remove from campaign presence and notify others
+        if (socket.userId && socket.campaignId && campaignPresence[socket.campaignId]) {
+          campaignPresence[socket.campaignId].delete(socket.userId);
+          io.to(`campaign_${socket.campaignId}`).emit('campaignUsersOnline', {
+            campaignId: socket.campaignId,
+            onlineUserIds: Array.from(campaignPresence[socket.campaignId])
+          });
         }
       });
     });
