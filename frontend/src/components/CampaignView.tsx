@@ -4463,7 +4463,7 @@ const CampaignView: React.FC = () => {
                           transform: 'translate(-50%, -50%)',
                           cursor: canMove ? 'grab' : 'default',
                           transition: draggedCharacter === character.id ? 'none' : 'all 0.3s ease',
-                          zIndex: draggedCharacter === character.id ? 1000 : 10
+                          zIndex: draggedCharacter === character.id ? 1000 : 50
                         }}
                         title={character.name}
                       >
@@ -4533,7 +4533,7 @@ const CampaignView: React.FC = () => {
                         left: `${partyPosition.x}%`,
                         top: `${partyPosition.y}%`,
                         transform: 'translate(-50%, -50%)',
-                        zIndex: isDraggingPartyToken ? 1100 : 30
+                        zIndex: isDraggingPartyToken ? 1100 : 50
                       }}
                     >
                       <div
