@@ -343,6 +343,10 @@ const startServer = async () => {
   // }
   const battleCombatState = {};
 
+  // Server-side campaign party grouping state
+  // Structure: { campaignId: { partyMemberIds: number[], partyPosition: { x, y } } }
+  const partyGroupState = {};
+
   // Map user IDs to socket IDs for targeted notifications
   const userSocketMap = new Map();
 
@@ -387,6 +391,14 @@ const startServer = async () => {
               currentTurnIndex: battleCombatState[campaignId].currentTurnIndex
             });
             console.log(`⚔️ Sent combat state to user ${socket.id} for campaign ${campaignId}`);
+          }
+
+          if (partyGroupState[campaignId]) {
+            socket.emit('partyGroupSync', {
+              partyMemberIds: partyGroupState[campaignId].partyMemberIds,
+              partyPosition: partyGroupState[campaignId].partyPosition
+            });
+            console.log(`👥 Sent party grouping state to user ${socket.id} for campaign ${campaignId}`);
           }
         } catch (error) {
           console.error(`Error joining campaign ${campaignId}:`, error);
@@ -483,6 +495,53 @@ const startServer = async () => {
           console.log(`⚔️ Battle character moved: ${characterName} to (${x.toFixed(2)}, ${y.toFixed(2)}) - ${remainingMovement}ft remaining in campaign ${campaignId}`);
         } catch (error) {
           console.error('Error handling battle character movement:', error);
+        }
+      });
+
+      // Handle party group membership updates
+      socket.on('partyGroupUpdate', (data) => {
+        try {
+          const { campaignId, partyMemberIds, partyPosition } = data;
+          partyGroupState[campaignId] = {
+            partyMemberIds: Array.isArray(partyMemberIds) ? partyMemberIds : [],
+            partyPosition: partyPosition || partyGroupState[campaignId]?.partyPosition || { x: 50, y: 50 }
+          };
+
+          io.to(`campaign_${campaignId}`).emit('partyGroupUpdated', {
+            partyMemberIds: partyGroupState[campaignId].partyMemberIds,
+            partyPosition: partyGroupState[campaignId].partyPosition,
+            timestamp: new Date().toISOString()
+          });
+
+          console.log(`👥 Party group updated in campaign ${campaignId}: ${partyGroupState[campaignId].partyMemberIds.length} members`);
+        } catch (error) {
+          console.error('Error handling party group update:', error);
+        }
+      });
+
+      // Handle party token movement
+      socket.on('partyGroupMove', (data) => {
+        try {
+          const { campaignId, x, y } = data;
+
+          if (!partyGroupState[campaignId]) {
+            partyGroupState[campaignId] = {
+              partyMemberIds: [],
+              partyPosition: { x: 50, y: 50 }
+            };
+          }
+
+          partyGroupState[campaignId].partyPosition = { x, y };
+
+          io.to(`campaign_${campaignId}`).emit('partyGroupMoved', {
+            x,
+            y,
+            timestamp: new Date().toISOString()
+          });
+
+          console.log(`👥 Party token moved in campaign ${campaignId} to (${x.toFixed(2)}, ${y.toFixed(2)})`);
+        } catch (error) {
+          console.error('Error handling party group movement:', error);
         }
       });
 

@@ -263,6 +263,11 @@ const CampaignView: React.FC = () => {
   const [draggedArmyParticipant, setDraggedArmyParticipant] = useState<number | null>(null);
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
   const [currentDragPosition, setCurrentDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const [partyMemberIds, setPartyMemberIds] = useState<number[]>([]);
+  const [partyPosition, setPartyPosition] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
+  const [isDraggingPartyToken, setIsDraggingPartyToken] = useState(false);
+  const [showPartyMenu, setShowPartyMenu] = useState(false);
+  const [showPartyMembersModal, setShowPartyMembersModal] = useState(false);
 
   // Combat state
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
@@ -1819,6 +1824,61 @@ const CampaignView: React.FC = () => {
         }));
       });
 
+      // Listen for party grouping sync/update
+      newSocket.on('partyGroupSync', (data: {
+        partyMemberIds: number[];
+        partyPosition?: { x: number; y: number };
+      }) => {
+        setPartyMemberIds(data.partyMemberIds || []);
+        if (data.partyPosition) {
+          setPartyPosition(data.partyPosition);
+        }
+      });
+
+      newSocket.on('partyGroupUpdated', (data: {
+        partyMemberIds: number[];
+        partyPosition?: { x: number; y: number };
+      }) => {
+        const nextPartyMemberIds = data.partyMemberIds || [];
+        setPartyMemberIds(prevPartyMemberIds => {
+          if (user?.role !== 'Dungeon Master' && currentCampaign) {
+            const joinedIds = nextPartyMemberIds.filter(id => !prevPartyMemberIds.includes(id));
+            const leftIds = prevPartyMemberIds.filter(id => !nextPartyMemberIds.includes(id));
+
+            if (joinedIds.length > 0 || leftIds.length > 0) {
+              const getName = (id: number) => currentCampaign.characters.find(c => c.id === id)?.name || `Character ${id}`;
+              const joinedNames = joinedIds.map(getName);
+              const leftNames = leftIds.map(getName);
+
+              const joinedMessage = joinedNames.length > 0
+                ? `${joinedNames.join(', ')} joined the party`
+                : '';
+              const leftMessage = leftNames.length > 0
+                ? `${leftNames.join(', ')} left the party`
+                : '';
+
+              const message = [joinedMessage, leftMessage].filter(Boolean).join(' • ');
+              if (message) {
+                setToastMessage(message);
+                setTimeout(() => setToastMessage(null), 3500);
+              }
+            }
+          }
+
+          return nextPartyMemberIds;
+        });
+        if (data.partyPosition) {
+          setPartyPosition(data.partyPosition);
+        }
+      });
+
+      newSocket.on('partyGroupMoved', (data: {
+        x: number;
+        y: number;
+      }) => {
+        setPartyPosition({ x: data.x, y: data.y });
+      });
+
       // Listen for character movement on battle map
       newSocket.on('characterBattleMoved', (data: {
         characterId: number | string;
@@ -3314,6 +3374,43 @@ const CampaignView: React.FC = () => {
         : (['board'] as const))
     : ([] as const);
 
+  const playerCharacters = currentCampaign.characters.filter(character => Boolean(character.player_id));
+  const partyMembers = playerCharacters.filter(character => partyMemberIds.includes(character.id));
+  const availablePartyCharacters = playerCharacters.filter(character => !partyMemberIds.includes(character.id));
+
+  const emitPartyGroupUpdate = (nextPartyMemberIds: number[], nextPartyPosition?: { x: number; y: number }) => {
+    if (!socket || !currentCampaign || user?.role !== 'Dungeon Master') return;
+    socket.emit('partyGroupUpdate', {
+      campaignId: currentCampaign.campaign.id,
+      partyMemberIds: nextPartyMemberIds,
+      partyPosition: nextPartyPosition || partyPosition
+    });
+  };
+
+  const addCharacterToParty = (characterId: number) => {
+    if (user?.role !== 'Dungeon Master') return;
+    if (partyMemberIds.includes(characterId)) return;
+
+    const nextPartyMemberIds = [...partyMemberIds, characterId];
+    const firstAddedCharacterPosition = characterPositions[characterId] || { x: 50, y: 50 };
+    const nextPartyPosition = partyMemberIds.length === 0 ? firstAddedCharacterPosition : partyPosition;
+
+    setPartyMemberIds(nextPartyMemberIds);
+    if (partyMemberIds.length === 0) {
+      setPartyPosition(nextPartyPosition);
+    }
+    emitPartyGroupUpdate(nextPartyMemberIds, nextPartyPosition);
+  };
+
+  const removeCharacterFromParty = (characterId: number) => {
+    if (user?.role !== 'Dungeon Master') return;
+    if (!partyMemberIds.includes(characterId)) return;
+
+    const nextPartyMemberIds = partyMemberIds.filter(id => id !== characterId);
+    setPartyMemberIds(nextPartyMemberIds);
+    emitPartyGroupUpdate(nextPartyMemberIds, partyPosition);
+  };
+
   return (
     <div className="container fade-in">
       <div className="dashboard-container campaign-container">
@@ -4018,7 +4115,23 @@ const CampaignView: React.FC = () => {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
-                  if (draggedCharacter !== null) {
+                  if (isDraggingPartyToken) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+                    setPartyPosition({ x, y });
+
+                    if (socket && currentCampaign && user?.role === 'Dungeon Master') {
+                      socket.emit('partyGroupMove', {
+                        campaignId: currentCampaign.campaign.id,
+                        x,
+                        y
+                      });
+                    }
+
+                    setIsDraggingPartyToken(false);
+                  } else if (draggedCharacter !== null) {
                     const rect = e.currentTarget.getBoundingClientRect();
                     const x = ((e.clientX - rect.left) / rect.width) * 100;
                     const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -4053,6 +4166,27 @@ const CampaignView: React.FC = () => {
                   }
                 }}
                 >
+                  {user?.role === 'Dungeon Master' && (
+                    <button
+                      onClick={() => setShowPartyMenu(true)}
+                      style={{
+                        position: 'absolute',
+                        top: '0.75rem',
+                        right: '0.75rem',
+                        zIndex: 1200,
+                        padding: '0.5rem 0.9rem',
+                        borderRadius: '0.6rem',
+                        border: '1px solid rgba(212, 193, 156, 0.45)',
+                        background: 'rgba(0, 0, 0, 0.75)',
+                        color: 'var(--text-gold)',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Party
+                    </button>
+                  )}
+
                   <img 
                     src={WorldMapImage} 
                     alt="Campaign World Map" 
@@ -4064,7 +4198,9 @@ const CampaignView: React.FC = () => {
                   />
                   
                   {/* Character Icons */}
-                  {currentCampaign && currentCampaign.characters.map(character => {
+                  {currentCampaign && currentCampaign.characters
+                    .filter(character => !partyMemberIds.includes(character.id))
+                    .map(character => {
                     const position = characterPositions[character.id] || { x: 50, y: 50 };
                     const canMove = user?.role === 'Dungeon Master' || character.player_id === user?.id;
                     
@@ -4147,7 +4283,223 @@ const CampaignView: React.FC = () => {
                       </div>
                     );
                   })}
+
+                  {partyMemberIds.length > 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: `${partyPosition.x}%`,
+                        top: `${partyPosition.y}%`,
+                        transform: 'translate(-50%, -50%)',
+                        zIndex: isDraggingPartyToken ? 1100 : 30
+                      }}
+                    >
+                      <div
+                        draggable={user?.role === 'Dungeon Master'}
+                        onDragStart={() => {
+                          if (user?.role === 'Dungeon Master') {
+                            setIsDraggingPartyToken(true);
+                          }
+                        }}
+                        onDragEnd={() => setIsDraggingPartyToken(false)}
+                        onClick={() => setShowPartyMembersModal(true)}
+                        style={{
+                        position: 'relative',
+                        width: '68px',
+                        height: '68px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: user?.role === 'Dungeon Master' ? 'grab' : 'pointer',
+                        color: '#1a1203',
+                        fontSize: '1.55rem',
+                        fontWeight: 700,
+                        userSelect: 'none'
+                      }}
+                      title="Party"
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            clipPath: 'polygon(50% 0%, 92% 25%, 92% 75%, 50% 100%, 8% 75%, 8% 25%)',
+                            background: '#ffe08a',
+                            boxShadow: '0 0 0 3px rgba(0, 0, 0, 0.55), 0 0 22px rgba(255, 209, 102, 0.85), 0 8px 20px rgba(0, 0, 0, 0.7)',
+                            pointerEvents: 'none'
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: '4px',
+                            clipPath: 'polygon(50% 0%, 92% 25%, 92% 75%, 50% 100%, 8% 75%, 8% 25%)',
+                            background: 'linear-gradient(135deg, rgba(255, 209, 102, 0.96), rgba(230, 126, 34, 0.96))',
+                            pointerEvents: 'none'
+                          }}
+                        />
+                        <span style={{ position: 'relative', zIndex: 2, filter: 'drop-shadow(0 1px 0 rgba(255,255,255,0.4))' }}>👥</span>
+                      </div>
+
+                      <div style={{
+                        position: 'absolute',
+                        top: '-10px',
+                        right: '-10px',
+                        minWidth: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+                        border: '2px solid #fff3c4',
+                        color: '#fff',
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+                        clipPath: 'none'
+                      }}>
+                        {partyMemberIds.length}
+                      </div>
+
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '-20px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        whiteSpace: 'nowrap',
+                        background: 'rgba(0, 0, 0, 0.8)',
+                        color: 'var(--text-gold)',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        pointerEvents: 'none',
+                        clipPath: 'none'
+                      }}>
+                        PARTY
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {showPartyMenu && user?.role === 'Dungeon Master' && (
+                  <div className="modal-overlay" onClick={() => setShowPartyMenu(false)}>
+                    <div
+                      className="modal-container"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ maxWidth: '900px', width: '95%' }}
+                    >
+                      <div className="modal-header">
+                        <h3 className="modal-title">Party Manager</h3>
+                        <button className="modal-close" onClick={() => setShowPartyMenu(false)} aria-label="Close Party Manager">
+                          ×
+                        </button>
+                      </div>
+                      <div className="modal-content" style={{ padding: '1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                          <div style={{ border: '1px solid rgba(212, 193, 156, 0.25)', borderRadius: '0.75rem', padding: '0.75rem' }}>
+                            <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Available Players</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
+                              {availablePartyCharacters.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', margin: 0 }}>No available players</p>
+                              ) : (
+                                availablePartyCharacters.map(character => (
+                                  <div
+                                    key={`available-${character.id}`}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: '0.75rem',
+                                      padding: '0.5rem 0.6rem',
+                                      border: '1px solid rgba(212, 193, 156, 0.2)',
+                                      borderRadius: '0.5rem',
+                                      background: 'rgba(255, 255, 255, 0.05)'
+                                    }}
+                                  >
+                                    <span style={{ color: 'var(--text-secondary)' }}>{character.name}</span>
+                                    <button
+                                      onClick={() => addCharacterToParty(character.id)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '0.35rem 0.65rem', minHeight: 'auto', fontSize: '0.75rem' }}
+                                    >
+                                      Add →
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ border: '1px solid rgba(212, 193, 156, 0.25)', borderRadius: '0.75rem', padding: '0.75rem' }}>
+                            <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Party</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
+                              {partyMembers.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', margin: 0 }}>No players in party</p>
+                              ) : (
+                                partyMembers.map(character => (
+                                  <div
+                                    key={`party-${character.id}`}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: '0.75rem',
+                                      padding: '0.5rem 0.6rem',
+                                      border: '1px solid rgba(212, 193, 156, 0.2)',
+                                      borderRadius: '0.5rem',
+                                      background: 'rgba(212, 193, 156, 0.08)'
+                                    }}
+                                  >
+                                    <span style={{ color: 'var(--text-secondary)' }}>{character.name}</span>
+                                    <button
+                                      onClick={() => removeCharacterFromParty(character.id)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '0.35rem 0.65rem', minHeight: 'auto', fontSize: '0.75rem' }}
+                                    >
+                                      ← Remove
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {showPartyMembersModal && partyMembers.length > 0 && (
+                  <div className="modal-overlay" onClick={() => setShowPartyMembersModal(false)}>
+                    <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+                      <div className="modal-header">
+                        <h3 className="modal-title">Party Members</h3>
+                        <button className="modal-close" onClick={() => setShowPartyMembersModal(false)} aria-label="Close Party Members">
+                          ×
+                        </button>
+                      </div>
+                      <div className="modal-content">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {partyMembers.map(character => (
+                            <div
+                              key={`party-member-${character.id}`}
+                              style={{
+                                padding: '0.55rem 0.7rem',
+                                border: '1px solid rgba(212, 193, 156, 0.2)',
+                                borderRadius: '0.55rem',
+                                background: 'rgba(255, 255, 255, 0.04)',
+                                color: 'var(--text-secondary)'
+                              }}
+                            >
+                              {character.name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
