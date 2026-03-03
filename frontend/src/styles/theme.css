@@ -149,8 +149,8 @@ p {
 
 /* Container and Layout */
 .container {
-  margin: 0 auto;
-  padding: 0 var(--spacing-md);
+  padding: 0 0.75rem;
+  margin-top: 2rem;
 }
 
 /* Auth container uses standard container class - no special styles needed */
@@ -168,8 +168,8 @@ p {
     0 0 20px rgba(212, 193, 156, 0.15),
     0 8px 32px rgba(0, 0, 0, 0.4),
     inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  max-width: min(1200px, 92vw);
-  margin: clamp(1rem, 2vw, 2rem) auto;
+  max-width: min(1200px, 95vw);
+  margin: clamp(1rem, 2vw, 2rem);
   position: relative;
   overflow: hidden;
 }
@@ -408,7 +408,7 @@ p {
 /* Campaign view layout and mobile navigation */
 .campaign-layout {
   display: flex;
-  gap: 1.5rem;
+  gap: 1rem;
   align-items: flex-start;
   width: 100%;
 }
@@ -417,12 +417,14 @@ p {
   display: grid;
   grid-template-columns: 280px 1fr;
   grid-template-rows: auto 1fr;
-  gap: 1.5rem;
+  gap: 1rem;
   align-items: start;
 }
 
 .campaign-container {
-  max-width: min(1600px, 96vw);
+  max-width: 99vw;
+  margin: 0 auto;
+  /* padding: 0 0.5rem; */
 }
 
 .campaign-sidebar {
@@ -484,6 +486,8 @@ p {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 1rem;
+  position: relative;
+  z-index: 1000;
 }
 
 .campaign-mobile-title {
@@ -513,6 +517,18 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  -webkit-tap-highlight-color: rgba(212, 193, 156, 0.3);
+  touch-action: manipulation;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.campaign-burger:active,
+.campaign-mobile-back:active,
+.campaign-mobile-characters:active,
+.campaign-mobile-close:active {
+  background: rgba(212, 193, 156, 0.2);
+  transform: scale(0.95);
 }
 
 .campaign-mobile-overlay {
@@ -581,6 +597,15 @@ p {
   padding: 0.6rem 0.75rem;
   text-align: left;
   cursor: pointer;
+  -webkit-tap-highlight-color: rgba(212, 193, 156, 0.3);
+  touch-action: manipulation;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.campaign-mobile-action:active {
+  background: rgba(212, 193, 156, 0.15);
+  transform: scale(0.98);
 }
 
 .campaign-mobile-section {
@@ -592,6 +617,9 @@ p {
   font-weight: 600;
   padding: 0.5rem 0;
   cursor: pointer;
+  -webkit-tap-highlight-color: rgba(212, 193, 156, 0.3);
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .campaign-mobile-submenu {
@@ -612,6 +640,15 @@ p {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  -webkit-tap-highlight-color: rgba(212, 193, 156, 0.3);
+  touch-action: manipulation;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.campaign-mobile-link:active {
+  background: rgba(212, 193, 156, 0.15);
+  transform: scale(0.98);
 }
 
 .campaign-mobile-link.active {
@@ -1122,7 +1159,7 @@ label:has(input[type="checkbox"]:disabled) {
 /* Responsive Design */
 @media (max-width: 768px) {
   .container {
-    padding: var(--spacing-xl);
+    padding: var(--spacing-md);
   }
   
   h1 {
@@ -1157,7 +1194,8 @@ label:has(input[type="checkbox"]:disabled) {
   }
 
   .campaign-sidebar.mobile-open {
-    display: block;
+    display: flex;
+    flex-direction: column;
   }
 
   .campaign-sidebar.mobile-open.collapsed {
@@ -1210,11 +1248,16 @@ label:has(input[type="checkbox"]:disabled) {
   .campaign-delete-btn {
     justify-self: end;
   }
+
+  .campaign-container {
+    max-width: 100%;
+    width: 100%;
+  }
 }
 
 @media (min-width: 1400px) {
   .campaign-container {
-    max-width: 90vw;
+    max-width: 98vw;
   }
 
   .campaign-layout {
@@ -1232,7 +1275,7 @@ label:has(input[type="checkbox"]:disabled) {
   }
   
   .dashboard-container {
-    padding: var(--spacing-lg);
+    padding: var(--spacing-md);
   }
   
   h1 {
@@ -2023,7 +2066,7 @@ label:has(input[type="checkbox"]:disabled) {
 /* Very large screens - 1920px+ */
 @media (min-width: 1920px) {
   .campaign-container {
-    max-width: 2200px;
+    max-width: 3200px;
   }
 
   .campaign-sidebar {
@@ -2231,6 +2274,21 @@ label:has(input[type="checkbox"]:disabled) {
   bottom: calc(100% + 8px);
 }
 
+/* Equipment panel padding optimization for better space usage */
+.glass-panel:has(.equipment-tab-layout) {
+  padding: 1rem;
+}
+
+@media (min-width: 1200px) {
+  .glass-panel {
+    padding: clamp(0.75rem, 1.5vw, 1.5rem);
+  }
+  
+  .glass-panel:has(.equipment-tab-layout) {
+    padding: 0.75rem;
+  }
+}
+
 /* Responsive adjustments for equipment slots */
 @media (max-width: 1200px) {
   .character-figure-container {
@@ -2239,12 +2297,34 @@ label:has(input[type="checkbox"]:disabled) {
 }
 
 @media (max-width: 768px) {
+  /* Stack equipment layout vertically */
+  .equipment-tab-layout {
+    flex-direction: column !important;
+    gap: 1rem !important;
+    min-height: auto !important;
+  }
+
+  .equipment-figure-wrapper {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .equipment-list-wrapper {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+  }
+
   .character-figure-container {
-    max-width: 300px;
+    max-width: 280px;
+    margin: 0 auto;
   }
   
   .equipment-slot {
-    border-width: 2px;
+    border-width: 3px;
+    /* Improve touch target size */
+    min-width: 44px;
+    min-height: 44px;
   }
   
   .equipment-slot:hover {
@@ -2252,9 +2332,80 @@ label:has(input[type="checkbox"]:disabled) {
     transform: scale(1.03);
   }
   
+  .equipment-slot:active {
+    border-width: 4px;
+    background: rgba(212, 193, 156, 0.3);
+  }
+  
   .equipment-slot::before {
     font-size: 0.7rem;
     padding: 0.4rem 0.6rem;
+  }
+  
+  /* Improve inventory item display on mobile */
+  .equipment-inventory-list {
+    max-height: 400px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .inventory-item {
+    padding: 0.875rem !important;
+    font-size: 0.85rem !important;
+    -webkit-tap-highlight-color: rgba(212, 193, 156, 0.3);
+    touch-action: manipulation;
+  }
+
+  .inventory-item:active {
+    background: rgba(212, 193, 156, 0.2) !important;
+    border-color: rgba(212, 193, 156, 0.4) !important;
+    transform: scale(0.98);
+  }
+
+  /* Mobile-friendly filter buttons */
+  .inventory-filter {
+    gap: 0.4rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .filter-button {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8rem !important;
+    min-height: 44px;
+    -webkit-tap-highlight-color: rgba(212, 193, 156, 0.3);
+    touch-action: manipulation;
+  }
+
+  .filter-button:active {
+    transform: scale(0.96);
+  }
+
+  /* Mobile touch feedback for equipment items */
+  .inventory-item.draggable:active {
+    background: rgba(212, 193, 156, 0.25) !important;
+    border-color: rgba(212, 193, 156, 0.5) !important;
+    box-shadow: 0 0 15px rgba(212, 193, 156, 0.4);
+  }
+
+  .equipment-slot:active {
+    border-color: var(--accent-gold) !important;
+    box-shadow: 0 0 20px rgba(212, 193, 156, 0.6) !important;
+  }
+
+  .inventory-item .item-name {
+    font-size: 0.9rem !important;
+  }
+
+  .inventory-item .item-category {
+    font-size: 0.75rem !important;
+  }
+
+  .inventory-item .item-description {
+    font-size: 0.8rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .inventory-item .item-stats {
+    font-size: 0.75rem !important;
   }
   
   /* Adjust slot sizes for smaller screens */
@@ -2274,29 +2425,29 @@ label:has(input[type="checkbox"]:disabled) {
   }
   
   .equipment-slot.left-hand {
-    width: 14%;
+    width: 16%;
     height: 14%;
     top: 26%;
-    left: 10%;
+    left: 8%;
   }
   
   .equipment-slot.right-hand {
-    width: 14%;
+    width: 16%;
     height: 14%;
     top: 26%;
-    right: 10%;
+    right: 8%;
   }
   
   .equipment-slot.left-foot {
-    width: 14%;
+    width: 16%;
     height: 10%;
-    left: 26%;
+    left: 24%;
   }
   
   .equipment-slot.right-foot {
-    width: 14%;
+    width: 16%;
     height: 10%;
-    right: 26%;
+    right: 24%;
   }
   
   /* Responsive icon sizing for tablets */

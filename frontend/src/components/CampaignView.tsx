@@ -218,6 +218,8 @@ const CampaignView: React.FC = () => {
   }, [currentCampaign]);
   
   const [draggedItem, setDraggedItem] = useState<{ item: InventoryItem; fromSlot?: string } | null>(null);
+  const [touchDragPosition, setTouchDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const [touchDragElement, setTouchDragElement] = useState<HTMLElement | null>(null);
   const [showUnequipZone, setShowUnequipZone] = useState(false);
   const [inventoryFilter, setInventoryFilter] = useState<'all' | 'weapon' | 'armor' | 'tool'>('all');
   
@@ -2400,6 +2402,32 @@ const CampaignView: React.FC = () => {
       e.currentTarget.classList.remove('drag-over');
     };
 
+    // Mobile touch support for drag and drop
+    const handleItemTouchStart = (e: React.TouchEvent, item: InventoryItem) => {
+      e.preventDefault();
+      setDraggedItem({ item });
+      setTouchDragElement(e.currentTarget as HTMLElement);
+      const touch = e.touches[0];
+      setTouchDragPosition({ x: touch.clientX, y: touch.clientY });
+      // Visual feedback
+      (e.currentTarget as HTMLElement).style.opacity = '0.6';
+    };
+
+    const handleItemTouchMove = (e: React.TouchEvent) => {
+      if (!draggedItem) return;
+      const touch = e.touches[0];
+      setTouchDragPosition({ x: touch.clientX, y: touch.clientY });
+    };
+
+    const handleItemTouchEnd = (e: React.TouchEvent) => {
+      e.preventDefault();
+      if (touchDragElement) {
+        touchDragElement.style.opacity = '1';
+      }
+      setTouchDragPosition(null);
+      setTouchDragElement(null);
+    };
+
     const handleSlotDrop = async (e: React.DragEvent, slotId: string) => {
       e.preventDefault();
       e.currentTarget.classList.remove('drag-over');
@@ -2442,6 +2470,80 @@ const CampaignView: React.FC = () => {
               characterId: character.id,
               action: 'equip',
               slot: actualSlotId,
+              itemName: draggedItem.item.item_name
+            });
+          }
+        } catch (error) {
+          console.error('Error equipping item:', error);
+          alert('Cannot equip this item in this slot. Check item type compatibility.');
+        }
+      }
+      
+      setDraggedItem(null);
+    };
+
+    const handleSlotTouchStart = (e: React.TouchEvent, slotId: string) => {
+      e.preventDefault();
+      // Prevent default to allow custom touch handling
+    };
+
+    const handleSlotTouchEnd = async (e: React.TouchEvent, slotId: string) => {
+      e.preventDefault();
+      
+      if (!draggedItem || !touchDragPosition) {
+        setDraggedItem(null);
+        return;
+      }
+
+      // Get the element at the touch position
+      const slotElement = document.elementFromPoint(touchDragPosition.x, touchDragPosition.y);
+      if (!slotElement) {
+        setDraggedItem(null);
+        return;
+      }
+      
+      // Check if we're actually over an equipment slot
+      const slotContainer = slotElement.closest('[data-slot-id]') as HTMLElement;
+      if (!slotContainer) {
+        setDraggedItem(null);
+        return;
+      }
+      
+      const actualSlotId = slotContainer.getAttribute('data-slot-id') || slotId;
+      const targetSlot = equipmentSlots.find(slot => slot.id === actualSlotId || slot.syncWith === actualSlotId);
+      const finalSlotId = targetSlot?.syncWith || actualSlotId;
+
+      if (draggedItem.fromSlot) {
+        // Moving from one slot to another
+        try {
+          await characterAPI.unequipItem(character.id, draggedItem.fromSlot);
+          await characterAPI.equipItem(character.id, draggedItem.item.item_name, finalSlotId);
+          loadEquippedItems(character.id);
+          loadEquipmentDetails(character.id);
+          if (socket) {
+            socket.emit('equipmentUpdate', {
+              campaignId: currentCampaign?.campaign.id,
+              characterId: character.id,
+              action: 'equip',
+              slot: finalSlotId,
+              itemName: draggedItem.item.item_name
+            });
+          }
+        } catch (error) {
+          console.error('Error moving equipped item:', error);
+        }
+      } else {
+        // Equipping from inventory
+        try {
+          await characterAPI.equipItem(character.id, draggedItem.item.item_name, finalSlotId);
+          loadEquippedItems(character.id);
+          loadEquipmentDetails(character.id);
+          if (socket) {
+            socket.emit('equipmentUpdate', {
+              campaignId: currentCampaign?.campaign.id,
+              characterId: character.id,
+              action: 'equip',
+              slot: finalSlotId,
               itemName: draggedItem.item.item_name
             });
           }
@@ -2528,15 +2630,15 @@ const CampaignView: React.FC = () => {
       <div>
         <div className="glass-panel">
           <h6>⚔️ Equipment</h6>
-          <div style={{ 
+          <div className="equipment-tab-layout" style={{ 
             display: 'flex', 
-            gap: '1.5rem', 
+            gap: '0.75rem', 
             alignItems: 'flex-start',
             minHeight: '600px' 
           }}>
             {/* Character Figure with Equipment Slots */}
-            <div style={{ 
-              flex: '0 0 70%',
+            <div className="equipment-figure-wrapper" style={{ 
+              flex: '0 1 400px',
               display: 'flex',
               justifyContent: 'center',
               alignItems: 'center'
@@ -2572,6 +2674,8 @@ const CampaignView: React.FC = () => {
                       onDragOver={handleSlotDragOver}
                       onDragLeave={handleSlotDragLeave}
                       onDrop={(e) => handleSlotDrop(e, actualSlotId)}
+                      onTouchStart={(e) => handleSlotTouchStart(e, actualSlotId)}
+                      onTouchEnd={(e) => handleSlotTouchEnd(e, actualSlotId)}
                       title={isOccupied ? equippedItem.item_name : `${slot.name} - Drag items here to equip`}
                       draggable={isOccupied}
                       onDragStart={isOccupied ? (e) => {
@@ -2602,9 +2706,9 @@ const CampaignView: React.FC = () => {
             </div>
 
             {/* Equipment List */}
-            <div style={{ 
+            <div className="equipment-list-wrapper" style={{ 
               flex: '1',
-              minWidth: 0 
+              minWidth: '0'
             }}>
               <div style={{ marginBottom: '1rem' }}>
                 <h6 style={{ marginBottom: '0.5rem', color: 'rgba(212, 193, 156, 0.9)' }}>Equippable Items</h6>
@@ -2702,6 +2806,9 @@ const CampaignView: React.FC = () => {
                           e.currentTarget.classList.remove('dragging');
                           setDraggedItem(null);
                         } : undefined}
+                        onTouchStart={isEquippable ? (e) => handleItemTouchStart(e, item) : undefined}
+                        onTouchMove={isEquippable ? (e) => handleItemTouchMove(e) : undefined}
+                        onTouchEnd={isEquippable ? (e) => handleItemTouchEnd(e) : undefined}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
@@ -3447,11 +3554,7 @@ const CampaignView: React.FC = () => {
         {/* Main Content Area with Character List */}
         <div className={`campaign-layout ${characterListCollapsed ? 'layout-collapsed' : ''}`}>
           {/* Character List - Collapsible */}
-          <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''} ${characterListCollapsed ? 'collapsed' : ''}`} style={{
-            display: 'flex',
-            flexDirection: 'column',
-            transition: 'all 0.3s ease'
-          }}>
+          <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''} ${characterListCollapsed ? 'collapsed' : ''}`}>
             <div className="glass-panel" style={{ position: 'sticky', top: '1rem', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               {/* DM Controls */}
               {user?.role === 'Dungeon Master' && (
