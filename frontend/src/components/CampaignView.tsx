@@ -265,7 +265,7 @@ const CampaignView: React.FC = () => {
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
   }, [selectedCharacter]);
-  
+
   const [draggedItem, setDraggedItem] = useState<{ item: InventoryItem; fromSlot?: string } | null>(null);
   const [touchDragPosition, setTouchDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [touchDragElement, setTouchDragElement] = useState<HTMLElement | null>(null);
@@ -379,6 +379,12 @@ const CampaignView: React.FC = () => {
   // Army and Battlefield state
   const [armies, setArmies] = useState<Army[]>([]);
   const [activeBattle, setActiveBattle] = useState<Battle | null>(null);
+
+  // Ref to store active battle for socket listeners (avoids stale closure)
+  const activeBattleRef = useRef<Battle | null>(null);
+  useEffect(() => {
+    activeBattleRef.current = activeBattle;
+  }, [activeBattle]);
   const [battleGoals, setBattleGoals] = useState<BattleGoal[]>([]);
   const [showGoalSelectionModal, setShowGoalSelectionModal] = useState(false);
   const [showGoalResolutionModal, setShowGoalResolutionModal] = useState(false);
@@ -2217,7 +2223,8 @@ const CampaignView: React.FC = () => {
 
       // Listen for battle completed
       newSocket.on('battleCompleted', (data: { battleId: number; battleName: string; results: BattleParticipant[]; summary?: any; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
+        const currentBattle = activeBattleRef.current;
+        if (currentBattle && currentBattle.id === data.battleId) {
           setBattleSummary({
             battleName: data.battleName,
             results: data.results,
@@ -2387,7 +2394,8 @@ const CampaignView: React.FC = () => {
 
       // Listen for battle round advanced (emit to all users when DM advances round)
       newSocket.on('battleRoundAdvanced', (data: { battleId: number; round: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
+        const currentBattle = activeBattleRef.current;
+        if (currentBattle && currentBattle.id === data.battleId) {
           // Refresh battle data to get new state (status reset to goal_selection, etc.)
           refreshActiveBattle(data.battleId);
           // Close any open modals and reset to fresh goal selection
@@ -2401,7 +2409,8 @@ const CampaignView: React.FC = () => {
 
       // Listen for when a goal is selected by any user
       newSocket.on('battleGoalSelected', (data: { battleId: number; goal: any; participantId: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
+        const currentBattle = activeBattleRef.current;
+        if (currentBattle && currentBattle.id === data.battleId) {
           // Update the participant's has_selected_goal flag
           setActiveBattle(prev => {
             if (!prev) return prev;
@@ -2419,7 +2428,8 @@ const CampaignView: React.FC = () => {
 
       // Listen for individual goal resolution by DM
       newSocket.on('battleGoalResolved', (data: { battleId: number; goal: any; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
+        const currentBattle = activeBattleRef.current;
+        if (currentBattle && currentBattle.id === data.battleId) {
           // Refresh goals list to show updated goal
           setBattleGoals(prev => {
             const updated = [...prev];
@@ -2434,7 +2444,8 @@ const CampaignView: React.FC = () => {
 
       // Listen for when all goals have been selected (enables "Move to Resolution" button)
       newSocket.on('allGoalsSelected', (data: { battleId: number; round: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
+        const currentBattle = activeBattleRef.current;
+        if (currentBattle && currentBattle.id === data.battleId) {
           // Force a re-render by refreshing the battle to ensure button state updates
           refreshActiveBattle(data.battleId);
         }
@@ -2442,7 +2453,8 @@ const CampaignView: React.FC = () => {
 
       // Listen for goals phase completed (all goals resolved, moving to next phase or round)
       newSocket.on('goalsPhaseCompleted', (data: { battleId: number; round: number; timestamp: string }) => {
-        if (activeBattle && activeBattle.id === data.battleId) {
+        const currentBattle = activeBattleRef.current;
+        if (currentBattle && currentBattle.id === data.battleId) {
           // Refresh to get updated battle status and proceed
           refreshActiveBattle(data.battleId);
           setShowGoalResolutionModal(false);
