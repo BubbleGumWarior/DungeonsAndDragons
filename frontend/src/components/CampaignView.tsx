@@ -1379,6 +1379,46 @@ const CampaignView: React.FC = () => {
     }
   };
 
+  // Armor Class Management (for dungeonmaster to adjust AC)
+  const handleUpdateArmorClass = async (characterId: number, increment: number) => {
+    try {
+      const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
+      if (!currentCharacter || !socket || !currentCampaign) return;
+
+      const characterOverride = characterDataOverrides[characterId];
+      const currentAC = (characterOverride?.armor_class ?? currentCharacter.armor_class) as number;
+      const newAC = currentAC + increment;
+
+      if (newAC < 1 || newAC > 30) {
+        alert('Armor Class must be between 1 and 30');
+        return;
+      }
+
+      await characterAPI.update(characterId, { armor_class: newAC });
+
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          armor_class: newAC
+        }
+      }));
+
+      socket.emit('armorClassUpdated', {
+        campaignId: currentCampaign.campaign.id,
+        characterId,
+        newArmorClass: newAC,
+        timestamp: new Date().toISOString()
+      });
+
+      setToastMessage(`Armor Class updated to ${newAC}`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error updating armor class:', error);
+      alert('Failed to update armor class');
+    }
+  };
+
   // Skill Proficiency Toggle (for dungeonmaster to add/remove proficiency)
   const handleToggleSkillProficiency = async (characterId: number, skillName: string) => {
     try {
@@ -2455,6 +2495,31 @@ const CampaignView: React.FC = () => {
             currentCampaignId: campaign?.campaign.id, 
             dataCampaignId: data.campaignId 
           });
+        }
+      });
+
+      // Listen for armor class updates (DM adjusted AC)
+      newSocket.on('armorClassUpdated', (data: {
+        campaignId: number;
+        characterId: number;
+        newArmorClass: number;
+        timestamp: string;
+      }) => {
+        const campaign = currentCampaignRef.current;
+        if (campaign && campaign.campaign.id === data.campaignId) {
+          setCharacterDataOverrides(prev => ({
+            ...prev,
+            [data.characterId]: {
+              ...prev[data.characterId],
+              armor_class: data.newArmorClass
+            }
+          }));
+
+          const character = campaign.characters.find(c => c.id === data.characterId);
+          if (character) {
+            setToastMessage(`${character.name}'s Armor Class updated to ${data.newArmorClass}`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }
         }
       });
 
@@ -8422,13 +8487,22 @@ const CampaignView: React.FC = () => {
                           };
                           
                           // Get limb AC from equipped items
-                          const characterLimbAC = limbAC[selectedCharacterData.id] || {
-                            head: 12,  // Head has base AC of 12
-                            chest: selectedCharacterData.armor_class || 10,
-                            hands: 0,
-                            main_hand: 0,
-                            off_hand: 0,
-                            feet: 0
+                          const rawLimbAC = limbAC[selectedCharacterData.id];
+                          const baseAC = selectedCharacterData.armor_class || 10;
+                          const characterLimbAC = rawLimbAC ? {
+                            head: rawLimbAC.head,
+                            chest: rawLimbAC.chest,
+                            hands: (rawLimbAC.hands || 0) + 3 + baseAC,
+                            main_hand: (rawLimbAC.main_hand || 0) + 3 + baseAC,
+                            off_hand: (rawLimbAC.off_hand || 0) + 3 + baseAC,
+                            feet: (rawLimbAC.feet || 0) + 6 + baseAC
+                          } : {
+                            head: 12,               // Head base AC 12
+                            chest: baseAC,          // Torso = character's full AC
+                            hands: 3 + baseAC,      // Arms = 3 + armor class
+                            main_hand: 3 + baseAC,
+                            off_hand: 3 + baseAC,
+                            feet: 6 + baseAC        // Legs = 6 + armor class
                           };
                           
                           // Helper function to get health color based on percentage
@@ -8701,16 +8775,62 @@ const CampaignView: React.FC = () => {
                         position: 'relative',
                         cursor: 'help'
                       }}
-                      title={`Limb-Specific Armor Class:\n\n• Head: Base AC 12 + Helmet AC\n  Current: ${(limbAC[selectedCharacterData.id]?.head || 12)} (${(limbAC[selectedCharacterData.id]?.head || 12) > 12 ? `12 base + ${(limbAC[selectedCharacterData.id]?.head || 12) - 12} helmet` : '12 base, no helmet'})\n\n• Torso: Character Base AC or Chest Armor AC\n  Current: ${(limbAC[selectedCharacterData.id]?.chest || selectedCharacterData.armor_class || 10)}\n\n• Main Hand: Shield/Gauntlet AC only\n  Current: ${(limbAC[selectedCharacterData.id]?.main_hand || 0)} (${(limbAC[selectedCharacterData.id]?.main_hand || 0) === 0 ? 'Unprotected' : 'Protected'})\n\n• Off Hand: Shield/Gauntlet AC only\n  Current: ${(limbAC[selectedCharacterData.id]?.off_hand || 0)} (${(limbAC[selectedCharacterData.id]?.off_hand || 0) === 0 ? 'Unprotected' : 'Protected'})\n\n• Feet: Boot AC only\n  Current: ${(limbAC[selectedCharacterData.id]?.feet || 0)} (${(limbAC[selectedCharacterData.id]?.feet || 0) === 0 ? 'Unprotected' : 'Protected'})\n\nNote: Only the torso has base AC. All other limbs start at 0 (or 12 for head) and only gain AC from equipped armor.`}
+                      title={`Limb-Specific Armor Class:\n\n• Head: Base AC 12 + Helmet AC\n  Current: ${(limbAC[selectedCharacterData.id]?.head || 12)} (${(limbAC[selectedCharacterData.id]?.head || 12) > 12 ? `12 base + ${(limbAC[selectedCharacterData.id]?.head || 12) - 12} helmet` : '12 base, no helmet'})\n\n• Torso: Character Base AC or Chest Armor AC\n  Current: ${(limbAC[selectedCharacterData.id]?.chest || selectedCharacterData.armor_class || 10)}\n\n• Arms: 3 + Armor Class base (+ equipped item AC)\n\n• Legs: 6 + Armor Class base (+ equipped item AC)\n\nNote: Arms and legs use the character's base AC as natural protection.`}
                       >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Armor Class
                         </div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>
+                        <div style={{
+                          fontSize: '1.5rem',
+                          fontWeight: 'bold',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: user?.role === 'Dungeon Master' ? '0.5rem' : '0'
+                        }}>
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUpdateArmorClass(selectedCharacterData.id, -1); }}
+                              disabled={(selectedCharacterData.armor_class ?? 10) <= 1}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.3)',
+                                border: '1px solid rgba(239, 68, 68, 0.5)',
+                                color: (selectedCharacterData.armor_class ?? 10) <= 1 ? 'rgba(255,255,255,0.3)' : '#fca5a5',
+                                borderRadius: '4px',
+                                padding: '0.25rem 0.4rem',
+                                cursor: (selectedCharacterData.armor_class ?? 10) <= 1 ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                                flex: '0 0 auto'
+                              }}
+                            >
+                              −
+                            </button>
+                          )}
                           {selectedCharacterData.armor_class}
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUpdateArmorClass(selectedCharacterData.id, 1); }}
+                              disabled={(selectedCharacterData.armor_class ?? 10) >= 30}
+                              style={{
+                                background: 'rgba(34, 197, 94, 0.3)',
+                                border: '1px solid rgba(34, 197, 94, 0.5)',
+                                color: (selectedCharacterData.armor_class ?? 10) >= 30 ? 'rgba(255,255,255,0.3)' : '#86efac',
+                                borderRadius: '4px',
+                                padding: '0.25rem 0.4rem',
+                                cursor: (selectedCharacterData.armor_class ?? 10) >= 30 ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                                flex: '0 0 auto'
+                              }}
+                            >
+                              +
+                            </button>
+                          )}
                         </div>
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                          AC for limbs are dependent on what item is equipped in that slot.
+                          Arms: 3+AC base | Legs: 6+AC base | Other limbs from equipped items.
                         </div>
                       </div>
 

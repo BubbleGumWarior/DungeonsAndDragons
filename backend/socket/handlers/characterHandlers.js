@@ -26,6 +26,24 @@ module.exports = (socket, io) => {
     }
   });
 
+  // Handle armor class updates
+  socket.on('armorClassUpdated', (data) => {
+    console.log('📥 Backend received armorClassUpdated event:', data);
+    try {
+      const { campaignId, characterId, newArmorClass } = data;
+      console.log(`📤 Broadcasting armor class update to campaign_${campaignId}:`, { characterId, newArmorClass });
+      io.to(`campaign_${campaignId}`).emit('armorClassUpdated', {
+        campaignId,
+        characterId,
+        newArmorClass,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`🛡️ Armor class update: Character ${characterId} AC set to ${newArmorClass}`);
+    } catch (error) {
+      console.error('Error handling armor class update:', error);
+    }
+  });
+
   // Handle skill proficiency updates
   socket.on('skillProficiencyToggled', (data) => {
     try {
