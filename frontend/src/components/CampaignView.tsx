@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character, mountAPI, Mount } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
@@ -198,7 +198,7 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts'>('board');
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
   const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia'>('map');
@@ -301,6 +301,31 @@ const CampaignView: React.FC = () => {
   const [monsterImageFile, setMonsterImageFile] = useState<File | null>(null);
   const [viewImageModal, setViewImageModal] = useState<{ imageUrl: string; name: string } | null>(null);
 
+  // Mount state
+  const [campaignMounts, setCampaignMounts] = useState<Mount[]>([]);
+  const [showAddMountModal, setShowAddMountModal] = useState(false);
+  const [mountModalStep, setMountModalStep] = useState<'choose' | 'configure'>('choose');
+  const [mountModalMode, setMountModalMode] = useState<'add' | 'edit'>('add');
+  const [editingMountId, setEditingMountId] = useState<number | null>(null);
+  const [mountFormData, setMountFormData] = useState<Partial<Mount>>({
+    name: '',
+    mount_type: 'Custom',
+    description: '',
+    speed: 60,
+    fly_speed: 0,
+    hp: 30,
+    ac: 10,
+    carrying_capacity: 480,
+    pull_strength: 1000,
+    stamina: 'Medium',
+    max_rider_armor: 'Any',
+    purpose: '',
+    assigned_to_character_id: null,
+    image_url: undefined
+  });
+  const [mountImageFile, setMountImageFile] = useState<File | null>(null);
+  const [mountImagePreviewUrl, setMountImagePreviewUrl] = useState<string | null>(null);
+
   // Army and Battlefield state
   const [armies, setArmies] = useState<Army[]>([]);
   const [activeBattle, setActiveBattle] = useState<Battle | null>(null);
@@ -372,9 +397,13 @@ const CampaignView: React.FC = () => {
   // Helper function to get correct image URL (handles both data URLs from DB and file paths)
   const getImageUrl = (imageUrl: string | undefined): string | undefined => {
     if (!imageUrl) return undefined;
-    // If it's already a data URL (starts with 'data:'), return as-is
+    // Data URLs — return as-is
     if (imageUrl.startsWith('data:')) return imageUrl;
-    // If it's a file path, add localhost prefix in development
+    // Already absolute (http/https) — return as-is
+    if (imageUrl.startsWith('http')) return imageUrl;
+    // Public-folder images (/images/...) — served by the frontend, no prefix needed
+    if (imageUrl.startsWith('/images/')) return imageUrl;
+    // Uploaded files (/uploads/...) — served by the Express backend
     if (process.env.NODE_ENV === 'production') return imageUrl;
     return `http://localhost:5000${imageUrl}`;
   };
@@ -762,6 +791,31 @@ const CampaignView: React.FC = () => {
     };
     loadMonsters();
   }, [currentCampaign]);
+
+  // Load mounts when campaign changes
+  useEffect(() => {
+    const loadMounts = async () => {
+      if (currentCampaign) {
+        try {
+          const fetchedMounts = await mountAPI.getCampaignMounts(currentCampaign.campaign.id);
+          setCampaignMounts(fetchedMounts);
+        } catch (error) {
+          console.error('Error loading mounts:', error);
+        }
+      }
+    };
+    loadMounts();
+  }, [currentCampaign]);
+
+  // Re-fetch mounts from DB whenever the mounts tab is opened (ensures fresh data)
+  useEffect(() => {
+    if (activeTab === 'mounts' && currentCampaign) {
+      mountAPI.getCampaignMounts(currentCampaign.campaign.id)
+        .then(setCampaignMounts)
+        .catch(err => console.error('Error refreshing mounts:', err));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // Load armies when selected character changes
   useEffect(() => {
@@ -2212,6 +2266,23 @@ const CampaignView: React.FC = () => {
         setJournalEntries(prev => prev.filter(e => e.id !== data.entryId));
       });
 
+      // ─── Mount socket events ─────────────────────────────────────────────
+      newSocket.on('mountAdded', (data: { mount: Mount; timestamp: string }) => {
+        setCampaignMounts(prev => [...prev, data.mount]);
+      });
+
+      newSocket.on('mountUpdated', (data: { mount: Mount; timestamp: string }) => {
+        setCampaignMounts(prev => prev.map(m => m.id === data.mount.id ? data.mount : m));
+      });
+
+      newSocket.on('mountsRefreshed', (data: { mounts: Mount[]; timestamp: string }) => {
+        setCampaignMounts(data.mounts);
+      });
+
+      newSocket.on('mountDeleted', (data: { mountId: number; campaignId: number; timestamp: string }) => {
+        setCampaignMounts(prev => prev.filter(m => m.id !== data.mountId));
+      });
+
       // Listen for battle round advanced (emit to all users when DM advances round)
       newSocket.on('battleRoundAdvanced', (data: { battleId: number; round: number; timestamp: string }) => {
         if (activeBattle && activeBattle.id === data.battleId) {
@@ -3351,7 +3422,7 @@ const CampaignView: React.FC = () => {
   ] as const;
 
   const characterTabConfig: Record<
-    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup',
+    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts',
     { label: string; icon: string }
   > = {
     board: { label: 'Overview', icon: '📋' },
@@ -3361,12 +3432,17 @@ const CampaignView: React.FC = () => {
     equip: { label: 'Equipment', icon: '🛡️' },
     armies: { label: 'Armies', icon: '⚔️' },
     companion: { label: 'Companion', icon: '🐾' },
-    levelup: { label: 'Level Up', icon: '⬆️' }
+    levelup: { label: 'Level Up', icon: '⬆️' },
+    mounts: { label: 'Mounts', icon: '🐴' }
   };
 
+  const isOwnCharacter = selectedCharacterData
+    ? (user?.role === 'Dungeon Master' || canViewAllTabs(selectedCharacterData.id) || Number(selectedCharacterData.player_id) === Number(user?.id))
+    : false;
+
   const availableCharacterTabs = selectedCharacterData
-    ? (canViewAllTabs(selectedCharacterData.id)
-        ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies',
+    ? (isOwnCharacter
+        ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies', 'mounts' as const,
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
             ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])
           ] as const)
@@ -7401,6 +7477,7 @@ const CampaignView: React.FC = () => {
                 )}
               </div>
             )}
+
             </div>
               </div>
           )}
@@ -9455,6 +9532,279 @@ const CampaignView: React.FC = () => {
                   </div>
                 )}
                 
+                {/* Mounts Tab */}
+                {activeTab === 'mounts' && (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (() => {
+                  const isDM = user?.role === 'Dungeon Master';
+                  const isMyCharacter = selectedCharacterData.player_id === user?.id;
+                  const canEquip = isDM || isMyCharacter;
+
+                  // Mounts assigned to the currently viewed character
+                  const myMounts = campaignMounts.filter(m =>
+                    Number(m.assigned_to_character_id) === Number(selectedCharacterData.id)
+                  );
+                  // The equipped mount (at most 1)
+                  const equippedMount = myMounts.find(m => m.is_equipped) ?? null;
+                  // Mounts assigned to this character that are NOT equipped
+                  const stableMount = myMounts.filter(m => !m.is_equipped);
+
+                  const statRows = (mount: Mount) => [
+                    { icon: '⚡', label: 'Speed',         value: `${mount.speed} ft` },
+                    ...(mount.fly_speed > 0 ? [{ icon: '🦅', label: 'Fly Speed', value: `${mount.fly_speed} ft` }] : []),
+                    { icon: '❤️', label: 'HP',            value: String(mount.hp) },
+                    { icon: '🛡️', label: 'AC',            value: String(mount.ac) },
+                    { icon: '📦', label: 'Carry',         value: `${mount.carrying_capacity} lbs` },
+                    { icon: '🔗', label: 'Pull',          value: `${mount.pull_strength ?? 0} lbs` },
+                    { icon: '🔋', label: 'Stamina',       value: mount.stamina ?? '—' },
+                    { icon: '⚔️', label: 'Max Armor',     value: mount.max_rider_armor ?? '—' },
+                  ];
+
+                  const handleToggleEquip = async (mount: Mount) => {
+                    try {
+                      if (mount.is_equipped) {
+                        const updated = await mountAPI.unequipMount(mount.id);
+                        setCampaignMounts(prev => prev.map(m => m.id === updated.id ? { ...m, is_equipped: false } : m));
+                      } else {
+                        await mountAPI.equipMount(mount.id);
+                        // Unequip all mounts for this character, then equip this one
+                        setCampaignMounts(prev => prev.map(m => {
+                          if (Number(m.assigned_to_character_id) === Number(mount.assigned_to_character_id)) {
+                            return { ...m, is_equipped: m.id === mount.id };
+                          }
+                          return m;
+                        }));
+                      }
+                    } catch (err) {
+                      console.error('Error toggling mount equip:', err);
+                    }
+                  };
+
+                  return (
+                    <div className="glass-panel">
+                      {/* ── Header ── */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🐴 Mounts</h5>
+                        {isDM && (
+                          <button
+                            onClick={() => {
+                              setMountModalMode('add');
+                              setMountModalStep('choose');
+                              setMountFormData({
+                                name: '', mount_type: 'Custom', description: '',
+                                speed: 60, fly_speed: 0, hp: 30, ac: 10,
+                                carrying_capacity: 480, pull_strength: 1000,
+                                stamina: 'Medium', max_rider_armor: 'Any', purpose: '',
+                                assigned_to_character_id: selectedCharacterData.id, image_url: undefined
+                              });
+                              setMountImageFile(null);
+                              setMountImagePreviewUrl(null);
+                              setEditingMountId(null);
+                              setShowAddMountModal(true);
+                            }}
+                            style={{
+                              padding: '8px 16px', backgroundColor: '#7c3aed', color: '#fff',
+                              border: 'none', borderRadius: '6px', fontSize: '14px',
+                              fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#6d28d9'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7c3aed'}
+                          >+ Add Mount</button>
+                        )}
+                      </div>
+
+                      {/* ── EQUIPPED MOUNT hero card ── */}
+                      {equippedMount && (() => {
+                        const imgUrl = equippedMount.image_url ? getImageUrl(equippedMount.image_url) : undefined;
+                        return (
+                          <div style={{
+                            background: 'linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(76,29,149,0.12) 100%)',
+                            border: '2px solid rgba(167,139,250,0.55)',
+                            borderRadius: '1rem',
+                            overflow: 'hidden',
+                            marginBottom: '2rem',
+                            boxShadow: '0 0 40px rgba(124,58,237,0.2)'
+                          }}>
+                            {/* Riding banner */}
+                            <div style={{
+                              background: 'linear-gradient(90deg, rgba(124,58,237,0.8), rgba(109,40,217,0.6))',
+                              padding: '0.4rem 1.2rem',
+                              display: 'flex', alignItems: 'center', gap: '0.6rem'
+                            }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#e9d5ff', letterSpacing: '1px' }}>▶ CURRENTLY RIDING</span>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+                              {/* Full image — left half */}
+                              <div style={{ position: 'relative', minHeight: '300px', background: '#0a0a15' }}>
+                                {imgUrl ? (
+                                  <img
+                                    src={imgUrl}
+                                    alt={equippedMount.name}
+                                    onClick={() => setViewImageModal({ imageUrl: imgUrl, name: equippedMount.name })}
+                                    style={{
+                                      width: '100%', height: '100%', minHeight: '300px',
+                                      objectFit: 'contain', objectPosition: 'center',
+                                      display: 'block', cursor: 'pointer'
+                                    }}
+                                  />
+                                ) : (
+                                  <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem', opacity: 0.25 }}>🐴</div>
+                                )}
+                              </div>
+
+                              {/* Stats — right half */}
+                              <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                                {/* Name + type */}
+                                <div>
+                                  <h3 style={{ margin: '0 0 0.3rem', color: 'var(--text-gold)', fontSize: '1.4rem' }}>{equippedMount.name}</h3>
+                                  <span style={{
+                                    fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '999px',
+                                    background: 'rgba(212,193,156,0.1)', border: '1px solid rgba(212,193,156,0.3)',
+                                    color: 'var(--text-muted)'
+                                  }}>{equippedMount.mount_type}</span>
+                                </div>
+
+                                {/* Purpose */}
+                                {equippedMount.purpose && (
+                                  <div style={{
+                                    fontSize: '0.78rem', color: '#c4b5fd',
+                                    background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.35)',
+                                    borderRadius: '999px', padding: '0.2rem 0.75rem', display: 'inline-block', alignSelf: 'flex-start'
+                                  }}>{equippedMount.purpose}</div>
+                                )}
+
+                                {/* Description */}
+                                {equippedMount.description && (
+                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                                    {equippedMount.description}
+                                  </p>
+                                )}
+
+                                {/* Stat grid */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem 0.75rem', marginTop: '0.25rem' }}>
+                                  {statRows(equippedMount).map(({ icon, label, value }) => (
+                                    <div key={label} style={{
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                      background: 'rgba(255,255,255,0.04)', borderRadius: '0.4rem',
+                                      padding: '0.3rem 0.6rem', border: '1px solid rgba(212,193,156,0.1)'
+                                    }}>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{icon} {label}</span>
+                                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Assigned to */}
+                                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 'auto' }}>
+                                  👤 <strong style={{ color: 'var(--text-gold)' }}>{equippedMount.character_name ?? selectedCharacterData.name}</strong>
+                                </div>
+
+                                {/* Dismount button */}
+                                {canEquip && (
+                                  <button
+                                    onClick={() => handleToggleEquip(equippedMount)}
+                                    style={{
+                                      padding: '0.6rem 1rem', borderRadius: '0.5rem',
+                                      border: '1px solid rgba(167,139,250,0.5)',
+                                      background: 'rgba(124,58,237,0.25)',
+                                      color: '#c4b5fd', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold'
+                                    }}
+                                  >⛺ Dismount</button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* DM edit/delete bar */}
+                            {isDM && (
+                              <div style={{
+                                display: 'flex', gap: '0.5rem', padding: '0.6rem 1rem',
+                                borderTop: '1px solid rgba(212,193,156,0.1)', background: 'rgba(0,0,0,0.2)'
+                              }}>
+                                <button
+                                  onClick={() => {
+                                    setMountModalMode('edit'); setMountModalStep('configure');
+                                    setEditingMountId(equippedMount.id);
+                                    setMountFormData({ name: equippedMount.name, mount_type: equippedMount.mount_type, description: equippedMount.description || '', speed: equippedMount.speed, fly_speed: equippedMount.fly_speed, hp: equippedMount.hp, ac: equippedMount.ac, carrying_capacity: equippedMount.carrying_capacity, pull_strength: equippedMount.pull_strength ?? 1000, stamina: equippedMount.stamina ?? 'Medium', max_rider_armor: equippedMount.max_rider_armor ?? 'Any', purpose: equippedMount.purpose ?? '', assigned_to_character_id: equippedMount.assigned_to_character_id ?? null, image_url: equippedMount.image_url });
+                                    setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true);
+                                  }}
+                                  style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
+                                >✏️ Edit</button>
+                                <button
+                                  onClick={async () => {
+                                    if (!window.confirm(`Delete "${equippedMount.name}"?`)) return;
+                                    try { await mountAPI.deleteMount(equippedMount.id); setCampaignMounts(prev => prev.filter(m => m.id !== equippedMount.id)); } catch (err) { console.error(err); }
+                                  }}
+                                  style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
+                                >🗑️ Delete</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* ── No mounts yet ── */}
+                      {myMounts.length === 0 && (
+                        <div style={{ minHeight: '260px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(212,193,156,0.25)', borderRadius: '0.75rem', padding: '2.5rem' }}>
+                          <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.4 }}>🐴</div>
+                          <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Mounts</h4>
+                          <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '440px' }}>
+                            {isDM ? 'Use the "+ Add Mount" button to give this character a mount.' : 'The Dungeon Master hasn\'t given you a mount yet.'}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* ── Stable: mounts assigned to this character (not equipped) ── */}
+                      {stableMount.length > 0 && (
+                        <div style={{ marginBottom: '1.5rem' }}>
+                          <h6 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', marginBottom: '0.85rem' }}>
+                            🏠 Stable
+                          </h6>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '1rem' }}>
+                            {stableMount.map((mount) => {
+                              const imgUrl = mount.image_url ? getImageUrl(mount.image_url) : undefined;
+                              return (
+                                <div key={mount.id} style={{ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(212,193,156,0.18)', borderRadius: '0.75rem', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                  {imgUrl ? (
+                                    <img src={imgUrl} alt={mount.name} onClick={() => setViewImageModal({ imageUrl: imgUrl, name: mount.name })} style={{ width: '100%', height: '180px', objectFit: 'contain', objectPosition: 'center', background: '#0a0a15', cursor: 'pointer', display: 'block' }} />
+                                  ) : (
+                                    <div style={{ height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', fontSize: '3.5rem', opacity: 0.3 }}>🐴</div>
+                                  )}
+                                  <div style={{ padding: '0.85rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '0.5rem' }}>
+                                      <h4 style={{ margin: 0, color: 'var(--text-gold)', fontSize: '0.95rem' }}>{mount.name}</h4>
+                                      <span style={{ fontSize: '0.67rem', padding: '0.15rem 0.45rem', borderRadius: '999px', background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{mount.mount_type}</span>
+                                    </div>
+                                    {mount.purpose && <div style={{ fontSize: '0.7rem', color: '#c4b5fd', background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: '999px', padding: '0.1rem 0.5rem', display: 'inline-block', alignSelf: 'flex-start' }}>{mount.purpose}</div>}
+                                    {mount.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{mount.description}</div>}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 0.5rem', marginTop: '0.15rem' }}>
+                                      {statRows(mount).map(({ icon, label, value }) => (
+                                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', padding: '0.2rem 0.4rem', background: 'rgba(255,255,255,0.04)', borderRadius: '0.3rem' }}>
+                                          <span style={{ color: 'var(--text-muted)' }}>{icon} {label}</span>
+                                          <span style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>{value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                                      {canEquip && (
+                                        <button onClick={() => handleToggleEquip(mount)} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(34,197,94,0.5)', background: 'rgba(34,197,94,0.15)', color: '#4ade80', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}>▶ Mount</button>
+                                      )}
+                                      {isDM && (
+                                        <>
+                                          <button onClick={() => { setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id); setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url }); setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true); }} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.12)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem' }}>✏️ Edit</button>
+                                          <button onClick={async () => { if (!window.confirm(`Delete "${mount.name}"?`)) return; try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } }} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>🗑️</button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Show access denied message for restricted tabs */}
                 {(activeTab === 'inventory' || activeTab === 'equip' || activeTab === 'armies') && !canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
@@ -11478,6 +11828,407 @@ const CampaignView: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* ─── ADD / EDIT MOUNT MODAL ─────────────────────────────────── */}
+        {showAddMountModal && (() => {
+          // Template definitions
+          const MOUNT_TEMPLATES = [
+            // ── Light / Speed horses ──
+            { type: 'Thoroughbred',    speed: 70, fly_speed: 0, hp: 25, ac: 10, carrying_capacity: 380, pull_strength: 800,  stamina: 'Low',         max_rider_armor: 'Light',  purpose: 'Racing · Courier',              description: 'The fastest horse alive — bred for racing and lightning-fast courier runs.', image: '/images/Mounts/Thoroughbred.jpg' },
+            { type: 'Arabian',         speed: 65, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 420, pull_strength: 900,  stamina: 'High',        max_rider_armor: 'Medium', purpose: 'Long Travel · Scouting',        description: 'A fierce desert breed with near-supernatural stamina and agility.', image: '/images/Mounts/Arabian.jpg' },
+            { type: 'Akhal-Teke',      speed: 65, fly_speed: 0, hp: 26, ac: 10, carrying_capacity: 400, pull_strength: 850,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Speed · Heat Endurance',        description: 'A gleaming golden-coated horse from the eastern steppes, prized for speed and heat endurance.', image: '/images/Mounts/AkhalTeke.jpg' },
+            { type: 'Barb',            speed: 60, fly_speed: 0, hp: 30, ac: 11, carrying_capacity: 440, pull_strength: 950,  stamina: 'High',        max_rider_armor: 'Medium', purpose: 'Desert Travel · Scouting',      description: 'A hardy North African breed — nimble, durable, and at home in arid terrain.', image: '/images/Mounts/Barb.jpg' },
+            { type: 'Mustang',         speed: 60, fly_speed: 0, hp: 33, ac: 11, carrying_capacity: 440, pull_strength: 1000, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Wilderness · Survival',         description: 'A wild-born free-roaming horse. Fiercely independent but devastatingly resilient.', image: '/images/Mounts/Mustang.jpg' },
+            // ── All-Rounder / Riding horses ──
+            { type: 'Quarter Horse',   speed: 60, fly_speed: 0, hp: 35, ac: 11, carrying_capacity: 480, pull_strength: 1100, stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'All-Purpose · General Riding',  description: 'The dependable workhorse of adventurers — balanced speed, strength, and temperament.', image: '/images/Mounts/QuarterHorse.jpg' },
+            { type: 'Appaloosa',       speed: 55, fly_speed: 0, hp: 30, ac: 10, carrying_capacity: 460, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'Trail Riding · Wilderness',     description: 'A spotted trail horse famously sure-footed across rough wilderness terrain.', image: '/images/Mounts/Appaloosa.jpg' },
+            { type: 'Mongolian Horse', speed: 55, fly_speed: 0, hp: 36, ac: 11, carrying_capacity: 450, pull_strength: 1050, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Endurance · Long Campaigns',    description: 'Short and stocky, bred for the endless steppe. Unmatched long-distance endurance.', image: '/images/Mounts/MongolianHorse.jpg' },
+            { type: 'Paso Fino',       speed: 50, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 380, pull_strength: 800,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Comfortable Travel · Long Roads', description: 'A smooth-gaited horse whose effortless stride makes long travel far less exhausting.', image: '/images/Mounts/PasoFino.jpg' },
+            { type: 'Marwari',         speed: 55, fly_speed: 0, hp: 38, ac: 11, carrying_capacity: 460, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry · Battle',              description: 'An Indian cavalry breed with distinctive inward-curving ears, loyal to the death.', image: '/images/Mounts/Marwari.jpg' },
+            // ── War / Battle horses ──
+            { type: 'Destrier',        speed: 60, fly_speed: 0, hp: 55, ac: 13, carrying_capacity: 520, pull_strength: 1200, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Heavy Cavalry · Front Lines',   description: 'The great medieval warhorse. Huge, fearless, trained to fight alongside its rider.', image: '/images/Mounts/Destrier.jpg' },
+            { type: 'Friesian',        speed: 55, fly_speed: 0, hp: 48, ac: 12, carrying_capacity: 500, pull_strength: 1100, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Heavy Cavalry · Intimidation',  description: 'A powerful jet-black warhorse. Imposing in appearance and deadly on the battlefield.', image: '/images/Mounts/Friesian.jpg' },
+            { type: 'Andalusian',      speed: 60, fly_speed: 0, hp: 40, ac: 12, carrying_capacity: 480, pull_strength: 1050, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry · Combat Maneuvers',    description: 'A noble battle horse of royal lineage, agile enough for both parade and war.', image: '/images/Mounts/Andalusian.jpg' },
+            { type: 'Lusitano',        speed: 55, fly_speed: 0, hp: 42, ac: 12, carrying_capacity: 480, pull_strength: 1050, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry · Combat',              description: 'A Portuguese warhorse bred to fight bulls — collected, courageous, and intensely responsive.', image: '/images/Mounts/Lusitano.jpg' },
+            { type: 'Lipizzaner',      speed: 50, fly_speed: 0, hp: 35, ac: 11, carrying_capacity: 430, pull_strength: 950,  stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'Combat Tricks · Light Cavalry', description: 'A dressage-trained cavalry horse capable of leaping and striking maneuvers in combat.', image: '/images/Mounts/Lipizzaner.jpg' },
+            // ── Draft / Cargo horses ──
+            { type: 'Shire',           speed: 40, fly_speed: 0, hp: 52, ac: 11, carrying_capacity: 640, pull_strength: 2000, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo · Hauling',               description: 'The mightiest of draft horses. Can haul staggering loads and shrug off blows.', image: '/images/Mounts/Shire.jpg' },
+            { type: 'Clydesdale',      speed: 40, fly_speed: 0, hp: 46, ac: 10, carrying_capacity: 600, pull_strength: 1800, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo · Wagon Pulling',         description: 'A feathered-footed draft horse bred to haul heavy wagons and supplies across the realm.', image: '/images/Mounts/Clydesdale.jpg' },
+            { type: 'Percheron',       speed: 45, fly_speed: 0, hp: 48, ac: 11, carrying_capacity: 580, pull_strength: 1600, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo · Heavy Cavalry',         description: 'A dapple-grey French draft horse — strength of a Shire with slightly more agility.', image: '/images/Mounts/Percheron.jpg' },
+            // ── Small / Pony breeds ──
+            { type: 'Icelandic Horse', speed: 40, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 320, pull_strength: 700,  stamina: 'Exceptional', max_rider_armor: 'Light',  purpose: 'Mountain Travel · Cold Weather', description: 'A small but extraordinarily tough mountain breed. Never gets lost, never tires in snow.', image: '/images/Mounts/IcelandicHorse.jpg' },
+            { type: 'Fell Pony',       speed: 40, fly_speed: 0, hp: 24, ac: 10, carrying_capacity: 300, pull_strength: 650,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Rough Terrain · Small Riders',  description: 'A rugged northern pony, sure-footed on moorland and resistant to harsh weather.', image: '/images/Mounts/FellPony.jpg' },
+            // ── Camels ──
+            { type: 'Dromedary Camel', speed: 50, fly_speed: 0, hp: 32, ac: 10, carrying_capacity: 520, pull_strength: 1200, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Desert Travel · Light Cargo',   description: 'A single-humped desert camel. Barely needs water and never falters in scorching heat.', image: '/images/Mounts/DromedaryCamel.jpg' },
+            { type: 'Bactrian Camel',  speed: 40, fly_speed: 0, hp: 40, ac: 10, carrying_capacity: 600, pull_strength: 1500, stamina: 'Exceptional', max_rider_armor: 'Any',    purpose: 'Cold Desert · Heavy Cargo',     description: 'A two-humped camel built for cold mountain deserts. Carries extraordinary cargo loads.', image: '/images/Mounts/BactrianCamel.jpg' },
+            // ── Custom ──
+            { type: 'Custom',          speed: 60, fly_speed: 0, hp: 30, ac: 10, carrying_capacity: 480, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Any',    purpose: '',                              description: '', image: null }
+          ];
+
+          const inputStyle = {
+            width: '100%',
+            padding: '0.6rem 0.75rem',
+            background: 'rgba(0,0,0,0.35)',
+            border: '1px solid rgba(212,193,156,0.3)',
+            borderRadius: '0.5rem',
+            color: '#eee',
+            fontSize: '0.9rem',
+            boxSizing: 'border-box' as const
+          };
+
+          const labelStyle = {
+            color: '#aaa',
+            fontSize: '0.8rem',
+            marginBottom: '0.35rem',
+            display: 'block',
+            fontWeight: 'bold' as const,
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase' as const
+          };
+
+          const handleSaveMount = async () => {
+            if (!mountFormData.name?.trim()) { alert('Please enter a name.'); return; }
+            if (!currentCampaign) return;
+            try {
+              if (mountModalMode === 'add') {
+                // Always assign to the currently selected character
+                const payload = { ...mountFormData, assigned_to_character_id: selectedCharacterData?.id ?? null };
+                const newMount = await mountAPI.createMount(currentCampaign.campaign.id, payload);
+                // Upload custom image if provided; server re-broadcasts mountUpdated via socket
+                if (mountImageFile) {
+                  await mountAPI.uploadMountImage(newMount.id, mountImageFile);
+                }
+              } else if (mountModalMode === 'edit' && editingMountId) {
+                // Edit — state is updated via socket 'mountUpdated' broadcast
+                await mountAPI.updateMount(editingMountId, mountFormData);
+                if (mountImageFile) {
+                  await mountAPI.uploadMountImage(editingMountId, mountImageFile);
+                }
+              }
+              setShowAddMountModal(false);
+              setMountImageFile(null);
+              setMountImagePreviewUrl(null);
+            } catch (err) {
+              console.error('Error saving mount:', err);
+              alert('Failed to save mount. Please try again.');
+            }
+          };
+
+          return (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 1000,
+              background: 'rgba(0,0,0,0.8)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '1rem'
+            }}
+              onClick={(e) => { if (e.target === e.currentTarget) setShowAddMountModal(false); }}
+            >
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(20,10,40,0.97) 0%, rgba(10,5,25,0.97) 100%)',
+                border: '2px solid rgba(124,58,237,0.5)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                width: '100%',
+                maxWidth: mountModalStep === 'choose' ? '860px' : '580px',
+                maxHeight: '90vh',
+                overflowY: 'auto'
+              }}>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>
+                    {mountModalMode === 'edit' ? '✏️ Edit Mount' : mountModalStep === 'choose' ? '🐴 Choose Mount Type' : '🐴 Configure Mount'}
+                  </h4>
+                  <button
+                    onClick={() => setShowAddMountModal(false)}
+                    style={{ background: 'none', border: 'none', color: '#777', fontSize: '1.4rem', cursor: 'pointer' }}
+                  >×</button>
+                </div>
+
+                {/* ── STEP 1: Choose template ── */}
+                {mountModalStep === 'choose' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.85rem' }}>
+                    {MOUNT_TEMPLATES.map(tpl => (
+                      <button
+                        key={tpl.type}
+                        onClick={() => {
+                          setMountFormData({
+                            name: tpl.type === 'Custom' ? '' : tpl.type,
+                            mount_type: tpl.type,
+                            description: tpl.description,
+                            speed: tpl.speed,
+                            fly_speed: tpl.fly_speed,
+                            hp: tpl.hp,
+                            ac: tpl.ac,
+                            carrying_capacity: tpl.carrying_capacity,
+                            pull_strength: tpl.pull_strength,
+                            stamina: tpl.stamina,
+                            max_rider_armor: tpl.max_rider_armor,
+                            purpose: tpl.purpose,
+                            assigned_to_character_id: null,
+                            image_url: tpl.image || undefined
+                          });
+                          setMountModalStep('configure');
+                        }}
+                        style={{
+                          background: 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(212,193,156,0.2)',
+                          borderRadius: '0.75rem',
+                          padding: 0,
+                          cursor: 'pointer',
+                          overflow: 'hidden',
+                          textAlign: 'left',
+                          transition: 'border-color 0.2s, background 0.2s',
+                          color: 'inherit'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(124,58,237,0.12)';
+                          e.currentTarget.style.borderColor = 'rgba(167,139,250,0.5)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                          e.currentTarget.style.borderColor = 'rgba(212,193,156,0.2)';
+                        }}
+                      >
+                        {tpl.image ? (
+                          <div style={{
+                            height: '120px',
+                            backgroundImage: `url(${tpl.image})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                          }} />
+                        ) : (
+                          <div style={{
+                            height: '120px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '3rem',
+                            background: 'rgba(124,58,237,0.1)'
+                          }}>
+                            ✨
+                          </div>
+                        )}
+                        <div style={{ padding: '0.75rem' }}>
+                          <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.25rem' }}>{tpl.type}</div>
+                          {tpl.purpose && (
+                            <div style={{
+                              fontSize: '0.7rem',
+                              color: '#c4b5fd',
+                              background: 'rgba(124,58,237,0.18)',
+                              border: '1px solid rgba(167,139,250,0.3)',
+                              borderRadius: '999px',
+                              padding: '0.1rem 0.55rem',
+                              display: 'inline-block',
+                              marginBottom: '0.35rem',
+                              letterSpacing: '0.3px'
+                            }}>{tpl.purpose}</div>
+                          )}
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.4rem', lineHeight: '1.35' }}>
+                            {tpl.description || 'Create a fully custom mount with your own stats and image.'}
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                            {[
+                              `⚡${tpl.speed}ft`,
+                              ...(tpl.fly_speed > 0 ? [`🦅${tpl.fly_speed}ft`] : []),
+                              `❤️${tpl.hp} HP`,
+                              `🛡️AC ${tpl.ac}`,
+                              `📦${tpl.carrying_capacity}lbs`,
+                              ...(tpl.pull_strength > 0 ? [`🔗${tpl.pull_strength}lbs pull`] : []),
+                              `🔋${tpl.stamina}`,
+                              `⚔️${tpl.max_rider_armor} armor`
+                            ].map(s => (
+                              <span key={s} style={{
+                                fontSize: '0.68rem', padding: '0.1rem 0.4rem',
+                                borderRadius: '999px',
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(212,193,156,0.15)',
+                                color: 'var(--text-secondary)'
+                              }}>{s}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── STEP 2: Configure ── */}
+                {mountModalStep === 'configure' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Image preview */}
+                    {(mountImagePreviewUrl || mountFormData.image_url) && (
+                      <div style={{
+                        width: '100%', height: '180px',
+                        borderRadius: '0.5rem',
+                        overflow: 'hidden',
+                        border: '2px solid rgba(124,58,237,0.4)',
+                        backgroundImage: `url(${mountImagePreviewUrl || getImageUrl(mountFormData.image_url)})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }} />
+                    )}
+
+                    {/* Name */}
+                    <div>
+                      <label style={labelStyle}>Name *</label>
+                      <input
+                        value={mountFormData.name || ''}
+                        onChange={e => setMountFormData(p => ({ ...p, name: e.target.value }))}
+                        placeholder="Mount name"
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                      <label style={labelStyle}>Description</label>
+                      <textarea
+                        value={mountFormData.description || ''}
+                        onChange={e => setMountFormData(p => ({ ...p, description: e.target.value }))}
+                        rows={2}
+                        placeholder="Brief description…"
+                        style={{ ...inputStyle, resize: 'vertical' }}
+                      />
+                    </div>
+
+                    {/* Stats row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px,1fr))', gap: '0.75rem' }}>
+                      {[
+                        { key: 'speed', label: '⚡ Speed (ft)', min: 0 },
+                        { key: 'fly_speed', label: '🦅 Fly Speed (ft)', min: 0 },
+                        { key: 'hp', label: '❤️ HP', min: 1 },
+                        { key: 'ac', label: '🛡️ AC', min: 1 },
+                        { key: 'carrying_capacity', label: '📦 Carry (lbs)', min: 0 },
+                        { key: 'pull_strength', label: '🔗 Pull (lbs)', min: 0 }
+                      ].map(({ key, label, min }) => (
+                        <div key={key}>
+                          <label style={labelStyle}>{label}</label>
+                          <input
+                            type="number"
+                            min={min}
+                            value={(mountFormData as any)[key] ?? 0}
+                            onChange={e => setMountFormData(p => ({ ...p, [key]: parseInt(e.target.value) || 0 }))}
+                            style={inputStyle}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Stamina & Max Rider Armor */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={labelStyle}>🔋 Stamina</label>
+                        <select
+                          value={mountFormData.stamina ?? 'Medium'}
+                          onChange={e => setMountFormData(p => ({ ...p, stamina: e.target.value }))}
+                          style={{ ...inputStyle, cursor: 'pointer' }}
+                        >
+                          <option value="Low">Low — short bursts only</option>
+                          <option value="Medium">Medium — typical travel</option>
+                          <option value="High">High — long journeys</option>
+                          <option value="Exceptional">Exceptional — endless endurance</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>⚔️ Max Rider Armor</label>
+                        <select
+                          value={mountFormData.max_rider_armor ?? 'Any'}
+                          onChange={e => setMountFormData(p => ({ ...p, max_rider_armor: e.target.value }))}
+                          style={{ ...inputStyle, cursor: 'pointer' }}
+                        >
+                          <option value="Light">Light only</option>
+                          <option value="Medium">Up to Medium</option>
+                          <option value="Heavy">Up to Heavy</option>
+                          <option value="Any">Any (including plate)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Purpose hint */}
+                    <div>
+                      <label style={labelStyle}>🏷️ Purpose Hint</label>
+                      <input
+                        value={mountFormData.purpose ?? ''}
+                        onChange={e => setMountFormData(p => ({ ...p, purpose: e.target.value }))}
+                        placeholder="e.g. Heavy Cavalry · Combat"
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    {/* Custom image upload */}
+                    {mountFormData.mount_type === 'Custom' && (
+                      <div>
+                        <label style={labelStyle}>Upload Image</label>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setMountImageFile(file);
+                              setMountImagePreviewUrl(URL.createObjectURL(file));
+                            }
+                          }}
+                          style={{ ...inputStyle, cursor: 'pointer' }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Buttons */}
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                      {mountModalStep === 'configure' && mountModalMode === 'add' && (
+                        <button
+                          onClick={() => setMountModalStep('choose')}
+                          style={{
+                            padding: '0.7rem 1.2rem',
+                            background: 'rgba(100,100,100,0.2)',
+                            border: '1px solid #555',
+                            borderRadius: '0.5rem',
+                            color: '#bbb',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem'
+                          }}
+                        >
+                          ← Back
+                        </button>
+                      )}
+                      <button
+                        onClick={handleSaveMount}
+                        style={{
+                          flex: 1,
+                          padding: '0.7rem 1.5rem',
+                          background: 'linear-gradient(135deg, rgba(124,58,237,0.7), rgba(109,40,217,0.8))',
+                          border: '2px solid rgba(167,139,250,0.5)',
+                          borderRadius: '0.5rem',
+                          color: '#e9d5ff',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          fontSize: '0.95rem'
+                        }}
+                      >
+                        {mountModalMode === 'edit' ? '💾 Save Changes' : '✓ Create Mount'}
+                      </button>
+                      <button
+                        onClick={() => { setShowAddMountModal(false); setMountImageFile(null); setMountImagePreviewUrl(null); }}
+                        style={{
+                          padding: '0.7rem 1.2rem',
+                          background: 'rgba(100,100,100,0.2)',
+                          border: '1px solid #555',
+                          borderRadius: '0.5rem',
+                          color: '#bbb',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Image Viewer Modal */}
         {viewImageModal && (

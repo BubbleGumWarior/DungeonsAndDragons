@@ -941,4 +941,76 @@ export const beastAPI = {
   }
 };
 
+// ─── Mounts ──────────────────────────────────────────────────────────────────
+
+export interface Mount {
+  id: number;
+  campaign_id: number;
+  name: string;
+  mount_type: string;
+  description?: string;
+  speed: number;
+  fly_speed: number;
+  hp: number;
+  ac: number;
+  carrying_capacity: number;
+  pull_strength: number;
+  stamina: string;
+  max_rider_armor: string;
+  purpose?: string;
+  image_url?: string;
+  assigned_to_character_id?: number | null;
+  character_name?: string;
+  character_player_id?: number;
+  is_equipped: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const mountAPI = {
+  getCampaignMounts: async (campaignId: number): Promise<Mount[]> => {
+    const response = await api.get(`/mounts/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  createMount: async (campaignId: number, mountData: Partial<Mount>): Promise<Mount> => {
+    const response = await api.post(`/mounts/campaign/${campaignId}`, mountData);
+    return response.data;
+  },
+
+  updateMount: async (mountId: number, updates: Partial<Mount>): Promise<Mount> => {
+    const response = await api.put(`/mounts/${mountId}`, updates);
+    return response.data;
+  },
+
+  assignMount: async (mountId: number, characterId: number | null): Promise<Mount> => {
+    const response = await api.post(`/mounts/${mountId}/assign`, { character_id: characterId });
+    return response.data;
+  },
+
+  equipMount: async (mountId: number): Promise<{ message: string; mounts: Mount[] }> => {
+    const response = await api.post(`/mounts/${mountId}/equip`);
+    return response.data;
+  },
+
+  unequipMount: async (mountId: number): Promise<Mount> => {
+    const response = await api.post(`/mounts/${mountId}/unequip`);
+    return response.data;
+  },
+
+  uploadMountImage: async (mountId: number, imageFile: File): Promise<Mount> => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    const response = await api.post(`/mounts/${mountId}/image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
+
+  deleteMount: async (mountId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/mounts/${mountId}`);
+    return response.data;
+  }
+};
+
 export default api;

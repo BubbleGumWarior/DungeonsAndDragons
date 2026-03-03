@@ -19,6 +19,7 @@ const armyRoutes = require('./routes/armies');
 const skillRoutes = require('./routes/skills');
 const journalsRoutes = require('./routes/journals');
 const beastRoutes = require('./routes/beasts');
+const mountRoutes = require('./routes/mounts');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -164,6 +165,7 @@ app.use('/api/armies', armyRoutes);
 app.use('/api/monster-instances', monsterInstanceRoutes);
 app.use('/api/skills', skillRoutes);
 app.use('/api/beasts', beastRoutes);
+app.use('/api/mounts', mountRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -267,6 +269,7 @@ const startServer = async () => {
       const createBattleGoalsTable = require('./migrations/create_battle_goals_table');
       const addImageDataToCharacters = require('./migrations/add_image_data_to_characters');
       const cleanupOldImagePaths = require('./migrations/cleanup_old_image_paths');
+      const addMountsTable = require('./migrations/add_mounts_table');
       
       // Execute migrations in correct order
       const migrations = [
@@ -291,7 +294,8 @@ const startServer = async () => {
         { name: 'createBattleGoalsTable', fn: createBattleGoalsTable },
         { name: 'fixEliteArmyCategories', fn: fixEliteArmyCategories },
         { name: 'addImageDataToCharacters', fn: addImageDataToCharacters },
-        { name: 'cleanupOldImagePaths', fn: cleanupOldImagePaths }
+        { name: 'cleanupOldImagePaths', fn: cleanupOldImagePaths },
+        { name: 'addMountsTable', fn: addMountsTable }
       ];
       
       for (const migration of migrations) {
