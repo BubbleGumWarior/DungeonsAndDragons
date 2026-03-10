@@ -44,22 +44,22 @@ module.exports = (socket, io) => {
     }
   });
 
-  // Handle skill proficiency updates
-  socket.on('skillProficiencyToggled', (data) => {
+  // Handle character text field updates (backstory, personality traits, ideals, bonds, flaws)
+  socket.on('characterFieldUpdated', (data) => {
+    console.log('📥 Backend received characterFieldUpdated:', data);
     try {
-      const { campaignId, characterId, skillName, isAdding } = data;
-      // Broadcast to all users in the campaign
-      io.to(`campaign_${campaignId}`).emit('skillProficiencyToggled', {
+      const { campaignId, characterId, field, value } = data;
+      io.to(`campaign_${campaignId}`).emit('characterFieldUpdated', {
         campaignId,
         characterId,
-        skillName,
-        isAdding,
+        field,
+        value,
         timestamp: new Date().toISOString()
       });
-      const action = isAdding ? 'added to' : 'removed from';
-      console.log(`✨ Skill update: ${skillName} ${action} character ${characterId}`);
+      console.log(`📝 Field update: Character ${characterId} ${field} updated`);
     } catch (error) {
-      console.error('Error handling skill proficiency toggle:', error);
+      console.error('Error handling character field update:', error);
     }
   });
 };
+

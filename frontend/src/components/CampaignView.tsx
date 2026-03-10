@@ -254,6 +254,12 @@ const CampaignView: React.FC = () => {
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
   const [socket, setSocket] = useState<any>(null);
   
+  // Ref to store socket for handlers (avoids stale closure in async callbacks)
+  const socketRef = useRef<any>(null);
+  useEffect(() => {
+    socketRef.current = socket;
+  }, [socket]);
+
   // Ref to store current campaign for socket listeners (avoids stale closure)
   const currentCampaignRef = useRef(currentCampaign);
   useEffect(() => {
@@ -394,6 +400,8 @@ const CampaignView: React.FC = () => {
   const [goalSelections, setGoalSelections] = useState<Record<number, { goalKey?: string; targetId?: number | null; activeTab?: 'attacking' | 'defending' | 'logistics' | 'commander' | 'unique' }>>({});
   const [goalEdits, setGoalEdits] = useState<Record<number, { casualties_target: number; casualties_self: number; score_change_target: number; score_change_self: number; notes?: string }>>({});
   const [showBackstoryModal, setShowBackstoryModal] = useState(false);
+  const [deleteCharacterFieldModal, setDeleteCharacterFieldModal] = useState<{ isOpen: boolean; characterId: number | null; field: string; fieldLabel: string }>({ isOpen: false, characterId: null, field: '', fieldLabel: '' });
+  const [editCharacterFieldModal, setEditCharacterFieldModal] = useState<{ isOpen: boolean; characterId: number | null; field: string; fieldLabel: string; value: string }>({ isOpen: false, characterId: null, field: '', fieldLabel: '', value: '' });
   const [showAddArmyModal, setShowAddArmyModal] = useState(false);
   const [newArmyData, setNewArmyData] = useState<{
     name: string;
@@ -1095,6 +1103,77 @@ const CampaignView: React.FC = () => {
       console.error('Error creating battle:', error);
       alert('Failed to create battle');
     }
+  };
+
+  // Delete a character's text field (DM only)
+  const handleDeleteCharacterField = async () => {
+    const { characterId, field, fieldLabel } = deleteCharacterFieldModal;
+    if (!characterId || !field) return;
+    try {
+      await characterAPI.update(characterId, {
+        [field]: ''
+      });
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          [field]: ''
+        }
+      }));
+      if (field === 'backstory') setBackstoryPage(0);
+      const activeSocket = socketRef.current;
+      const activeCampaign = currentCampaignRef.current;
+      console.log('📤 characterFieldUpdated delete — socket:', !!activeSocket, 'campaign:', activeCampaign?.campaign.id);
+      if (activeSocket && activeCampaign) {
+        activeSocket.emit('characterFieldUpdated', {
+          campaignId: activeCampaign.campaign.id,
+          characterId,
+          field,
+          value: ''
+        });
+      }
+      setToastMessage(`${fieldLabel} deleted`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error deleting character field:', error);
+      alert('Failed to delete field');
+    }
+    setDeleteCharacterFieldModal({ isOpen: false, characterId: null, field: '', fieldLabel: '' });
+  };
+
+  // Save a character's text field (player add/edit)
+  const handleSaveCharacterField = async () => {
+    const { characterId, field, fieldLabel, value } = editCharacterFieldModal;
+    if (!characterId || !field) return;
+    try {
+      await characterAPI.update(characterId, {
+        [field]: value
+      });
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          [field]: value
+        }
+      }));
+      const activeSocket = socketRef.current;
+      const activeCampaign = currentCampaignRef.current;
+      console.log('📤 characterFieldUpdated save — socket:', !!activeSocket, 'campaign:', activeCampaign?.campaign.id);
+      if (activeSocket && activeCampaign) {
+        activeSocket.emit('characterFieldUpdated', {
+          campaignId: activeCampaign.campaign.id,
+          characterId,
+          field,
+          value
+        });
+      }
+      setToastMessage(`${fieldLabel} saved`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error saving character field:', error);
+      alert('Failed to save field');
+    }
+    setEditCharacterFieldModal({ isOpen: false, characterId: null, field: '', fieldLabel: '', value: '' });
   };
 
 
@@ -2580,6 +2659,27 @@ const CampaignView: React.FC = () => {
         }
       });
       
+      // Listen for character text field updates (backstory, traits, ideals, bonds, flaws)
+      newSocket.on('characterFieldUpdated', (data: {
+        campaignId: number;
+        characterId: number;
+        field: string;
+        value: string;
+        timestamp: string;
+      }) => {
+        const campaign = currentCampaignRef.current;
+        if (campaign && campaign.campaign.id === data.campaignId) {
+          setCharacterDataOverrides(prev => ({
+            ...prev,
+            [data.characterId]: {
+              ...prev[data.characterId],
+              [data.field]: data.value
+            }
+          }));
+          if (data.field === 'backstory' && !data.value) setBackstoryPage(0);
+        }
+      });
+
       setSocket(newSocket);
       
       return () => {
@@ -8064,10 +8164,30 @@ const CampaignView: React.FC = () => {
                         </div>
                       </div>
                       <div className="character-overview-right">
-                        {selectedCharacterData.backstory && (
+                        {(selectedCharacterData.backstory || canViewAllTabs(selectedCharacterData.id)) && (
                           <div style={{ marginTop: '2rem' }}>
-                            <h6 className="text-gold">Backstory</h6>
-                            {(() => {
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                              <h6 className="text-gold" style={{ margin: 0 }}>Backstory</h6>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.backstory && (
+                                  <button
+                                    onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory', value: '' })}
+                                    style={{ padding: '0.2rem 0.55rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                  >
+                                    + Add
+                                  </button>
+                                )}
+                                {user?.role === 'Dungeon Master' && selectedCharacterData.backstory && (
+                                  <button
+                                    onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory' })}
+                                    style={{ padding: '0.2rem 0.55rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                  >
+                                    🗑️ Delete
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {selectedCharacterData.backstory ? (() => {
                               const pages = paginateBackstory(selectedCharacterData.backstory);
                               const currentPage = Math.min(backstoryPage, pages.length - 1);
                               
@@ -8286,77 +8406,113 @@ const CampaignView: React.FC = () => {
                               </div>
                             </div>
                           );
-                            })()}
+                            })() : (
+                              <div style={{ padding: '1.5rem', backgroundColor: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px dashed rgba(212, 193, 156, 0.25)', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                No backstory written yet.
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {/* Personality Traits, Ideals, Bonds, and Flaws */}
-                        {(selectedCharacterData.personality_traits || selectedCharacterData.ideals || selectedCharacterData.bonds || selectedCharacterData.flaws) && (
+                        {(selectedCharacterData.personality_traits || selectedCharacterData.ideals || selectedCharacterData.bonds || selectedCharacterData.flaws || canViewAllTabs(selectedCharacterData.id)) && (
                           <div style={{ marginTop: '2rem' }}>
                             <h6 className="text-gold">Personality</h6>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-                              {selectedCharacterData.personality_traits && (
+                              {(selectedCharacterData.personality_traits || canViewAllTabs(selectedCharacterData.id)) && (
                                 <div>
-                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Personality Traits</strong>
-                                  <div style={{ 
-                                    padding: '0.75rem', 
-                                    backgroundColor: 'rgba(212, 193, 156, 0.1)', 
-                                    borderRadius: '6px', 
-                                    border: '1px solid rgba(212, 193, 156, 0.2)',
-                                    fontSize: '0.9rem',
-                                    whiteSpace: 'pre-wrap',
-                                    lineHeight: '1.5'
-                                  }}>
-                                    {selectedCharacterData.personality_traits}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <strong style={{ color: 'var(--text-gold)' }}>Personality Traits</strong>
+                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.personality_traits && (
+                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                                          +
+                                        </button>
+                                      )}
+                                      {user?.role === 'Dungeon Master' && selectedCharacterData.personality_traits && (
+                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
+                                      )}
+                                    </div>
                                   </div>
+                                  {selectedCharacterData.personality_traits ? (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(212, 193, 156, 0.1)', borderRadius: '6px', border: '1px solid rgba(212, 193, 156, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                                      {selectedCharacterData.personality_traits}
+                                    </div>
+                                  ) : (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(212, 193, 156, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
+                                  )}
                                 </div>
                               )}
-                              {selectedCharacterData.ideals && (
+                              {(selectedCharacterData.ideals || canViewAllTabs(selectedCharacterData.id)) && (
                                 <div>
-                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Ideals</strong>
-                                  <div style={{ 
-                                    padding: '0.75rem', 
-                                    backgroundColor: 'rgba(212, 193, 156, 0.1)', 
-                                    borderRadius: '6px', 
-                                    border: '1px solid rgba(212, 193, 156, 0.2)',
-                                    fontSize: '0.9rem',
-                                    whiteSpace: 'pre-wrap',
-                                    lineHeight: '1.5'
-                                  }}>
-                                    {selectedCharacterData.ideals}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <strong style={{ color: 'var(--text-gold)' }}>Ideals</strong>
+                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.ideals && (
+                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                                          +
+                                        </button>
+                                      )}
+                                      {user?.role === 'Dungeon Master' && selectedCharacterData.ideals && (
+                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
+                                      )}
+                                    </div>
                                   </div>
+                                  {selectedCharacterData.ideals ? (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(212, 193, 156, 0.1)', borderRadius: '6px', border: '1px solid rgba(212, 193, 156, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                                      {selectedCharacterData.ideals}
+                                    </div>
+                                  ) : (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(212, 193, 156, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
+                                  )}
                                 </div>
                               )}
-                              {selectedCharacterData.bonds && (
+                              {(selectedCharacterData.bonds || canViewAllTabs(selectedCharacterData.id)) && (
                                 <div>
-                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-gold)' }}>Bonds</strong>
-                                  <div style={{ 
-                                    padding: '0.75rem', 
-                                    backgroundColor: 'rgba(212, 193, 156, 0.1)', 
-                                    borderRadius: '6px', 
-                                    border: '1px solid rgba(212, 193, 156, 0.2)',
-                                    fontSize: '0.9rem',
-                                    whiteSpace: 'pre-wrap',
-                                    lineHeight: '1.5'
-                                  }}>
-                                    {selectedCharacterData.bonds}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <strong style={{ color: 'var(--text-gold)' }}>Bonds</strong>
+                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.bonds && (
+                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                                          +
+                                        </button>
+                                      )}
+                                      {user?.role === 'Dungeon Master' && selectedCharacterData.bonds && (
+                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
+                                      )}
+                                    </div>
                                   </div>
+                                  {selectedCharacterData.bonds ? (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(212, 193, 156, 0.1)', borderRadius: '6px', border: '1px solid rgba(212, 193, 156, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                                      {selectedCharacterData.bonds}
+                                    </div>
+                                  ) : (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(212, 193, 156, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
+                                  )}
                                 </div>
                               )}
-                              {selectedCharacterData.flaws && (
+                              {(selectedCharacterData.flaws || canViewAllTabs(selectedCharacterData.id)) && (
                                 <div>
-                                  <strong style={{ display: 'block', marginBottom: '0.5rem', color: '#ff6b6b' }}>Flaws</strong>
-                                  <div style={{ 
-                                    padding: '0.75rem', 
-                                    backgroundColor: 'rgba(220, 53, 69, 0.1)', 
-                                    borderRadius: '6px', 
-                                    border: '1px solid rgba(220, 53, 69, 0.2)',
-                                    fontSize: '0.9rem',
-                                    whiteSpace: 'pre-wrap',
-                                    lineHeight: '1.5'
-                                  }}>
-                                    {selectedCharacterData.flaws}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <strong style={{ color: '#ff6b6b' }}>Flaws</strong>
+                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.flaws && (
+                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                                          +
+                                        </button>
+                                      )}
+                                      {user?.role === 'Dungeon Master' && selectedCharacterData.flaws && (
+                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
+                                      )}
+                                    </div>
                                   </div>
+                                  {selectedCharacterData.flaws ? (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(220, 53, 69, 0.1)', borderRadius: '6px', border: '1px solid rgba(220, 53, 69, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                                      {selectedCharacterData.flaws}
+                                    </div>
+                                  ) : (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(220, 53, 69, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -11482,6 +11638,51 @@ const CampaignView: React.FC = () => {
           onClose={() => setDeleteImageModal({ isOpen: false, characterId: null })}
           isDangerous={true}
         />
+
+        {/* Delete Character Field Confirmation Modal (DM only) */}
+        <ConfirmationModal
+          isOpen={deleteCharacterFieldModal.isOpen}
+          title={`Delete ${deleteCharacterFieldModal.fieldLabel}`}
+          message={`Are you sure you want to delete this character's ${deleteCharacterFieldModal.fieldLabel}? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={handleDeleteCharacterField}
+          onClose={() => setDeleteCharacterFieldModal({ isOpen: false, characterId: null, field: '', fieldLabel: '' })}
+          isDangerous={true}
+        />
+
+        {/* Edit / Add Character Field Modal (player) */}
+        {editCharacterFieldModal.isOpen && (
+          <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
+            <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid var(--primary-gold, #d4c19c)', borderRadius: '12px', padding: '2rem', maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+              <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', marginTop: 0 }}>
+                {editCharacterFieldModal.value ? '✏️ Edit ' : '+ Add '}{editCharacterFieldModal.fieldLabel}
+              </h5>
+              <textarea
+                value={editCharacterFieldModal.value}
+                onChange={(e) => setEditCharacterFieldModal(prev => ({ ...prev, value: e.target.value }))}
+                placeholder={`Enter ${editCharacterFieldModal.fieldLabel.toLowerCase()}...`}
+                style={{ width: '100%', minHeight: '200px', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-primary, #e8e0d0)', border: '1px solid rgba(212, 193, 156, 0.3)', borderRadius: '8px', fontSize: '0.95rem', fontFamily: 'inherit', resize: 'vertical', lineHeight: '1.6', boxSizing: 'border-box', outline: 'none' }}
+              />
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button
+                  onClick={() => setEditCharacterFieldModal({ isOpen: false, characterId: null, field: '', fieldLabel: '', value: '' })}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.5rem 1.25rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveCharacterField}
+                  className="btn btn-primary"
+                  style={{ padding: '0.5rem 1.25rem' }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Reset Combat Confirmation Modal */}
         <ConfirmationModal
