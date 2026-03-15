@@ -1524,6 +1524,38 @@ const CampaignView: React.FC = () => {
     }
   };
 
+  const handleUpdateMovementSpeed = async (characterId: number, increment: number) => {
+    try {
+      const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
+      if (!currentCharacter || !socket || !currentCampaign) return;
+
+      const characterOverride = characterDataOverrides[characterId];
+      const currentSpeed = (characterOverride?.movement_speed ?? currentCharacter.movement_speed ?? 30) as number;
+      const newSpeed = currentSpeed + increment;
+
+      if (newSpeed < 0 || newSpeed > 120) {
+        alert('Movement Speed must be between 0 and 120');
+        return;
+      }
+
+      await characterAPI.update(characterId, { movement_speed: newSpeed });
+
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          movement_speed: newSpeed
+        }
+      }));
+
+      setToastMessage(`Movement Speed updated to ${newSpeed}ft`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error updating movement speed:', error);
+      alert('Failed to update movement speed');
+    }
+  };
+
   // Skill Proficiency Toggle (for dungeonmaster to add/remove proficiency)
   const handleToggleSkillProficiency = async (characterId: number, skillName: string) => {
     try {
@@ -4235,7 +4267,7 @@ const CampaignView: React.FC = () => {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: onlineUserIds.has(character.player_id) ? 'var(--text-gold)' : 'white' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: onlineUserIds.has(character.player_id) ? 'var(--text-gold)' : 'white' }}>
                         {character.name}
                       </div>
                       {characters.length > 1 && selectedCharacter === character.id && (
@@ -4251,7 +4283,12 @@ const CampaignView: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {character.background && (
+                      <div style={{ fontSize: '0.8rem', fontStyle: 'italic', color: onlineUserIds.has(character.player_id) ? 'var(--text-gold)' : 'var(--text-secondary)' }}>
+                        {character.background}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                       Lvl {character.level} {character.race} {character.class}
                     </div>
                     
@@ -8182,6 +8219,16 @@ const CampaignView: React.FC = () => {
                       }}>
                         {selectedCharacterData.name}
                       </div>
+                      {user?.role === 'Dungeon Master' && (
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '0.25rem' }}>
+                          <button
+                            onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'name', fieldLabel: 'Character Name (Temp)', value: selectedCharacterData.name })}
+                            style={{ padding: '0.2rem 0.6rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                          >
+                            ✏️ Rename
+                          </button>
+                        </div>
+                      )}
                       <div style={{
                         fontSize: '0.9rem',
                         color: 'var(--text-muted)',
@@ -8447,12 +8494,27 @@ const CampaignView: React.FC = () => {
                         e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
                       }}>
                         <div style={{ 
-                          fontSize: '0.75rem', 
-                          color: 'var(--text-muted)', 
-                          marginBottom: '0.5rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px'
-                        }}>Background</div>
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                          marginBottom: '0.5rem'
+                        }}>
+                          <div style={{ 
+                            fontSize: '0.75rem', 
+                            color: 'var(--text-muted)', 
+                            textTransform: 'uppercase',
+                            letterSpacing: '1px'
+                          }}>Background</div>
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'background', fieldLabel: 'Background', value: selectedCharacterData.background || '' })}
+                              style={{ padding: '0.1rem 0.35rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold', lineHeight: 1 }}
+                            >
+                              ✏️
+                            </button>
+                          )}
+                        </div>
                         <div style={{ 
                           fontSize: '1.1rem', 
                           color: 'var(--text-gold)', 
@@ -9359,6 +9421,70 @@ const CampaignView: React.FC = () => {
                             const die = hitDiceMap[selectedCharacterData.class] ?? 8;
                             return `d${die} per level`;
                           })()}
+                        </div>
+                      </div>
+
+                      <div style={{
+                        background: 'rgba(14, 165, 233, 0.1)',
+                        border: '2px solid rgba(14, 165, 233, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1rem',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                          Movement Speed
+                        </div>
+                        <div style={{
+                          fontSize: '1.5rem',
+                          fontWeight: 'bold',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: user?.role === 'Dungeon Master' ? '0.5rem' : '0'
+                        }}>
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUpdateMovementSpeed(selectedCharacterData.id, -5); }}
+                              disabled={(selectedCharacterData.movement_speed ?? 30) <= 0}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.3)',
+                                border: '1px solid rgba(239, 68, 68, 0.5)',
+                                color: (selectedCharacterData.movement_speed ?? 30) <= 0 ? 'rgba(255,255,255,0.3)' : '#fca5a5',
+                                borderRadius: '4px',
+                                padding: '0.25rem 0.4rem',
+                                cursor: (selectedCharacterData.movement_speed ?? 30) <= 0 ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                                flex: '0 0 auto'
+                              }}
+                            >
+                              −
+                            </button>
+                          )}
+                          {selectedCharacterData.movement_speed ?? 30}ft
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUpdateMovementSpeed(selectedCharacterData.id, 5); }}
+                              disabled={(selectedCharacterData.movement_speed ?? 30) >= 120}
+                              style={{
+                                background: 'rgba(34, 197, 94, 0.3)',
+                                border: '1px solid rgba(34, 197, 94, 0.5)',
+                                color: (selectedCharacterData.movement_speed ?? 30) >= 120 ? 'rgba(255,255,255,0.3)' : '#86efac',
+                                borderRadius: '4px',
+                                padding: '0.25rem 0.4rem',
+                                cursor: (selectedCharacterData.movement_speed ?? 30) >= 120 ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                                flex: '0 0 auto'
+                              }}
+                            >
+                              +
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                          feet per round
                         </div>
                       </div>
                     </div>
