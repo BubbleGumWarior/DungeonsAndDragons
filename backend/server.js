@@ -273,6 +273,7 @@ const startServer = async () => {
       const addCharlatanClass = require('./migrations/add_charlatan_class');
       const addCharlatanSkills = require('./migrations/add_charlatan_skills');
       const addExpertiseColumn = require('./migrations/add_expertise_column');
+      const addImageDataToMonsters = require('./migrations/add_image_data_to_monsters');
       
       // Execute migrations in correct order
       const migrations = [
@@ -301,7 +302,8 @@ const startServer = async () => {
         { name: 'addMountsTable', fn: addMountsTable },
         { name: 'addCharlatanClass', fn: addCharlatanClass },
         { name: 'addCharlatanSkills', fn: addCharlatanSkills },
-        { name: 'addExpertiseColumn', fn: addExpertiseColumn }
+        { name: 'addExpertiseColumn', fn: addExpertiseColumn },
+        { name: 'addImageDataToMonsters', fn: addImageDataToMonsters }
       ];
       
       for (const migration of migrations) {
@@ -691,6 +693,9 @@ const startServer = async () => {
             // Ensure combat state exists for this campaign
             if (!battleCombatState[campaignId]) {
               battleCombatState[campaignId] = { combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
+              // Fresh combat session — delete stale instance rows so the counter resets to #1
+              const MonsterInstanceCleanup = require('./models/MonsterInstance');
+              try { await MonsterInstanceCleanup.deleteAllByCampaign(campaignId); } catch (e) { console.warn('Could not clean up stale monster instances:', e.message); }
             }
 
             // Fetch monster details
@@ -971,9 +976,10 @@ const startServer = async () => {
           // Set all characters' combat_active to false in database
           await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0 WHERE campaign_id = $1', [campaignId]);
           
-          // Remove all monster instances from combat
+          // Remove all monster instances from combat, then delete so the counter resets
           const MonsterInstance = require('./models/MonsterInstance');
           await MonsterInstance.removeAllFromCombat(campaignId);
+          try { await MonsterInstance.deleteAllByCampaign(campaignId); } catch (e) { console.warn('Could not delete monster instances:', e.message); }
           
           // Broadcast combat reset to all users in campaign
           io.to(`campaign_${campaignId}`).emit('combatReset', {

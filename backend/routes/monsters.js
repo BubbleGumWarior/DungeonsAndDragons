@@ -2,30 +2,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const Monster = require('../models/Monster');
 const Campaign = require('../models/Campaign');
 const { authenticateToken: auth } = require('../middleware/auth');
 
-// Configure multer for monster image uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../uploads/monsters');
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'monster-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// Configure multer for monster image uploads (memory storage — no disk writes)
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
@@ -33,7 +16,7 @@ const upload = multer({
     const allowedTypes = /jpeg|jpg|png|gif|webp|avif/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-    
+
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -100,39 +83,23 @@ router.post('/:id/image', auth, upload.single('image'), async (req, res) => {
     if (req.user.role !== 'Dungeon Master') {
       return res.status(403).json({ message: 'Only Dungeon Masters can upload monster images' });
     }
-    
+
     const { id } = req.params;
-    
+
     if (!req.file) {
       return res.status(400).json({ message: 'No image file provided' });
     }
-    
-    // Get the monster to check if it exists and get old image
+
     const monster = await Monster.findById(id);
     if (!monster) {
-      // Delete uploaded file if monster doesn't exist
-      fs.unlinkSync(req.file.path);
       return res.status(404).json({ message: 'Monster not found' });
     }
-    
-    // Delete old image if it exists
-    if (monster.image_url) {
-      const oldImagePath = path.join(__dirname, '..', monster.image_url);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
-    }
-    
-    const imageUrl = `/uploads/monsters/${req.file.filename}`;
-    const updatedMonster = await Monster.update(id, { image_url: imageUrl });
-    
+
+    const updatedMonster = await Monster.storeImage(id, req.file.buffer, req.file.mimetype);
+
     res.json(updatedMonster);
   } catch (error) {
     console.error('Error uploading monster image:', error);
-    // Clean up uploaded file on error
-    if (req.file) {
-      fs.unlinkSync(req.file.path);
-    }
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -185,22 +152,14 @@ router.delete('/:id', auth, async (req, res) => {
     if (req.user.role !== 'Dungeon Master') {
       return res.status(403).json({ message: 'Only Dungeon Masters can delete monsters' });
     }
-    
+
     const { id } = req.params;
     const monster = await Monster.findById(id);
-    
+
     if (!monster) {
       return res.status(404).json({ message: 'Monster not found' });
     }
-    
-    // Delete image file if it exists
-    if (monster.image_url) {
-      const imagePath = path.join(__dirname, '..', monster.image_url);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
-    
+
     await Monster.delete(id);
     res.json({ message: 'Monster deleted successfully' });
   } catch (error) {

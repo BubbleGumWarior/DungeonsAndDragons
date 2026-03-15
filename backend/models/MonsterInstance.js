@@ -43,10 +43,11 @@ class MonsterInstance {
   }
 
   static async getNextInstanceNumber(monsterId, campaignId) {
+    // Only count active (in_combat) instances so the counter resets to 1 when combat is reset
     const result = await pool.query(
       `SELECT COALESCE(MAX(instance_number), 0) + 1 as next_number 
        FROM monster_instances 
-       WHERE monster_id = $1 AND campaign_id = $2`,
+       WHERE monster_id = $1 AND campaign_id = $2 AND in_combat = TRUE`,
       [monsterId, campaignId]
     );
     

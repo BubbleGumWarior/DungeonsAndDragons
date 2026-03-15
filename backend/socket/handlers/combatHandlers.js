@@ -22,6 +22,8 @@ module.exports = (socket, io, battleCombatState, battleMovementState, userSocket
         // Ensure combat state exists for this campaign
         if (!battleCombatState[campaignId]) {
           battleCombatState[campaignId] = { combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
+          // Fresh combat session — delete stale instance rows so the counter resets to #1
+          try { await MonsterInstance.deleteAllByCampaign(campaignId); } catch (e) { console.warn('Could not clean up stale monster instances:', e.message); }
         }
 
         // Fetch monster details
@@ -99,6 +101,8 @@ module.exports = (socket, io, battleCombatState, battleMovementState, userSocket
       // Ensure combat state exists for this campaign
       if (!battleCombatState[campaignId]) {
         battleCombatState[campaignId] = { combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
+        // Fresh combat session — delete stale instance rows so monster counters reset to #1
+        try { await MonsterInstance.deleteAllByCampaign(campaignId); } catch (e) { console.warn('Could not clean up stale monster instances:', e.message); }
       }
 
       // Fetch character to get abilities and movement_speed
@@ -303,6 +307,18 @@ module.exports = (socket, io, battleCombatState, battleMovementState, userSocket
         }
         
         delete battleCombatState[campaignId];
+      }
+
+      // Mark all monster instances inactive (reliable fallback) then attempt full deletion
+      try {
+        await MonsterInstance.removeAllFromCombat(campaignId);
+      } catch (dbErr) {
+        console.error(`Error marking monster instances inactive for campaign ${campaignId}:`, dbErr);
+      }
+      try {
+        await MonsterInstance.deleteAllByCampaign(campaignId);
+      } catch (dbErr) {
+        console.error(`Error deleting monster instances for campaign ${campaignId}:`, dbErr);
       }
       
       // Clear movement state

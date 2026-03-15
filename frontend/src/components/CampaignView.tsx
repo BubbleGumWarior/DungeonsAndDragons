@@ -330,6 +330,7 @@ const CampaignView: React.FC = () => {
   const [showResetCombatModal, setShowResetCombatModal] = useState(false);
   const [showCombatInviteModal, setShowCombatInviteModal] = useState(false);
   const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string } | null>(null);
+  const [combatantDetailModal, setCombatantDetailModal] = useState<{ combatantId: number | string } | null>(null);
   const [combatants, setCombatants] = useState<Array<{ 
     characterId: number | string; 
     playerId: number; 
@@ -5108,9 +5109,33 @@ const CampaignView: React.FC = () => {
                         if (!combatant) return null;
                         
                         const isCurrentTurn = currentTurnIndex >= 0 && currentTurnIndex === orderIndex;
+
+                        // Compute health and AC for this combatant
+                        const initCharacter = combatant.isMonster
+                          ? null
+                          : currentCampaign?.characters.find((c: any) => c.id === combatant.characterId);
+                        const initMonsterTemplate = (combatant.isMonster && combatant.monsterId)
+                          ? monsters.find((m: any) => m.id === combatant.monsterId)
+                          : null;
+
+                        let healthPct = 100;
+                        let displayAC = 10;
+
+                        if (initCharacter) {
+                          const h = calculateCharacterHealth(initCharacter);
+                          healthPct = h.percentage;
+                          displayAC = initCharacter.armor_class || 10;
+                        } else if (initMonsterTemplate?.limb_health) {
+                          healthPct = 100; // no current HP tracking yet
+                          displayAC = initMonsterTemplate.limb_ac?.chest || 10;
+                        }
+
+                        const hpBarColor = healthPct > 66 ? '#4ade80' : healthPct > 33 ? '#fbbf24' : '#ef4444';
+
                         return (
                           <div
                             key={combatant.characterId}
+                            onClick={() => setCombatantDetailModal({ combatantId: combatant.characterId })}
                             style={{
                               padding: '0.75rem',
                               background: isCurrentTurn 
@@ -5123,8 +5148,11 @@ const CampaignView: React.FC = () => {
                               display: 'flex',
                               alignItems: 'center',
                               gap: '1rem',
-                              transition: 'all 0.3s ease'
+                              transition: 'all 0.3s ease',
+                              cursor: 'pointer'
                             }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.3), rgba(90, 184, 90, 0.3))' : 'rgba(212, 193, 156, 0.1)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.2), rgba(90, 184, 90, 0.2))' : 'rgba(212, 193, 156, 0.05)'; }}
                           >
                             <div style={{
                               minWidth: '2rem',
@@ -5138,22 +5166,47 @@ const CampaignView: React.FC = () => {
                               justifyContent: 'center',
                               color: isCurrentTurn ? '#000' : 'var(--text-gold)',
                               fontWeight: 'bold',
-                              fontSize: '1rem'
+                              fontSize: '1rem',
+                              flexShrink: 0
                             }}>
                               {combatant.initiative}
                             </div>
-                            <div style={{ flex: 1 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{
-                                color: isCurrentTurn ? '#4a4' : 'var(--text-gold)',
+                                color: isCurrentTurn ? '#4a4' : (combatant.isMonster ? '#f87171' : 'var(--text-gold)'),
                                 fontWeight: isCurrentTurn ? 'bold' : 'normal',
-                                fontSize: isCurrentTurn ? '1.05rem' : '0.95rem'
+                                fontSize: isCurrentTurn ? '1.05rem' : '0.95rem',
+                                marginBottom: '0.3rem'
                               }}>
                                 {combatant.name}
-                                {isCurrentTurn && <span style={{ marginLeft: '0.5rem' }}>← Current Turn</span>}
+                                {isCurrentTurn && <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem' }}>← Current Turn</span>}
                               </div>
-                              <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
-                                Movement: {(remainingMovement[combatant.characterId] ?? combatant.movement_speed).toFixed(2)}/{combatant.movement_speed} ft
+                              {/* Health bar */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                                <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${healthPct}%`, height: '100%', background: hpBarColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                                </div>
+                                <span style={{ fontSize: '0.7rem', color: hpBarColor, minWidth: '30px', textAlign: 'right' }}>{Math.round(healthPct)}%</span>
                               </div>
+                              <div style={{ fontSize: '0.7rem', color: '#999' }}>
+                                Move: {(remainingMovement[combatant.characterId] ?? combatant.movement_speed).toFixed(1)}/{combatant.movement_speed}ft
+                              </div>
+                            </div>
+                            {/* AC badge */}
+                            <div style={{
+                              flexShrink: 0,
+                              width: '2.2rem',
+                              height: '2.2rem',
+                              borderRadius: '50%',
+                              background: 'rgba(96, 165, 250, 0.15)',
+                              border: '1px solid rgba(96, 165, 250, 0.5)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              <div style={{ fontSize: '0.65rem', color: '#60a5fa', lineHeight: 1 }}>AC</div>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#93c5fd', lineHeight: 1 }}>{displayAC}</div>
                             </div>
                           </div>
                         );
@@ -5392,13 +5445,16 @@ const CampaignView: React.FC = () => {
                       : false; // Changed from true - no one's turn if combat hasn't started
                     
                     // Find if this is a character or monster instance
-                    const character = currentCampaign?.characters.find((c: any) => c.id === combatant.characterId);
+                    // Always skip character lookup for monsters — their characterId is a monster_instance DB row ID
+                    // which can accidentally match a real character ID, causing wrong name/image
+                    const character = combatant.isMonster
+                      ? null
+                      : currentCampaign?.characters.find((c: any) => c.id === combatant.characterId);
                     
-                    // For monsters, characterId is actually the instance ID
-                    // We need to find the monster template using the monsterId field
+                    // For monsters, look up the template by monsterId
                     let monsterTemplate = null;
                     let isMonster = false;
-                    if (!character && combatant.monsterId) {
+                    if (combatant.isMonster && combatant.monsterId) {
                       monsterTemplate = monsters.find((m: any) => m.id === combatant.monsterId);
                       isMonster = true;
                     }
@@ -5416,6 +5472,7 @@ const CampaignView: React.FC = () => {
                     return (
                       <div
                         key={`battle-${combatant.characterId}`}
+                        onClick={() => setCombatantDetailModal({ combatantId: combatant.characterId })}
                         style={{
                           position: 'absolute',
                           left: `${position.x}%`,
@@ -5424,7 +5481,8 @@ const CampaignView: React.FC = () => {
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          zIndex: draggedCharacter === combatant.characterId ? 1000 : 1
+                          zIndex: draggedCharacter === combatant.characterId ? 1000 : 1,
+                          cursor: 'pointer'
                         }}
                       >
                         <div
@@ -11988,9 +12046,7 @@ const CampaignView: React.FC = () => {
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {monsters.map((monster: Monster) => {
-                      const imageUrl = monster.image_url 
-                        ? (process.env.NODE_ENV === 'production' ? monster.image_url : `http://localhost:5000${monster.image_url}`)
-                        : null;
+                      const imageUrl = getImageUrl(monster.image_url) ?? null;
                       
                       return (
                         <button
@@ -12168,6 +12224,214 @@ const CampaignView: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Combatant Detail Modal */}
+        {combatantDetailModal && (() => {
+          const detailCombatant = combatants.find(c => c.characterId === combatantDetailModal.combatantId);
+          if (!detailCombatant) return null;
+
+          const detailCharacter = detailCombatant.isMonster
+            ? null
+            : currentCampaign?.characters.find((c: any) => c.id === detailCombatant.characterId);
+          const detailMonster = (detailCombatant.isMonster && detailCombatant.monsterId)
+            ? monsters.find((m: any) => m.id === detailCombatant.monsterId)
+            : null;
+
+          const getHealthColor = (pct: number) =>
+            pct > 66 ? '#4ade80' : pct > 33 ? '#fbbf24' : '#ef4444';
+
+          return (
+            <div
+              style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '1rem' }}
+              onClick={() => setCombatantDetailModal(null)}
+            >
+              <div
+                style={{ background: 'linear-gradient(135deg, rgba(15,15,25,0.98) 0%, rgba(25,25,35,0.98) 100%)', border: '2px solid var(--text-gold)', borderRadius: '1rem', padding: '1.5rem', maxWidth: '860px', width: '100%', maxHeight: '90vh', overflow: 'auto', position: 'relative' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                  <div>
+                    <h3 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.4rem' }}>{detailCombatant.name}</h3>
+                    {detailCharacter && (
+                      <div style={{ color: '#999', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                        Level {detailCharacter.level} {detailCharacter.race} {detailCharacter.class}
+                        {(detailCharacter as any).subclass ? ` · ${(detailCharacter as any).subclass}` : ''}
+                      </div>
+                    )}
+                    {detailMonster && <div style={{ color: '#f87171', fontSize: '0.85rem', marginTop: '0.25rem' }}>Monster</div>}
+                  </div>
+                  <button onClick={() => setCombatantDetailModal(null)} style={{ background: 'none', border: '1px solid #555', borderRadius: '0.4rem', color: '#aaa', cursor: 'pointer', padding: '0.4rem 0.75rem', fontSize: '1rem' }}>✕</button>
+                </div>
+
+                {/* CHARACTER layout */}
+                {detailCharacter && (() => {
+                  const hp = calculateCharacterHealth(detailCharacter);
+                  const baseAC = detailCharacter.armor_class || 10;
+                  const rawLimbAC = limbAC[detailCharacter.id];
+                  const helmAC     = rawLimbAC?.head      ?? 0;
+                  const chestAC    = rawLimbAC?.chest     ?? 0;
+                  const mainHandAC = rawLimbAC?.main_hand ?? 0;
+                  const offHandAC  = rawLimbAC?.off_hand  ?? 0;
+                  const feetAC     = rawLimbAC?.feet      ?? 0;
+                  const cLimbAC = {
+                    head:      Math.round(baseAC * 1.00) + helmAC,
+                    chest:     Math.round(baseAC * 1.00) + chestAC,
+                    main_hand: Math.round(baseAC * 0.25) + mainHandAC,
+                    off_hand:  Math.round(baseAC * 0.25) + offHandAC,
+                    feet:      Math.round(baseAC * 0.50) + feetAC
+                  };
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
+
+                      {/* Left — portrait above figure */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
+                        {/* Portrait */}
+                        <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(212,193,156,0.3)', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {detailCharacter.image_url && !imageLoadError[detailCharacter.id] ? (
+                            <img src={getImageUrl(detailCharacter.image_url)} alt={detailCharacter.name} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }} onError={() => setImageLoadError(prev => ({ ...prev, [detailCharacter.id]: true }))} />
+                          ) : (
+                            <div style={{ width: '180px', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '4rem', color: 'rgba(212,193,156,0.3)' }}>{detailCharacter.name.charAt(0)}</div>
+                          )}
+                        </div>
+                        {/* Figure with limb overlays */}
+                        <div style={{ position: 'relative', width: '180px', flexShrink: 0 }}>
+                          <img src={FigureImage} alt="Figure" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '0.5rem', border: '1px solid rgba(212,193,156,0.2)' }} />
+                          {/* Head */}
+                          <div style={{ position: 'absolute', top: '6%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.head}/{hp.limbs.head}</div>
+                            <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.head}</div>
+                          </div>
+                          {/* Torso */}
+                          <div style={{ position: 'absolute', top: '33%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.torso}/{hp.limbs.torso}</div>
+                            <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.chest}</div>
+                          </div>
+                          {/* Left hand */}
+                          <div style={{ position: 'absolute', top: '30%', left: '2%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.leftHand}/{hp.limbs.leftHand}</div>
+                            <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.main_hand}</div>
+                          </div>
+                          {/* Right hand */}
+                          <div style={{ position: 'absolute', top: '30%', right: '2%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.rightHand}/{hp.limbs.rightHand}</div>
+                            <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.off_hand}</div>
+                          </div>
+                          {/* Left leg */}
+                          <div style={{ position: 'absolute', bottom: '12%', left: '14%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.leftLeg}/{hp.limbs.leftLeg}</div>
+                            <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.feet}</div>
+                          </div>
+                          {/* Right leg */}
+                          <div style={{ position: 'absolute', bottom: '12%', right: '14%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.rightLeg}/{hp.limbs.rightLeg}</div>
+                            <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.feet}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right — all stats */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                        {/* Total HP */}
+                        <div style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', marginBottom: '0.4rem', fontWeight: 'bold' }}>Total HP</div>
+                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '0.3rem' }}>
+                            <div style={{ width: `${hp.percentage}%`, height: '100%', background: getHealthColor(hp.percentage), borderRadius: '5px' }} />
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: getHealthColor(hp.percentage) }}>{hp.current}/{hp.max}</div>
+                        </div>
+
+                        {/* Base AC + Movement side by side */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                          <div style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginBottom: '0.2rem' }}>Base AC</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#93c5fd' }}>{baseAC}</div>
+                          </div>
+                          <div style={{ background: 'rgba(212,193,156,0.05)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#999', marginBottom: '0.2rem' }}>Movement</div>
+                            <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
+                              {(remainingMovement[detailCombatant.characterId] ?? detailCombatant.movement_speed).toFixed(0)}<span style={{ fontSize: '0.7rem', color: '#999' }}>/{detailCombatant.movement_speed}ft</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* All 6 ability scores — 3 per row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+                          {['str', 'dex', 'con', 'int', 'wis', 'cha'].map(ab => {
+                            const score = detailCharacter.abilities[ab as keyof typeof detailCharacter.abilities] as number;
+                            const mod = Math.floor((score - 10) / 2);
+                            return (
+                              <div key={ab} style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.4rem', padding: '0.5rem 0.25rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.6rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.2rem' }}>{ab.toUpperCase()}</div>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#fff', lineHeight: 1 }}>{score}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '0.15rem' }}>{mod >= 0 ? '+' : ''}{mod}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* MONSTER layout */}
+                {detailMonster && (() => {
+                  const lh = detailMonster.limb_health || {};
+                  const lac = detailMonster.limb_ac || {};
+                  const limbs = [
+                    { label: 'Head',      hp: lh.head || 0,      ac: lac.head || 10 },
+                    { label: 'Chest',     hp: lh.chest || 0,     ac: lac.chest || 10 },
+                    { label: 'Left Arm',  hp: lh.left_arm || 0,  ac: lac.left_arm || 10 },
+                    { label: 'Right Arm', hp: lh.right_arm || 0, ac: lac.right_arm || 10 },
+                    { label: 'Left Leg',  hp: lh.left_leg || 0,  ac: lac.left_leg || 10 },
+                    { label: 'Right Leg', hp: lh.right_leg || 0, ac: lac.right_leg || 10 }
+                  ];
+                  const totalHp = limbs.reduce((s, l) => s + l.hp, 0);
+
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
+                      {/* Portrait */}
+                      <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(248,113,113,0.4)', background: 'rgba(0,0,0,0.4)', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {detailMonster.image_url ? (
+                          <img src={getImageUrl(detailMonster.image_url)} alt={detailMonster.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ fontSize: '4rem', color: 'rgba(248,113,113,0.4)' }}>{detailMonster.name.charAt(0)}</div>
+                        )}
+                      </div>
+                      {/* Stats */}
+                      <div>
+                        {/* Total HP bar */}
+                        <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '1rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#f87171', marginBottom: '0.4rem', fontWeight: 'bold' }}>Total HP — {totalHp}</div>
+                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px' }}>
+                            <div style={{ width: '100%', height: '100%', background: '#4ade80', borderRadius: '5px' }} />
+                          </div>
+                        </div>
+                        {/* Limb table */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          {limbs.map(l => (
+                            <div key={l.label} style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '0.4rem', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.8rem', color: '#f87171' }}>{l.label}</span>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.8rem', color: '#4ade80' }}>{l.hp} HP</div>
+                                <div style={{ fontSize: '0.7rem', color: '#60a5fa' }}>AC {l.ac}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {detailMonster.description && (
+                          <div style={{ marginTop: '1rem', color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
+                            {detailMonster.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Add Monster Modal (DM) */}
         {showAddMonsterModal && (

@@ -20,7 +20,7 @@ class Monster {
       [campaign_id, name, description, image_url, JSON.stringify(limb_health), JSON.stringify(limb_ac), visible_to_players]
     );
 
-    return result.rows[0];
+    return Monster.convertImageToDataUrl(result.rows[0]);
   }
 
   static async findById(id) {
@@ -28,7 +28,7 @@ class Monster {
       'SELECT * FROM monsters WHERE id = $1',
       [id]
     );
-    return result.rows[0];
+    return Monster.convertImageToDataUrl(result.rows[0]);
   }
 
   static async findByCampaignId(campaignId) {
@@ -36,7 +36,7 @@ class Monster {
       'SELECT * FROM monsters WHERE campaign_id = $1 ORDER BY name ASC',
       [campaignId]
     );
-    return result.rows;
+    return result.rows.map(m => Monster.convertImageToDataUrl(m));
   }
 
   static async update(id, updates) {
@@ -69,7 +69,7 @@ class Monster {
       values
     );
 
-    return result.rows[0];
+    return Monster.convertImageToDataUrl(result.rows[0]);
   }
 
   static async delete(id) {
@@ -77,7 +77,7 @@ class Monster {
       'DELETE FROM monsters WHERE id = $1 RETURNING *',
       [id]
     );
-    return result.rows[0];
+    return Monster.convertImageToDataUrl(result.rows[0]);
   }
 
   static async toggleVisibility(id) {
@@ -85,7 +85,34 @@ class Monster {
       'UPDATE monsters SET visible_to_players = NOT visible_to_players, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
     );
-    return result.rows[0];
+    return Monster.convertImageToDataUrl(result.rows[0]);
+  }
+
+  static async storeImage(id, buffer, mimeType) {
+    const result = await pool.query(
+      'UPDATE monsters SET image_data = $1, image_mime_type = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+      [buffer, mimeType, id]
+    );
+    return Monster.convertImageToDataUrl(result.rows[0]);
+  }
+
+  static async deleteImage(id) {
+    const result = await pool.query(
+      'UPDATE monsters SET image_data = NULL, image_mime_type = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+    return Monster.convertImageToDataUrl(result.rows[0]);
+  }
+
+  static convertImageToDataUrl(monster) {
+    if (!monster) return monster;
+    if (monster.image_data) {
+      const base64 = Buffer.from(monster.image_data).toString('base64');
+      monster.image_url = `data:${monster.image_mime_type};base64,${base64}`;
+    }
+    delete monster.image_data;
+    delete monster.image_mime_type;
+    return monster;
   }
 }
 
