@@ -701,6 +701,8 @@ const CampaignView: React.FC = () => {
   const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
   const [showAddSkillModal, setShowAddSkillModal] = useState(false);
   const [showCreateSkillModal, setShowCreateSkillModal] = useState(false);
+  const [skillSearchQuery, setSkillSearchQuery] = useState('');
+  const [skillClassFilter, setSkillClassFilter] = useState<string>('All');
   const [newSkillData, setNewSkillData] = useState<Partial<Skill>>({
     name: '',
     description: '',
@@ -8219,16 +8221,6 @@ const CampaignView: React.FC = () => {
                       }}>
                         {selectedCharacterData.name}
                       </div>
-                      {user?.role === 'Dungeon Master' && (
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '0.25rem' }}>
-                          <button
-                            onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'name', fieldLabel: 'Character Name (Temp)', value: selectedCharacterData.name })}
-                            style={{ padding: '0.2rem 0.6rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                          >
-                            ✏️ Rename
-                          </button>
-                        </div>
-                      )}
                       <div style={{
                         fontSize: '0.9rem',
                         color: 'var(--text-muted)',
@@ -14977,28 +14969,108 @@ const CampaignView: React.FC = () => {
             overflow: 'auto',
             padding: '2rem'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            {/* Header row with title, create button, and close button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>✨ Add Skill</h3>
-              <button
-                onClick={() => setShowCreateSkillModal(true)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: 'rgba(34, 197, 94, 0.3)',
-                  border: '2px solid rgba(34, 197, 94, 0.5)',
-                  borderRadius: '0.5rem',
-                  color: '#4ade80',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  fontWeight: 'bold'
-                }}
-              >
-                ➕ Create New Skill
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  onClick={() => setShowCreateSkillModal(true)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: 'rgba(34, 197, 94, 0.3)',
+                    border: '2px solid rgba(34, 197, 94, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: '#4ade80',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ➕ Create New Skill
+                </button>
+                <button
+                  onClick={() => { setShowAddSkillModal(false); setSkillSearchQuery(''); setSkillClassFilter('All'); }}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: 'rgba(239, 68, 68, 0.3)',
+                    border: '2px solid rgba(239, 68, 68, 0.5)',
+                    borderRadius: '0.5rem',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
             </div>
 
+            {/* Search bar */}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <input
+                type="text"
+                placeholder="🔍 Search skills..."
+                value={skillSearchQuery}
+                onChange={(e) => setSkillSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.9rem',
+                  background: 'rgba(255, 255, 255, 0.07)',
+                  border: '1px solid rgba(212, 193, 156, 0.35)',
+                  borderRadius: '0.5rem',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.9rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Class filters */}
+            {(() => {
+              const classes = ['All', ...Array.from(new Set(allSkills.map(s => s.class_restriction).filter(Boolean))) as string[]];
+              return (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem' }}>
+                  {classes.map((cls) => (
+                    <button
+                      key={cls}
+                      onClick={() => setSkillClassFilter(cls)}
+                      style={{
+                        padding: '0.3rem 0.75rem',
+                        borderRadius: '1rem',
+                        border: skillClassFilter === cls
+                          ? '2px solid rgba(59, 130, 246, 0.8)'
+                          : '1px solid rgba(100, 116, 139, 0.4)',
+                        background: skillClassFilter === cls
+                          ? 'rgba(59, 130, 246, 0.25)'
+                          : 'rgba(255, 255, 255, 0.04)',
+                        color: skillClassFilter === cls ? '#60a5fa' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                        fontSize: '0.78rem',
+                        fontWeight: skillClassFilter === cls ? 'bold' : 'normal',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {cls}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {allSkills.length > 0 ? (
-                allSkills.map((skill) => {
+              {(() => {
+                const filtered = allSkills.filter(skill => {
+                  const matchesSearch = !skillSearchQuery ||
+                    skill.name.toLowerCase().includes(skillSearchQuery.toLowerCase()) ||
+                    (skill.description || '').toLowerCase().includes(skillSearchQuery.toLowerCase());
+                  const matchesClass = skillClassFilter === 'All' ||
+                    skill.class_restriction === skillClassFilter;
+                  return matchesSearch && matchesClass;
+                });
+                return filtered.length > 0 ? (
+                  filtered.map((skill) => {
                   const alreadyHas = characterSkills[selectedCharacter]?.some(s => s.id === skill.id);
                   return (
                     <div
@@ -15073,25 +15145,13 @@ const CampaignView: React.FC = () => {
                 })
               ) : (
                 <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  No skills available. Create a new skill to get started.
+                  {allSkills.length === 0
+                    ? 'No skills available. Create a new skill to get started.'
+                    : 'No skills match your search.'}
                 </div>
-              )}
+              );
+              })()}
             </div>
-
-            <button
-              onClick={() => setShowAddSkillModal(false)}
-              className="btn btn-secondary"
-              style={{
-                width: '100%',
-                marginTop: '1.5rem',
-                padding: '0.75rem',
-                background: 'rgba(239, 68, 68, 0.3)',
-                border: '2px solid rgba(239, 68, 68, 0.5)',
-                color: '#ef4444'
-              }}
-            >
-              Close
-            </button>
           </div>
         </div>
       )}
