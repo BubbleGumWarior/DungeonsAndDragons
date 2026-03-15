@@ -100,6 +100,7 @@ class Character {
       // Parse JSON fields
       character.abilities = this.parseJsonField(character.abilities);
       character.skills = this.parseJsonField(character.skills);
+      character.expertise = this.parseJsonField(character.expertise) || [];
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       
@@ -130,6 +131,7 @@ class Character {
       // Parse JSON fields
       character.abilities = this.parseJsonField(character.abilities);
       character.skills = this.parseJsonField(character.skills);
+      character.expertise = this.parseJsonField(character.expertise) || [];
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       
@@ -157,6 +159,7 @@ class Character {
       return result.rows.map(character => {
         character.abilities = this.parseJsonField(character.abilities);
         character.skills = this.parseJsonField(character.skills);
+        character.expertise = this.parseJsonField(character.expertise) || [];
         character.equipment = this.parseJsonField(character.equipment);
         character.spells = this.parseJsonField(character.spells);
         this.convertImageToDataUrl(character);
@@ -182,6 +185,7 @@ class Character {
       return result.rows.map(character => {
         character.abilities = this.parseJsonField(character.abilities);
         character.skills = this.parseJsonField(character.skills);
+        character.expertise = this.parseJsonField(character.expertise) || [];
         character.equipment = this.parseJsonField(character.equipment);
         character.spells = this.parseJsonField(character.spells);
         this.convertImageToDataUrl(character);
@@ -196,7 +200,7 @@ class Character {
   static async update(id, updateData) {
     const {
       name, race, class: characterClass, background, level,
-      hit_points, armor_class, abilities, skills, equipment, spells,
+      hit_points, armor_class, abilities, skills, expertise, equipment, spells,
       backstory, personality_traits, ideals, bonds, flaws, equipped_items, image_url
     } = updateData;
     
@@ -212,15 +216,16 @@ class Character {
              armor_class = COALESCE($8, armor_class),
              abilities = COALESCE($9, abilities),
              skills = COALESCE($10, skills),
-             equipment = COALESCE($11, equipment),
-             spells = COALESCE($12, spells),
-             backstory = COALESCE($13, backstory),
-             personality_traits = COALESCE($14, personality_traits),
-             ideals = COALESCE($15, ideals),
-             bonds = COALESCE($16, bonds),
-             flaws = COALESCE($17, flaws),
-             equipped_items = COALESCE($18, equipped_items),
-             image_url = COALESCE($19, image_url),
+             expertise = COALESCE($11, expertise),
+             equipment = COALESCE($12, equipment),
+             spells = COALESCE($13, spells),
+             backstory = COALESCE($14, backstory),
+             personality_traits = COALESCE($15, personality_traits),
+             ideals = COALESCE($16, ideals),
+             bonds = COALESCE($17, bonds),
+             flaws = COALESCE($18, flaws),
+             equipped_items = COALESCE($19, equipped_items),
+             image_url = COALESCE($20, image_url),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 
          RETURNING *`,
@@ -229,6 +234,7 @@ class Character {
           hit_points, armor_class,
           abilities ? JSON.stringify(abilities) : null,
           skills ? JSON.stringify(skills) : null,
+          expertise ? JSON.stringify(expertise) : null,
           equipment ? JSON.stringify(equipment) : null,
           spells ? JSON.stringify(spells) : null,
           backstory, personality_traits, ideals, bonds, flaws,
@@ -243,6 +249,7 @@ class Character {
       // Parse JSON fields
       character.abilities = this.parseJsonField(character.abilities);
       character.skills = this.parseJsonField(character.skills);
+      character.expertise = this.parseJsonField(character.expertise) || [];
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       

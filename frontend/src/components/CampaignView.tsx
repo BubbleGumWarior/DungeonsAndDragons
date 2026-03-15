@@ -1519,9 +1519,17 @@ const CampaignView: React.FC = () => {
         ? currentSkills.filter(s => s !== skillName)
         : [...currentSkills, skillName];
 
+      // When removing proficiency, also strip expertise for that skill
+      const currentExpertise = (characterOverride?.expertise || currentCharacter.expertise || []) as string[];
+      const newExpertise = skillExists
+        ? currentExpertise.filter(s => s !== skillName)
+        : currentExpertise;
+      const expertiseChanged = newExpertise.length !== currentExpertise.length;
+
       // Update the character
       await characterAPI.update(characterId, {
-        skills: newSkills
+        skills: newSkills,
+        ...(expertiseChanged ? { expertise: newExpertise } : {})
       });
 
       // Update local state immediately for instant feedback
@@ -1529,7 +1537,8 @@ const CampaignView: React.FC = () => {
         ...prev,
         [characterId]: {
           ...prev[characterId],
-          skills: newSkills
+          skills: newSkills,
+          ...(expertiseChanged ? { expertise: newExpertise } : {})
         }
       }));
 
@@ -1549,6 +1558,46 @@ const CampaignView: React.FC = () => {
     } catch (error) {
       console.error('Error toggling skill proficiency:', error);
       alert('Failed to update skill proficiency');
+    }
+  };
+
+  // Expertise Toggle (for dungeonmaster to add/remove expertise — requires proficiency)
+  const handleToggleSkillExpertise = async (characterId: number, skillName: string) => {
+    try {
+      const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
+      if (!currentCharacter || !socket || !currentCampaign) return;
+
+      const characterOverride = characterDataOverrides[characterId];
+      const currentExpertise = (characterOverride?.expertise || currentCharacter.expertise || []) as string[];
+      const hasExpertise = currentExpertise.includes(skillName);
+
+      const newExpertise = hasExpertise
+        ? currentExpertise.filter(s => s !== skillName)
+        : [...currentExpertise, skillName];
+
+      await characterAPI.update(characterId, { expertise: newExpertise });
+
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          expertise: newExpertise
+        }
+      }));
+
+      socket.emit('skillExpertiseToggled', {
+        campaignId: currentCampaign.campaign.id,
+        characterId,
+        skillName,
+        isAdding: !hasExpertise,
+        timestamp: new Date().toISOString()
+      });
+
+      setToastMessage(hasExpertise ? `${skillName} expertise removed` : `${skillName} expertise added`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error toggling skill expertise:', error);
+      alert('Failed to update skill expertise');
     }
   };
 
@@ -2640,11 +2689,18 @@ const CampaignView: React.FC = () => {
               newSkills = currentSkills.filter((s: string) => s !== data.skillName);
             }
 
+            // Also strip expertise if proficiency was removed
+            const currentExpertise = (characterOverride?.expertise || baseCharacter?.expertise || []) as string[];
+            const newExpertise = !data.isAdding
+              ? currentExpertise.filter((s: string) => s !== data.skillName)
+              : currentExpertise;
+
             return {
               ...prev,
               [data.characterId]: {
                 ...characterOverride,
-                skills: newSkills
+                skills: newSkills,
+                expertise: newExpertise
               }
             };
           });
@@ -2654,6 +2710,47 @@ const CampaignView: React.FC = () => {
           if (character) {
             const action = data.isAdding ? 'added' : 'removed';
             setToastMessage(`${character.name}'s ${data.skillName} proficiency ${action}`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }
+        }
+      });
+
+      // Listen for skill expertise updates
+      newSocket.on('skillExpertiseToggled', (data: {
+        campaignId: number;
+        characterId: number;
+        skillName: string;
+        isAdding: boolean;
+        timestamp: string;
+      }) => {
+        const campaign = currentCampaignRef.current;
+        if (campaign && campaign.campaign.id === data.campaignId) {
+          setCharacterDataOverrides(prev => {
+            const characterOverride = prev[data.characterId];
+            const baseCharacter = campaign.characters.find(c => c.id === data.characterId);
+            const currentExpertise = (characterOverride?.expertise || baseCharacter?.expertise || []) as string[];
+            const expertiseExists = currentExpertise.includes(data.skillName);
+
+            let newExpertise = currentExpertise;
+            if (data.isAdding && !expertiseExists) {
+              newExpertise = [...currentExpertise, data.skillName];
+            } else if (!data.isAdding && expertiseExists) {
+              newExpertise = currentExpertise.filter((s: string) => s !== data.skillName);
+            }
+
+            return {
+              ...prev,
+              [data.characterId]: {
+                ...characterOverride,
+                expertise: newExpertise
+              }
+            };
+          });
+
+          const character = campaign.characters.find(c => c.id === data.characterId);
+          if (character) {
+            const action = data.isAdding ? 'added' : 'removed';
+            setToastMessage(`${character.name}'s ${data.skillName} expertise ${action}`);
             setTimeout(() => setToastMessage(null), 3000);
           }
         }
@@ -9031,6 +9128,9 @@ const CampaignView: React.FC = () => {
                             ...(selectedCharacterData.skills || []),
                             ...((characterSkills[selectedCharacterData.id] || []).map(skill => skill.name))
                           ].map(normalizeSkillName));
+                          const expertiseSet = new Set(
+                            ((characterDataOverrides[selectedCharacterData.id]?.expertise || selectedCharacterData.expertise || []) as string[]).map(normalizeSkillName)
+                          );
                           const skillsByAbility = {
                             'str': { name: 'Strength', skills: ['Athletics'] },
                             'dex': { name: 'Dexterity', skills: ['Acrobatics', 'Sleight of Hand', 'Stealth'] },
@@ -9069,13 +9169,24 @@ const CampaignView: React.FC = () => {
                                 {/* Skills for this ability */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                   {skills.map(skill => {
-                                    const isProficient = skillNameSet.has(normalizeSkillName(skill));
-                                    const totalModifier = baseModifier + (isProficient ? proficiencyBonus : 0);
+                                    const normalizedSkill = normalizeSkillName(skill);
+                                    const isProficient = skillNameSet.has(normalizedSkill);
+                                    const isExpert = isProficient && expertiseSet.has(normalizedSkill);
+                                    const bonusMultiplier = isExpert ? 2 : isProficient ? 1 : 0;
+                                    const totalModifier = baseModifier + proficiencyBonus * bonusMultiplier;
 
                                     return (
                                       <div key={skill} style={{
-                                        background: isProficient ? 'rgba(212, 193, 156, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                                        border: isProficient ? '1px solid rgba(212, 193, 156, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                                        background: isExpert
+                                          ? 'rgba(139, 92, 246, 0.15)'
+                                          : isProficient
+                                            ? 'rgba(212, 193, 156, 0.15)'
+                                            : 'rgba(255, 255, 255, 0.05)',
+                                        border: isExpert
+                                          ? '1px solid rgba(139, 92, 246, 0.5)'
+                                          : isProficient
+                                            ? '1px solid rgba(212, 193, 156, 0.4)'
+                                            : '1px solid rgba(255, 255, 255, 0.1)',
                                         borderRadius: '4px',
                                         padding: '0.6rem 0.75rem',
                                         display: 'flex',
@@ -9083,42 +9194,70 @@ const CampaignView: React.FC = () => {
                                         alignItems: 'center',
                                         transition: 'all 0.2s ease'
                                       }}>
-                                        <span style={{ 
-                                          color: isProficient ? 'var(--text-gold)' : 'white',
+                                        <span style={{
+                                          color: isExpert ? '#c084fc' : isProficient ? 'var(--text-gold)' : 'white',
                                           fontSize: '0.85rem',
                                           fontWeight: isProficient ? 'bold' : 'normal',
                                           display: 'flex',
                                           alignItems: 'center',
                                           gap: '0.5rem'
                                         }}>
-                                          {isProficient && <span style={{ color: 'var(--primary-gold)' }}>⭐</span>}
+                                          {isExpert && <span title="Expertise">💫</span>}
+                                          {!isExpert && isProficient && <span title="Proficient">⭐</span>}
                                           {skill}
                                         </span>
                                         <div style={{
                                           display: 'flex',
                                           alignItems: 'center',
-                                          gap: user?.role === 'Dungeon Master' ? '0.5rem' : '0'
+                                          gap: user?.role === 'Dungeon Master' ? '0.4rem' : '0'
                                         }}>
                                           {user?.role === 'Dungeon Master' && (
-                                            <button
-                                              onClick={() => handleToggleSkillProficiency(selectedCharacterData.id, skill)}
-                                              style={{
-                                                background: isProficient ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)',
-                                                border: isProficient ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(34, 197, 94, 0.5)',
-                                                color: isProficient ? '#fca5a5' : '#86efac',
-                                                borderRadius: '4px',
-                                                padding: '0.2rem 0.4rem',
-                                                cursor: 'pointer',
-                                                fontSize: '0.75rem',
-                                                fontWeight: 'bold'
-                                              }}
-                                            >
-                                              {isProficient ? '−' : '+'}
-                                            </button>
+                                            <>
+                                              {/* Expertise button: shown when proficient */}
+                                              {isProficient && (
+                                                <button
+                                                  onClick={() => handleToggleSkillExpertise(selectedCharacterData.id, skill)}
+                                                  title={isExpert ? 'Remove Expertise' : 'Add Expertise (double proficiency)'}
+                                                  style={{
+                                                    background: isExpert ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.15)',
+                                                    border: isExpert ? '1px solid rgba(139, 92, 246, 0.7)' : '1px solid rgba(139, 92, 246, 0.4)',
+                                                    color: '#c084fc',
+                                                    borderRadius: '4px',
+                                                    padding: '0.2rem 0.4rem',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 'bold'
+                                                  }}
+                                                >
+                                                  {isExpert ? '−💫' : '+💫'}
+                                                </button>
+                                              )}
+                                              {/* Proficiency button */}
+                                              <button
+                                                onClick={() => handleToggleSkillProficiency(selectedCharacterData.id, skill)}
+                                                title={isProficient ? 'Remove Proficiency' : 'Add Proficiency'}
+                                                style={{
+                                                  background: isProficient ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)',
+                                                  border: isProficient ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(34, 197, 94, 0.5)',
+                                                  color: isProficient ? '#fca5a5' : '#86efac',
+                                                  borderRadius: '4px',
+                                                  padding: '0.2rem 0.4rem',
+                                                  cursor: 'pointer',
+                                                  fontSize: '0.75rem',
+                                                  fontWeight: 'bold'
+                                                }}
+                                              >
+                                                {isProficient ? '−' : '+'}
+                                              </button>
+                                            </>
                                           )}
                                           <div style={{
-                                            background: isProficient ? 'var(--primary-gold)' : 'rgba(255, 255, 255, 0.1)',
-                                            color: isProficient ? 'var(--background-dark)' : 'var(--text-gold)',
+                                            background: isExpert
+                                              ? 'rgba(139, 92, 246, 0.7)'
+                                              : isProficient
+                                                ? 'var(--primary-gold)'
+                                                : 'rgba(255, 255, 255, 0.1)',
+                                            color: isExpert ? 'white' : isProficient ? 'var(--background-dark)' : 'var(--text-gold)',
                                             padding: '0.2rem 0.5rem',
                                             borderRadius: '12px',
                                             fontWeight: 'bold',

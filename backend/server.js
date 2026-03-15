@@ -272,6 +272,7 @@ const startServer = async () => {
       const addMountsTable = require('./migrations/add_mounts_table');
       const addCharlatanClass = require('./migrations/add_charlatan_class');
       const addCharlatanSkills = require('./migrations/add_charlatan_skills');
+      const addExpertiseColumn = require('./migrations/add_expertise_column');
       
       // Execute migrations in correct order
       const migrations = [
@@ -299,7 +300,8 @@ const startServer = async () => {
         { name: 'cleanupOldImagePaths', fn: cleanupOldImagePaths },
         { name: 'addMountsTable', fn: addMountsTable },
         { name: 'addCharlatanClass', fn: addCharlatanClass },
-        { name: 'addCharlatanSkills', fn: addCharlatanSkills }
+        { name: 'addCharlatanSkills', fn: addCharlatanSkills },
+        { name: 'addExpertiseColumn', fn: addExpertiseColumn }
       ];
       
       for (const migration of migrations) {
@@ -1121,7 +1123,24 @@ const startServer = async () => {
           console.error('Error handling skill proficiency toggle:', error);
         }
       });
-      
+
+      socket.on('skillExpertiseToggled', (data) => {
+        try {
+          const { campaignId, characterId, skillName, isAdding } = data;
+          const roomName = `campaign_${campaignId}`;
+          io.to(roomName).emit('skillExpertiseToggled', {
+            campaignId,
+            characterId,
+            skillName,
+            isAdding,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`✨ Skill expertise toggled: ${skillName} (${isAdding ? 'added' : 'removed'})`);
+        } catch (error) {
+          console.error('Error handling skill expertise toggle:', error);
+        }
+      });
+
       socket.on('disconnect', (reason) => {
         console.log(`👋 User disconnected: ${socket.id}, reason: ${reason}`);
         // Remove from user socket map

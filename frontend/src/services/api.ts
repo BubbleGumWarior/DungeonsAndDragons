@@ -87,6 +87,7 @@ export interface Character {
     cha: number;
   };
   skills: string[];
+  expertise?: string[];
   equipment: string[];
   equipped_items?: EquippedItems;
   spells: string[];

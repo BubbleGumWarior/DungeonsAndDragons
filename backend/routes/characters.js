@@ -210,6 +210,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       armor_class,
       abilities,
       skills,
+      expertise,
       equipment,
       spells,
       backstory,
@@ -245,6 +246,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (armor_class !== undefined) updateData.armor_class = armor_class;
     if (abilities !== undefined) updateData.abilities = abilities;
     if (skills !== undefined) updateData.skills = skills;
+    if (expertise !== undefined) updateData.expertise = expertise;
     if (equipment !== undefined) updateData.equipment = equipment;
     if (spells !== undefined) updateData.spells = spells;
     if (backstory !== undefined) updateData.backstory = backstory.trim();
