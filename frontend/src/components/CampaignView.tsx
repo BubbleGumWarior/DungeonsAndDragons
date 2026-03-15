@@ -13318,60 +13318,62 @@ const CampaignView: React.FC = () => {
               onClick={(e) => e.stopPropagation()}
               style={{
                 position: 'relative',
-                maxWidth: '90vw',
-                maxHeight: '90vh',
-                cursor: 'default'
+                width: 'min(600px, 90vw)',
+                cursor: 'default',
+                display: 'flex',
+                flexDirection: 'column'
               }}
             >
-              {/* Close button */}
-              <button
-                onClick={() => setViewImageModal(null)}
-                style={{
-                  position: 'absolute',
-                  top: '-3rem',
-                  right: 0,
-                  padding: '0.75rem 1.5rem',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '2px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '0.5rem',
-                  color: '#fff',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.borderColor = '#fff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                }}
-              >
-                ✕ Close
-              </button>
-
-              {/* Monster name */}
+              {/* Header row: name + close */}
               <div style={{
-                position: 'absolute',
-                top: '-3rem',
-                left: 0,
-                color: 'var(--text-gold)',
-                fontSize: '1.5rem',
-                fontWeight: 'bold',
-                textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)'
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.75rem'
               }}>
-                {viewImageModal.name}
+                <div style={{
+                  color: 'var(--text-gold)',
+                  fontSize: '1.5rem',
+                  fontWeight: 'bold',
+                  textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)'
+                }}>
+                  {viewImageModal.name}
+                </div>
+                <button
+                  onClick={() => setViewImageModal(null)}
+                  style={{
+                    padding: '0.5rem 1.25rem',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '2px solid rgba(255, 255, 255, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    transition: 'all 0.2s ease',
+                    flexShrink: 0
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.borderColor = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                  }}
+                >
+                  ✕ Close
+                </button>
               </div>
 
-              {/* Image */}
+              {/* Image — full width */}
               <img
                 src={viewImageModal.imageUrl}
                 alt={viewImageModal.name}
                 style={{
-                  maxWidth: '100%',
-                  maxHeight: viewImageModal.description ? '70vh' : '90vh',
+                  width: '100%',
+                  maxHeight: '65vh',
+                  objectFit: 'contain',
                   borderRadius: viewImageModal.description ? '0.75rem 0.75rem 0 0' : '0.75rem',
                   border: '3px solid var(--text-gold)',
                   borderBottom: viewImageModal.description ? 'none' : '3px solid var(--text-gold)',
@@ -13390,8 +13392,10 @@ const CampaignView: React.FC = () => {
                   color: 'var(--text-secondary)',
                   fontSize: '0.9rem',
                   lineHeight: '1.6',
-                  maxHeight: '18vh',
-                  overflowY: 'auto'
+                  maxHeight: '20vh',
+                  overflowY: 'auto',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'normal'
                 }}>
                   {viewImageModal.description}
                 </div>
