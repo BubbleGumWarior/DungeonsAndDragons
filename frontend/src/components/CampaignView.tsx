@@ -2103,7 +2103,10 @@ const CampaignView: React.FC = () => {
         partyMemberIds: number[];
         partyPosition?: { x: number; y: number };
       }) => {
-        setPartyMemberIds(data.partyMemberIds || []);
+        // Guard against ghost IDs from deleted characters
+        const knownIds = new Set((currentCampaignRef.current?.characters || []).map(c => c.id));
+        const validIds = (data.partyMemberIds || []).filter(id => knownIds.has(id));
+        setPartyMemberIds(validIds);
         if (data.partyPosition) {
           setPartyPosition(data.partyPosition);
         }
@@ -2113,7 +2116,9 @@ const CampaignView: React.FC = () => {
         partyMemberIds: number[];
         partyPosition?: { x: number; y: number };
       }) => {
-        const nextPartyMemberIds = data.partyMemberIds || [];
+        // Filter out any ghost IDs that no longer correspond to a real character
+        const knownIds = new Set((currentCampaignRef.current?.characters || []).map(c => c.id));
+        const nextPartyMemberIds = (data.partyMemberIds || []).filter(id => knownIds.has(id));
         setPartyMemberIds(prevPartyMemberIds => {
           if (user?.role !== 'Dungeon Master' && currentCampaign) {
             const joinedIds = nextPartyMemberIds.filter(id => !prevPartyMemberIds.includes(id));

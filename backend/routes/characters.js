@@ -290,7 +290,27 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       }
     }
     
-    await Character.delete(id);
+    const deletedCharacter = await Character.delete(id);
+
+    // Remove this character's ID from the campaign's party_member_ids so it
+    // doesn't leave a ghost entry that inflates the party count.
+    if (deletedCharacter) {
+      try {
+        await pool.query(
+          `UPDATE campaigns
+             SET party_member_ids = (
+               SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+               FROM jsonb_array_elements(COALESCE(party_member_ids, '[]'::jsonb)) AS elem
+               WHERE elem::int != $1
+             )
+           WHERE id = $2`,
+          [parseInt(id), character.campaign_id]
+        );
+      } catch (pgErr) {
+        console.warn('Could not remove deleted character from party_member_ids:', pgErr.message);
+      }
+    }
+
     res.json({ message: 'Character deleted successfully' });
   } catch (error) {
     console.error('Error deleting character:', error);

@@ -447,8 +447,29 @@ const startServer = async () => {
                 [campaignId]
               );
               if (pgRes.rows.length > 0) {
+                let rawIds = pgRes.rows[0].party_member_ids || [];
+
+                // Filter out IDs of characters that have since been deleted
+                if (rawIds.length > 0) {
+                  const validRes = await pool.query(
+                    'SELECT id FROM characters WHERE id = ANY($1::int[]) AND campaign_id = $2',
+                    [rawIds, campaignId]
+                  );
+                  const validIds = new Set(validRes.rows.map(r => r.id));
+                  const filteredIds = rawIds.filter(id => validIds.has(id));
+
+                  // If stale IDs were found, persist the cleaned list back to DB
+                  if (filteredIds.length !== rawIds.length) {
+                    rawIds = filteredIds;
+                    pool.query(
+                      'UPDATE campaigns SET party_member_ids = $1 WHERE id = $2',
+                      [JSON.stringify(filteredIds), campaignId]
+                    ).catch(err => console.warn('Could not clean stale party_member_ids:', err.message));
+                  }
+                }
+
                 partyGroupState[campaignId] = {
-                  partyMemberIds: pgRes.rows[0].party_member_ids || [],
+                  partyMemberIds: rawIds,
                   partyPosition: pgRes.rows[0].party_position || { x: 50, y: 50 }
                 };
               }
