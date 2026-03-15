@@ -8371,7 +8371,7 @@ const CampaignView: React.FC = () => {
                         {/* Basic Info Section - Styled Cards */}
                         <div style={{ 
                           display: 'grid', 
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                          gridTemplateColumns: 'repeat(2, 1fr)', 
                           gap: '1rem',
                           marginBottom: '2rem'
                         }}>
@@ -8542,20 +8542,6 @@ const CampaignView: React.FC = () => {
                             {selectedCharacterData.backstory ? (() => {
                               const pages = paginateBackstory(selectedCharacterData.backstory);
                               const currentPage = Math.min(backstoryPage, pages.length - 1);
-                              
-                              // Calculate max height - account for line breaks AND text wrapping
-                              const calculatePageHeight = (text: string) => {
-                                const explicitLines = text.split('\n').length;
-                                // Average ~120 chars per line before wrapping at justify (more generous)
-                                const charsPerLine = 120;
-                                const wrappedLines = Math.ceil(text.length / charsPerLine);
-                                const totalLines = Math.max(explicitLines, wrappedLines);
-                                // 27 pixels per line (1.8 line height * 15px font)
-                                return totalLines * 27 + 50;
-                              };
-                              
-                              const heights = pages.map(page => calculatePageHeight(page));
-                              const maxHeight = Math.max(...heights, 300);
                           
                           return (
                             <div className="character-backstory-panel" style={{ 
@@ -8599,9 +8585,8 @@ const CampaignView: React.FC = () => {
 
                               {/* Page content */}
                               <div className="character-backstory-content" style={{
-                                height: `${maxHeight}px`,
-                                position: 'relative',
-                                overflow: 'visible'
+                                minHeight: '200px',
+                                position: 'relative'
                               }}>
                                 {pageDirection ? (
                                   <div 

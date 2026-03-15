@@ -1681,7 +1681,7 @@ label:has(input[type="checkbox"]:disabled) {
 }
 
 .character-backstory-panel {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .character-panel-tabs {
@@ -1779,7 +1779,7 @@ label:has(input[type="checkbox"]:disabled) {
   .character-backstory-content {
     max-height: 360px;
     padding-bottom: 1.75rem;
-    overflow: hidden;
+    overflow-y: auto;
   }
 
   .character-backstory-wordcount {
