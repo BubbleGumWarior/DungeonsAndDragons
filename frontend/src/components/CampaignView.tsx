@@ -9313,6 +9313,54 @@ const CampaignView: React.FC = () => {
                           +{Math.ceil(selectedCharacterData.level / 4) + 1}
                         </div>
                       </div>
+
+                      <div style={{
+                        background: 'rgba(168, 85, 247, 0.1)',
+                        border: '2px solid rgba(168, 85, 247, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1rem',
+                        textAlign: 'center',
+                        cursor: 'help'
+                      }}
+                      title={(() => {
+                        const hitDiceMap: Record<string, number> = {
+                          'Barbarian': 12, 'Oathknight': 12,
+                          'Fighter': 10, 'Paladin': 10, 'Ranger': 10, 'Primal Bond': 10, 'Shadow Sovereign': 10,
+                          'Bard': 8, 'Cleric': 8, 'Druid': 8, 'Monk': 8, 'Rogue': 8, 'Reaver': 8, 'Warlock': 8, 'Charlatan': 8,
+                          'Sorcerer': 6, 'Wizard': 6
+                        };
+                        const die = hitDiceMap[selectedCharacterData.class] ?? 8;
+                        return `Hit Die: d${die} (${selectedCharacterData.class})\nLevel: ${selectedCharacterData.level}\nRoll ${selectedCharacterData.level}d${die} to determine hit points`;
+                      })()}
+                      >
+                        <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                          Hit Dice
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>
+                          {(() => {
+                            const hitDiceMap: Record<string, number> = {
+                              'Barbarian': 12, 'Oathknight': 12,
+                              'Fighter': 10, 'Paladin': 10, 'Ranger': 10, 'Primal Bond': 10, 'Shadow Sovereign': 10,
+                              'Bard': 8, 'Cleric': 8, 'Druid': 8, 'Monk': 8, 'Rogue': 8, 'Reaver': 8, 'Warlock': 8, 'Charlatan': 8,
+                              'Sorcerer': 6, 'Wizard': 6
+                            };
+                            const die = hitDiceMap[selectedCharacterData.class] ?? 8;
+                            return `${selectedCharacterData.level}d${die}`;
+                          })()}
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                          {(() => {
+                            const hitDiceMap: Record<string, number> = {
+                              'Barbarian': 12, 'Oathknight': 12,
+                              'Fighter': 10, 'Paladin': 10, 'Ranger': 10, 'Primal Bond': 10, 'Shadow Sovereign': 10,
+                              'Bard': 8, 'Cleric': 8, 'Druid': 8, 'Monk': 8, 'Rogue': 8, 'Reaver': 8, 'Warlock': 8, 'Charlatan': 8,
+                              'Sorcerer': 6, 'Wizard': 6
+                            };
+                            const die = hitDiceMap[selectedCharacterData.class] ?? 8;
+                            return `d${die} per level`;
+                          })()}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Skills - Organized by Ability Score */}
