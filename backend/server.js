@@ -274,6 +274,9 @@ const startServer = async () => {
       const addCharlatanSkills = require('./migrations/add_charlatan_skills');
       const addExpertiseColumn = require('./migrations/add_expertise_column');
       const addImageDataToMonsters = require('./migrations/add_image_data_to_monsters');
+      const addMonsterAbilities = require('./migrations/add_monster_abilities');
+      const addMonsterCR = require('./migrations/add_monster_cr');
+      const seedDefaultMonsters = require('./migrations/seed_default_monsters');
       
       // Execute migrations in correct order
       const migrations = [
@@ -303,7 +306,10 @@ const startServer = async () => {
         { name: 'addCharlatanClass', fn: addCharlatanClass },
         { name: 'addCharlatanSkills', fn: addCharlatanSkills },
         { name: 'addExpertiseColumn', fn: addExpertiseColumn },
-        { name: 'addImageDataToMonsters', fn: addImageDataToMonsters }
+        { name: 'addImageDataToMonsters', fn: addImageDataToMonsters },
+        { name: 'addMonsterAbilities', fn: addMonsterAbilities },
+        { name: 'addMonsterCR', fn: addMonsterCR },
+        { name: 'seedDefaultMonsters', fn: seedDefaultMonsters }
       ];
       
       for (const migration of migrations) {

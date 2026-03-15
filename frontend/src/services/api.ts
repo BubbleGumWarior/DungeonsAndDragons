@@ -151,10 +151,20 @@ export interface InventoryItem {
 
 export interface Monster {
   id: number;
-  campaign_id: number;
+  campaign_id: number | null;
+  is_global?: boolean;
   name: string;
   description?: string;
   image_url?: string;
+  cr?: number;
+  abilities?: {
+    str: number;
+    dex: number;
+    con: number;
+    int: number;
+    wis: number;
+    cha: number;
+  };
   limb_health?: {
     head: number;
     chest: number;

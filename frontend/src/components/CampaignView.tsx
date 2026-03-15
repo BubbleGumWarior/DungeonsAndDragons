@@ -353,10 +353,20 @@ const CampaignView: React.FC = () => {
     name: '',
     description: '',
     limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
-    limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 }
+    limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
+    abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+    cr: 0
   });
   const [monsterImageFile, setMonsterImageFile] = useState<File | null>(null);
-  const [viewImageModal, setViewImageModal] = useState<{ imageUrl: string; name: string } | null>(null);
+  const [viewImageModal, setViewImageModal] = useState<{ imageUrl: string; name: string; description?: string } | null>(null);
+
+  // Encyclopedia search/filter state
+  const [encyclopediaSearch, setEncyclopediaSearch] = useState('');
+  const [encyclopediaSortBy, setEncyclopediaSortBy] = useState<'name' | 'cr' | 'hp' | 'ac'>('name');
+  const [encyclopediaSortDir, setEncyclopediaSortDir] = useState<'asc' | 'desc'>('asc');
+
+  // Add to Combat monster search
+  const [combatMonsterSearch, setCombatMonsterSearch] = useState('');
 
   // Mount state
   const [campaignMounts, setCampaignMounts] = useState<Mount[]>([]);
@@ -472,6 +482,15 @@ const CampaignView: React.FC = () => {
     // Uploaded files (/uploads/...) — served by the Express backend
     if (process.env.NODE_ENV === 'production') return imageUrl;
     return `http://localhost:5000${imageUrl}`;
+  };
+
+  const formatCR = (cr: number | undefined): string => {
+    if (cr === undefined || cr === null) return '—';
+    if (cr === 0) return '0';
+    if (cr === 0.125) return '1/8';
+    if (cr === 0.25) return '1/4';
+    if (cr === 0.5) return '1/2';
+    return String(Math.round(cr * 100) / 100);
   };
 
   const getBattleParticipantName = useCallback((participant: BattleParticipant) => {
@@ -2296,6 +2315,23 @@ const CampaignView: React.FC = () => {
         setCombatants(data.combatants);
         setInitiativeOrder(data.initiativeOrder);
         setCurrentTurnIndex(data.currentTurnIndex);
+      });
+
+      // Listen for turn advanced (initiative moves to next combatant)
+      newSocket.on('turnAdvanced', (data: {
+        currentCharacterId: number | string;
+        initiativeOrder: (number | string)[];
+        currentTurnIndex: number;
+        resetMovementFor: number | string;
+        movementSpeed: number;
+        timestamp: string;
+      }) => {
+        setInitiativeOrder(data.initiativeOrder);
+        setCurrentTurnIndex(data.currentTurnIndex);
+        setRemainingMovement(prev => ({
+          ...prev,
+          [data.resetMovementFor]: data.movementSpeed
+        }));
       });
 
       // Listen for combat reset (DM clears all combatants)
@@ -5300,11 +5336,14 @@ const CampaignView: React.FC = () => {
                       socket.emit('characterBattleMove', moveData);
                     }
                     
-                    // Update position in backend (async, doesn't block UI) - only for actual characters, not beasts
+                    // Update position in backend (async, doesn't block UI) - only for actual characters, not beasts or monsters
                     if (typeof draggedCharacter === 'number') {
-                      characterAPI.updateBattlePosition(draggedCharacter, x, y).catch(error => {
-                        console.error('Error updating character battle position:', error);
-                      });
+                      const draggedCombatant = combatants.find(c => c.characterId === draggedCharacter);
+                      if (!draggedCombatant?.isMonster) {
+                        characterAPI.updateBattlePosition(draggedCharacter, x, y).catch(error => {
+                          console.error('Error updating character battle position:', error);
+                        });
+                      }
                     }
                     
                     setDraggedCharacter(null);
@@ -7768,7 +7807,7 @@ const CampaignView: React.FC = () => {
 
             {campaignTab === 'encyclopedia' && (
               <div className="glass-panel">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📚 Monster Encyclopedia</h5>
                   {user?.role === 'Dungeon Master' && (
                     <button
@@ -7792,29 +7831,112 @@ const CampaignView: React.FC = () => {
                   )}
                 </div>
 
-                {monsters.length === 0 ? (
-                  <div style={{
-                    minHeight: '320px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '2px dashed rgba(212, 193, 156, 0.3)',
-                    borderRadius: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    padding: '2.5rem'
-                  }}>
-                    <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>🐉</div>
-                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Monsters Added</h4>
-                    <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
-                      {user?.role === 'Dungeon Master'
-                        ? 'Add creatures to build your campaign encyclopedia.'
-                        : 'The DM has not published any monsters yet.'}
-                    </p>
+                {/* Search + Sort controls */}
+                {monsters.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="Search monsters..."
+                      value={encyclopediaSearch}
+                      onChange={(e) => setEncyclopediaSearch(e.target.value)}
+                      style={{
+                        flex: '1 1 200px',
+                        padding: '0.5rem 0.75rem',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(212,193,156,0.3)',
+                        borderRadius: '0.5rem',
+                        color: '#fff',
+                        fontSize: '0.9rem'
+                      }}
+                    />
+                    <select
+                      value={encyclopediaSortBy}
+                      onChange={(e) => setEncyclopediaSortBy(e.target.value as any)}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: 'rgba(0,0,0,0.5)',
+                        border: '1px solid rgba(212,193,156,0.3)',
+                        borderRadius: '0.5rem',
+                        color: '#d4c19c',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="name">Sort: Name</option>
+                      <option value="cr">Sort: CR</option>
+                      <option value="hp">Sort: HP</option>
+                      <option value="ac">Sort: AC</option>
+                    </select>
+                    <button
+                      onClick={() => setEncyclopediaSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                      title={encyclopediaSortDir === 'asc' ? 'Ascending' : 'Descending'}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: 'rgba(212,193,156,0.1)',
+                        border: '1px solid rgba(212,193,156,0.3)',
+                        borderRadius: '0.5rem',
+                        color: '#d4c19c',
+                        cursor: 'pointer',
+                        fontSize: '1rem'
+                      }}
+                    >
+                      {encyclopediaSortDir === 'asc' ? '↑' : '↓'}
+                    </button>
                   </div>
-                ) : (
+                )}
+
+                {(() => {
+                  const search = encyclopediaSearch.toLowerCase();
+                  const filtered = monsters.filter((m: Monster) =>
+                    m.name.toLowerCase().includes(search) ||
+                    (m.description || '').toLowerCase().includes(search)
+                  );
+                  const sorted = [...filtered].sort((a: Monster, b: Monster) => {
+                    let av: number, bv: number;
+                    switch (encyclopediaSortBy) {
+                      case 'cr': av = a.cr ?? 0; bv = b.cr ?? 0; break;
+                      case 'hp': av = a.limb_health?.chest ?? 0; bv = b.limb_health?.chest ?? 0; break;
+                      case 'ac': av = a.limb_ac?.chest ?? 0; bv = b.limb_ac?.chest ?? 0; break;
+                      default: return encyclopediaSortDir === 'asc'
+                        ? a.name.localeCompare(b.name)
+                        : b.name.localeCompare(a.name);
+                    }
+                    return encyclopediaSortDir === 'asc' ? av - bv : bv - av;
+                  });
+
+                  if (monsters.length === 0) {
+                    return (
+                      <div style={{
+                        minHeight: '320px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px dashed rgba(212, 193, 156, 0.3)',
+                        borderRadius: '0.75rem',
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        padding: '2.5rem'
+                      }}>
+                        <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>🐉</div>
+                        <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Monsters Added</h4>
+                        <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
+                          {user?.role === 'Dungeon Master'
+                            ? 'Add creatures to build your campaign encyclopedia.'
+                            : 'The DM has not published any monsters yet.'}
+                        </p>
+                      </div>
+                    );
+                  }
+                  if (sorted.length === 0) {
+                    return (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>
+                        No monsters match "{encyclopediaSearch}"
+                      </div>
+                    );
+                  }
+                  return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-                    {monsters.map((monster: Monster) => {
+                    {sorted.map((monster: Monster) => {
                       const imageUrl = getImageUrl(monster.image_url);
 
                       return (
@@ -7831,7 +7953,7 @@ const CampaignView: React.FC = () => {
                         >
                           {imageUrl && (
                             <div
-                              onClick={() => setViewImageModal({ imageUrl, name: monster.name })}
+                              onClick={() => setViewImageModal({ imageUrl, name: monster.name, description: monster.description || undefined })}
                               style={{
                                 height: '160px',
                                 backgroundImage: `url(${imageUrl})`,
@@ -7872,8 +7994,21 @@ const CampaignView: React.FC = () => {
                             )}
                             {monster.limb_health && (
                               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                HP: {monster.limb_health.chest} | AC: {monster.limb_ac?.chest || 10}
+                                CR: {formatCR(monster.cr)} | HP: {monster.limb_health.chest} | AC: {monster.limb_ac?.chest || 10}
                               </div>
+                            )}
+                            {monster.abilities && (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.25rem', marginTop: '0.25rem' }}>
+                                {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(ab => (
+                                  <div key={ab} style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '3px', padding: '2px 0', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.55rem', color: 'var(--text-gold)' }}>{ab.toUpperCase()}</div>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#fff' }}>{(monster.abilities as any)[ab]}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {(monster as any).is_global && (
+                              <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginTop: '0.25rem' }}>📖 Default Template</div>
                             )}
                           </div>
                           {user?.role === 'Dungeon Master' && (
@@ -7898,28 +8033,31 @@ const CampaignView: React.FC = () => {
                               >
                                 {monster.visible_to_players ? 'Hide' : 'Show'}
                               </button>
-                              <button
-                                onClick={() => handleDeleteMonster(monster.id)}
-                                style={{
-                                  flex: 1,
-                                  padding: '0.4rem 0.6rem',
-                                  borderRadius: '0.5rem',
-                                  border: '1px solid rgba(239, 68, 68, 0.5)',
-                                  background: 'rgba(239, 68, 68, 0.2)',
-                                  color: '#f87171',
-                                  cursor: 'pointer',
-                                  fontSize: '0.8rem'
-                                }}
-                              >
-                                Delete
-                              </button>
+                              {!(monster as any).is_global && (
+                                <button
+                                  onClick={() => handleDeleteMonster(monster.id)}
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.4rem 0.6rem',
+                                    borderRadius: '0.5rem',
+                                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    color: '#f87171',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem'
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 
@@ -12041,11 +12179,30 @@ const CampaignView: React.FC = () => {
 
                 {/* Right Column - Monsters */}
                 <div>
-                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                  <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem', fontSize: '1.1rem' }}>
                     🐉 Monsters
                   </h4>
+                  <input
+                    type="text"
+                    placeholder="Search monsters..."
+                    value={combatMonsterSearch}
+                    onChange={(e) => setCombatMonsterSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      marginBottom: '0.75rem',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(217,83,79,0.3)',
+                      borderRadius: '0.5rem',
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                      boxSizing: 'border-box'
+                    }}
+                  />
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {monsters.map((monster: Monster) => {
+                    {monsters
+                      .filter((m: Monster) => m.name.toLowerCase().includes(combatMonsterSearch.toLowerCase()))
+                      .map((monster: Monster) => {
                       const imageUrl = getImageUrl(monster.image_url) ?? null;
                       
                       return (
@@ -12099,16 +12256,15 @@ const CampaignView: React.FC = () => {
                           )}
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{monster.name}</div>
-                            {monster.limb_health && (
-                              <div style={{ fontSize: '0.85rem', color: '#999' }}>
-                                HP: {monster.limb_health.chest} | AC: {monster.limb_ac?.chest || 10}
-                              </div>
-                            )}
+                            <div style={{ fontSize: '0.85rem', color: '#999' }}>
+                              CR {formatCR(monster.cr)}
+                              {monster.limb_health && ` | HP: ${monster.limb_health.chest} | AC: ${monster.limb_ac?.chest || 10}`}
+                            </div>
                           </div>
                         </button>
                       );
                     })}
-                    {monsters.length === 0 && (
+                    {monsters.filter((m: Monster) => m.name.toLowerCase().includes(combatMonsterSearch.toLowerCase())).length === 0 && (
                       <div style={{ 
                         padding: '2rem', 
                         textAlign: 'center', 
@@ -12116,7 +12272,7 @@ const CampaignView: React.FC = () => {
                         border: '1px dashed rgba(217, 83, 79, 0.3)',
                         borderRadius: '0.5rem'
                       }}>
-                        No monsters in encyclopedia
+                        {monsters.length === 0 ? 'No monsters in encyclopedia' : `No monsters match "${combatMonsterSearch}"`}
                       </div>
                     )}
                   </div>
@@ -12125,7 +12281,7 @@ const CampaignView: React.FC = () => {
 
               {/* Cancel Button */}
               <button
-                onClick={() => setShowAddToCombatModal(false)}
+                onClick={() => { setShowAddToCombatModal(false); setCombatMonsterSearch(''); }}
                 style={{
                   marginTop: '1.5rem',
                   padding: '0.75rem 1.5rem',
@@ -12571,6 +12727,66 @@ const CampaignView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Ability Scores */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ color: 'var(--text-gold)', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block', fontWeight: 'bold' }}>
+                  Ability Scores
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                  {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(ab => (
+                    <div key={ab}>
+                      <label style={{ color: '#999', fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block' }}>
+                        {ab.toUpperCase()}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={monsterFormData.abilities[ab]}
+                        onChange={(e) => setMonsterFormData({
+                          ...monsterFormData,
+                          abilities: { ...monsterFormData.abilities, [ab]: parseInt(e.target.value) || 10 }
+                        })}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          borderRadius: '0.25rem',
+                          color: '#fff',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Challenge Rating */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
+                  Challenge Rating (CR)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={30}
+                  step={0.125}
+                  value={monsterFormData.cr}
+                  onChange={(e) => setMonsterFormData({ ...monsterFormData, cr: parseFloat(e.target.value) || 0 })}
+                  placeholder="e.g. 0.25, 1, 5, 21"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    borderRadius: '0.5rem',
+                    color: '#fff',
+                    fontSize: '0.9rem'
+                  }}
+                />
+              </div>
+
               {/* Image Upload */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
@@ -12595,8 +12811,6 @@ const CampaignView: React.FC = () => {
                   }}
                 />
               </div>
-
-              {/* Buttons */}
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button
                   onClick={async () => {
@@ -12625,7 +12839,9 @@ const CampaignView: React.FC = () => {
                         name: '',
                         description: '',
                         limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
-                        limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 }
+                        limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
+                        abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+                        cr: 0
                       });
                       setMonsterImageFile(null);
                       setShowAddMonsterModal(false);
@@ -12654,7 +12870,8 @@ const CampaignView: React.FC = () => {
                       name: '',
                       description: '',
                       limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
-                      limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 }
+                      limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
+                      abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
                     });
                     setMonsterImageFile(null);
                     setShowAddMonsterModal(false);
@@ -13154,12 +13371,31 @@ const CampaignView: React.FC = () => {
                 alt={viewImageModal.name}
                 style={{
                   maxWidth: '100%',
-                  maxHeight: '90vh',
-                  borderRadius: '0.75rem',
+                  maxHeight: viewImageModal.description ? '70vh' : '90vh',
+                  borderRadius: viewImageModal.description ? '0.75rem 0.75rem 0 0' : '0.75rem',
                   border: '3px solid var(--text-gold)',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
+                  borderBottom: viewImageModal.description ? 'none' : '3px solid var(--text-gold)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
+                  display: 'block'
                 }}
               />
+              {/* Description */}
+              {viewImageModal.description && (
+                <div style={{
+                  background: 'rgba(10, 10, 21, 0.97)',
+                  border: '3px solid var(--text-gold)',
+                  borderTop: 'none',
+                  borderRadius: '0 0 0.75rem 0.75rem',
+                  padding: '1rem 1.25rem',
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.9rem',
+                  lineHeight: '1.6',
+                  maxHeight: '18vh',
+                  overflowY: 'auto'
+                }}>
+                  {viewImageModal.description}
+                </div>
+              )}
             </div>
           </div>
         )}

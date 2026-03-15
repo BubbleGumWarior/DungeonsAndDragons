@@ -310,10 +310,11 @@ const runMigrations = async () => {
       await pool.query(`
         CREATE TABLE monsters (
           id SERIAL PRIMARY KEY,
-          campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+          campaign_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE,
           name VARCHAR(255) NOT NULL,
           description TEXT DEFAULT '',
           image_url VARCHAR(500),
+          abilities JSONB DEFAULT '{"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10}'::jsonb,
           limb_health JSONB DEFAULT '{"head": 10, "chest": 30, "left_arm": 15, "right_arm": 15, "left_leg": 20, "right_leg": 20}'::jsonb,
           limb_ac JSONB DEFAULT '{"head": 10, "chest": 12, "left_arm": 10, "right_arm": 10, "left_leg": 10, "right_leg": 10}'::jsonb,
           visible_to_players BOOLEAN DEFAULT FALSE,

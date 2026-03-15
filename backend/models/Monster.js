@@ -9,15 +9,17 @@ class Monster {
       image_url = null,
       limb_health = { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
       limb_ac = { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
+      abilities = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+      cr = 0,
       visible_to_players = false
     } = monsterData;
 
     const result = await pool.query(
       `INSERT INTO monsters (
-        campaign_id, name, description, image_url, limb_health, limb_ac, visible_to_players
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        campaign_id, name, description, image_url, limb_health, limb_ac, abilities, cr, visible_to_players
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *`,
-      [campaign_id, name, description, image_url, JSON.stringify(limb_health), JSON.stringify(limb_ac), visible_to_players]
+      [campaign_id, name, description, image_url, JSON.stringify(limb_health), JSON.stringify(limb_ac), JSON.stringify(abilities), cr, visible_to_players]
     );
 
     return Monster.convertImageToDataUrl(result.rows[0]);
@@ -32,15 +34,19 @@ class Monster {
   }
 
   static async findByCampaignId(campaignId) {
+    // Return campaign-specific monsters AND global default monsters (campaign_id IS NULL)
     const result = await pool.query(
-      'SELECT * FROM monsters WHERE campaign_id = $1 ORDER BY name ASC',
+      `SELECT *, (campaign_id IS NULL) AS is_global
+       FROM monsters
+       WHERE campaign_id = $1 OR campaign_id IS NULL
+       ORDER BY (campaign_id IS NULL) ASC, name ASC`,
       [campaignId]
     );
     return result.rows.map(m => Monster.convertImageToDataUrl(m));
   }
 
   static async update(id, updates) {
-    const allowedFields = ['name', 'description', 'image_url', 'limb_health', 'limb_ac', 'visible_to_players'];
+    const allowedFields = ['name', 'description', 'image_url', 'limb_health', 'limb_ac', 'abilities', 'cr', 'visible_to_players'];
     const setClause = [];
     const values = [];
     let paramIndex = 1;
@@ -48,7 +54,7 @@ class Monster {
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key) && value !== undefined) {
         setClause.push(`${key} = $${paramIndex}`);
-        if (key === 'limb_health' || key === 'limb_ac') {
+        if (key === 'limb_health' || key === 'limb_ac' || key === 'abilities') {
           values.push(JSON.stringify(value));
         } else {
           values.push(value);

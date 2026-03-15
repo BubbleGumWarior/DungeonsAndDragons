@@ -38,22 +38,11 @@ router.get('/campaign/:campaignId', auth, async (req, res) => {
     
     const monsters = await Monster.findByCampaignId(campaignId);
     
-    // Filter visible data based on user role
-    const filteredMonsters = monsters.map(monster => {
-      const isDM = req.user.role === 'Dungeon Master';
-      
-      if (isDM || monster.visible_to_players) {
-        return monster;
-      } else {
-        // Players only see name and image
-        return {
-          id: monster.id,
-          name: monster.name,
-          image_url: monster.image_url,
-          visible_to_players: monster.visible_to_players
-        };
-      }
-    });
+    // DMs see all monsters; players only see monsters explicitly made visible
+    const isDM = req.user.role === 'Dungeon Master';
+    const filteredMonsters = isDM
+      ? monsters
+      : monsters.filter(monster => monster.visible_to_players);
     
     res.json(filteredMonsters);
   } catch (error) {
@@ -133,12 +122,9 @@ router.patch('/:id/toggle-visibility', auth, async (req, res) => {
     }
     
     const { id } = req.params;
+    const monster = await Monster.findById(id);
+    if (!monster) return res.status(404).json({ message: 'Monster not found' });
     const updatedMonster = await Monster.toggleVisibility(id);
-    
-    if (!updatedMonster) {
-      return res.status(404).json({ message: 'Monster not found' });
-    }
-    
     res.json(updatedMonster);
   } catch (error) {
     console.error('Error toggling visibility:', error);
@@ -158,6 +144,10 @@ router.delete('/:id', auth, async (req, res) => {
 
     if (!monster) {
       return res.status(404).json({ message: 'Monster not found' });
+    }
+
+    if (monster.campaign_id === null) {
+      return res.status(403).json({ message: 'Cannot delete a default monster template' });
     }
 
     await Monster.delete(id);
