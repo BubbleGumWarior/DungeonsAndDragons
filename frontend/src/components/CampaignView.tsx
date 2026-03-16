@@ -6,6 +6,8 @@ import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
+import { getSpellSlots, isSpellcaster, ordinalSuffix, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
+import { classInfo } from '../data/classInfo';
 import FigureImage from '../assets/images/Board/Figure.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
 import BattleMapImage from '../assets/images/Campaign/BattleMap.jpg';
@@ -700,7 +702,15 @@ const CampaignView: React.FC = () => {
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
   const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
   const [showAddSkillModal, setShowAddSkillModal] = useState(false);
+  const [showClassProgressionModal, setShowClassProgressionModal] = useState(false);
+  const [progressionHoveredSkill, setProgressionHoveredSkill] = useState<string | null>(null);
   const [showCreateSkillModal, setShowCreateSkillModal] = useState(false);
+
+  const skillDataMap = useMemo(() => {
+    const map: Record<string, Skill> = {};
+    allSkills.forEach(s => { map[s.name] = s; });
+    return map;
+  }, [allSkills]);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
   const [skillClassFilter, setSkillClassFilter] = useState<string>('All');
   const [newSkillData, setNewSkillData] = useState<Partial<Skill>>({
@@ -4443,6 +4453,67 @@ const CampaignView: React.FC = () => {
                                 : `${getLevelProgress(character.level, character.experience_points || 0).toFixed(0)}% to Level ${character.level + 1}`
                               }
                             </div>
+
+                            {/* Spell Slot Indicator */}
+                            {isSpellcaster(character.class) && (() => {
+                              const slotInfo = getSpellSlots(character.class, character.level);
+                              if (!slotInfo) return null;
+
+                              const MiniSquare = ({ roman, count, isPact }: { roman: string; count: number; isPact?: boolean }) => (
+                                <div style={{ position: 'relative', display: 'inline-block' }}>
+                                  <div style={{
+                                    width: '22px',
+                                    height: '22px',
+                                    background: isPact ? 'rgba(168, 85, 247, 0.2)' : 'rgba(99, 202, 255, 0.15)',
+                                    border: `1px solid ${isPact ? 'rgba(168, 85, 247, 0.55)' : 'rgba(99, 202, 255, 0.5)'}`,
+                                    borderRadius: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.55rem',
+                                    fontWeight: 'bold',
+                                    color: isPact ? '#c084fc' : '#7dd3fc',
+                                    fontFamily: 'serif'
+                                  }}>{roman}</div>
+                                  <div style={{
+                                    position: 'absolute',
+                                    bottom: '-4px',
+                                    right: '-4px',
+                                    minWidth: '11px',
+                                    height: '11px',
+                                    background: isPact ? '#7c3aed' : '#0369a1',
+                                    border: `1px solid ${isPact ? '#a855f7' : '#38bdf8'}`,
+                                    borderRadius: '50%',
+                                    fontSize: '0.45rem',
+                                    fontWeight: 'bold',
+                                    color: '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    lineHeight: 1
+                                  }}>{count}</div>
+                                </div>
+                              );
+
+                              if (slotInfo.type === 'pact') {
+                                return (
+                                  <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>✨</span>
+                                    <MiniSquare roman={toRoman(slotInfo.slotLevel)} count={slotInfo.slots} isPact />
+                                  </div>
+                                );
+                              }
+                              const activeSlots = slotInfo.slots.map((c, i) => c > 0 ? { roman: toRoman(i + 1), count: c } : null).filter(Boolean) as { roman: string; count: number }[];
+                              if (activeSlots.length === 0) return null;
+                              return (
+                                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>✨</span>
+                                  {activeSlots.map(({ roman, count }, i) => (
+                                    <MiniSquare key={i} roman={roman} count={count} />
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -8497,7 +8568,7 @@ const CampaignView: React.FC = () => {
                             color: 'var(--text-muted)', 
                             textTransform: 'uppercase',
                             letterSpacing: '1px'
-                          }}>Background</div>
+                          }}>Title</div>
                           {user?.role === 'Dungeon Master' && (
                             <button
                               onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'background', fieldLabel: 'Background', value: selectedCharacterData.background || '' })}
@@ -9466,6 +9537,86 @@ const CampaignView: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Spell Slots Panel (spellcasting classes only) */}
+                    {isSpellcaster(selectedCharacterData.class) && (() => {
+                      const slotInfo = getSpellSlots(selectedCharacterData.class, selectedCharacterData.level);
+                      if (!slotInfo) return null;
+
+                      // Render a single Roman-numeral square with a floating count badge
+                      const SlotSquare = ({ roman, count, isPact }: { roman: string; count: number; isPact?: boolean }) => (
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                          <div style={{
+                            width: '54px',
+                            height: '54px',
+                            background: isPact ? 'rgba(168, 85, 247, 0.18)' : 'rgba(99, 202, 255, 0.14)',
+                            border: `2px solid ${isPact ? 'rgba(168, 85, 247, 0.55)' : 'rgba(99, 202, 255, 0.5)'}`,
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.1rem',
+                            fontWeight: 'bold',
+                            color: isPact ? '#c084fc' : '#7dd3fc',
+                            fontFamily: 'serif',
+                            letterSpacing: '0.02em'
+                          }}>{roman}</div>
+                          {/* Count badge — bottom-right corner */}
+                          <div style={{
+                            position: 'absolute',
+                            bottom: '-6px',
+                            right: '-6px',
+                            minWidth: '18px',
+                            height: '18px',
+                            background: isPact ? '#7c3aed' : '#0369a1',
+                            border: `1.5px solid ${isPact ? '#a855f7' : '#38bdf8'}`,
+                            borderRadius: '50%',
+                            fontSize: '0.65rem',
+                            fontWeight: 'bold',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            lineHeight: 1,
+                            padding: '0 3px'
+                          }}>{count}</div>
+                        </div>
+                      );
+
+                      return (
+                        <div style={{
+                          background: 'rgba(99, 202, 255, 0.08)',
+                          border: '2px solid rgba(99, 202, 255, 0.35)',
+                          borderRadius: '12px',
+                          padding: '1.25rem',
+                          marginBottom: '2rem'
+                        }}>
+                          <h6 style={{ color: '#7dd3fc', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            ✨ Spell Slots
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                              {slotInfo.type === 'pact' ? '(Pact Magic — recharge on short rest)' : '(recharge on long rest)'}
+                            </span>
+                          </h6>
+                          {slotInfo.type === 'pact' ? (
+                            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <SlotSquare roman={toRoman(slotInfo.slotLevel)} count={slotInfo.slots} isPact />
+                              {selectedCharacterData.level >= 11 && (
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                  Mystic Arcanum:{' '}
+                                  {[6,7,8,9].filter((_, i) => selectedCharacterData.level >= [11,13,15,17][i]).map(lvl => toRoman(lvl)).join('  ')}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+                              {slotInfo.slots.map((count, i) => count > 0 && (
+                                <SlotSquare key={i} roman={toRoman(i + 1)} count={count} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Skills - Organized by Ability Score */}
                     <div>
                       <h6 className="text-gold">🎯 Skills by Ability Score</h6>
@@ -9641,21 +9792,38 @@ const CampaignView: React.FC = () => {
                   <div className="glass-panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                       <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>✨ Skills</h5>
-                      {user?.role === 'Dungeon Master' && (
-                        <button
-                          onClick={() => setShowAddSkillModal(true)}
-                          className="btn btn-primary"
-                          style={{
-                            padding: '0.5rem 1rem',
-                            fontSize: '0.9rem',
-                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.3))',
-                            border: '2px solid rgba(59, 130, 246, 0.5)',
-                            color: '#60a5fa'
-                          }}
-                        >
-                          ➕ Add Skill
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        {classInfo[selectedCharacterData.class] && (
+                          <button
+                            onClick={() => setShowClassProgressionModal(true)}
+                            className="btn btn-secondary"
+                            style={{
+                              padding: '0.5rem 1rem',
+                              fontSize: '0.9rem',
+                              background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.2), rgba(180, 160, 120, 0.2))',
+                              border: '2px solid rgba(212, 193, 156, 0.5)',
+                              color: 'var(--text-gold)'
+                            }}
+                          >
+                            📜 Class Progression
+                          </button>
+                        )}
+                        {user?.role === 'Dungeon Master' && (
+                          <button
+                            onClick={() => setShowAddSkillModal(true)}
+                            className="btn btn-primary"
+                            style={{
+                              padding: '0.5rem 1rem',
+                              fontSize: '0.9rem',
+                              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.3))',
+                              border: '2px solid rgba(59, 130, 246, 0.5)',
+                              color: '#60a5fa'
+                            }}
+                          >
+                            ➕ Add Skill
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {characterSkills[selectedCharacterData.id]?.length > 0 ? (
@@ -9713,6 +9881,17 @@ const CampaignView: React.FC = () => {
                                 }}>
                                   Level {skill.level_requirement}
                                 </span>
+                                {skill.usage_frequency === 'Spell Slots' && (
+                                  <span style={{
+                                    padding: '0.25rem 0.5rem',
+                                    background: 'rgba(99, 202, 255, 0.15)',
+                                    border: '1px solid rgba(99, 202, 255, 0.45)',
+                                    borderRadius: '0.25rem',
+                                    color: '#7dd3fc'
+                                  }}>
+                                    ✨ Spellcaster Skill
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
@@ -15324,21 +15503,27 @@ const CampaignView: React.FC = () => {
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
                     Usage Frequency
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={newSkillData.usage_frequency || ''}
                     onChange={(e) => setNewSkillData({ ...newSkillData, usage_frequency: e.target.value })}
-                    placeholder="e.g., Once per day"
                     style={{
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.3)',
                       border: '2px solid rgba(212, 193, 156, 0.3)',
                       borderRadius: '0.5rem',
-                      color: 'var(--text-gold)',
+                      color: newSkillData.usage_frequency ? 'var(--text-gold)' : 'var(--text-muted)',
                       fontSize: '1rem'
                     }}
-                  />
+                  >
+                    <option value="" style={{ background: '#1a1a2e', color: '#d4c19c' }}>— Select frequency —</option>
+                    <option value="At Will" style={{ background: '#1a1a2e', color: '#d4c19c' }}>At Will</option>
+                    <option value="Spell Slots" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Spell Slots</option>
+                    <option value="Once per short rest" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Once per short rest</option>
+                    <option value="Once per long rest" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Once per long rest</option>
+                    <option value="Once per day" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Once per day</option>
+                    <option value="Passive" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Passive</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -16012,6 +16197,20 @@ const CampaignView: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Spell Slot Changes */}
+                  {(() => {
+                    const changes = getSpellSlotChanges(selectedCharacterData?.class || '', levelUpInfo.currentLevel, levelUpInfo.newLevel);
+                    if (!changes.length) return null;
+                    return (
+                      <div style={{ padding: '1rem', background: 'rgba(99, 202, 255, 0.08)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(99, 202, 255, 0.35)' }}>
+                        <div style={{ fontWeight: 'bold', color: '#7dd3fc', marginBottom: '0.5rem' }}>✨ Spell Slots</div>
+                        {changes.map((change, idx) => (
+                          <div key={idx} style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>• {change}</div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
                   {/* Subclass Summary */}
                   {levelUpData.subclassId && (
                     <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
@@ -16145,6 +16344,277 @@ const CampaignView: React.FC = () => {
             >
               ×
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Class Progression Modal */}
+      {showClassProgressionModal && selectedCharacterData && classInfo[selectedCharacterData.class] && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}
+          onClick={() => setShowClassProgressionModal(false)}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              maxWidth: '700px',
+              width: '95vw',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              padding: '2rem',
+              margin: '2rem'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 className="text-gold" style={{ margin: 0 }}>
+                {selectedCharacterData.class}
+                <span style={{ fontSize: '1rem', color: 'var(--text-muted)', marginLeft: '1rem', fontWeight: 'normal' }}>
+                  (Level {selectedCharacterData.level})
+                </span>
+              </h2>
+              <button
+                onClick={() => setShowClassProgressionModal(false)}
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '2rem', lineHeight: '1.8' }}>
+              <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Description</h4>
+              <p style={{ color: 'var(--text-secondary)' }}>{classInfo[selectedCharacterData.class].description}</p>
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Key Features</h4>
+              <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-secondary)' }}>
+                {classInfo[selectedCharacterData.class].features.map((feature, index) => (
+                  <li key={index} style={{ marginBottom: '0.5rem' }}>{feature}</li>
+                ))}
+              </ul>
+            </div>
+
+            {classInfo[selectedCharacterData.class].subclasses.length > 0 && (
+              <div style={{ marginBottom: '2rem' }}>
+                <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Subclasses</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {classInfo[selectedCharacterData.class].subclasses.map((subclass, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '1rem',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        borderRadius: '8px',
+                        border: `2px solid ${subclass.color}`,
+                      }}
+                    >
+                      <div style={{ color: subclass.color, fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                        {subclass.name}
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+                        {subclass.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(() => {
+                // Build skill name -> Skill map for tooltips
+                const skillDataMap: Record<string, Skill> = {};
+                allSkills.forEach(s => { skillDataMap[s.name] = s; });
+
+                // Build subclass colours for this class
+                const subclassColors: Record<string, string> = {};
+                classInfo[selectedCharacterData.class].subclasses.forEach(sc => {
+                  subclassColors[sc.name] = sc.color;
+                });
+
+                const sortedSkillNames = Object.keys(skillDataMap).sort((a, b) => b.length - a.length);
+
+                const subclassChoices = [
+                  'Primal Path', 'Bard College', 'Divine Domain', 'Druid Circle',
+                  'Martial Archetype', 'Monastic Tradition', 'Sacred Oath', 'Ranger Archetype',
+                  'Roguish Archetype', 'Sorcerous Origin', 'Otherworldly Patron', 'Arcane Tradition',
+                  'Reaver Path', 'Ascended Oath'
+                ];
+
+                const renderFeatureText = (text: string) => {
+                  const elements: React.ReactElement[] = [];
+                  let remaining = text;
+                  let idx = 0;
+
+                  while (remaining.length > 0) {
+                    let matched = false;
+
+                    // Subclass choice labels (rainbow)
+                    for (const choice of subclassChoices) {
+                      const re = new RegExp(`^${choice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|\\(|,|$)`);
+                      if (re.test(remaining)) {
+                        elements.push(
+                          <span key={`sc-${idx}`} style={{
+                            background: 'linear-gradient(90deg,#FF6B6B,#4ECDC4,#45B7D1,#96CEB4,#FFEAA7)',
+                            backgroundClip: 'text', WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent', fontWeight: 'bold', cursor: 'help'
+                          }} title="Choose your subclass path">{choice}</span>
+                        );
+                        remaining = remaining.slice(choice.length);
+                        matched = true; idx++; break;
+                      }
+                    }
+                    if (matched) continue;
+
+                    // Subclass-specific feature: Name (SubclassHint)
+                    const scFeatMatch = remaining.match(/^([^,()]+)\s*\(([^)]+)\)(?=\s|,|$)/);
+                    if (scFeatMatch) {
+                      const featureName = scFeatMatch[1].trim();
+                      const hint = scFeatMatch[2].trim();
+                      const fullFeature = scFeatMatch[0];
+                      let scColor: string | null = null;
+                      for (const [scName, scCol] of Object.entries(subclassColors)) {
+                        const shortName = scName.replace(/ Path| College| Domain| Circle| Archetype| Tradition| Origin| Patron| Oath/g, '');
+                        if (scName.includes(hint) || hint.includes(shortName)) { scColor = scCol; break; }
+                      }
+                      if (scColor) {
+                        const cleanName = featureName.replace(/^\/\s*/, '').trim();
+                        const fullSkillName = `${cleanName} (${hint})`;
+                        let skillInfo = skillDataMap[fullSkillName];
+                        let matchedName = fullSkillName;
+                        if (!skillInfo) {
+                          for (const sn of Object.keys(skillDataMap)) {
+                            if (sn.toLowerCase().includes(cleanName.toLowerCase()) && sn.toLowerCase().includes(hint.toLowerCase())) {
+                              skillInfo = skillDataMap[sn]; matchedName = sn; break;
+                            }
+                          }
+                        }
+                        elements.push(
+                          <span key={`scf-${idx}`}
+                            onMouseEnter={() => skillInfo && setProgressionHoveredSkill(matchedName)}
+                            onMouseLeave={() => setProgressionHoveredSkill(null)}
+                            style={{ color: scColor, cursor: skillInfo ? 'help' : 'default',
+                              borderBottom: skillInfo ? `1px dotted ${scColor}` : 'none', fontWeight: 'bold' }}
+                          >{fullFeature}</span>
+                        );
+                        remaining = remaining.slice(fullFeature.length);
+                        matched = true; idx++; continue;
+                      }
+                    }
+
+                    // Known skill names
+                    for (const skillName of sortedSkillNames) {
+                      const re = new RegExp(`^${skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|\\(|,|$)`);
+                      if (re.test(remaining)) {
+                        elements.push(
+                          <span key={`sk-${idx}`}
+                            onMouseEnter={() => setProgressionHoveredSkill(skillName)}
+                            onMouseLeave={() => setProgressionHoveredSkill(null)}
+                            style={{ color: 'var(--primary-gold)', cursor: 'help',
+                              borderBottom: '1px dotted var(--primary-gold)' }}
+                          >{skillName}</span>
+                        );
+                        remaining = remaining.slice(skillName.length);
+                        matched = true; idx++; break;
+                      }
+                    }
+
+                    if (!matched) {
+                      elements.push(<span key={`t-${idx}`}>{remaining[0]}</span>);
+                      remaining = remaining.slice(1); idx++;
+                    }
+                  }
+                  return elements;
+                };
+
+                return (
+                  <div>
+                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Level Progression (1–20)</h4>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem', fontStyle: 'italic' }}>
+                      Hover over highlighted feature names to see skill details.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {classInfo[selectedCharacterData.class].levelProgression.map((lvl) => {
+                        const isCurrent = lvl.level === selectedCharacterData.level;
+                        const isPast = lvl.level < selectedCharacterData.level;
+                        return (
+                          <div key={lvl.level} style={{
+                            padding: '0.75rem',
+                            background: isCurrent ? 'rgba(212,193,156,0.15)' : isPast ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
+                            borderRadius: '6px',
+                            border: isCurrent ? '2px solid rgba(212,193,156,0.6)' : isPast ? '1px solid rgba(212,193,156,0.1)' : '1px solid rgba(212,193,156,0.2)',
+                            opacity: isPast ? 0.65 : 1
+                          }}>
+                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'baseline' }}>
+                              <span style={{
+                                color: isCurrent ? '#fbbf24' : 'var(--text-gold)',
+                                fontWeight: isCurrent ? 'bold' : 'normal',
+                                minWidth: '80px', display: 'flex', alignItems: 'center', gap: '0.4rem'
+                              }}>
+                                {isCurrent && <span style={{ fontSize: '0.75rem' }}>▶</span>}
+                                Level {lvl.level}:
+                              </span>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+                                {renderFeatureText(lvl.features)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Skill tooltip is rendered outside the modal panel to avoid backdrop-filter stacking context issues */}
+                  </div>
+                );
+              })()}
+          </div>
+        </div>
+      )}
+
+      {/* Class Progression skill tooltip — rendered at root level to escape backdrop-filter stacking context */}
+      {showClassProgressionModal && progressionHoveredSkill && skillDataMap[progressionHoveredSkill] && (
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 30000, pointerEvents: 'none' }}>
+          <div style={{
+            padding: '1rem',
+            maxWidth: '350px',
+            background: 'rgba(13, 17, 28, 0.98)',
+            border: '2px solid var(--primary-gold)',
+            borderRadius: '0.5rem',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.85)'
+          }}>
+            <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem', fontSize: '1rem' }}>
+              {skillDataMap[progressionHoveredSkill].name}
+            </h4>
+            <p style={{ fontSize: '0.85rem', marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>
+              {skillDataMap[progressionHoveredSkill].description}
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.75rem' }}>
+              {skillDataMap[progressionHoveredSkill].damage_dice && (
+                <div><strong style={{ color: 'var(--text-gold)' }}>Damage:</strong> {skillDataMap[progressionHoveredSkill].damage_dice}</div>
+              )}
+              {skillDataMap[progressionHoveredSkill].damage_type && (
+                <div><strong style={{ color: 'var(--text-gold)' }}>Type:</strong> {skillDataMap[progressionHoveredSkill].damage_type}</div>
+              )}
+              {skillDataMap[progressionHoveredSkill].range_size && (
+                <div><strong style={{ color: 'var(--text-gold)' }}>Range:</strong> {skillDataMap[progressionHoveredSkill].range_size}</div>
+              )}
+              {skillDataMap[progressionHoveredSkill].usage_frequency && (
+                <div style={{ gridColumn: '1 / -1' }}><strong style={{ color: 'var(--text-gold)' }}>Usage:</strong> {skillDataMap[progressionHoveredSkill].usage_frequency}</div>
+              )}
+              <div style={{ gridColumn: '1 / -1' }}><strong style={{ color: 'var(--text-gold)' }}>Level:</strong> {skillDataMap[progressionHoveredSkill].level_requirement}</div>
+            </div>
           </div>
         </div>
       )}
