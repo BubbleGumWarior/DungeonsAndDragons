@@ -201,7 +201,8 @@ class Character {
     const {
       name, race, class: characterClass, background, level,
       hit_points, armor_class, abilities, skills, expertise, equipment, spells,
-      backstory, personality_traits, ideals, bonds, flaws, equipped_items, image_url
+      backstory, personality_traits, ideals, bonds, flaws, equipped_items, image_url,
+      movement_speed
     } = updateData;
     
     try {
@@ -226,6 +227,7 @@ class Character {
              flaws = COALESCE($18, flaws),
              equipped_items = COALESCE($19, equipped_items),
              image_url = COALESCE($20, image_url),
+             movement_speed = COALESCE($21, movement_speed),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 
          RETURNING *`,
@@ -239,7 +241,8 @@ class Character {
           spells ? JSON.stringify(spells) : null,
           backstory, personality_traits, ideals, bonds, flaws,
           equipped_items ? JSON.stringify(equipped_items) : null,
-          image_url
+          image_url,
+          movement_speed !== undefined ? movement_speed : null
         ]
       );
       

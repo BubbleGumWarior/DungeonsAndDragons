@@ -217,7 +217,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
       personality_traits,
       ideals,
       bonds,
-      flaws
+      flaws,
+      movement_speed
     } = req.body;
     
     // Validate character data if provided
@@ -254,6 +255,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (ideals !== undefined) updateData.ideals = ideals.trim();
     if (bonds !== undefined) updateData.bonds = bonds.trim();
     if (flaws !== undefined) updateData.flaws = flaws.trim();
+    if (movement_speed !== undefined) updateData.movement_speed = movement_speed;
     
     const updatedCharacter = await Character.update(id, updateData);
     res.json({
