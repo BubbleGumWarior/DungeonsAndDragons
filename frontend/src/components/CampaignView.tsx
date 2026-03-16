@@ -912,7 +912,7 @@ const CampaignView: React.FC = () => {
       }
     };
     loadKingdoms();
-  }, [currentCampaign]);
+  }, [currentCampaign, user]);
 
   // Load mounts when campaign changes
   useEffect(() => {
