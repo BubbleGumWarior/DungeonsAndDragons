@@ -96,6 +96,43 @@ const initializeSocketHandlers = (io, battleMovementState, battleCombatState, us
     // Battle (mass combat) handlers
     require('./handlers/battleHandlers')(socket, io);
     
+    // Kingdom handlers
+    socket.on('createKingdom', async ({ campaignId, targetPlayerId }) => {
+      try {
+        console.log(`👑 [createKingdom] Received from socket ${socket.id}: campaignId=${campaignId}, targetPlayerId=${targetPlayerId}`);
+        const Kingdom = require('../models/Kingdom');
+        const kingdom = await Kingdom.create({ campaign_id: campaignId, player_id: targetPlayerId });
+        console.log(`👑 [createKingdom] Kingdom row created:`, kingdom);
+        const room = `campaign_${campaignId}`;
+        const roomSockets = await io.in(room).fetchSockets();
+        console.log(`👑 [createKingdom] Emitting kingdomNameRequest to room "${room}" (${roomSockets.length} sockets)`);
+        roomSockets.forEach(s => console.log(`   - socket ${s.id}`));
+        io.to(room).emit('kingdomNameRequest', {
+          kingdomId: kingdom.id,
+          targetPlayerId: Number(targetPlayerId)
+        });
+        console.log(`👑 [createKingdom] kingdomNameRequest emitted with targetPlayerId=${Number(targetPlayerId)}`);
+      } catch (error) {
+        console.error('[createKingdom] Error:', error);
+      }
+    });
+
+    socket.on('nameKingdom', async ({ campaignId, kingdomId, name }) => {
+      try {
+        console.log(`👑 [nameKingdom] Received: campaignId=${campaignId}, kingdomId=${kingdomId}, name="${name}"`);
+        const Kingdom = require('../models/Kingdom');
+        const kingdom = await Kingdom.setName(kingdomId, name);
+        if (kingdom) {
+          io.to(`campaign_${campaignId}`).emit('kingdomActivated', { kingdom });
+          console.log(`👑 [nameKingdom] Kingdom "${name}" activated, kingdomActivated emitted to campaign_${campaignId}`);
+        } else {
+          console.warn(`👑 [nameKingdom] setName returned null for id=${kingdomId}`);
+        }
+      } catch (error) {
+        console.error('[nameKingdom] Error:', error);
+      }
+    });
+
     socket.on('disconnect', (reason) => {
       console.log(`👋 User disconnected: ${socket.id}, reason: ${reason}`);
       // Remove from user socket map

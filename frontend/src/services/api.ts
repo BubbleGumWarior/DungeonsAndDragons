@@ -1024,4 +1024,21 @@ export const mountAPI = {
   }
 };
 
+export interface Kingdom {
+  id: number;
+  campaign_id: number;
+  player_id: number;
+  name: string | null;
+  is_active: boolean;
+  player_name: string;
+  created_at: string;
+}
+
+export const kingdomAPI = {
+  getCampaignKingdoms: async (campaignId: number): Promise<Kingdom[]> => {
+    const response = await api.get(`/kingdoms/campaign/${campaignId}`);
+    return response.data;
+  }
+};
+
 export default api;

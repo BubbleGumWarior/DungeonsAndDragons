@@ -20,6 +20,7 @@ const skillRoutes = require('./routes/skills');
 const journalsRoutes = require('./routes/journals');
 const beastRoutes = require('./routes/beasts');
 const mountRoutes = require('./routes/mounts');
+const kingdomRoutes = require('./routes/kingdoms');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -166,6 +167,7 @@ app.use('/api/monster-instances', monsterInstanceRoutes);
 app.use('/api/skills', skillRoutes);
 app.use('/api/beasts', beastRoutes);
 app.use('/api/mounts', mountRoutes);
+app.use('/api/kingdoms', kingdomRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -1171,6 +1173,41 @@ const startServer = async () => {
           console.log(`✨ Skill expertise toggled: ${skillName} (${isAdding ? 'added' : 'removed'})`);
         } catch (error) {
           console.error('Error handling skill expertise toggle:', error);
+        }
+      });
+
+      // Kingdom handlers
+      socket.on('createKingdom', async ({ campaignId, targetPlayerId }) => {
+        try {
+          console.log(`👑 [createKingdom] Received: campaignId=${campaignId}, targetPlayerId=${targetPlayerId}`);
+          const Kingdom = require('./models/Kingdom');
+          const kingdom = await Kingdom.create({ campaign_id: campaignId, player_id: targetPlayerId });
+          console.log(`👑 [createKingdom] Kingdom row created:`, kingdom);
+          const room = `campaign_${campaignId}`;
+          const roomSockets = await io.in(room).fetchSockets();
+          console.log(`👑 [createKingdom] Emitting kingdomNameRequest to room "${room}" (${roomSockets.length} sockets):`, roomSockets.map(s => s.id));
+          io.to(room).emit('kingdomNameRequest', {
+            kingdomId: kingdom.id,
+            targetPlayerId: Number(targetPlayerId)
+          });
+        } catch (error) {
+          console.error('[createKingdom] Error:', error);
+        }
+      });
+
+      socket.on('nameKingdom', async ({ campaignId, kingdomId, name }) => {
+        try {
+          console.log(`👑 [nameKingdom] Received: campaignId=${campaignId}, kingdomId=${kingdomId}, name="${name}"`);
+          const Kingdom = require('./models/Kingdom');
+          const kingdom = await Kingdom.setName(kingdomId, name);
+          if (kingdom) {
+            io.to(`campaign_${campaignId}`).emit('kingdomActivated', { kingdom });
+            console.log(`👑 [nameKingdom] kingdomActivated emitted for "${name}"`);
+          } else {
+            console.warn(`👑 [nameKingdom] setName returned null for id=${kingdomId}`);
+          }
+        } catch (error) {
+          console.error('[nameKingdom] Error:', error);
         }
       });
 

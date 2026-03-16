@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character, mountAPI, Mount } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character, mountAPI, Mount, kingdomAPI, Kingdom } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
@@ -243,10 +243,10 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts' | 'pets' | 'npcs'>('board');
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
-  const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia'>('map');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom'>('map');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
   const [showMobileCharacters, setShowMobileCharacters] = useState(false);
@@ -326,6 +326,13 @@ const CampaignView: React.FC = () => {
   const [showPartyMenu, setShowPartyMenu] = useState(false);
   const [showPartyMembersModal, setShowPartyMembersModal] = useState(false);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
+
+  // Kingdom state
+  const [kingdoms, setKingdoms] = useState<Kingdom[]>([]);
+  const [hasKingdomAccess, setHasKingdomAccess] = useState(false);
+  const [showGrantKingdomModal, setShowGrantKingdomModal] = useState(false);
+  const [pendingKingdomId, setPendingKingdomId] = useState<number | null>(null);
+  const [kingdomNameInput, setKingdomNameInput] = useState('');
 
   // Combat state
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
@@ -887,6 +894,24 @@ const CampaignView: React.FC = () => {
       }
     };
     loadMonsters();
+  }, [currentCampaign]);
+
+  // Load kingdoms when campaign changes
+  useEffect(() => {
+    const loadKingdoms = async () => {
+      if (currentCampaign) {
+        try {
+          const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
+          setKingdoms(fetched);
+          if (user && fetched.some(k => Number(k.player_id) === Number(user.id))) {
+            setHasKingdomAccess(true);
+          }
+        } catch (error) {
+          console.error('Error loading kingdoms:', error);
+        }
+      }
+    };
+    loadKingdoms();
   }, [currentCampaign]);
 
   // Load mounts when campaign changes
@@ -2863,6 +2888,26 @@ const CampaignView: React.FC = () => {
         }
       });
 
+      // Kingdom flow
+      newSocket.on('kingdomNameRequest', (data: { kingdomId: number; targetPlayerId: number }) => {
+        console.log('👑 [kingdomNameRequest] received:', data, '| current user id:', user?.id, '| match:', user && Number(data.targetPlayerId) === Number(user.id));
+        if (user && Number(data.targetPlayerId) === Number(user.id)) {
+          setPendingKingdomId(data.kingdomId);
+          setKingdomNameInput('');
+        }
+      });
+
+      newSocket.on('kingdomActivated', (data: { kingdom: Kingdom }) => {
+        console.log('👑 [kingdomActivated] received:', data, '| current user id:', user?.id);
+        setKingdoms(prev => {
+          const without = prev.filter(k => k.id !== data.kingdom.id);
+          return [...without, data.kingdom];
+        });
+        if (user && Number(data.kingdom.player_id) === Number(user.id)) {
+          setHasKingdomAccess(true);
+        }
+      });
+
       setSocket(newSocket);
       
       return () => {
@@ -3834,17 +3879,20 @@ const CampaignView: React.FC = () => {
       }
     : baseCharacterData;
 
+  const showKingdomTab = user?.role === 'Dungeon Master' || hasKingdomAccess;
+
   const campaignTabs = [
     { key: 'map', label: 'Map', icon: '🗺️' },
     { key: 'combat', label: 'Combat', icon: '⚔️' },
     { key: 'battlefield', label: 'Battlefield', icon: '🏹' },
     { key: 'news', label: 'News', icon: '📰' },
     { key: 'journal', label: 'Journal', icon: '📖' },
-    { key: 'encyclopedia', label: 'Encyclopedia', icon: '📚' }
+    { key: 'encyclopedia', label: 'Encyclopedia', icon: '📚' },
+    ...(showKingdomTab ? [{ key: 'kingdom', label: 'Kingdom', icon: '👑' }] : [])
   ] as const;
 
   const characterTabConfig: Record<
-    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts',
+    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts' | 'pets' | 'npcs',
     { label: string; icon: string }
   > = {
     board: { label: 'Overview', icon: '📋' },
@@ -3855,7 +3903,9 @@ const CampaignView: React.FC = () => {
     armies: { label: 'Armies', icon: '⚔️' },
     companion: { label: 'Companion', icon: '🐾' },
     levelup: { label: 'Level Up', icon: '⬆️' },
-    mounts: { label: 'Mounts', icon: '🐴' }
+    mounts: { label: 'Mounts', icon: '🐴' },
+    pets: { label: 'Pets', icon: '🐾' },
+    npcs: { label: 'Characters', icon: '👥' }
   };
 
   const isOwnCharacter = selectedCharacterData
@@ -3864,7 +3914,7 @@ const CampaignView: React.FC = () => {
 
   const availableCharacterTabs = selectedCharacterData
     ? (isOwnCharacter
-        ? (['board', 'sheet', 'inventory', 'skills', 'equip', 'armies', 'mounts' as const,
+        ? (['board', 'sheet', 'npcs', 'inventory', 'skills', 'equip', 'armies', 'mounts', 'pets' as const,
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
             ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])
           ] as const)
@@ -3909,6 +3959,7 @@ const CampaignView: React.FC = () => {
   };
 
   return (
+    <>
     <div className="container fade-in">
       <div className="dashboard-container campaign-container">
         <div className="campaign-mobile-header">
@@ -8171,6 +8222,122 @@ const CampaignView: React.FC = () => {
               </div>
             )}
 
+            {/* Kingdom Tab */}
+            {campaignTab === 'kingdom' && (
+              <div className="glass-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>👑 Kingdoms</h5>
+                  {user?.role === 'Dungeon Master' && (
+                    <button
+                      onClick={() => setShowGrantKingdomModal(true)}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#f59e0b',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
+                    >
+                      + Create a New Kingdom
+                    </button>
+                  )}
+                </div>
+
+                {kingdoms.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👑</div>
+                    <p style={{ color: 'var(--text-secondary)' }}>No kingdoms have been established yet.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
+                    {kingdoms.map(k => (
+                      <div key={k.id} style={{
+                        background: 'rgba(212,193,156,0.08)',
+                        border: '1px solid rgba(212,193,156,0.3)',
+                        borderRadius: '0.75rem',
+                        padding: '1.25rem'
+                      }}>
+                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>👑</div>
+                        <h6 style={{ color: 'var(--text-gold)', marginBottom: '0.25rem', fontSize: '1.1rem' }}>{k.name}</h6>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>Ruler: {k.player_name}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* DM: Create Kingdom Modal */}
+            {showGrantKingdomModal && (
+              <div style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                background: 'rgba(0,0,0,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <div className="glass-panel" style={{ minWidth: '340px', maxWidth: '480px', padding: '2rem' }}>
+                  <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>👑 Create a New Kingdom</h5>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Select the player who will rule this kingdom:</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                    {playerCharacters.map((character) => {
+                      const pid = Number(character.player_id);
+                      const alreadyHasKingdom = kingdoms.some(k => Number(k.player_id) === pid);
+                      return (
+                        <button
+                          key={character.id}
+                          disabled={alreadyHasKingdom}
+                          onClick={() => {
+                            if (!character.player_id || !socket || !currentCampaign) return;
+                            console.log('👑 [createKingdom] emitting: campaignId=', currentCampaign.campaign.id, 'targetPlayerId=', pid);
+                            socket.emit('createKingdom', {
+                              campaignId: currentCampaign.campaign.id,
+                              targetPlayerId: pid
+                            });
+                            setShowGrantKingdomModal(false);
+                          }}
+                          style={{
+                            padding: '0.75rem 1rem',
+                            background: alreadyHasKingdom ? 'rgba(255,255,255,0.05)' : 'rgba(212,193,156,0.15)',
+                            border: '1px solid rgba(212,193,156,0.3)',
+                            borderRadius: '6px',
+                            color: alreadyHasKingdom ? 'var(--text-muted)' : 'var(--text-gold)',
+                            cursor: alreadyHasKingdom ? 'default' : 'pointer',
+                            textAlign: 'left',
+                            fontSize: '0.95rem'
+                          }}
+                        >
+                          {character.name}{alreadyHasKingdom ? ' 👑 Already has a kingdom' : ''}
+                        </button>
+                      );
+                    })}
+                    {playerCharacters.length === 0 && (
+                      <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No players in this campaign.</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setShowGrantKingdomModal(false)}
+                    style={{
+                      padding: '8px 20px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(212,193,156,0.3)',
+                      borderRadius: '6px',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+
             </div>
               </div>
           )}
@@ -10870,8 +11037,30 @@ const CampaignView: React.FC = () => {
                   );
                 })()}
 
+                {/* Pets Tab */}
+                {activeTab === 'pets' && canViewAllTabs(selectedCharacterData.id) && (
+                  <div className="glass-panel">
+                    <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>🐾 Pets</h5>
+                    <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
+                      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🐾</div>
+                      <p style={{ color: 'var(--text-secondary)' }}>No pets yet. This section will track {selectedCharacterData.name}'s animal companions and pets.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Characters (NPCs) Tab */}
+                {activeTab === 'npcs' && canViewAllTabs(selectedCharacterData.id) && (
+                  <div className="glass-panel">
+                    <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>👥 Characters</h5>
+                    <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
+                      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👥</div>
+                      <p style={{ color: 'var(--text-secondary)' }}>No characters recorded yet. This section will track the people {selectedCharacterData.name} has encountered in the world.</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Show access denied message for restricted tabs */}
-                {(activeTab === 'inventory' || activeTab === 'equip' || activeTab === 'armies') && !canViewAllTabs(selectedCharacterData.id) && (
+                {(activeTab === 'inventory' || activeTab === 'equip' || activeTab === 'armies' || activeTab === 'pets' || activeTab === 'npcs') && !canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
                       <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔒</div>
@@ -16619,6 +16808,71 @@ const CampaignView: React.FC = () => {
         </div>
       )}
     </div>
+
+      {/* Player: Name Your Kingdom Modal - rendered at root level so it shows on any tab/view */}
+      {pendingKingdomId !== null && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="glass-panel" style={{ minWidth: '340px', maxWidth: '480px', padding: '2rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👑</div>
+            <h5 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Congratulations!</h5>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              You have been granted a kingdom! Give your kingdom a name to establish it.
+            </p>
+            <input
+              type="text"
+              value={kingdomNameInput}
+              onChange={(e) => setKingdomNameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && kingdomNameInput.trim() && socket && currentCampaign) {
+                  socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, name: kingdomNameInput.trim() });
+                  setPendingKingdomId(null);
+                  setKingdomNameInput('');
+                }
+              }}
+              placeholder="Enter your kingdom's name..."
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(212,193,156,0.4)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '1rem',
+                marginBottom: '1.25rem',
+                boxSizing: 'border-box'
+              }}
+              autoFocus
+            />
+            <button
+              disabled={!kingdomNameInput.trim()}
+              onClick={() => {
+                if (!kingdomNameInput.trim() || !socket || !currentCampaign) return;
+                socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, name: kingdomNameInput.trim() });
+                setPendingKingdomId(null);
+                setKingdomNameInput('');
+              }}
+              style={{
+                padding: '10px 28px',
+                backgroundColor: kingdomNameInput.trim() ? '#f59e0b' : '#555',
+                color: '#000',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                cursor: kingdomNameInput.trim() ? 'pointer' : 'default',
+                transition: 'all 0.2s'
+              }}
+            >
+              Establish Kingdom
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

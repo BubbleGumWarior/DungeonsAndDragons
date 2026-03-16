@@ -504,6 +504,22 @@ const runMigrations = async () => {
     `);
 
     console.log('✅ battle_invitations table created successfully');
+
+    // Create kingdoms table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kingdoms (
+        id SERIAL PRIMARY KEY,
+        campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        player_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255),
+        is_active BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_kingdoms_campaign ON kingdoms(campaign_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_kingdoms_player ON kingdoms(player_id);`);
+    console.log('✅ kingdoms table created successfully');
     
     console.log('Database migrations completed successfully');
   } catch (error) {
