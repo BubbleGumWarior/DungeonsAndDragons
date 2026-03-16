@@ -6,7 +6,7 @@ import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
-import { getSpellSlots, isSpellcaster, ordinalSuffix, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
+import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
 import { classInfo } from '../data/classInfo';
 import FigureImage from '../assets/images/Board/Figure.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
