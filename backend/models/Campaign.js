@@ -502,6 +502,25 @@ class Campaign {
         // ── Research completion check ──────────────────────────────────────────
         // Check for research items that have accumulated enough points (RESEARCH_COSTS defined above)
 
+        const BUILDING_OUTPUTS = {
+          // Tier 1
+          campfire: { food: 3 }, hunting_ground: { food: 8 }, watchtower: {}, basic_storage: {},
+          housing: { pop_cap: 15 },
+          // Tier 2
+          chapel: {}, farm: { food: 15 }, lumber_camp: { wood: 15 }, basic_mine: { stone: 12 },
+          tavern: { gold: 10 }, research_lab: { research: 5 },
+          // Tier 3
+          blacksmith: {}, market_stall: { gold: 25 }, barracks: {}, mill: { food: 20 },
+          // Tier 4
+          ore_mine: { stone: 30 }, stable: {}, school: {}, shrine: {},
+          // Tier 5
+          workshop: { gold: 40 }, inn: { gold: 35 }, library: {}, guard_post: {},
+          // Tier 6+
+          bank: { gold: 60 }, alchemist: { gold: 30 }, mason: { stone: 50 },
+          grand_market: { gold: 100 }, imperial_mint: { gold: 150 },
+          docks: { gold: 80, food: 30 }, colosseum: { gold: 60 },
+        };
+
         const BUILDING_BASE_DAYS = {
           campfire: 1, basic_storage: 2, housing: 3, watchtower: 3, hunting_ground: 2,
           chapel: 4, farm: 5, lumber_camp: 4, basic_mine: 6, tavern: 4, research_lab: 6,
@@ -544,25 +563,7 @@ class Campaign {
             [fiefId, buildingType, newLevel]
           );
 
-          // Calculate new resource_output from BUILDING_OUTPUT_TABLE
-          const BUILDING_OUTPUTS = {
-            // Tier 1
-            campfire: { food: 3 }, hunting_ground: { food: 8 }, watchtower: {}, basic_storage: {},
-            housing: { pop_cap: 15 },
-            // Tier 2
-            chapel: {}, farm: { food: 15 }, lumber_camp: { wood: 15 }, basic_mine: { stone: 12 },
-            tavern: { gold: 10 }, research_lab: { research: 5 },
-            // Tier 3
-            blacksmith: {}, market_stall: { gold: 25 }, barracks: {}, mill: { food: 20 },
-            // Tier 4
-            ore_mine: { stone: 30 }, stable: {}, school: {}, shrine: {},
-            // Tier 5
-            workshop: { gold: 40 }, inn: { gold: 35 }, library: {}, guard_post: {},
-            // Tier 6+
-            bank: { gold: 60 }, alchemist: { gold: 30 }, mason: { stone: 50 },
-            grand_market: { gold: 100 }, imperial_mint: { gold: 150 },
-            docks: { gold: 80, food: 30 }, colosseum: { gold: 60 },
-          };
+          // Calculate new resource_output
           const baseOutput = BUILDING_OUTPUTS[buildingType] || {};
           // Exponential output scaling per level (housing uses linear)
           const newOutput = {};
@@ -615,6 +616,28 @@ class Campaign {
               [fiefId]
             );
           }
+        }
+
+        // Catch-up: upgrade any buildings whose level is behind their completed research level
+        // (handles buildings placed after research was already done)
+        const catchUpRows = await client.query(
+          `SELECT fb.id, fb.building_type, rl.level AS target_level
+           FROM fief_buildings fb
+           JOIN fief_research_levels rl
+             ON fb.fief_id = rl.fief_id AND fb.building_type = rl.building_type
+           WHERE fb.fief_id = $1 AND fb.level < rl.level`,
+          [fiefId]
+        );
+        for (const cu of catchUpRows.rows) {
+          const cuBase = BUILDING_OUTPUTS[cu.building_type] || {};
+          const cuOut = {};
+          for (const [k, v] of Object.entries(cuBase)) {
+            cuOut[k] = k === 'pop_cap' ? v * cu.target_level : Math.ceil(v * Math.pow(2, cu.target_level - 1));
+          }
+          await client.query(
+            `UPDATE fief_buildings SET level = $1, resource_output = $2 WHERE id = $3`,
+            [cu.target_level, JSON.stringify(cuOut), cu.id]
+          );
         }
 
         // Faith: grows from religious buildings each day

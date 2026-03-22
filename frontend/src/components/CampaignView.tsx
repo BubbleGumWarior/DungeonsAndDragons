@@ -9486,13 +9486,22 @@ const CampaignView: React.FC = () => {
                               const effectiveDays2 = Math.max(1, Math.round(selectedCatalogueEntry.baseConstructionDays * (1 - techRed2)));
                               const existingCount2 = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && (b as any).building_type === selectedCatalogueEntry.id).length;
                               const scaledCost2 = Object.fromEntries(Object.entries(selectedCatalogueEntry.baseCost).map(([k, v]) => [k, Math.round((v as number) * Math.pow(2, existingCount2))]));
+                              // Use researched level if research is already complete for this building type
+                              const _resLevels2: any[] = (activeFief as any).research_levels ?? [];
+                              const _researchedLv2 = _resLevels2.find((r: any) => r.building_type === selectedCatalogueEntry.id)?.level ?? 0;
+                              const startLevel2 = Math.max(1, _researchedLv2);
+                              const scaledOutput2: Record<string, number> = {};
+                              for (const [k, v] of Object.entries(selectedCatalogueEntry.baseOutput)) {
+                                scaledOutput2[k] = k === 'pop_cap' ? (v as number) * startLevel2 : Math.ceil((v as number) * Math.pow(2, startLevel2 - 1));
+                              }
+                              const startDays2 = Math.max(1, Math.round(effectiveDays2 * Math.pow(2, startLevel2 - 1)));
                               await fiefAPI.addBuilding(activeFief.id, {
                                 name: selectedCatalogueEntry.name,
                                 building_type: selectedCatalogueEntry.id,
-                                level: 1,
+                                level: startLevel2,
                                 description: selectedCatalogueEntry.description,
-                                construction_days: effectiveDays2,
-                                resource_output: selectedCatalogueEntry.baseOutput,
+                                construction_days: startDays2,
+                                resource_output: scaledOutput2,
                                 resource_cost: scaledCost2,
                               });
                               setShowAddBuildingModal(false);
