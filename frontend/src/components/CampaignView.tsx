@@ -9719,93 +9719,6 @@ const CampaignView: React.FC = () => {
               </div>
             )}
 
-            {/* ── Rest Modal ─────────────────────────────────────────────── */}
-            {showRestModal && (
-              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.4)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <h3 style={{ margin: 0, color: '#7dd3fc', fontSize: '1.1rem' }}>💤 Rest — Day {currentDay}</h3>
-
-                  {/* Rest type selection */}
-                  {(['short', 'long', 'custom'] as const).map(type => (
-                    <button
-                      key={type}
-                      onClick={() => setRestType(type)}
-                      style={{
-                        padding: '0.75rem 1rem', textAlign: 'left', borderRadius: '8px', cursor: 'pointer',
-                        background: restType === type ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.05)',
-                        border: restType === type ? '2px solid rgba(56,189,248,0.6)' : '1px solid rgba(255,255,255,0.15)',
-                        color: restType === type ? '#7dd3fc' : '#cbd5e1',
-                      }}
-                    >
-                      {type === 'short' && <><strong>Short Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— No days pass. Characters recover; no kingdom production.</span></>}
-                      {type === 'long' && <><strong>Long Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance 1 day. Kingdom produces resources &amp; population grows.</span></>}
-                      {type === 'custom' && <><strong>Custom Skip</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance N days.</span></>}
-                    </button>
-                  ))}
-
-                  {restType === 'custom' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <label style={{ color: '#94a3b8', fontSize: '0.85rem', minWidth: '80px' }}>Days to skip:</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={9999}
-                        value={customRestDays}
-                        onChange={e => setCustomRestDays(Math.max(1, parseInt(e.target.value) || 1))}
-                        style={{ width: '80px', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }}
-                      />
-                      <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Day {currentDay + customRestDays}</span>
-                    </div>
-                  )}
-
-                  {restType === 'long' && (
-                    <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Will advance to Day {currentDay + 1}</div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-                    <button
-                      onClick={() => setShowRestModal(false)}
-                      disabled={restLoading}
-                      style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      disabled={restLoading}
-                      onClick={async () => {
-                        if (!currentCampaign) return;
-                        setRestLoading(true);
-                        try {
-                          const days = restType === 'short' ? 0 : restType === 'long' ? 1 : customRestDays;
-                          const summary = await campaignAPI.advanceDays(currentCampaign.campaign.id, days, restType);
-                          setCurrentDay(summary.newDay);
-                          // Refresh kingdoms
-                          const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
-                          setKingdoms(fetched);
-                          // Build toast
-                          const parts: string[] = [];
-                          if (restType !== 'short') parts.push(`Advanced to Day ${summary.newDay}`);
-                          if (summary.completedBuildings?.length) parts.push(`${summary.completedBuildings.length} building(s) completed`);
-                          const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc, r) => acc + (r.gold || 0), 0);
-                          if (totalGold > 0) parts.push(`+${totalGold} gold produced`);
-                          setToastMessage(parts.join(' • ') || 'Rest complete');
-                          setTimeout(() => setToastMessage(null), 5000);
-                          setShowRestModal(false);
-                        } catch (e: any) {
-                          setToastMessage('Failed to process rest: ' + (e?.response?.data?.error || e.message));
-                          setTimeout(() => setToastMessage(null), 4000);
-                        } finally {
-                          setRestLoading(false);
-                        }
-                      }}
-                      style={{ padding: '0.5rem 1.25rem', background: 'rgba(56,189,248,0.2)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '6px', color: '#7dd3fc', cursor: restLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
-                    >
-                      {restLoading ? 'Processing…' : 'Confirm Rest'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
 
             </div>
@@ -18352,6 +18265,94 @@ const CampaignView: React.FC = () => {
             >
               Establish Kingdom
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rest Modal ─────────────────────────────────────────────── */}
+      {showRestModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.4)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <h3 style={{ margin: 0, color: '#7dd3fc', fontSize: '1.1rem' }}>💤 Rest — Day {currentDay}</h3>
+
+            {/* Rest type selection */}
+            {(['short', 'long', 'custom'] as const).map(type => (
+              <button
+                key={type}
+                onClick={() => setRestType(type)}
+                style={{
+                  padding: '0.75rem 1rem', textAlign: 'left', borderRadius: '8px', cursor: 'pointer',
+                  background: restType === type ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.05)',
+                  border: restType === type ? '2px solid rgba(56,189,248,0.6)' : '1px solid rgba(255,255,255,0.15)',
+                  color: restType === type ? '#7dd3fc' : '#cbd5e1',
+                }}
+              >
+                {type === 'short' && <><strong>Short Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— No days pass. Characters recover; no kingdom production.</span></>}
+                {type === 'long' && <><strong>Long Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance 1 day. Kingdom produces resources &amp; population grows.</span></>}
+                {type === 'custom' && <><strong>Custom Skip</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance N days.</span></>}
+              </button>
+            ))}
+
+            {restType === 'custom' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <label style={{ color: '#94a3b8', fontSize: '0.85rem', minWidth: '80px' }}>Days to skip:</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={9999}
+                  value={customRestDays}
+                  onChange={e => setCustomRestDays(Math.max(1, parseInt(e.target.value) || 1))}
+                  style={{ width: '80px', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }}
+                />
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Day {currentDay + customRestDays}</span>
+              </div>
+            )}
+
+            {restType === 'long' && (
+              <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Will advance to Day {currentDay + 1}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button
+                onClick={() => setShowRestModal(false)}
+                disabled={restLoading}
+                style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={restLoading}
+                onClick={async () => {
+                  if (!currentCampaign) return;
+                  setRestLoading(true);
+                  try {
+                    const days = restType === 'short' ? 0 : restType === 'long' ? 1 : customRestDays;
+                    const summary = await campaignAPI.advanceDays(currentCampaign.campaign.id, days, restType);
+                    setCurrentDay(summary.newDay);
+                    // Refresh kingdoms
+                    const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
+                    setKingdoms(fetched);
+                    // Build toast
+                    const parts: string[] = [];
+                    if (restType !== 'short') parts.push(`Advanced to Day ${summary.newDay}`);
+                    if (summary.completedBuildings?.length) parts.push(`${summary.completedBuildings.length} building(s) completed`);
+                    const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc, r) => acc + (r.gold || 0), 0);
+                    if (totalGold > 0) parts.push(`+${totalGold} gold produced`);
+                    setToastMessage(parts.join(' • ') || 'Rest complete');
+                    setTimeout(() => setToastMessage(null), 5000);
+                    setShowRestModal(false);
+                  } catch (e: any) {
+                    setToastMessage('Failed to process rest: ' + (e?.response?.data?.error || e.message));
+                    setTimeout(() => setToastMessage(null), 4000);
+                  } finally {
+                    setRestLoading(false);
+                  }
+                }}
+                style={{ padding: '0.5rem 1.25rem', background: 'rgba(56,189,248,0.2)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '6px', color: '#7dd3fc', cursor: restLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+              >
+                {restLoading ? 'Processing…' : 'Confirm Rest'}
+              </button>
+            </div>
           </div>
         </div>
       )}
