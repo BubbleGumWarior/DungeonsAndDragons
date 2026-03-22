@@ -8889,7 +8889,9 @@ const CampaignView: React.FC = () => {
                                   const BCAT: BCategory[] = [
                                     { label: '🍖 Food',      color: '#86efac', accent: 'rgba(134,239,172,', ids: ['campfire','hunting_ground','farm','mill','docks','hospital'] },
                                     { label: '💰 Economy',   color: '#fbbf24', accent: 'rgba(251,191,36,',  ids: ['tavern','market_stall','workshop','inn','bank','alchemist','grand_market','mage_tower','colosseum','imperial_mint','blacksmith'] },
-                                    { label: '🪨 Industry',  color: '#a78bfa', accent: 'rgba(167,139,250,', ids: ['lumber_camp','basic_mine','ore_mine','mason','docks'] },
+                                    { label: '🌲 Lumber',     color: '#4ade80', accent: 'rgba(74,222,128,',  ids: ['lumber_camp'] },
+                                    { label: '⛏️ Mining',     color: '#a78bfa', accent: 'rgba(167,139,250,', ids: ['basic_mine','mason'] },
+                                    { label: '🪨 Ore Mining', color: '#8b5cf6', accent: 'rgba(139,92,246,',  ids: ['ore_mine','docks'] },
                                     { label: '⚔️ Military',  color: '#f87171', accent: 'rgba(248,113,113,', ids: ['watchtower','barracks','stable','guard_post','armoury','castle_walls','keep','citadel_fortress','grand_armory'] },
                                     { label: '📚 Culture',   color: '#38bdf8', accent: 'rgba(56,189,248,',  ids: ['school','library','academy','palace','university','royal_academy'] },
                                     { label: '🙏 Faith',     color: '#e879f9', accent: 'rgba(232,121,249,', ids: ['chapel','shrine','monastery','cathedral','grand_cathedral'] },
@@ -9028,38 +9030,125 @@ const CampaignView: React.FC = () => {
 
                               // Catalogue of all researchable items — costs MUST match backend RESEARCH_COSTS in Campaign.js
                               const RESEARCH_CATALOGUE = [
-                                { id: 'farm_lv2',          name: 'Improved Farming Lv2',        building: 'farm',          requires_lab_level: 1, cost: 300,  desc: 'Upgrades all Farms to level 2.' },
-                                { id: 'farm_lv3',          name: 'Advanced Farming Lv3',         building: 'farm',          requires_lab_level: 2, cost: 900,  desc: 'Upgrades all Farms to level 3.' },
-                                { id: 'farm_lv4',          name: 'Masterwork Farming Lv4',       building: 'farm',          requires_lab_level: 3, cost: 2500, desc: 'Upgrades all Farms to level 4.' },
-                                { id: 'farm_lv5',          name: 'Legendary Farming Lv5',        building: 'farm',          requires_lab_level: 4, cost: 6000, desc: 'Upgrades all Farms to level 5.' },
-                                { id: 'lumber_camp_lv2',   name: 'Improved Logging Lv2',         building: 'lumber_camp',   requires_lab_level: 1, cost: 280,  desc: 'Upgrades all Lumber Camps to level 2.' },
-                                { id: 'lumber_camp_lv3',   name: 'Advanced Logging Lv3',         building: 'lumber_camp',   requires_lab_level: 2, cost: 850,  desc: 'Upgrades all Lumber Camps to level 3.' },
-                                { id: 'lumber_camp_lv4',   name: 'Masterwork Logging Lv4',       building: 'lumber_camp',   requires_lab_level: 3, cost: 2300, desc: 'Upgrades all Lumber Camps to level 4.' },
-                                { id: 'lumber_camp_lv5',   name: 'Legendary Logging Lv5',        building: 'lumber_camp',   requires_lab_level: 4, cost: 5500, desc: 'Upgrades all Lumber Camps to level 5.' },
-                                { id: 'basic_mine_lv2',    name: 'Improved Mining Lv2',          building: 'basic_mine',    requires_lab_level: 1, cost: 320,  desc: 'Upgrades all Basic Mines to level 2.' },
-                                { id: 'basic_mine_lv3',    name: 'Advanced Mining Lv3',          building: 'basic_mine',    requires_lab_level: 2, cost: 950,  desc: 'Upgrades all Basic Mines to level 3.' },
-                                { id: 'ore_mine_lv2',      name: 'Improved Ore Mining Lv2',      building: 'ore_mine',      requires_lab_level: 3, cost: 1000, desc: 'Upgrades all Ore Mines to level 2.' },
-                                { id: 'ore_mine_lv3',      name: 'Advanced Ore Mining Lv3',      building: 'ore_mine',      requires_lab_level: 4, cost: 3000, desc: 'Upgrades all Ore Mines to level 3.' },
-                                { id: 'tavern_lv2',        name: 'Improved Tavern Lv2',          building: 'tavern',        requires_lab_level: 1, cost: 350,  desc: 'Upgrades all Taverns to level 2.' },
-                                { id: 'tavern_lv3',        name: 'Grand Tavern Lv3',             building: 'tavern',        requires_lab_level: 2, cost: 1000, desc: 'Upgrades all Taverns to level 3.' },
-                                { id: 'bank_lv2',          name: 'Improved Bank Lv2',            building: 'bank',          requires_lab_level: 3, cost: 2000, desc: 'Upgrades all Banks to level 2.' },
-                                { id: 'bank_lv3',          name: 'Grand Bank Lv3',               building: 'bank',          requires_lab_level: 4, cost: 6000, desc: 'Upgrades all Banks to level 3.' },
-                                { id: 'housing_lv2',       name: 'Better Shelter Lv2',           building: 'housing',       requires_lab_level: 1, cost: 120,  desc: 'Upgrades all Housing to level 2.' },
-                                { id: 'housing_lv3',       name: 'Permanent Homes Lv3',          building: 'housing',       requires_lab_level: 2, cost: 400,  desc: 'Upgrades all Housing to level 3.' },
-                                { id: 'housing_lv4',       name: 'Quality Housing Lv4',          building: 'housing',       requires_lab_level: 3, cost: 1100, desc: 'Upgrades all Housing to level 4.' },
-                                { id: 'housing_lv5',       name: 'Luxury Housing Lv5',           building: 'housing',       requires_lab_level: 4, cost: 3000, desc: 'Upgrades all Housing to level 5.' },
-                                { id: 'research_lab_lv2',  name: 'Research Lab Lv2',             building: 'research_lab',  requires_lab_level: 1, cost: 400,  desc: 'Upgrades research lab. Unlocks advanced research.' },
-                                { id: 'research_lab_lv3',  name: 'Research Lab Lv3',             building: 'research_lab',  requires_lab_level: 2, cost: 1200, desc: 'Unlocks tier-3 research.' },
-                                { id: 'research_lab_lv4',  name: 'Research Lab Lv4',             building: 'research_lab',  requires_lab_level: 3, cost: 3200, desc: 'Unlocks tier-4 research.' },
-                                { id: 'research_lab_lv5',  name: 'Research Lab Lv5',             building: 'research_lab',  requires_lab_level: 4, cost: 8000, desc: 'Unlocks tier-5 research.' },
+                                // ── Tier 1 ──────────────────────────────────────────────
+                                { id: 'campfire_lv2',      name: 'Improved Campfire Lv2',        building: 'campfire',      requires_lab_level: 1, cost: 80,    desc: 'Upgrades all Campfires to level 2.' },
+                                { id: 'campfire_lv3',      name: 'Advanced Campfire Lv3',        building: 'campfire',      requires_lab_level: 1, cost: 250,   desc: 'Upgrades all Campfires to level 3.' },
+                                { id: 'campfire_lv4',      name: 'Masterwork Campfire Lv4',      building: 'campfire',      requires_lab_level: 2, cost: 700,   desc: 'Upgrades all Campfires to level 4.' },
+                                { id: 'campfire_lv5',      name: 'Legendary Campfire Lv5',       building: 'campfire',      requires_lab_level: 3, cost: 1800,  desc: 'Upgrades all Campfires to level 5.' },
+                                { id: 'hunting_ground_lv2',name: 'Improved Hunting Lv2',         building: 'hunting_ground',requires_lab_level: 1, cost: 100,   desc: 'Upgrades all Hunting Grounds to level 2.' },
+                                { id: 'hunting_ground_lv3',name: 'Advanced Hunting Lv3',         building: 'hunting_ground',requires_lab_level: 1, cost: 320,   desc: 'Upgrades all Hunting Grounds to level 3.' },
+                                { id: 'hunting_ground_lv4',name: 'Masterwork Hunting Lv4',       building: 'hunting_ground',requires_lab_level: 2, cost: 900,   desc: 'Upgrades all Hunting Grounds to level 4.' },
+                                { id: 'hunting_ground_lv5',name: 'Legendary Hunting Lv5',        building: 'hunting_ground',requires_lab_level: 3, cost: 2400,  desc: 'Upgrades all Hunting Grounds to level 5.' },
+                                { id: 'watchtower_lv2',    name: 'Reinforced Watchtower Lv2',    building: 'watchtower',    requires_lab_level: 1, cost: 90,    desc: 'Upgrades all Watchtowers to level 2.' },
+                                { id: 'watchtower_lv3',    name: 'Fortified Watchtower Lv3',     building: 'watchtower',    requires_lab_level: 2, cost: 280,   desc: 'Upgrades all Watchtowers to level 3.' },
+                                { id: 'housing_lv2',       name: 'Better Shelter Lv2',           building: 'housing',       requires_lab_level: 1, cost: 120,   desc: 'Upgrades all Housing to level 2.' },
+                                { id: 'housing_lv3',       name: 'Permanent Homes Lv3',          building: 'housing',       requires_lab_level: 2, cost: 400,   desc: 'Upgrades all Housing to level 3.' },
+                                { id: 'housing_lv4',       name: 'Quality Housing Lv4',          building: 'housing',       requires_lab_level: 3, cost: 1100,  desc: 'Upgrades all Housing to level 4.' },
+                                { id: 'housing_lv5',       name: 'Luxury Housing Lv5',           building: 'housing',       requires_lab_level: 4, cost: 3000,  desc: 'Upgrades all Housing to level 5.' },
+                                { id: 'basic_storage_lv2', name: 'Improved Storage Lv2',         building: 'basic_storage', requires_lab_level: 1, cost: 60,    desc: 'Upgrades all Basic Storage to level 2. +200 storage cap.' },
+                                { id: 'basic_storage_lv3', name: 'Advanced Storage Lv3',         building: 'basic_storage', requires_lab_level: 2, cost: 180,   desc: 'Upgrades all Basic Storage to level 3. +400 storage cap.' },
+                                // ── Tier 2 ──────────────────────────────────────────────
+                                { id: 'chapel_lv2',        name: 'Improved Chapel Lv2',          building: 'chapel',        requires_lab_level: 1, cost: 200,   desc: 'Upgrades all Chapels to level 2.' },
+                                { id: 'chapel_lv3',        name: 'Grand Chapel Lv3',             building: 'chapel',        requires_lab_level: 2, cost: 600,   desc: 'Upgrades all Chapels to level 3.' },
+                                { id: 'chapel_lv4',        name: 'Masterwork Chapel Lv4',        building: 'chapel',        requires_lab_level: 3, cost: 1600,  desc: 'Upgrades all Chapels to level 4.' },
+                                { id: 'chapel_lv5',        name: 'Legendary Chapel Lv5',         building: 'chapel',        requires_lab_level: 4, cost: 4000,  desc: 'Upgrades all Chapels to level 5.' },
+                                { id: 'farm_lv2',          name: 'Improved Farming Lv2',         building: 'farm',          requires_lab_level: 1, cost: 300,   desc: 'Upgrades all Farms to level 2.' },
+                                { id: 'farm_lv3',          name: 'Advanced Farming Lv3',         building: 'farm',          requires_lab_level: 2, cost: 900,   desc: 'Upgrades all Farms to level 3.' },
+                                { id: 'farm_lv4',          name: 'Masterwork Farming Lv4',       building: 'farm',          requires_lab_level: 3, cost: 2500,  desc: 'Upgrades all Farms to level 4.' },
+                                { id: 'farm_lv5',          name: 'Legendary Farming Lv5',        building: 'farm',          requires_lab_level: 4, cost: 6000,  desc: 'Upgrades all Farms to level 5.' },
+                                { id: 'lumber_camp_lv2',   name: 'Improved Logging Lv2',         building: 'lumber_camp',   requires_lab_level: 1, cost: 280,   desc: 'Upgrades all Lumber Camps to level 2.' },
+                                { id: 'lumber_camp_lv3',   name: 'Advanced Logging Lv3',         building: 'lumber_camp',   requires_lab_level: 2, cost: 850,   desc: 'Upgrades all Lumber Camps to level 3.' },
+                                { id: 'lumber_camp_lv4',   name: 'Masterwork Logging Lv4',       building: 'lumber_camp',   requires_lab_level: 3, cost: 2300,  desc: 'Upgrades all Lumber Camps to level 4.' },
+                                { id: 'lumber_camp_lv5',   name: 'Legendary Logging Lv5',        building: 'lumber_camp',   requires_lab_level: 4, cost: 5500,  desc: 'Upgrades all Lumber Camps to level 5.' },
+                                { id: 'basic_mine_lv2',    name: 'Improved Mining Lv2',          building: 'basic_mine',    requires_lab_level: 1, cost: 320,   desc: 'Upgrades all Basic Mines to level 2.' },
+                                { id: 'basic_mine_lv3',    name: 'Advanced Mining Lv3',          building: 'basic_mine',    requires_lab_level: 2, cost: 950,   desc: 'Upgrades all Basic Mines to level 3.' },
+                                { id: 'basic_mine_lv4',    name: 'Masterwork Mining Lv4',        building: 'basic_mine',    requires_lab_level: 3, cost: 2600,  desc: 'Upgrades all Basic Mines to level 4.' },
+                                { id: 'basic_mine_lv5',    name: 'Legendary Mining Lv5',         building: 'basic_mine',    requires_lab_level: 4, cost: 6200,  desc: 'Upgrades all Basic Mines to level 5.' },
+                                { id: 'tavern_lv2',        name: 'Improved Tavern Lv2',          building: 'tavern',        requires_lab_level: 1, cost: 350,   desc: 'Upgrades all Taverns to level 2.' },
+                                { id: 'tavern_lv3',        name: 'Grand Tavern Lv3',             building: 'tavern',        requires_lab_level: 2, cost: 1000,  desc: 'Upgrades all Taverns to level 3.' },
+                                { id: 'tavern_lv4',        name: 'Masterwork Tavern Lv4',        building: 'tavern',        requires_lab_level: 3, cost: 2800,  desc: 'Upgrades all Taverns to level 4.' },
+                                { id: 'tavern_lv5',        name: 'Legendary Tavern Lv5',         building: 'tavern',        requires_lab_level: 4, cost: 7000,  desc: 'Upgrades all Taverns to level 5.' },
+                                // ── Tier 3 ──────────────────────────────────────────────
+                                { id: 'mill_lv2',          name: 'Improved Mill Lv2',            building: 'mill',          requires_lab_level: 2, cost: 600,   desc: 'Upgrades all Mills to level 2.' },
+                                { id: 'mill_lv3',          name: 'Advanced Mill Lv3',            building: 'mill',          requires_lab_level: 2, cost: 1800,  desc: 'Upgrades all Mills to level 3.' },
+                                { id: 'mill_lv4',          name: 'Masterwork Mill Lv4',          building: 'mill',          requires_lab_level: 3, cost: 5000,  desc: 'Upgrades all Mills to level 4.' },
+                                { id: 'mill_lv5',          name: 'Legendary Mill Lv5',           building: 'mill',          requires_lab_level: 4, cost: 12000, desc: 'Upgrades all Mills to level 5.' },
+                                { id: 'market_stall_lv2',  name: 'Improved Market Lv2',          building: 'market_stall',  requires_lab_level: 2, cost: 500,   desc: 'Upgrades all Market Stalls to level 2.' },
+                                { id: 'market_stall_lv3',  name: 'Grand Market Stall Lv3',       building: 'market_stall',  requires_lab_level: 2, cost: 1500,  desc: 'Upgrades all Market Stalls to level 3.' },
+                                { id: 'market_stall_lv4',  name: 'Masterwork Market Lv4',        building: 'market_stall',  requires_lab_level: 3, cost: 4000,  desc: 'Upgrades all Market Stalls to level 4.' },
+                                { id: 'market_stall_lv5',  name: 'Legendary Market Lv5',         building: 'market_stall',  requires_lab_level: 4, cost: 10000, desc: 'Upgrades all Market Stalls to level 5.' },
+                                { id: 'blacksmith_lv2',    name: 'Improved Blacksmith Lv2',      building: 'blacksmith',    requires_lab_level: 2, cost: 700,   desc: 'Upgrades all Blacksmiths to level 2.' },
+                                { id: 'blacksmith_lv3',    name: 'Master Blacksmith Lv3',        building: 'blacksmith',    requires_lab_level: 3, cost: 2000,  desc: 'Upgrades all Blacksmiths to level 3.' },
+                                { id: 'barracks_lv2',      name: 'Improved Barracks Lv2',        building: 'barracks',      requires_lab_level: 2, cost: 800,   desc: 'Upgrades all Barracks to level 2.' },
+                                { id: 'barracks_lv3',      name: 'Fortress Barracks Lv3',        building: 'barracks',      requires_lab_level: 3, cost: 2400,  desc: 'Upgrades all Barracks to level 3.' },
+                                // ── Tier 4 ──────────────────────────────────────────────
+                                { id: 'ore_mine_lv2',      name: 'Improved Ore Mining Lv2',      building: 'ore_mine',      requires_lab_level: 3, cost: 1000,  desc: 'Upgrades all Ore Mines to level 2.' },
+                                { id: 'ore_mine_lv3',      name: 'Advanced Ore Mining Lv3',      building: 'ore_mine',      requires_lab_level: 4, cost: 3000,  desc: 'Upgrades all Ore Mines to level 3.' },
+                                { id: 'ore_mine_lv4',      name: 'Masterwork Ore Mining Lv4',    building: 'ore_mine',      requires_lab_level: 4, cost: 8000,  desc: 'Upgrades all Ore Mines to level 4.' },
+                                { id: 'ore_mine_lv5',      name: 'Legendary Ore Mining Lv5',     building: 'ore_mine',      requires_lab_level: 4, cost: 20000, desc: 'Upgrades all Ore Mines to level 5.' },
+                                { id: 'stable_lv2',        name: 'Improved Stable Lv2',          building: 'stable',        requires_lab_level: 2, cost: 900,   desc: 'Upgrades all Stables to level 2.' },
+                                { id: 'stable_lv3',        name: 'Grand Stable Lv3',             building: 'stable',        requires_lab_level: 3, cost: 2700,  desc: 'Upgrades all Stables to level 3.' },
+                                { id: 'school_lv2',        name: 'Improved School Lv2',          building: 'school',        requires_lab_level: 2, cost: 1100,  desc: 'Upgrades all Schools to level 2.' },
+                                { id: 'school_lv3',        name: 'Advanced School Lv3',          building: 'school',        requires_lab_level: 3, cost: 3300,  desc: 'Upgrades all Schools to level 3.' },
+                                { id: 'school_lv4',        name: 'Academy School Lv4',           building: 'school',        requires_lab_level: 4, cost: 9000,  desc: 'Upgrades all Schools to level 4.' },
+                                { id: 'shrine_lv2',        name: 'Improved Shrine Lv2',          building: 'shrine',        requires_lab_level: 2, cost: 800,   desc: 'Upgrades all Shrines to level 2.' },
+                                { id: 'shrine_lv3',        name: 'Grand Shrine Lv3',             building: 'shrine',        requires_lab_level: 3, cost: 2400,  desc: 'Upgrades all Shrines to level 3.' },
+                                { id: 'shrine_lv4',        name: 'Sacred Shrine Lv4',            building: 'shrine',        requires_lab_level: 4, cost: 6500,  desc: 'Upgrades all Shrines to level 4.' },
+                                // ── Tier 5 ──────────────────────────────────────────────
+                                { id: 'workshop_lv2',      name: 'Improved Workshop Lv2',        building: 'workshop',      requires_lab_level: 3, cost: 1500,  desc: 'Upgrades all Workshops to level 2.' },
+                                { id: 'inn_lv2',           name: 'Improved Inn Lv2',             building: 'inn',           requires_lab_level: 3, cost: 1400,  desc: 'Upgrades all Inns to level 2.' },
+                                { id: 'library_lv2',       name: 'Improved Library Lv2',         building: 'library',       requires_lab_level: 3, cost: 1600,  desc: 'Upgrades all Libraries to level 2.' },
+                                { id: 'guard_post_lv2',    name: 'Improved Guard Post Lv2',      building: 'guard_post',    requires_lab_level: 3, cost: 1200,  desc: 'Upgrades all Guard Posts to level 2.' },
+                                // ── Tier 6+ ─────────────────────────────────────────────
+                                { id: 'bank_lv2',          name: 'Improved Bank Lv2',            building: 'bank',          requires_lab_level: 3, cost: 2000,  desc: 'Upgrades all Banks to level 2.' },
+                                { id: 'bank_lv3',          name: 'Grand Bank Lv3',               building: 'bank',          requires_lab_level: 4, cost: 6000,  desc: 'Upgrades all Banks to level 3.' },
+                                { id: 'grand_market_lv2',  name: 'Improved Grand Market Lv2',    building: 'grand_market',  requires_lab_level: 4, cost: 3000,  desc: 'Upgrades all Grand Markets to level 2.' },
+                                { id: 'grand_market_lv3',  name: 'Advanced Grand Market Lv3',    building: 'grand_market',  requires_lab_level: 4, cost: 9000,  desc: 'Upgrades all Grand Markets to level 3.' },
+                                { id: 'imperial_mint_lv2', name: 'Improved Imperial Mint Lv2',   building: 'imperial_mint', requires_lab_level: 4, cost: 4000,  desc: 'Upgrades all Imperial Mints to level 2.' },
+                                { id: 'imperial_mint_lv3', name: 'Advanced Imperial Mint Lv3',   building: 'imperial_mint', requires_lab_level: 4, cost: 12000, desc: 'Upgrades all Imperial Mints to level 3.' },
+                                // ── Research Lab (max level = fief tier − 1) ─────────────
+                                { id: 'research_lab_lv2',  name: 'Research Lab Lv2',             building: 'research_lab',  requires_lab_level: 1, cost: 400,   desc: 'Upgrades research lab. Unlocks advanced research. (Requires Tier 3 fief)' },
+                                { id: 'research_lab_lv3',  name: 'Research Lab Lv3',             building: 'research_lab',  requires_lab_level: 2, cost: 1200,  desc: 'Unlocks tier-3 research. (Requires Tier 4 fief)' },
+                                { id: 'research_lab_lv4',  name: 'Research Lab Lv4',             building: 'research_lab',  requires_lab_level: 3, cost: 3200,  desc: 'Unlocks tier-4 research. (Requires Tier 5 fief)' },
+                                { id: 'research_lab_lv5',  name: 'Research Lab Lv5',             building: 'research_lab',  requires_lab_level: 4, cost: 8000,  desc: 'Unlocks tier-5 research. (Requires Tier 6 fief)' },
                               ];
 
                               const labLevel = fiefBuildings.filter(b => (b as any).building_type === 'research_lab').reduce((max, b) => Math.max(max, b.level || 1), 0);
+                              const fiefTier = (activeFief as any)?.tier ?? 1;
                               const completedIds = new Set(completedLevels.map((l: any) => `${l.building_type}_lv${l.level}`));
                               const queuedIds = new Set(researchQueue.map((q: any) => q.research_id));
                               const inProgress = researchQueue.find((q: any) => q.status === 'in_progress');
                               const queued = researchQueue.filter((q: any) => q.status === 'queued').sort((a: any, b: any) => a.queue_position - b.queue_position);
-                              const available = RESEARCH_CATALOGUE.filter(r => !completedIds.has(r.id) && !queuedIds.has(r.id) && labLevel >= r.requires_lab_level);
+                              // A research item is available only if the previous level for that building type is already completed
+                              const prereqMet = (r: typeof RESEARCH_CATALOGUE[0]) => {
+                                const lvl = parseInt(r.id.split('_lv')[1], 10);
+                                if (lvl <= 2) return true; // lv2 has no research prereq (lv1 is the base building)
+                                const prevId = `${r.building}_lv${lvl - 1}`;
+                                return completedIds.has(prevId);
+                              };
+                              // Research Lab upgrades are capped by fief tier: max lab level = tier − 1
+                              const tierGate = (r: typeof RESEARCH_CATALOGUE[0]) => {
+                                if (r.building !== 'research_lab') return true;
+                                const targetLv = parseInt(r.id.split('_lv')[1], 10);
+                                return fiefTier >= targetLv + 1;
+                              };
+                              const available = RESEARCH_CATALOGUE.filter(r => !completedIds.has(r.id) && !queuedIds.has(r.id) && labLevel >= r.requires_lab_level && prereqMet(r) && tierGate(r));
+                              // Research categories for grouped display
+                              type RCat = { label: string; color: string; accent: string; bldgs: string[] };
+                              const RCAT: RCat[] = [
+                                { label: '🍖 Food',         color: '#86efac', accent: 'rgba(134,239,172,', bldgs: ['campfire','hunting_ground','farm','mill'] },
+                                { label: '🌲 Lumber',       color: '#4ade80', accent: 'rgba(74,222,128,',  bldgs: ['lumber_camp'] },
+                                { label: '⛏️ Mining',       color: '#a78bfa', accent: 'rgba(167,139,250,', bldgs: ['basic_mine'] },
+                                { label: '🪨 Ore Mining',   color: '#8b5cf6', accent: 'rgba(139,92,246,',  bldgs: ['ore_mine'] },
+                                { label: '💰 Economy',      color: '#fbbf24', accent: 'rgba(251,191,36,',  bldgs: ['tavern','bank','market_stall','grand_market','imperial_mint'] },
+                                { label: '⚔️ Military',     color: '#f87171', accent: 'rgba(248,113,113,', bldgs: ['watchtower','barracks','stable','blacksmith','guard_post'] },
+                                { label: '🏭 Production',   color: '#fb923c', accent: 'rgba(251,146,60,',  bldgs: ['workshop'] },
+                                { label: '📚 Culture',      color: '#38bdf8', accent: 'rgba(56,189,248,',  bldgs: ['school','library','inn'] },
+                                { label: '🙏 Faith',        color: '#e879f9', accent: 'rgba(232,121,249,', bldgs: ['chapel','shrine'] },
+                                { label: '📦 Storage',      color: '#94a3b8', accent: 'rgba(148,163,184,', bldgs: ['basic_storage'] },
+                                { label: '🏠 Housing',      color: '#fb7185', accent: 'rgba(251,113,133,', bldgs: ['housing'] },
+                                { label: '🔬 Research Lab', color: '#c084fc', accent: 'rgba(192,132,252,', bldgs: ['research_lab'] },
+                              ];
 
                               // Compute research points/day from worker assignments + lab output
                               const wa: any = activeFief.worker_assignments ?? {};
@@ -9168,21 +9257,35 @@ const CampaignView: React.FC = () => {
                                   {/* Available to research */}
                                   {available.length > 0 && (
                                     <div>
-                                      <div style={{ color: '#86efac', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>✅ Available</div>
-                                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.35rem' }}>
-                                        {available.map(r => {
-                                          const dEst = daysFor(r.cost);
+                                      <div style={{ color: '#86efac', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>✅ Available to Research</div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                        {RCAT.map(cat => {
+                                          const items = available.filter(r => cat.bldgs.includes(r.building));
+                                          if (items.length === 0) return null;
                                           return (
-                                            <div key={r.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(192,132,252,0.2)', borderRadius: '7px', padding: '0.5rem 0.65rem' }}>
-                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.3rem' }}>
-                                                <div style={{ color: '#e9d5ff', fontSize: '0.78rem', fontWeight: 'bold' }}>{r.name}</div>
-                                                {dEst !== null && <span style={{ fontSize: '0.62rem', color: '#94a3b8', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', padding: '1px 5px', whiteSpace: 'nowrap' }}>~{dEst}d</span>}
+                                            <div key={cat.label}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                                                <span style={{ color: cat.color, fontSize: '0.66rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{cat.label}</span>
+                                                <div style={{ flex: 1, height: '1px', background: `${cat.accent}0.2)` }} />
                                               </div>
-                                              <div style={{ color: '#64748b', fontSize: '0.67rem', marginTop: '2px' }}>{r.desc}</div>
-                                              <div style={{ color: '#c084fc', fontSize: '0.68rem', marginTop: '3px' }}>🔬 {r.cost} pts</div>
-                                              {canManage(activeKingdom) && (
-                                                <button onClick={async () => { try { await fiefAPI.startResearch(activeFief.id, r.id); refreshActiveFief(activeFief.id); setToastMessage(`Research queued: ${r.name}`); setTimeout(() => setToastMessage(null), 3000); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ marginTop: '5px', fontSize: '0.65rem', padding: '2px 8px', background: 'rgba(192,132,252,0.12)', border: '1px solid rgba(192,132,252,0.35)', borderRadius: '4px', color: '#c084fc', cursor: 'pointer' }}>+ Queue</button>
-                                              )}
+                                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '0.3rem' }}>
+                                                {items.map(r => {
+                                                  const dEst = daysFor(r.cost);
+                                                  return (
+                                                    <div key={r.id} style={{ background: `${cat.accent}0.05)`, border: `1px solid ${cat.accent}0.25)`, borderRadius: '7px', padding: '0.5rem 0.65rem' }}>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.3rem' }}>
+                                                        <div style={{ color: cat.color, fontSize: '0.78rem', fontWeight: 'bold' }}>{r.name}</div>
+                                                        {dEst !== null && <span style={{ fontSize: '0.62rem', color: '#94a3b8', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', padding: '1px 5px', whiteSpace: 'nowrap' }}>~{dEst}d</span>}
+                                                      </div>
+                                                      <div style={{ color: '#64748b', fontSize: '0.67rem', marginTop: '2px' }}>{r.desc}</div>
+                                                      <div style={{ color: '#c084fc', fontSize: '0.68rem', marginTop: '3px' }}>🔬 {r.cost} pts</div>
+                                                      {canManage(activeKingdom) && (
+                                                        <button onClick={async () => { try { await fiefAPI.startResearch(activeFief.id, r.id); refreshActiveFief(activeFief.id); setToastMessage(`Research queued: ${r.name}`); setTimeout(() => setToastMessage(null), 3000); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ marginTop: '5px', fontSize: '0.65rem', padding: '2px 8px', background: `${cat.accent}0.12)`, border: `1px solid ${cat.accent}0.35)`, borderRadius: '4px', color: cat.color, cursor: 'pointer' }}>+ Queue</button>
+                                                      )}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
                                             </div>
                                           );
                                         })}
