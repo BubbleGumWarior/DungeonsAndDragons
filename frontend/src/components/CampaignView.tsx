@@ -8367,15 +8367,6 @@ const CampaignView: React.FC = () => {
 
               const selectedCatalogueEntry = availableBuildings.find(b => b.id === selectedBuildingCatalogueId) ?? null;
 
-              const upgradeCostForLevel = (entry: BuildingCatalogueEntry, currentLevel: number) => {
-                const factor = Math.pow(currentLevel + 1, 1.5);
-                const result: Record<string, number> = {};
-                for (const [k, v] of Object.entries(entry.baseCost)) {
-                  result[k] = Math.ceil((v as number) * factor);
-                }
-                return result;
-              };
-
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {/* ── Header row ── */}
@@ -8908,8 +8899,6 @@ const CampaignView: React.FC = () => {
                                     workshop: 2, inn: 2, library: 2, guard_post: 2,
                                     bank: 3, grand_market: 3, imperial_mint: 3, research_lab: 5,
                                   };
-                                  // Building types upgraded automatically via research — never show a manual upgrade button for these
-                                  const RESEARCH_AUTO_BLDGS = new Set(Object.keys(MAX_RESEARCH_LEVELS));
                                   const allBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_upgrade);
                                   const inProgressUpgrades = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_complete && b.is_upgrade);
                                   const getBCat = (b: FiefBuilding) => BCAT.find(c => c.ids.includes((b as any).building_type ?? '')) ?? null;
