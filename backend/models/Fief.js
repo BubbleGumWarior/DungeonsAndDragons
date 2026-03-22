@@ -26,6 +26,19 @@ class Fief {
     );
     fief.training_queue = trainingResult.rows;
 
+    // Research queue and completed levels
+    const researchQueueResult = await pool.query(
+      `SELECT * FROM fief_research_queue WHERE fief_id = $1 ORDER BY queue_position ASC NULLS LAST`,
+      [id]
+    );
+    fief.research_queue = researchQueueResult.rows;
+
+    const researchLevelsResult = await pool.query(
+      `SELECT building_type, level FROM fief_research_levels WHERE fief_id = $1`,
+      [id]
+    );
+    fief.research_levels = researchLevelsResult.rows;
+
     if (!fief.garrison) fief.garrison = { infantry: 0, archers: 0, cavalry: 0 };
 
     return fief;

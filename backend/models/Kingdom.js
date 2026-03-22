@@ -1,4 +1,5 @@
 const { pool } = require('./database');
+const Fief = require('./Fief');
 
 class Kingdom {
   static async create({ campaign_id, player_id }) {
@@ -93,11 +94,8 @@ class Kingdom {
     );
     const fiefs = [];
     for (const fief of fiefResult.rows) {
-      const buildings = await pool.query(
-        `SELECT * FROM fief_buildings WHERE fief_id = $1 ORDER BY is_complete DESC, id ASC`,
-        [fief.id]
-      );
-      fiefs.push({ ...fief, buildings: buildings.rows });
+      const fullFief = await Fief.findByIdFull(fief.id);
+      fiefs.push(fullFief ?? fief);
     }
 
     const events = await pool.query(

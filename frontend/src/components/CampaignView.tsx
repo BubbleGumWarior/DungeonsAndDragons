@@ -128,62 +128,63 @@ const BC = (id: string, name: string, icon: string, tier: number, ml: number, da
 
 const BUILDING_CATALOGUE: BuildingCatalogueEntry[] = [
   // Tier 1 — Camp
-  BC('campfire',       'Campfire',       '🔥', 1, 3, 1,  { wood: 5 },            { food: 1 },           'A simple fire pit. Keeps the camp warm and fed.'),
-  BC('basic_storage',  'Basic Storage',  '📦', 1, 3, 2,  { wood: 10 },           {},                    'Stores supplies. Each level adds +200 to the resource storage cap.'),
-  BC('housing',        'Housing',        '🏠', 1, 5, 3,  { wood: 15 },           { pop_cap: 500 },      'Shelter for your people. Raises the population cap. Lv1: Tents · Lv2: Hovels · Lv3: Cottages · Lv4: Houses · Lv5: Townhouses'),
-  BC('watchtower',     'Watchtower',     '🗼', 1, 3, 3,  { wood: 15 },           {},                    'Raised platform to watch for danger. +Military.'),
-  BC('hunting_ground', 'Hunting Ground', '🏹', 1, 3, 2,  { wood: 5 },            { food: 2 },           'Designated hunting area increases food supply.'),
+  BC('campfire',       'Campfire',       '🔥', 1, 3,  2,  { wood: 8 },                        { food: 3 },            'A simple fire pit. Keeps the camp warm and fed.'),
+  BC('basic_storage',  'Basic Storage',  '📦', 1, 3,  3,  { wood: 15 },                       {},                     'Stores supplies. Lv1: +100 · Lv2: +200 · Lv3: +400 storage cap.'),
+  BC('housing',        'Housing',        '🏠', 1, 5,  4,  { wood: 20 },                       { pop_cap: 15 },        'Shelter for your people. Each level raises pop cap by 15. Lv1: Tents · Lv2: Hovels · Lv3: Cottages · Lv4: Houses · Lv5: Townhouses'),
+  BC('watchtower',     'Watchtower',     '🗼', 1, 3,  4,  { wood: 20 },                       {},                     'Raised platform to watch for danger. +Military.'),
+  BC('hunting_ground', 'Hunting Ground', '🏹', 1, 3,  3,  { wood: 10 },                       { food: 8 },            'Designated hunting area. Strong food supply.'),
   // Tier 2 — Hamlet
-  BC('chapel',         'Chapel',         '⛪', 2, 5, 4,  { wood: 15, gold: 20 }, {},                    'A small chapel. Slowly grows community faith.'),
-  BC('farm',           'Farm',           '🌾', 2, 5, 5,  { wood: 20, gold: 10 }, { food: 5 },           'Basic farmland producing steady food output.'),
-  BC('lumber_camp',    'Lumber Camp',    '🪵', 2, 5, 4,  { wood: 10, gold: 5 },  { wood: 5 },           'A camp of woodcutters harvesting the forest.'),
-  BC('basic_mine',     'Basic Mine',     '⛏️', 2, 5, 6,  { wood: 15, gold: 20 }, { stone: 3 },          'Shallow mine extracting stone and ore.'),
-  BC('tavern',         'Tavern',         '🍺', 2, 5, 4,  { wood: 20, gold: 30 }, { gold: 3 },           'A busy tavern bringing coin to the hamlet.'),
+  BC('research_lab',   'Research Lab',   '🔬', 2, 5,  8,  { wood: 40, gold: 60 },             { research: 5 },        'Scholars study the land. Enables building research. Required to research any upgrade.'),
+  BC('chapel',         'Chapel',         '⛪', 2, 5,  6,  { wood: 50, gold: 80 },             {},                     'A small chapel. Slowly grows community faith.'),
+  BC('farm',           'Farm',           '🌾', 2, 5,  8,  { wood: 60, gold: 40 },             { food: 15 },           'Basic farmland producing steady food output.'),
+  BC('lumber_camp',    'Lumber Camp',    '🪵', 2, 5,  7,  { wood: 40, gold: 30 },             { wood: 15 },           'A camp of woodcutters harvesting the forest.'),
+  BC('basic_mine',     'Basic Mine',     '⛏️', 2, 5, 10,  { wood: 55, gold: 80 },             { stone: 12 },          'Shallow mine extracting stone and ore.'),
+  BC('tavern',         'Tavern',         '🍺', 2, 5,  7,  { wood: 80, gold: 120 },            { gold: 10 },           'A busy tavern bringing coin to the hamlet.'),
   // Tier 3 — Small Village
-  BC('blacksmith',     'Blacksmith',     '🔨', 3, 5, 7,  { wood: 30, stone: 20, gold: 40 }, {},         'Smithy forging tools and weapons.'),
-  BC('market_stall',   'Market Stall',   '🛒', 3, 5, 5,  { wood: 25, gold: 30 }, { gold: 8 },           'Small market generating trade income.'),
-  BC('barracks',       'Barracks',       '⚔️', 3, 5, 7,  { wood: 30, stone: 15, gold: 50 }, {},         'Training ground improving military strength.'),
-  BC('mill',           'Mill',           '⚙️', 3, 5, 6,  { wood: 40, stone: 10, gold: 20 }, { food: 4 },'Mill improving grain processing efficiency.'),
+  BC('blacksmith',     'Blacksmith',     '🔨', 3, 5, 12,  { wood: 120, stone: 80, gold: 180 },  {},                    'Smithy forging tools and weapons.'),
+  BC('market_stall',   'Market Stall',   '🛒', 3, 5,  9,  { wood: 100, gold: 160 },           { gold: 25 },           'Small market generating trade income.'),
+  BC('barracks',       'Barracks',       '⚔️', 3, 5, 13,  { wood: 120, stone: 80, gold: 220 }, {},                    'Training ground improving military strength.'),
+  BC('mill',           'Mill',           '⚙️', 3, 5, 11,  { wood: 150, stone: 60, gold: 120 }, { food: 20 },          'Mill improving grain processing efficiency.'),
   // Tier 4 — Village
-  BC('ore_mine',       'Ore Mine',       '🪨', 4, 5, 10, { wood: 50, gold: 60 }, { stone: 8 },          'Deep mine extracting rich stone and ore deposits.'),
-  BC('stable',         'Stable',         '🐴', 4, 5, 6,  { wood: 30, gold: 40 }, {},                    'Horses and mounts for the village militia.'),
-  BC('school',         'School',         '📚', 4, 4, 8,  { wood: 40, gold: 60 }, {},                    'Education improving the local economy.'),
-  BC('shrine',         'Shrine',         '🕍', 4, 4, 5,  { stone: 20, gold: 30 }, {},                   'A place of worship improving stability.'),
+  BC('ore_mine',       'Ore Mine',       '🪨', 4, 5, 16,  { wood: 200, gold: 280 },           { stone: 30 },          'Deep mine extracting rich stone and ore deposits.'),
+  BC('stable',         'Stable',         '🐴', 4, 5, 12,  { wood: 140, gold: 200 },           {},                     'Horses and mounts for the village militia.'),
+  BC('school',         'School',         '📚', 4, 4, 14,  { wood: 160, gold: 280 },           {},                     'Education improving the local economy.'),
+  BC('shrine',         'Shrine',         '🕍', 4, 4,  9,  { stone: 100, gold: 160 },          {},                     'A place of worship improving stability.'),
   // Tier 5 — Large Village
-  BC('workshop',       'Workshop',       '🔧', 5, 5, 8,  { stone: 30, wood: 30, gold: 60 }, { gold: 5 },'Craftsmen producing goods for trade.'),
-  BC('inn',            'Inn',            '🏨', 5, 5, 7,  { wood: 50, gold: 70 }, { gold: 6 },           'A comfortable inn attracting travelers and coin.'),
-  BC('library',        'Library',        '📖', 5, 4, 9,  { wood: 40, stone: 20, gold: 80 }, {},         'Repository of knowledge boosting the economy.'),
-  BC('guard_post',     'Guard Post',     '💂', 5, 4, 6,  { stone: 30, gold: 50 }, {},                   'A guardhouse improving town stability.'),
-  BC('thieves_guild',  'Thieves Guild',  '🗡️', 5, 4, 10, { wood: 20, gold: 80 }, {},                    'A hidden guild of rogues and spies. Unlocks covert unit training.'),
-  BC('siege_workshop', 'Siege Workshop', '⚙️', 5, 4, 14, { wood: 50, stone: 30, gold: 100 }, {},        'Workshop for constructing siege weapons. Unlocks artillery unit training.'),
+  BC('workshop',       'Workshop',       '🔧', 5, 5, 15,  { stone: 160, wood: 120, gold: 320 }, { gold: 40 },          'Craftsmen producing goods for trade.'),
+  BC('inn',            'Inn',            '🏨', 5, 5, 14,  { wood: 200, gold: 350 },           { gold: 35 },           'A comfortable inn attracting travelers and coin.'),
+  BC('library',        'Library',        '📖', 5, 4, 16,  { wood: 160, stone: 100, gold: 400 }, {},                    'Repository of knowledge boosting the economy.'),
+  BC('guard_post',     'Guard Post',     '💂', 5, 4, 11,  { stone: 130, gold: 240 },          {},                     'A guardhouse improving town stability.'),
+  BC('thieves_guild',  'Thieves Guild',  '🗡️', 5, 4, 18,  { wood: 100, gold: 400 },           {},                     'A hidden guild of rogues and spies. Unlocks covert unit training.'),
+  BC('siege_workshop', 'Siege Workshop', '⚙️', 5, 4, 22,  { wood: 200, stone: 160, gold: 500 }, {},                   'Workshop for constructing siege weapons.'),
   // Tier 6 — Small Town
-  BC('bank',           'Bank',           '🏦', 6, 5, 10, { stone: 50, gold: 120 }, { gold: 15 },        'A bank generating substantial gold income.'),
-  BC('alchemist',      'Alchemist',      '⚗️', 6, 4, 8,  { stone: 30, gold: 80 }, { gold: 4 },'Alchemist lab producing valuable reagents.'),
-  BC('armoury',        'Armoury',        '🛡️', 6, 5, 9,  { stone: 40, gold: 100 }, {},                  'Armoury stocking military equipment.'),
-  BC('mason',          'Mason',          '🪚', 6, 5, 7,  { gold: 60, stone: 10 }, { stone: 6 },         'Skilled masons extracting and shaping stone.'),
-  BC('monastery',      'Monastery',      '🛕', 6, 4, 10, { stone: 50, gold: 100 }, {},                  'A monastery of devoted monks. Greatly grows faith.'),
-  BC('foundry',        'Foundry',        '🔥', 6, 3, 12, { stone: 60, gold: 120 }, {},                  'An ironworks foundry for advanced siege weapons. Unlocks Bombard training.'),
+  BC('bank',           'Bank',           '🏦', 6, 5, 18,  { stone: 250, gold: 650 },          { gold: 60 },           'A bank generating substantial gold income.'),
+  BC('alchemist',      'Alchemist',      '⚗️', 6, 4, 14,  { stone: 160, gold: 400 },          { gold: 30 },           'Alchemist lab producing valuable reagents.'),
+  BC('armoury',        'Armoury',        '🛡️', 6, 5, 16,  { stone: 200, gold: 500 },          {},                     'Armoury stocking military equipment.'),
+  BC('mason',          'Mason',          '🪚', 6, 5, 13,  { gold: 330, stone: 70 },           { stone: 50 },          'Skilled masons extracting and shaping stone.'),
+  BC('monastery',      'Monastery',      '🛕', 6, 4, 18,  { stone: 250, gold: 580 },          {},                     'A monastery of devoted monks. Greatly grows faith.'),
+  BC('foundry',        'Foundry',        '🔥', 6, 3, 22,  { stone: 300, gold: 650 },          {},                     'An ironworks foundry for advanced siege weapons.'),
   // Tier 7 — Town
-  BC('castle_walls',   'Castle Walls',   '🏰', 7, 3, 20, { stone: 200, gold: 150 }, {},                 'Towering walls protecting the settlement.'),
-  BC('cathedral',      'Cathedral',      '⛪', 7, 3, 15, { stone: 100, gold: 120 }, {},                  'Grand cathedral inspiring stability and devotion.'),
-  BC('academy',        'Academy',        '🎓', 7, 4, 12, { stone: 60, wood: 40, gold: 150 }, {},         'Major academy producing scholars and leaders.'),
-  BC('docks',          'Docks',          '⚓', 7, 5, 14, { wood: 120, stone: 40, gold: 100 }, { gold: 20, food: 5 }, 'Docks enabling maritime trade.'),
-  BC('shadow_order',   'Shadow Order',   '🌑', 7, 3, 16, { stone: 80, gold: 150 }, {},                  'A secretive guild of assassins. Unlocks Assassin unit training.'),
+  BC('castle_walls',   'Castle Walls',   '🏰', 7, 3, 35,  { stone: 800, gold: 650 },          {},                     'Towering walls protecting the settlement.'),
+  BC('cathedral',      'Cathedral',      '⛪', 7, 3, 28,  { stone: 500, gold: 560 },          {},                     'Grand cathedral inspiring stability and devotion.'),
+  BC('academy',        'Academy',        '🎓', 7, 4, 24,  { stone: 300, wood: 200, gold: 720 }, {},                   'Major academy producing scholars and leaders.'),
+  BC('docks',          'Docks',          '⚓', 7, 5, 26,  { wood: 500, stone: 200, gold: 500 }, { gold: 80, food: 30 },'Docks enabling maritime trade.'),
+  BC('shadow_order',   'Shadow Order',   '🌑', 7, 3, 30,  { stone: 400, gold: 800 },          {},                     'A secretive guild of assassins. Unlocks Assassin unit training.'),
   // Tier 8 — Large Town
-  BC('keep',           'Keep',           '🏯', 8, 3, 25, { stone: 300, gold: 200 }, {},                  'A fortified keep providing strong military.'),
-  BC('grand_market',   'Grand Market',   '🏪', 8, 5, 12, { stone: 80, gold: 200 }, { gold: 25 },         'Bustling grand market generating high income.'),
-  BC('mage_tower',     'Mage Tower',     '🧙', 8, 4, 15, { stone: 100, gold: 200 }, {},                  'Tower of arcane study boosting economy.'),
-  BC('hospital',       'Hospital',       '🏥', 8, 4, 12, { stone: 60, gold: 150 }, {},                   'Medical facility improving stability and growth.'),
+  BC('keep',           'Keep',           '🏯', 8, 3, 40,  { stone: 1200, gold: 1000 },        {},                     'A fortified keep providing strong military.'),
+  BC('grand_market',   'Grand Market',   '🏪', 8, 5, 22,  { stone: 400, gold: 1000 },         { gold: 100 },          'Bustling grand market generating high income.'),
+  BC('mage_tower',     'Mage Tower',     '🧙', 8, 4, 28,  { stone: 500, gold: 1050 },         {},                     'Tower of arcane study boosting economy.'),
+  BC('hospital',       'Hospital',       '🏥', 8, 4, 22,  { stone: 350, gold: 750 },          {},                     'Medical facility improving stability and growth.'),
   // Tier 9 — City
-  BC('palace',         'Palace',         '🏛️', 9, 3, 30, { stone: 400, gold: 500 }, {},                  'A royal palace symbolising power and prosperity.'),
-  BC('colosseum',      'Colosseum',      '🏟️', 9, 3, 25, { stone: 300, gold: 350 }, { gold: 15 },        'Entertainment arena drawing crowds and gold.'),
-  BC('university',     'University',     '🏫', 9, 4, 20, { stone: 200, gold: 400 }, {},                  'Major university advancing the city\'s economy.'),
-  BC('grand_cathedral','Grand Cathedral','⛩️', 9, 3, 20, { stone: 300, gold: 300 }, {},                  'Magnificent cathedral boosting city stability.'),
+  BC('palace',         'Palace',         '🏛️', 9, 3, 50,  { stone: 1600, gold: 2400 },        {},                     'A royal palace symbolising power and prosperity.'),
+  BC('colosseum',      'Colosseum',      '🏟️', 9, 3, 40,  { stone: 1200, gold: 1600 },        { gold: 60 },           'Entertainment arena drawing crowds and gold.'),
+  BC('university',     'University',     '🏫', 9, 4, 35,  { stone: 1000, gold: 2000 },        {},                     'Major university advancing the city\'s economy.'),
+  BC('grand_cathedral','Grand Cathedral','⛩️', 9, 3, 35,  { stone: 1200, gold: 1500 },        {},                     'Magnificent cathedral boosting city stability.'),
   // Tier 10 — Citadel
-  BC('citadel_fortress','Citadel Fortress','🗼',10,3,40, { stone: 600, gold: 800 }, {},                   'Impenetrable fortress protecting the citadel.'),
-  BC('royal_academy',  'Royal Academy',  '👑', 10, 3, 30, { stone: 300, gold: 700 }, {},                 'The pinnacle of scholarship.'),
-  BC('imperial_mint',  'Imperial Mint',  '💰', 10, 3, 25, { stone: 200, gold: 600 }, { gold: 40 },       'Minting coins for the entire realm.'),
-  BC('grand_armory',   'Grand Armory',   '⚔️', 10, 3, 30, { stone: 400, gold: 600 }, {},                 'Legendary armoury supplying the finest weapons.'),
+  BC('citadel_fortress','Citadel Fortress','🗼',10,3, 70,  { stone: 2500, gold: 4000 },        {},                     'Impenetrable fortress protecting the citadel.'),
+  BC('royal_academy',  'Royal Academy',  '👑', 10, 3, 55,  { stone: 1500, gold: 3500 },        {},                     'The pinnacle of scholarship.'),
+  BC('imperial_mint',  'Imperial Mint',  '💰', 10, 3, 45,  { stone: 1000, gold: 3000 },        { gold: 150 },          'Minting coins for the entire realm.'),
+  BC('grand_armory',   'Grand Armory',   '⚔️', 10, 3, 55,  { stone: 2000, gold: 3200 },        {},                     'Legendary armoury supplying the finest weapons.'),
 ];
 
 const DISASTER_CATALOGUE = [
@@ -342,6 +343,7 @@ const CampaignView: React.FC = () => {
   const [showAddEventModal, setShowAddEventModal] = useState(false);
   const [showAddActionModal, setShowAddActionModal] = useState(false);
   const [showDisasterModal, setShowDisasterModal] = useState(false);
+  const [showPositiveEventModal, setShowPositiveEventModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showGarrisonModal, setShowGarrisonModal] = useState(false);
   const [garrisonTrainUnit, setGarrisonTrainUnit] = useState<string | null>(null);
@@ -359,7 +361,7 @@ const CampaignView: React.FC = () => {
   const [garrisonDragOver, setGarrisonDragOver] = useState<string | null>(null); // 'garrison' or army-id string
   const [cancelJobId, setCancelJobId] = useState<number | null>(null);
   // Sub-tab state for fief detail panel
-  const [activeFiefSubTab, setActiveFiefSubTab] = useState<'overview' | 'workers' | 'buildings' | 'events' | 'log'>('overview');
+  const [activeFiefSubTab, setActiveFiefSubTab] = useState<'overview' | 'workers' | 'buildings' | 'research' | 'events' | 'log'>('overview');
   const [editResourceKey, setEditResourceKey] = useState<string | null>(null);
   const [editResourceVal, setEditResourceVal] = useState<string>('');
   const [setTroopsArmyId, setSetTroopsArmyId] = useState<number | null>(null);
@@ -8522,8 +8524,41 @@ const CampaignView: React.FC = () => {
                                 {isDM && (
                                   <button onClick={() => setShowDisasterModal(true)} style={{ padding: '2px 8px', fontSize: '0.7rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', color: '#f87171', cursor: 'pointer' }}>⚠️ Disaster</button>
                                 )}
+                                {isDM && (
+                                  <button onClick={() => setShowPositiveEventModal(true)} style={{ padding: '2px 8px', fontSize: '0.7rem', background: 'rgba(134,239,172,0.1)', border: '1px solid rgba(134,239,172,0.3)', borderRadius: '4px', color: '#86efac', cursor: 'pointer' }}>✨ Event</button>
+                                )}
                               </div>
                             </div>
+
+                            {/* Active disasters banner */}
+                            {((activeFief as any).active_disasters as any[] ?? []).length > 0 && (
+                              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px', padding: '0.6rem 0.8rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                <div style={{ color: '#f87171', fontWeight: 'bold', fontSize: '0.77rem' }}>🚨 Active Disasters — Draining resources daily!</div>
+                                {((activeFief as any).active_disasters as any[] ?? []).map((d: any) => (
+                                  <div key={d.uid} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(239,68,68,0.06)', borderRadius: '6px', padding: '0.4rem 0.6rem' }}>
+                                    <span style={{ color: '#fca5a5', fontSize: '0.8rem', flex: 1, fontWeight: 'bold' }}>⚠️ {d.name}</span>
+                                    <span style={{ fontSize: '0.68rem', color: '#f87171' }}>
+                                      {Object.entries(d.daily_damage ?? {}).map(([k, v]) => `−${v} ${k}`).join(' · ')}/day
+                                    </span>
+                                    {canManage(activeKingdom) && (
+                                      <button onClick={async () => {
+                                        try {
+                                          await fiefAPI.resolveDisaster(activeFief.id, d.uid);
+                                          refreshActiveFief(activeFief.id);
+                                          setToastMessage(`Disaster resolved: ${d.name}`);
+                                          setTimeout(() => setToastMessage(null), 3000);
+                                        } catch(e: any) {
+                                          setToastMessage(e?.response?.data?.error ?? 'Failed to resolve');
+                                          setTimeout(() => setToastMessage(null), 4000);
+                                        }
+                                      }} style={{ fontSize: '0.65rem', padding: '2px 8px', background: 'rgba(134,239,172,0.1)', border: '1px solid rgba(134,239,172,0.3)', borderRadius: '4px', color: '#86efac', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                        Resolve ({Object.entries(d.resolve_cost ?? {}).map(([k, v]) => `${v} ${k}`).join(', ') || 'Free'})
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
 
                             {/* Resources */}
                             <div>
@@ -8534,7 +8569,7 @@ const CampaignView: React.FC = () => {
                                   const icons = ['💰','🌾','🪵','🪨'];
                                   const val = activeFief.resources?.[key] ?? 0;
                                   const fiefBuildsForCap = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter((b: FiefBuilding) => b.is_complete && !b.is_upgrade);
-                                  const storageCap = 100 + fiefBuildsForCap.filter((b: FiefBuilding) => (b as any).building_type === 'basic_storage').reduce((sum: number, b: FiefBuilding) => sum + (b.level || 1) * 200, 0);
+                                  const storageCap = 100 + fiefBuildsForCap.filter((b: FiefBuilding) => (b as any).building_type === 'basic_storage').reduce((sum: number, b: FiefBuilding) => sum + Math.round(100 * Math.pow(2, (b.level || 1) - 1)), 0);
                                   const capPct = Math.min(1, val / storageCap);
                                   return (
                                     <div key={key}
@@ -8639,11 +8674,11 @@ const CampaignView: React.FC = () => {
 
                             {/* Sub-tab navigation */}
                             <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(255,255,255,0.07)', marginBottom: '0.25rem' }}>
-                              {(['overview', 'workers', 'buildings', 'events', 'log'] as const).map(tab => {
-                                const labels: Record<string, string> = { overview: '📊 Overview', workers: '👷 Workers', buildings: '🏗️ Buildings', events: '📢 Events', log: '📋 Log' };
+                              {(['overview', 'workers', 'buildings', 'research', 'events', 'log'] as const).map(tab => {
+                                const labels: Record<string, string> = { overview: '📊 Overview', workers: '👷 Workers', buildings: '🏗️ Buildings', research: '🔬 Research', events: '📢 Events', log: '📋 Log' };
                                 const isActiveSub = activeFiefSubTab === tab;
                                 return (
-                                  <button key={tab} onClick={() => setActiveFiefSubTab(tab)}
+                                  <button key={tab} onClick={() => setActiveFiefSubTab(tab as any)}
                                     style={{ padding: '0.5rem 0.9rem', background: 'none', border: 'none', borderBottom: isActiveSub ? '2px solid rgba(212,193,156,0.85)' : '2px solid transparent', marginBottom: '-2px', color: isActiveSub ? 'var(--text-gold)' : '#64748b', cursor: 'pointer', fontSize: '0.8rem', fontWeight: isActiveSub ? 'bold' : 'normal', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
                                     {labels[tab]}
                                   </button>
@@ -8659,7 +8694,7 @@ const CampaignView: React.FC = () => {
                                   {(() => {
                                     const ovPop = activeFief.population ?? 0;
                                     const ovBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade);
-                                    const ovHousingCap = 1000 + ovBuildings.filter(b => (b as any).building_type === 'housing').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).pop_cap ?? 0), 0);
+                                    const ovHousingCap = 30 + ovBuildings.filter(b => (b as any).building_type === 'housing').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).pop_cap ?? 0) * (b.level || 1), 0);
                                     const ovAtCap = ovPop >= ovHousingCap;
                                     return (
                                       <>
@@ -8735,16 +8770,21 @@ const CampaignView: React.FC = () => {
                             {activeFiefSubTab === 'workers' && (() => {
                               const pop = activeFief.population ?? 0;
                               const workable = pop <= 10 ? pop : Math.floor(pop / (1 + 0.25 * Math.log10(pop / 10)));
-                              const assignments = activeFief.worker_assignments ?? { gold: 0, food: 0, wood: 0, stone: 0 };
-                              const totalAssigned = (assignments.gold ?? 0) + (assignments.food ?? 0) + (assignments.wood ?? 0) + (assignments.stone ?? 0);
+                              const assignments = activeFief.worker_assignments ?? { gold: 0, food: 0, wood: 0, stone: 0, research: 0 };
+                              const totalAssigned = (assignments.gold ?? 0) + (assignments.food ?? 0) + (assignments.wood ?? 0) + (assignments.stone ?? 0) + ((assignments as any).research ?? 0);
                               const fiefBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade);
                               const fiefTier = activeFief.tier ?? 1;
-                              const yieldPerWorker = (res: string) => 1 + fiefBuildings.reduce((sum, b) => sum + (((b.resource_output as any) ?? {})[res] ?? 0), 0);
-                              // Worker cap scales with tier: each building level contributes 5 × tier slots, so a tier-10 fief gets 10× more worker capacity than tier 1
-                              const maxWorkers = (res: string) => 5 + fiefBuildings.filter(b => (((b.resource_output as any) ?? {})[res] ?? 0) > 0).reduce((sum, b) => sum + (b.level || 1) * 5 * fiefTier, 0);
-                              const housingCap = 1000 + fiefBuildings.filter(b => (b as any).building_type === 'housing').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).pop_cap ?? 0), 0);
+                              // yield formula: 1.2 base + 0.10 per unit of building output
+                              const yieldPerWorker = (res: string) => {
+                                const output = fiefBuildings.reduce((sum, b) => sum + (((b.resource_output as any) ?? {})[res] ?? 0), 0);
+                                return parseFloat((1.2 + output * 0.10).toFixed(2));
+                              };
+                              // Worker cap base is 10; scales with buildings
+                              const maxWorkers = (res: string) => 10 + fiefBuildings.filter(b => (((b.resource_output as any) ?? {})[res] ?? 0) > 0).reduce((sum, b) => sum + (b.level || 1) * 5 * fiefTier, 0);
+                              const hasResearchLab = fiefBuildings.some(b => (b as any).building_type === 'research_lab');
+                              const housingCap = 30 + fiefBuildings.filter(b => (b as any).building_type === 'housing').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).pop_cap ?? 0) * (b.level || 1), 0);
                               const atHousingCap = pop >= housingCap;
-                              const foodConsumedPerDay = Math.ceil(pop / 10) * 4;
+                              const foodConsumedPerDay = parseFloat((pop * 0.5).toFixed(1));
                               const canAssign = canManage(activeKingdom);
                               const remaining = workable - totalAssigned;
                               const updateWorker = async (res: string, delta: number) => {
@@ -8779,9 +8819,9 @@ const CampaignView: React.FC = () => {
                                       const max = maxWorkers(res);
                                       const yld = yieldPerWorker(res);
                                       const canAdd = remaining > 0 && assigned < max;
-                                      const producedPerDay = assigned * yld;
+                                      const producedPerDay = parseFloat((assigned * yld).toFixed(1));
                                       const isFood = res === 'food';
-                                      const netFoodPerDay = isFood ? producedPerDay - foodConsumedPerDay : null;
+                                      const netFoodPerDay = isFood ? parseFloat((producedPerDay - foodConsumedPerDay).toFixed(1)) : null;
                                       return (
                                         <div key={res} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: '0.3rem 0.6rem', border: `1px solid ${colours[i]}20` }}>
                                           <span style={{ fontSize: '1rem', minWidth: '18px' }}>{icons[i]}</span>
@@ -8801,11 +8841,35 @@ const CampaignView: React.FC = () => {
                                               {netFoodPerDay !== null && <span style={{ color: netFoodPerDay >= 0 ? '#86efac' : '#f87171', fontWeight: 'bold', fontSize: '0.68rem' }}>net {netFoodPerDay >= 0 ? '+' : ''}{netFoodPerDay}</span>}
                                             </span>
                                           ) : (
-                                            <span style={{ color: colours[i], fontSize: '0.72rem' }}>≈{producedPerDay}<span style={{ color: '#64748b' }}>/day</span>{yld > 1 && <span style={{ color: '#475569', fontSize: '0.65rem' }}> ({yld}×)</span>}</span>
+                                            <span style={{ color: colours[i], fontSize: '0.72rem' }}>≈{producedPerDay}<span style={{ color: '#64748b' }}>/day</span><span style={{ color: '#475569', fontSize: '0.65rem' }}> ({yld}×)</span></span>
                                           )}
                                         </div>
                                       );
                                     })}
+                                    {/* Research workers — only shown if Research Lab exists */}
+                                    {hasResearchLab && (() => {
+                                      const researchOutput = fiefBuildings.filter(b => (b as any).building_type === 'research_lab').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).research ?? 0) * (b.level || 1), 0);
+                                      const assigned = (assignments as any).research ?? 0;
+                                      const max = 10 + researchOutput * 2;
+                                      const yld = parseFloat((1.2 + researchOutput * 0.10).toFixed(2));
+                                      const produced = parseFloat((assigned * yld).toFixed(1));
+                                      const canAdd = remaining > 0 && assigned < max;
+                                      return (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: '0.3rem 0.6rem', border: '1px solid rgba(56,189,248,0.2)' }}>
+                                          <span style={{ fontSize: '1rem', minWidth: '18px' }}>🔬</span>
+                                          <span style={{ color: '#38bdf8', fontSize: '0.78rem', minWidth: '60px' }}>research</span>
+                                          {canAssign && [-100,-10,-5,-1].map(d => (
+                                            <button key={d} onClick={() => updateWorker('research', d)} style={{ padding: '0 4px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', color: '#f87171', cursor: 'pointer', fontSize: '0.72rem', lineHeight: '16px' }}>{d}</button>
+                                          ))}
+                                          <span style={{ minWidth: '30px', textAlign: 'center', color: '#f1f5f9', fontSize: '0.85rem', fontWeight: 'bold' }}>{assigned}</span>
+                                          {canAssign && [1,5,10,100].map(d => (
+                                            <button key={d} onClick={() => updateWorker('research', d)} disabled={!canAdd} style={{ padding: '0 4px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', color: canAdd ? '#86efac' : '#334155', cursor: canAdd ? 'pointer' : 'not-allowed', fontSize: '0.72rem', lineHeight: '16px' }}>+{d}</button>
+                                          ))}
+                                          <span style={{ color: '#475569', fontSize: '0.68rem', flex: 1 }}>/ {max} slots</span>
+                                          <span style={{ color: '#38bdf8', fontSize: '0.72rem' }}>≈{produced}<span style={{ color: '#64748b' }}> pts/day</span><span style={{ color: '#475569', fontSize: '0.65rem' }}> ({yld}×)</span></span>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                               );
@@ -8831,6 +8895,7 @@ const CampaignView: React.FC = () => {
                                     { label: '🙏 Faith',     color: '#e879f9', accent: 'rgba(232,121,249,', ids: ['chapel','shrine','monastery','cathedral','grand_cathedral'] },
                                     { label: '📦 Storage',   color: '#94a3b8', accent: 'rgba(148,163,184,', ids: ['basic_storage'] },
                                     { label: '🏠 Housing',   color: '#fb923c', accent: 'rgba(251,146,60,',  ids: ['housing'] },
+                                    { label: '🔬 Research',  color: '#c084fc', accent: 'rgba(192,132,252,', ids: ['research_lab'] },
                                   ];
                                   const allBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_upgrade);
                                   const inProgressUpgrades = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_complete && b.is_upgrade);
@@ -8868,30 +8933,61 @@ const CampaignView: React.FC = () => {
                                                             <div style={{ height: '100%', width: `${Math.max(0, 100 - (upgradeInProgress.days_remaining / upgradeInProgress.construction_days_required) * 100)}%`, background: '#a78bfa', borderRadius: '2px' }} />
                                                           </div>
                                                         </div>
-                                                      ) : canManage(activeKingdom) && b.level < (BUILDING_CATALOGUE.find(c => c.id === (b as any).building_type || c.name === b.name)?.maxLevel ?? 5) && (
-                                                        <button onClick={async () => {
-                                                          const entry = BUILDING_CATALOGUE.find(c => c.name === b.name);
-                                                          if (!entry) return;
-                                                          const cost = upgradeCostForLevel(entry, b.level);
-                                                          const days = Math.ceil(entry.baseConstructionDays * Math.pow(b.level + 1, 1.2));
-                                                          const newLevel = b.level + 1;
-                                                          const newOutput: Record<string, number> = {};
-                                                          for (const [k, v] of Object.entries(entry.baseOutput)) {
-                                                            newOutput[k] = Math.ceil((v as number) * newLevel);
-                                                          }
-                                                          try {
-                                                            await fiefAPI.upgradeBuilding(activeFief.id, b.id, { upgrade_cost: cost, construction_days: days, new_resource_output: newOutput });
-                                                            refreshActiveFief(activeFief.id);
-                                                          } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
-                                                        }} style={{ marginTop: '4px', padding: '2px 8px', fontSize: '0.65rem', background: `${cat.accent}0.12)`, border: `1px solid ${cat.accent}0.3)`, borderRadius: '4px', color: cat.color, cursor: 'pointer' }}>↑ Upgrade</button>
-                                                      )}
+                                                      ) : canManage(activeKingdom) && b.level < (BUILDING_CATALOGUE.find(c => c.id === (b as any).building_type || c.name === b.name)?.maxLevel ?? 5) && (() => {
+                                                        const _entry = BUILDING_CATALOGUE.find(c => c.id === (b as any).building_type || c.name === b.name);
+                                                        if (!_entry) return null;
+                                                        const _resLevels: any[] = (activeFief as any).research_levels ?? [];
+                                                        const _researchedLevel = _resLevels.find(r => r.building_type === (b as any).building_type)?.level ?? 0;
+                                                        const _targetLevel = (b.level ?? 1) + 1;
+                                                        if (_researchedLevel < _targetLevel) {
+                                                          return <div style={{ color: '#94a3b8', fontSize: '0.62rem', marginTop: '4px', fontStyle: 'italic' }}>🔬 Research Lv{_targetLevel} required</div>;
+                                                        }
+                                                        const _cost = upgradeCostForLevel(_entry, b.level);
+                                                        const _days = Math.ceil(_entry.baseConstructionDays * Math.pow(b.level + 1, 1.2));
+                                                        const RES_ICONS: Record<string, string> = { gold: '💰', wood: '🪵', stone: '🪨', food: '🌾' };
+                                                        const _costStr = Object.entries(_cost).map(([k, v]) => `${RES_ICONS[k] ?? k} ${v}`).join(' · ');
+                                                        return (
+                                                          <div>
+                                                            <div style={{ color: '#94a3b8', fontSize: '0.62rem', marginTop: '3px' }}>{_costStr} · {_days}d</div>
+                                                            <button onClick={async () => {
+                                                              const entry = BUILDING_CATALOGUE.find(c => c.name === b.name);
+                                                              if (!entry) return;
+                                                              const cost = upgradeCostForLevel(entry, b.level);
+                                                              const days = Math.ceil(entry.baseConstructionDays * Math.pow(b.level + 1, 1.2));
+                                                              const newLevel = b.level + 1;
+                                                              const newOutput: Record<string, number> = {};
+                                                              for (const [k, v] of Object.entries(entry.baseOutput)) {
+                                                                newOutput[k] = Math.ceil((v as number) * newLevel);
+                                                              }
+                                                              try {
+                                                                await fiefAPI.upgradeBuilding(activeFief.id, b.id, { upgrade_cost: cost, construction_days: days, new_resource_output: newOutput });
+                                                                refreshActiveFief(activeFief.id);
+                                                              } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                                            }} style={{ marginTop: '4px', padding: '2px 8px', fontSize: '0.65rem', background: `${cat.accent}0.12)`, border: `1px solid ${cat.accent}0.3)`, borderRadius: '4px', color: cat.color, cursor: 'pointer' }}>↑ Upgrade</button>
+                                                          </div>
+                                                        );
+                                                      })()}
                                                     </>
                                                   ) : (
                                                     <>
-                                                      <div style={{ fontSize: '0.68rem', color: '#fbbf24', marginTop: '3px' }}>🏗️ {b.days_remaining}d remaining</div>
+                                                      {(b as any).queue_position > 1 ? (
+                                                        <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '3px' }}>⏸ Queue #{(b as any).queue_position} · {b.days_remaining}d est.</div>
+                                                      ) : (
+                                                        <div style={{ fontSize: '0.68rem', color: '#fbbf24', marginTop: '3px' }}>🏗️ {b.days_remaining}d remaining</div>
+                                                      )}
                                                       <div style={{ height: '3px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', marginTop: '4px' }}>
-                                                        <div style={{ height: '100%', width: `${Math.max(0, 100 - (b.days_remaining / b.construction_days_required) * 100)}%`, background: '#fbbf24', borderRadius: '2px' }} />
+                                                        <div style={{ height: '100%', width: `${(b as any).queue_position > 1 ? 0 : Math.max(0, 100 - (b.days_remaining / b.construction_days_required) * 100)}%`, background: '#fbbf24', borderRadius: '2px' }} />
                                                       </div>
+                                                      {canManage(activeKingdom) && (
+                                                        <div style={{ display: 'flex', gap: '4px', marginTop: '5px' }}>
+                                                          {(b as any).queue_position > 1 && (
+                                                            <button onClick={async () => { try { await fiefAPI.prioritizeBuilding(activeFief.id, b.id); refreshActiveFief(activeFief.id); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ fontSize: '0.6rem', padding: '1px 5px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '3px', color: '#fbbf24', cursor: 'pointer' }}>▲ Prioritize</button>
+                                                          )}
+                                                          {(b as any).queue_position === 1 && ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(x => !x.is_complete && !x.is_upgrade).length > 1 && (
+                                                            <button onClick={async () => { try { await fiefAPI.pauseBuilding(activeFief.id, b.id); refreshActiveFief(activeFief.id); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ fontSize: '0.6rem', padding: '1px 5px', background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.3)', borderRadius: '3px', color: '#94a3b8', cursor: 'pointer' }}>⏸ Pause</button>
+                                                          )}
+                                                        </div>
+                                                      )}
                                                     </>
                                                   )}
                                                 </div>
@@ -8922,6 +9018,196 @@ const CampaignView: React.FC = () => {
                                 })()}
                               </div>
                             )}
+
+                            {/* ── Research Sub-tab ── */}
+                            {activeFiefSubTab === 'research' && (() => {
+                              const fiefBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade);
+                              const hasResearchLab2 = fiefBuildings.some(b => (b as any).building_type === 'research_lab');
+                              const researchQueue: any[] = (activeFief as any).research_queue ?? [];
+                              const completedLevels: any[] = (activeFief as any).research_levels ?? [];
+
+                              // Catalogue of all researchable items — costs MUST match backend RESEARCH_COSTS in Campaign.js
+                              const RESEARCH_CATALOGUE = [
+                                { id: 'farm_lv2',          name: 'Improved Farming Lv2',        building: 'farm',          requires_lab_level: 1, cost: 300,  desc: 'Upgrades all Farms to level 2.' },
+                                { id: 'farm_lv3',          name: 'Advanced Farming Lv3',         building: 'farm',          requires_lab_level: 2, cost: 900,  desc: 'Upgrades all Farms to level 3.' },
+                                { id: 'farm_lv4',          name: 'Masterwork Farming Lv4',       building: 'farm',          requires_lab_level: 3, cost: 2500, desc: 'Upgrades all Farms to level 4.' },
+                                { id: 'farm_lv5',          name: 'Legendary Farming Lv5',        building: 'farm',          requires_lab_level: 4, cost: 6000, desc: 'Upgrades all Farms to level 5.' },
+                                { id: 'lumber_camp_lv2',   name: 'Improved Logging Lv2',         building: 'lumber_camp',   requires_lab_level: 1, cost: 280,  desc: 'Upgrades all Lumber Camps to level 2.' },
+                                { id: 'lumber_camp_lv3',   name: 'Advanced Logging Lv3',         building: 'lumber_camp',   requires_lab_level: 2, cost: 850,  desc: 'Upgrades all Lumber Camps to level 3.' },
+                                { id: 'lumber_camp_lv4',   name: 'Masterwork Logging Lv4',       building: 'lumber_camp',   requires_lab_level: 3, cost: 2300, desc: 'Upgrades all Lumber Camps to level 4.' },
+                                { id: 'lumber_camp_lv5',   name: 'Legendary Logging Lv5',        building: 'lumber_camp',   requires_lab_level: 4, cost: 5500, desc: 'Upgrades all Lumber Camps to level 5.' },
+                                { id: 'basic_mine_lv2',    name: 'Improved Mining Lv2',          building: 'basic_mine',    requires_lab_level: 1, cost: 320,  desc: 'Upgrades all Basic Mines to level 2.' },
+                                { id: 'basic_mine_lv3',    name: 'Advanced Mining Lv3',          building: 'basic_mine',    requires_lab_level: 2, cost: 950,  desc: 'Upgrades all Basic Mines to level 3.' },
+                                { id: 'ore_mine_lv2',      name: 'Improved Ore Mining Lv2',      building: 'ore_mine',      requires_lab_level: 3, cost: 1000, desc: 'Upgrades all Ore Mines to level 2.' },
+                                { id: 'ore_mine_lv3',      name: 'Advanced Ore Mining Lv3',      building: 'ore_mine',      requires_lab_level: 4, cost: 3000, desc: 'Upgrades all Ore Mines to level 3.' },
+                                { id: 'tavern_lv2',        name: 'Improved Tavern Lv2',          building: 'tavern',        requires_lab_level: 1, cost: 350,  desc: 'Upgrades all Taverns to level 2.' },
+                                { id: 'tavern_lv3',        name: 'Grand Tavern Lv3',             building: 'tavern',        requires_lab_level: 2, cost: 1000, desc: 'Upgrades all Taverns to level 3.' },
+                                { id: 'bank_lv2',          name: 'Improved Bank Lv2',            building: 'bank',          requires_lab_level: 3, cost: 2000, desc: 'Upgrades all Banks to level 2.' },
+                                { id: 'bank_lv3',          name: 'Grand Bank Lv3',               building: 'bank',          requires_lab_level: 4, cost: 6000, desc: 'Upgrades all Banks to level 3.' },
+                                { id: 'housing_lv2',       name: 'Better Shelter Lv2',           building: 'housing',       requires_lab_level: 1, cost: 120,  desc: 'Upgrades all Housing to level 2.' },
+                                { id: 'housing_lv3',       name: 'Permanent Homes Lv3',          building: 'housing',       requires_lab_level: 2, cost: 400,  desc: 'Upgrades all Housing to level 3.' },
+                                { id: 'housing_lv4',       name: 'Quality Housing Lv4',          building: 'housing',       requires_lab_level: 3, cost: 1100, desc: 'Upgrades all Housing to level 4.' },
+                                { id: 'housing_lv5',       name: 'Luxury Housing Lv5',           building: 'housing',       requires_lab_level: 4, cost: 3000, desc: 'Upgrades all Housing to level 5.' },
+                                { id: 'research_lab_lv2',  name: 'Research Lab Lv2',             building: 'research_lab',  requires_lab_level: 1, cost: 400,  desc: 'Upgrades research lab. Unlocks advanced research.' },
+                                { id: 'research_lab_lv3',  name: 'Research Lab Lv3',             building: 'research_lab',  requires_lab_level: 2, cost: 1200, desc: 'Unlocks tier-3 research.' },
+                                { id: 'research_lab_lv4',  name: 'Research Lab Lv4',             building: 'research_lab',  requires_lab_level: 3, cost: 3200, desc: 'Unlocks tier-4 research.' },
+                                { id: 'research_lab_lv5',  name: 'Research Lab Lv5',             building: 'research_lab',  requires_lab_level: 4, cost: 8000, desc: 'Unlocks tier-5 research.' },
+                              ];
+
+                              const labLevel = fiefBuildings.filter(b => (b as any).building_type === 'research_lab').reduce((max, b) => Math.max(max, b.level || 1), 0);
+                              const completedIds = new Set(completedLevels.map((l: any) => `${l.building_type}_lv${l.level}`));
+                              const queuedIds = new Set(researchQueue.map((q: any) => q.research_id));
+                              const inProgress = researchQueue.find((q: any) => q.status === 'in_progress');
+                              const queued = researchQueue.filter((q: any) => q.status === 'queued').sort((a: any, b: any) => a.queue_position - b.queue_position);
+                              const available = RESEARCH_CATALOGUE.filter(r => !completedIds.has(r.id) && !queuedIds.has(r.id) && labLevel >= r.requires_lab_level);
+
+                              // Compute research points/day from worker assignments + lab output
+                              const wa: any = activeFief.worker_assignments ?? {};
+                              const researchWorkers: number = wa.research ?? 0;
+                              const researchOutput = fiefBuildings.reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).research ?? 0), 0);
+                              const ptsPerDay = researchWorkers > 0 ? parseFloat((researchWorkers * (1.2 + researchOutput * 0.10)).toFixed(1)) : 0;
+
+                              // Days-remaining helper: given pts already accumulated and total cost → days at current rate
+                              const daysFor = (ptsCost: number, ptsAccum = 0) => ptsPerDay > 0 ? Math.ceil(Math.max(0, ptsCost - ptsAccum) / ptsPerDay) : null;
+
+                              if (!hasResearchLab2) return (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.85rem' }}>
+                                  <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔬</div>
+                                  <div>Build a <strong style={{ color: '#c084fc' }}>Research Lab</strong> (Tier 2) to unlock the research system.</div>
+                                  <div style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: '#475569' }}>Research allows you to upgrade entire building types at once.</div>
+                                </div>
+                              );
+
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                  {/* Rate banner */}
+                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', background: 'rgba(192,132,252,0.06)', border: '1px solid rgba(192,132,252,0.2)', borderRadius: '6px', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
+                                    <span>🔬 Research Lab Lv{labLevel} · Research upgrades <em>all</em> buildings of a type at once.</span>
+                                    <span style={{ background: 'rgba(192,132,252,0.15)', border: '1px solid rgba(192,132,252,0.35)', borderRadius: '4px', padding: '2px 8px', color: '#e9d5ff', fontWeight: 'bold' }}>
+                                      {researchWorkers} workers · {ptsPerDay > 0 ? `${ptsPerDay} pts/day` : <span style={{ color: '#f87171' }}>0 pts/day — assign Research workers</span>}
+                                    </span>
+                                  </div>
+
+                                  {/* Active research */}
+                                  {inProgress && (() => {
+                                    const cat = RESEARCH_CATALOGUE.find(r => r.id === inProgress.research_id);
+                                    const totalCost = cat?.cost ?? 1;
+                                    const accumulated = Math.floor(inProgress.points_accumulated ?? 0);
+                                    const pct = Math.min(100, (accumulated / totalCost) * 100);
+                                    const daysLeft = daysFor(totalCost, accumulated);
+                                    return (
+                                      <div>
+                                        <div style={{ color: '#c084fc', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>🔄 Active Research</div>
+                                        <div style={{ background: 'rgba(192,132,252,0.08)', border: '1px solid rgba(192,132,252,0.35)', borderRadius: '8px', padding: '0.65rem 0.8rem' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ color: '#e9d5ff', fontWeight: 'bold', fontSize: '0.85rem' }}>{cat?.name ?? inProgress.research_id}</span>
+                                            <span style={{ fontSize: '0.72rem', color: '#c084fc', fontWeight: 'bold', background: 'rgba(192,132,252,0.15)', borderRadius: '4px', padding: '1px 7px' }}>
+                                              {daysLeft !== null ? `~${daysLeft}d left` : 'No workers'}
+                                            </span>
+                                          </div>
+                                          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '2px' }}>{cat?.desc ?? ''}</div>
+
+                                          {/* Progress bar */}
+                                          <div style={{ marginTop: '8px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#64748b', marginBottom: '3px' }}>
+                                              <span>{accumulated} / {totalCost} pts ({pct.toFixed(1)}%)</span>
+                                              <span>{ptsPerDay > 0 ? `+${ptsPerDay} pts/day` : '—'}</span>
+                                            </div>
+                                            <div style={{ height: '8px', background: 'rgba(255,255,255,0.07)', borderRadius: '4px', overflow: 'hidden' }}>
+                                              <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #a855f7, #c084fc)', borderRadius: '4px', transition: 'width 0.3s' }} />
+                                            </div>
+                                          </div>
+
+                                          {canManage(activeKingdom) && queued.length > 0 && (
+                                            <button onClick={async () => { try { await fiefAPI.pauseResearch(activeFief.id, inProgress.id); refreshActiveFief(activeFief.id); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ marginTop: '6px', fontSize: '0.65rem', padding: '2px 8px', background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.3)', borderRadius: '4px', color: '#94a3b8', cursor: 'pointer' }}>⏸ Pause</button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {/* Research queue */}
+                                  {queued.length > 0 && (
+                                    <div>
+                                      <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>⏳ Queue ({queued.length})</div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                        {queued.map((q: any, qi: number) => {
+                                          const cat = RESEARCH_CATALOGUE.find(r => r.id === q.research_id);
+                                          // Cumulative days: active item's remaining + all prior queue items' full cost
+                                          const activeDaysLeft = inProgress ? (daysFor(RESEARCH_CATALOGUE.find(r => r.id === inProgress.research_id)?.cost ?? 1, Math.floor(inProgress.points_accumulated ?? 0)) ?? 0) : 0;
+                                          const priorCost = queued.slice(0, qi).reduce((s: number, prev: any) => s + (RESEARCH_CATALOGUE.find(r => r.id === prev.research_id)?.cost ?? 0), 0);
+                                          const totalDays = ptsPerDay > 0 ? activeDaysLeft + Math.ceil(priorCost / ptsPerDay) + Math.ceil((cat?.cost ?? 0) / ptsPerDay) : null;
+                                          return (
+                                            <div key={q.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '0.45rem 0.6rem' }}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <span style={{ color: '#475569', fontSize: '0.7rem', minWidth: '20px' }}>#{qi + 2}</span>
+                                                <span style={{ color: '#cbd5e1', fontSize: '0.78rem', flex: 1 }}>{cat?.name ?? q.research_id}</span>
+                                                {totalDays !== null && <span style={{ fontSize: '0.65rem', color: '#94a3b8', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', padding: '1px 5px' }}>~{totalDays}d</span>}
+                                                {canManage(activeKingdom) && (
+                                                  <>
+                                                    <button onClick={async () => { try { await fiefAPI.prioritizeResearch(activeFief.id, q.id); refreshActiveFief(activeFief.id); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ fontSize: '0.62rem', padding: '1px 6px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '3px', color: '#fbbf24', cursor: 'pointer' }}>▲</button>
+                                                    <button onClick={async () => { try { await fiefAPI.pauseResearch(activeFief.id, q.id); refreshActiveFief(activeFief.id); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ fontSize: '0.62rem', padding: '1px 6px', background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.3)', borderRadius: '3px', color: '#94a3b8', cursor: 'pointer' }}>✕</button>
+                                                  </>
+                                                )}
+                                              </div>
+                                              {cat && (
+                                                <div style={{ marginTop: '4px' }}>
+                                                  <div style={{ height: '3px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px' }}>
+                                                    <div style={{ height: '100%', width: '0%', background: '#a855f7', borderRadius: '2px' }} />
+                                                  </div>
+                                                  <div style={{ fontSize: '0.63rem', color: '#475569', marginTop: '2px' }}>0 / {cat.cost} pts</div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Available to research */}
+                                  {available.length > 0 && (
+                                    <div>
+                                      <div style={{ color: '#86efac', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>✅ Available</div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.35rem' }}>
+                                        {available.map(r => {
+                                          const dEst = daysFor(r.cost);
+                                          return (
+                                            <div key={r.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(192,132,252,0.2)', borderRadius: '7px', padding: '0.5rem 0.65rem' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.3rem' }}>
+                                                <div style={{ color: '#e9d5ff', fontSize: '0.78rem', fontWeight: 'bold' }}>{r.name}</div>
+                                                {dEst !== null && <span style={{ fontSize: '0.62rem', color: '#94a3b8', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', padding: '1px 5px', whiteSpace: 'nowrap' }}>~{dEst}d</span>}
+                                              </div>
+                                              <div style={{ color: '#64748b', fontSize: '0.67rem', marginTop: '2px' }}>{r.desc}</div>
+                                              <div style={{ color: '#c084fc', fontSize: '0.68rem', marginTop: '3px' }}>🔬 {r.cost} pts</div>
+                                              {canManage(activeKingdom) && (
+                                                <button onClick={async () => { try { await fiefAPI.startResearch(activeFief.id, r.id); refreshActiveFief(activeFief.id); setToastMessage(`Research queued: ${r.name}`); setTimeout(() => setToastMessage(null), 3000); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}} style={{ marginTop: '5px', fontSize: '0.65rem', padding: '2px 8px', background: 'rgba(192,132,252,0.12)', border: '1px solid rgba(192,132,252,0.35)', borderRadius: '4px', color: '#c084fc', cursor: 'pointer' }}>+ Queue</button>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Completed */}
+                                  {completedLevels.length > 0 && (
+                                    <div>
+                                      <div style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>✓ Completed</div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                                        {completedLevels.map((cl: any) => (
+                                          <span key={`${cl.building_type}_${cl.level}`} style={{ fontSize: '0.68rem', padding: '2px 8px', background: 'rgba(134,239,172,0.06)', border: '1px solid rgba(134,239,172,0.2)', borderRadius: '12px', color: '#86efac' }}>{cl.building_type.replace(/_/g, ' ')} Lv{cl.level}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {available.length === 0 && !inProgress && queued.length === 0 && completedLevels.length === 0 && (
+                                    <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic', textAlign: 'center', padding: '1rem' }}>No research available at current lab level.</div>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             {/* ── Events Sub-tab: Kingdom Events + Actions ── */}
                             {activeFiefSubTab === 'events' && (
@@ -9092,12 +9378,20 @@ const CampaignView: React.FC = () => {
                           const techBuilds = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && ['school','library','academy','mage_tower','university','royal_academy'].includes((b as any).building_type ?? ''));
                           const techRed = Math.min(0.5, techBuilds.reduce((r, b) => r + (b.level || 1) * 0.04, 0));
                           const effectiveDays = Math.max(1, Math.round(selectedCatalogueEntry.baseConstructionDays * (1 - techRed)));
+                          // Multi-copy exponential cost
+                          const existingCount = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && (b as any).building_type === selectedCatalogueEntry.id).length;
+                          const costMultiplier = Math.pow(2, existingCount);
+                          const scaledCost = Object.fromEntries(Object.entries(selectedCatalogueEntry.baseCost).map(([k, v]) => [k, Math.round((v as number) * costMultiplier)]));
+                          const available = activeFief.resources ?? { gold: 0, food: 0, wood: 0, stone: 0 };
+                          const canAffordBuild = Object.entries(scaledCost).every(([k, v]) => (available[k as keyof typeof available] ?? 0) >= (v as number));
                           return (
                           <div style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', padding: '0.75rem', fontSize: '0.82rem', color: '#cbd5e1' }}>
                             <strong style={{ color: '#7dd3fc' }}>Selected: {selectedCatalogueEntry.name}</strong>
-                            <br />Cost deducted immediately: {Object.entries(selectedCatalogueEntry.baseCost).map(([k, v]) => `${v} ${k}`).join(', ') || 'Free'}
+                            {existingCount > 0 && <span style={{ marginLeft: '8px', fontSize: '0.72rem', color: '#f59e0b' }}>⚠ Copy #{existingCount + 1} — cost ×{costMultiplier}</span>}
+                            <br />Cost deducted immediately: {Object.entries(scaledCost).map(([k, v]) => `${v} ${k}`).join(', ') || 'Free'}
+                            {!canAffordBuild && <span style={{ marginLeft: '6px', color: '#f87171', fontSize: '0.75rem' }}>⚠ Insufficient resources</span>}
                             {techRed > 0 && <><br /><span style={{ color: '#7dd3fc' }}>📚 Tech reduction: -{Math.round(techRed * 100)}% → {effectiveDays}d (was {selectedCatalogueEntry.baseConstructionDays}d)</span></>}
-                            <br />Available resources: 💰{activeFief.resources?.gold ?? 0} 🌾{activeFief.resources?.food ?? 0} 🪵{activeFief.resources?.wood ?? 0} 🪨{activeFief.resources?.stone ?? 0}
+                            <br />Available resources: 💰{available.gold ?? 0} 🌾{available.food ?? 0} 🪵{available.wood ?? 0} 🪨{available.stone ?? 0}
                           </div>
                           );
                         })()}
@@ -9109,6 +9403,8 @@ const CampaignView: React.FC = () => {
                               const techBuilds2 = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && ['school','library','academy','mage_tower','university','royal_academy'].includes((b as any).building_type ?? ''));
                               const techRed2 = Math.min(0.5, techBuilds2.reduce((r, b) => r + (b.level || 1) * 0.04, 0));
                               const effectiveDays2 = Math.max(1, Math.round(selectedCatalogueEntry.baseConstructionDays * (1 - techRed2)));
+                              const existingCount2 = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && (b as any).building_type === selectedCatalogueEntry.id).length;
+                              const scaledCost2 = Object.fromEntries(Object.entries(selectedCatalogueEntry.baseCost).map(([k, v]) => [k, Math.round((v as number) * Math.pow(2, existingCount2))]));
                               await fiefAPI.addBuilding(activeFief.id, {
                                 name: selectedCatalogueEntry.name,
                                 building_type: selectedCatalogueEntry.id,
@@ -9116,7 +9412,7 @@ const CampaignView: React.FC = () => {
                                 description: selectedCatalogueEntry.description,
                                 construction_days: effectiveDays2,
                                 resource_output: selectedCatalogueEntry.baseOutput,
-                                resource_cost: selectedCatalogueEntry.baseCost,
+                                resource_cost: scaledCost2,
                               });
                               setShowAddBuildingModal(false);
                               refreshActiveFief(activeFief.id);
@@ -9137,15 +9433,15 @@ const CampaignView: React.FC = () => {
                   {/* Tier Upgrade Confirmation Modal */}
                   {showUpgradeModal && activeFief && (() => {
                     const UPGRADE_COSTS: Record<number, { gold: number; wood: number; stone: number; days: number }> = {
-                      1: { gold: 100,  wood: 80,   stone: 60,   days: 14 },
-                      2: { gold: 200,  wood: 150,  stone: 120,  days: 21 },
-                      3: { gold: 350,  wood: 250,  stone: 200,  days: 30 },
-                      4: { gold: 500,  wood: 400,  stone: 320,  days: 42 },
-                      5: { gold: 750,  wood: 600,  stone: 500,  days: 56 },
-                      6: { gold: 1100, wood: 900,  stone: 750,  days: 60 },
-                      7: { gold: 1600, wood: 1300, stone: 1100, days: 70 },
-                      8: { gold: 2200, wood: 1800, stone: 1600, days: 80 },
-                      9: { gold: 3000, wood: 2500, stone: 2200, days: 90 },
+                      1: { gold:    200, wood:   150, stone:     0,  days:  14 }, // 1→2 (no stone yet)
+                      2: { gold:   1500, wood:  1200, stone:   800,  days:  20 },
+                      3: { gold:   4000, wood:  3000, stone:  2000,  days:  28 },
+                      4: { gold:   9000, wood:  7000, stone:  5000,  days:  38 },
+                      5: { gold:  20000, wood: 16000, stone: 12000,  days:  52 },
+                      6: { gold:  42000, wood: 34000, stone: 25000,  days:  68 },
+                      7: { gold:  85000, wood: 68000, stone: 50000,  days:  88 },
+                      8: { gold: 170000, wood:135000, stone:100000,  days: 114 },
+                      9: { gold: 340000, wood:270000, stone:200000,  days: 148 },
                     };
                     const TIER_NAMES_MODAL = ['', 'Camp', 'Hamlet', 'Small Village', 'Village', 'Large Village', 'Small Town', 'Town', 'Large Town', 'City', 'Citadel'];
                     const currentTier = activeFief.tier ?? 1;
@@ -9238,6 +9534,38 @@ const CampaignView: React.FC = () => {
                           </div>
                         ))}
                         <button onClick={() => setShowDisasterModal(false)} style={{ alignSelf: 'flex-end', padding: '0.4rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', marginTop: '0.25rem' }}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Positive Events Modal (DM only) */}
+                  {showPositiveEventModal && activeFief && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', margin: '1rem' }}>
+                        <h5 style={{ color: '#86efac', margin: 0 }}>✨ Positive Event for {activeFief.name}</h5>
+                        <p style={{ color: '#94a3b8', fontSize: '0.78rem', margin: 0 }}>Grant a blessing to this fief.</p>
+                        {[
+                          { id: 'harvest_blessing', name: 'Harvest Blessing', icon: '🌾', desc: '+400 food, +200 wood' },
+                          { id: 'gold_windfall',    name: 'Gold Windfall',    icon: '💰', desc: '+500 gold' },
+                          { id: 'pop_boom',         name: 'Population Boom',  icon: '👥', desc: '+15% population +50' },
+                          { id: 'divine_protection',name: 'Divine Protection',icon: '✝️', desc: '+20% all resources +100 gold/food/wood, +50 stone' },
+                        ].map(ev => (
+                          <button key={ev.id} onClick={() => setPendingConfirm({ msg: `Apply "${ev.name}" to ${activeFief.name}?`, onYes: async () => {
+                            try {
+                              await fiefAPI.sendPositiveEvent(activeFief.id, ev.id);
+                              setShowPositiveEventModal(false);
+                              refreshActiveFief(activeFief.id);
+                              toast(`✨ ${ev.name} applied to ${activeFief.name}!`, 4000);
+                            } catch(e: any) { toast(e?.response?.data?.error ?? 'Failed'); }
+                          }})} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.8rem', background: 'rgba(134,239,172,0.06)', border: '1px solid rgba(134,239,172,0.25)', borderRadius: '8px', color: '#f1f5f9', cursor: 'pointer', textAlign: 'left' }}>
+                            <span style={{ fontSize: '1.4rem' }}>{ev.icon}</span>
+                            <div>
+                              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#86efac' }}>{ev.name}</div>
+                              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{ev.desc}</div>
+                            </div>
+                          </button>
+                        ))}
+                        <button onClick={() => setShowPositiveEventModal(false)} style={{ alignSelf: 'flex-end', padding: '0.4rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>Cancel</button>
                       </div>
                     </div>
                   )}

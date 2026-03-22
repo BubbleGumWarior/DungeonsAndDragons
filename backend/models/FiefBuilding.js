@@ -14,7 +14,7 @@ class FiefBuilding {
    * Deducts resource_cost from fief resources atomically.
    * Returns { building, updatedFief } or throws on insufficient resources.
    */
-  static async create({ fief_id, name, building_type, level = 1, description = '', construction_days, resource_output = {}, resource_cost = {} }) {
+  static async create({ fief_id, name, building_type, level = 1, description = '', construction_days, resource_output = {}, resource_cost = {}, queue_position = null }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -50,14 +50,15 @@ class FiefBuilding {
         `INSERT INTO fief_buildings
            (fief_id, name, building_type, level, description,
             construction_days_required, days_remaining,
-            resource_output, resource_cost)
-         VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8)
+            resource_output, resource_cost, queue_position)
+         VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9)
          RETURNING *`,
         [
           fief_id, name, building_type, level, description,
           construction_days,
           JSON.stringify(resource_output),
           JSON.stringify(resource_cost),
+          queue_position ?? null,
         ]
       );
 
@@ -100,6 +101,16 @@ class FiefBuilding {
       );
       if (inProgress.rows.length > 0) throw new Error('Upgrade already in progress for this building');
 
+      // Check research has been completed for this upgrade level
+      const targetLevel = parent.level + 1;
+      const researchCheck = await client.query(
+        `SELECT 1 FROM fief_research_levels WHERE fief_id = $1 AND building_type = $2 AND level >= $3`,
+        [fief_id, parent.building_type, targetLevel]
+      );
+      if (researchCheck.rows.length === 0) {
+        throw new Error(`Research required: complete ${parent.building_type}_lv${targetLevel} research before upgrading`);
+      }
+
       const current = fief.resources || { gold: 0, food: 0, wood: 0, stone: 0 };
       for (const [res, amount] of Object.entries(upgrade_cost)) {
         if ((current[res] || 0) < amount) {
@@ -114,14 +125,21 @@ class FiefBuilding {
 
       await client.query(`UPDATE fiefs SET resources = $1 WHERE id = $2`, [JSON.stringify(newResources), fief_id]);
 
+      // Assign queue position for this upgrade
+      const queueResult = await client.query(
+        `SELECT COALESCE(MAX(queue_position), 0) AS max_pos FROM fief_buildings WHERE fief_id = $1 AND is_complete = false`,
+        [fief_id]
+      );
+      const upgradeQueuePos = (queueResult.rows[0]?.max_pos || 0) + 1;
+
       const newLevel = parent.level + 1;
       const upgradeResult = await client.query(
         `INSERT INTO fief_buildings
            (fief_id, name, building_type, level, description,
             construction_days_required, days_remaining,
             is_upgrade, parent_building_id,
-            resource_output, resource_cost)
-         VALUES ($1,$2,$3,$4,$5,$6,$6,true,$7,$8,$9)
+            resource_output, resource_cost, queue_position)
+         VALUES ($1,$2,$3,$4,$5,$6,$6,true,$7,$8,$9,$10)
          RETURNING *`,
         [
           fief_id,
@@ -134,6 +152,7 @@ class FiefBuilding {
           // Store the new output so it gets applied to the parent on completion
           new_resource_output != null ? JSON.stringify(new_resource_output) : parent.resource_output,
           JSON.stringify(upgrade_cost),
+          upgradeQueuePos,
         ]
       );
 

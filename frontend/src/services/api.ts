@@ -1277,6 +1277,42 @@ export const fiefAPI = {
     const response = await api.patch(`/fiefs/${fiefId}/faith`, { faith });
     return response.data;
   },
+  prioritizeBuilding: async (fiefId: number, buildingId: number): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/buildings/${buildingId}/prioritize`);
+    return response.data;
+  },
+  pauseBuilding: async (fiefId: number, buildingId: number): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/buildings/${buildingId}/pause`);
+    return response.data;
+  },
+  getResearch: async (fiefId: number): Promise<{ queue: any[]; completedLevels: any[] }> => {
+    const response = await api.get(`/fiefs/${fiefId}/research`);
+    return response.data;
+  },
+  startResearch: async (fiefId: number, research_id: string): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/research/start`, { research_id });
+    return response.data;
+  },
+  prioritizeResearch: async (fiefId: number, queueId: number): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/research/${queueId}/prioritize`);
+    return response.data;
+  },
+  pauseResearch: async (fiefId: number, queueId: number): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/research/${queueId}/pause`);
+    return response.data;
+  },
+  resolveDisaster: async (fiefId: number, uid: string): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/disasters/${uid}/resolve`);
+    return response.data;
+  },
+  sendPositiveEvent: async (fiefId: number, eventId: string): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/positive-event`, { eventId });
+    return response.data;
+  },
+  getPositiveEvents: async (): Promise<Array<{ id: string; name: string; description: string }>> => {
+    const response = await api.get(`/fiefs/positive-events`);
+    return response.data;
+  },
 };
 
 export const kingdomEventAPI = {

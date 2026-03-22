@@ -159,8 +159,8 @@ router.patch('/fiefs/:id/workers', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: `Cannot assign ${totalAssigned} workers — only ${workable} are workable from ${pop} population.` });
     }
 
-    // Sanitise: only allow non-negative integers for known resources
-    const safe = { gold: 0, food: 0, wood: 0, stone: 0 };
+    // Sanitise: only allow non-negative integers for known resources (including research)
+    const safe = { gold: 0, food: 0, wood: 0, stone: 0, research: 0 };
     for (const res of Object.keys(safe)) {
       safe[res] = Math.max(0, Math.floor(Number(worker_assignments[res]) || 0));
     }
@@ -180,17 +180,19 @@ router.patch('/fiefs/:id/workers', authenticateToken, async (req, res) => {
 
 // Tier upgrade costs: gold, wood, stone per current tier (no food — food is survival resource)
 // Tiers 2→10 scale at ×2 per step. Tier 1→2 is intentionally cheap (tutorial). Days unchanged.
+// Tier upgrade costs tuned for ~100d T1, ~200d T2, ~400d T3, ~800d T4 etc.
+// Stone removed from T1→T2 (stone can't be mined until tier 2).
 const TIER_UPGRADE_COSTS = [
-  null,                                           // index 0 (unused)
-  { gold:    100, wood:    80, stone:    60,  days:  14 }, // 1 → 2 (Camp → Hamlet)
-  { gold:   1000, wood:   800, stone:   600,  days:  20 }, // 2 → 3  (×10 wall)
-  { gold:   2000, wood:  1600, stone:  1200,  days:  28 }, // 3 → 4  (×2)
-  { gold:   4000, wood:  3200, stone:  2400,  days:  38 }, // 4 → 5  (×2)
-  { gold:   8000, wood:  6400, stone:  4800,  days:  52 }, // 5 → 6  (×2)
-  { gold:  16000, wood: 12800, stone:  9600,  days:  68 }, // 6 → 7  (×2)
-  { gold:  32000, wood: 25600, stone: 19200,  days:  88 }, // 7 → 8  (×2)
-  { gold:  64000, wood: 51200, stone: 38400,  days: 114 }, // 8 → 9  (×2)
-  { gold: 128000, wood:102400, stone: 76800,  days: 148 }, // 9 → 10 (×2)
+  null,
+  { gold:    200, wood:   150, stone:     0,  days:  14 }, // 1 → 2
+  { gold:   1500, wood:  1200, stone:   800,  days:  20 }, // 2 → 3
+  { gold:   4000, wood:  3000, stone:  2000,  days:  28 }, // 3 → 4
+  { gold:   9000, wood:  7000, stone:  5000,  days:  38 }, // 4 → 5
+  { gold:  20000, wood: 16000, stone: 12000,  days:  52 }, // 5 → 6
+  { gold:  42000, wood: 34000, stone: 25000,  days:  68 }, // 6 → 7
+  { gold:  85000, wood: 68000, stone: 50000,  days:  88 }, // 7 → 8
+  { gold: 170000, wood:135000, stone:100000,  days: 114 }, // 8 → 9
+  { gold: 340000, wood:270000, stone:200000,  days: 148 }, // 9 → 10
 ];
 
 // POST upgrade fief tier
@@ -252,6 +254,17 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
     if (!name || !building_type || !construction_days) {
       return res.status(400).json({ error: 'name, building_type, and construction_days are required' });
     }
+    // Determine queue position for this new building
+    const queueCountResult = await pool.query(
+      `SELECT COALESCE(MAX(queue_position), 0) AS max_pos FROM fief_buildings WHERE fief_id = $1 AND is_complete = false`,
+      [req.params.id]
+    );
+    const nextQueuePos = (queueCountResult.rows[0]?.max_pos || 0) + 1;
+    const tierUpgradeRow = await pool.query(`SELECT tier_upgrade_days_remaining FROM fiefs WHERE id = $1`, [req.params.id]);
+    const tierUpgradeActive = (tierUpgradeRow.rows[0]?.tier_upgrade_days_remaining || 0) > 0;
+    // If tier upgrade is active, queue behind it (tier upgrade occupies the slot)
+    const assignedPos = tierUpgradeActive ? nextQueuePos : nextQueuePos;
+
     const { building, updatedResources } = await FiefBuilding.create({
       fief_id: req.params.id,
       name,
@@ -261,6 +274,7 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
       construction_days,
       resource_output: resource_output || {},
       resource_cost: resource_cost || {},
+      queue_position: assignedPos,
     });
 
     // Log building started (need campaign_day)
@@ -373,26 +387,28 @@ router.get('/fiefs/:id/log', authenticateToken, async (req, res) => {
 
 // ── Disasters ─────────────────────────────────────────────────────────────────
 
+// resolve_cost: what the DM must spend to end the active disaster
+// daily_damage: per-day resource/population drain while active
 const DISASTERS = {
   // Natural
-  tornado:         { name: 'Tornado',       category: 'Natural',     effects: { destroyRandom: 2 } },
-  flood:           { name: 'Flood',         category: 'Natural',     effects: { resourcePct: { food: -0.5, wood: -0.5 } } },
-  earthquake:      { name: 'Earthquake',    category: 'Natural',     effects: { destroyTypes: ['Walls', 'Watchtower'], fallbackDestroyRandom: 1 } },
-  drought:         { name: 'Drought',       category: 'Natural',     effects: { resourcePct: { food: -0.6 } } },
-  wildfire:        { name: 'Wildfire',      category: 'Natural',     effects: { destroyTypes: ['Lumber Camp', 'Farm'], resourcePct: { wood: -0.7 } } },
+  tornado:         { name: 'Tornado',        category: 'Natural',      resolve_cost: { gold: 300, wood: 200 },              daily_damage: { wood: 20 },                       effects: { destroyRandom: 2 } },
+  flood:           { name: 'Flood',          category: 'Natural',      resolve_cost: { gold: 200, food: 150 },              daily_damage: { food: 30, wood: 15 },              effects: { resourcePct: { food: -0.5, wood: -0.5 } } },
+  earthquake:      { name: 'Earthquake',     category: 'Natural',      resolve_cost: { gold: 500, stone: 300 },             daily_damage: { stone: 20 },                       effects: { destroyTypes: ['Walls', 'Watchtower'], fallbackDestroyRandom: 1 } },
+  drought:         { name: 'Drought',        category: 'Natural',      resolve_cost: { gold: 250, food: 200 },              daily_damage: { food: 40 },                        effects: { resourcePct: { food: -0.6 } } },
+  wildfire:        { name: 'Wildfire',       category: 'Natural',      resolve_cost: { gold: 350, wood: 250 },              daily_damage: { wood: 35, food: 15 },              effects: { destroyTypes: ['Lumber Camp', 'Farm'], resourcePct: { wood: -0.7 } } },
   // Social
-  famine:          { name: 'Famine',        category: 'Social',      effects: { populationPct: -0.2, resourcePct: { food: -0.8 } } },
-  plague:          { name: 'Plague',        category: 'Social',      effects: { populationPct: -0.3, statsFlat: { stability: -3 } } },
-  rebel_uprising:  { name: 'Rebel Uprising',category: 'Social',      effects: { statsFlat: { military: -3, stability: -4 }, resourcePct: { gold: -0.4 } } },
-  tax_revolt:      { name: 'Tax Revolt',    category: 'Social',      effects: { statsFlat: { economy: -3 }, resourcePct: { gold: -0.6 } } },
+  famine:          { name: 'Famine',         category: 'Social',       resolve_cost: { gold: 400, food: 500 },              daily_damage: { food: 50, population: 5 },         effects: { populationPct: -0.2, resourcePct: { food: -0.8 } } },
+  plague:          { name: 'Plague',         category: 'Social',       resolve_cost: { gold: 600 },                         daily_damage: { population: 10 },                  effects: { populationPct: -0.3, statsFlat: { stability: -3 } } },
+  rebel_uprising:  { name: 'Rebel Uprising', category: 'Social',       resolve_cost: { gold: 800 },                         daily_damage: { gold: 20, population: 3 },         effects: { statsFlat: { military: -3, stability: -4 }, resourcePct: { gold: -0.4 } } },
+  tax_revolt:      { name: 'Tax Revolt',     category: 'Social',       resolve_cost: { gold: 700 },                         daily_damage: { gold: 30 },                        effects: { statsFlat: { economy: -3 }, resourcePct: { gold: -0.6 } } },
   // Magical
-  dragon_attack:   { name: 'Dragon Attack', category: 'Magical',     effects: { destroyRandom: 2, populationPct: -0.15, resourcePct: { gold: -0.5 } } },
-  curse:           { name: 'Curse',         category: 'Magical',     effects: { statsFlat: { economy: -2, military: -2, stability: -2 } } },
-  undead_invasion: { name: 'Undead Invasion',category: 'Magical',    effects: { statsFlat: { military: -5 }, populationPct: -0.25 } },
+  dragon_attack:   { name: 'Dragon Attack',  category: 'Magical',      resolve_cost: { gold: 1500, stone: 500 },            daily_damage: { gold: 50, population: 20 },        effects: { destroyRandom: 2, populationPct: -0.15, resourcePct: { gold: -0.5 } } },
+  curse:           { name: 'Curse',          category: 'Magical',      resolve_cost: { gold: 900 },                         daily_damage: { gold: 15 },                        effects: { statsFlat: { economy: -2, military: -2, stability: -2 } } },
+  undead_invasion: { name: 'Undead Invasion',category: 'Magical',      resolve_cost: { gold: 1200, stone: 400 },            daily_damage: { population: 15, gold: 25 },        effects: { statsFlat: { military: -5 }, populationPct: -0.25 } },
   // Environmental
-  blight:          { name: 'Blight',        category: 'Environmental',effects: { tempModifier: { buildingType: 'Farm', modifier: { food: 0.5 }, days: 5 } } },
-  rockslide:       { name: 'Rockslide',     category: 'Environmental',effects: { destroyTypes: ['Mine', 'Ore Mine'] } },
-  storm:           { name: 'Storm',         category: 'Environmental',effects: { conditionalResourcePct: { requiresType: 'Docks', resource: 'gold', pct: -0.5 } } },
+  blight:          { name: 'Blight',         category: 'Environmental', resolve_cost: { gold: 300, food: 200 },             daily_damage: { food: 25 },                        effects: { tempModifier: { buildingType: 'Farm', modifier: { food: 0.5 }, days: 5 } } },
+  rockslide:       { name: 'Rockslide',      category: 'Environmental', resolve_cost: { gold: 400, stone: 250 },            daily_damage: { stone: 25 },                       effects: { destroyTypes: ['Mine', 'Ore Mine'] } },
+  storm:           { name: 'Storm',          category: 'Environmental', resolve_cost: { gold: 350, wood: 200 },             daily_damage: { gold: 20, wood: 20 },              effects: { conditionalResourcePct: { requiresType: 'Docks', resource: 'gold', pct: -0.5 } } },
 };
 
 router.post('/fiefs/:id/disaster', authenticateToken, async (req, res) => {
@@ -497,9 +513,22 @@ router.post('/fiefs/:id/disaster', authenticateToken, async (req, res) => {
       await FiefBuilding.applyTempModifier(fiefId, buildingType, modifier, modDays);
     }
 
-    // Persist changes
-    await pool.query(`UPDATE fiefs SET resources = $1, stats = $2, population = $3 WHERE id = $4`, [
-      JSON.stringify(resources), JSON.stringify(stats), population, fiefId
+    // Persist changes + push to active_disasters JSONB
+    const activeDisasters = Array.isArray(fief.active_disasters) ? fief.active_disasters : [];
+    // Avoid duplicates — if same disaster type already active, skip adding again
+    if (!activeDisasters.some(d => d.disaster_id === disasterId)) {
+      activeDisasters.push({
+        uid: `${disasterId}_${Date.now()}`,
+        disaster_id: disasterId,
+        name: disaster.name,
+        category: disaster.category,
+        day_started: day,
+        daily_damage: disaster.daily_damage || {},
+        resolve_cost: disaster.resolve_cost || {},
+      });
+    }
+    await pool.query(`UPDATE fiefs SET resources = $1, stats = $2, population = $3, active_disasters = $4 WHERE id = $5`, [
+      JSON.stringify(resources), JSON.stringify(stats), population, JSON.stringify(activeDisasters), fiefId
     ]);
 
     // Create kingdom event record
@@ -533,6 +562,405 @@ router.post('/fiefs/:id/disaster', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error applying disaster:', error);
     res.status(500).json({ error: 'Failed to apply disaster' });
+  }
+});
+
+// ── Disaster Resolve ─────────────────────────────────────────────────────────
+
+// POST /fiefs/:id/disasters/:uid/resolve — DM spends resources to end an active disaster
+router.post('/fiefs/:id/disasters/:uid/resolve', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = req.params.id;
+    const uid = req.params.uid;
+
+    const fiefRow = await pool.query(
+      `SELECT f.*, k.id AS kingdom_id, k.campaign_id FROM fiefs f JOIN kingdoms k ON f.kingdom_id = k.id WHERE f.id = $1`,
+      [fiefId]
+    );
+    if (!fiefRow.rows[0]) return res.status(404).json({ error: 'Fief not found' });
+    const fief = fiefRow.rows[0];
+    const activeDisasters = Array.isArray(fief.active_disasters) ? fief.active_disasters : [];
+    const idx = activeDisasters.findIndex(d => d.uid === uid);
+    if (idx === -1) return res.status(404).json({ error: 'Active disaster not found' });
+
+    const disaster = activeDisasters[idx];
+    const resolveCost = disaster.resolve_cost || {};
+    const resources = { ...(fief.resources || { gold: 0, food: 0, wood: 0, stone: 0 }) };
+
+    // Check sufficient resources
+    for (const [res, cost] of Object.entries(resolveCost)) {
+      if ((resources[res] || 0) < cost) {
+        return res.status(400).json({ error: `Insufficient ${res} to resolve disaster (need ${cost}, have ${resources[res] || 0})` });
+      }
+    }
+
+    // Deduct resources
+    for (const [res, cost] of Object.entries(resolveCost)) {
+      resources[res] = (resources[res] || 0) - cost;
+    }
+
+    // Remove disaster from active list
+    activeDisasters.splice(idx, 1);
+    await pool.query(`UPDATE fiefs SET resources = $1, active_disasters = $2 WHERE id = $3`, [
+      JSON.stringify(resources), JSON.stringify(activeDisasters), fiefId
+    ]);
+
+    const campResult = await pool.query(`SELECT current_day FROM campaigns WHERE id = $1`, [fief.campaign_id]);
+    const day = campResult.rows[0]?.current_day || 1;
+    await FiefEventLog.create({
+      fief_id: fiefId,
+      campaign_day: day,
+      event_type: 'disaster_resolved',
+      title: `Disaster Resolved: ${disaster.name}`,
+      details: { disaster: disaster.name, resolveCost, resourcesAfter: resources },
+    });
+
+    const io = req.app.get('io');
+    if (io) io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, kingdomId: fief.kingdom_id });
+    const updatedFief = await Fief.findByIdFull(fiefId);
+    res.json(updatedFief);
+  } catch (error) {
+    console.error('Error resolving disaster:', error);
+    res.status(500).json({ error: 'Failed to resolve disaster' });
+  }
+});
+
+// ── Positive Events (DM only) ─────────────────────────────────────────────────
+
+const POSITIVE_EVENTS = {
+  harvest_blessing: {
+    name: 'Harvest Blessing',
+    description: 'A blessed harvest season fills the granaries.',
+    apply: (resources, population) => {
+      resources.food = (resources.food || 0) + 400;
+      resources.wood = (resources.wood || 0) + 200;
+      return { resources, population };
+    },
+  },
+  gold_windfall: {
+    name: 'Gold Windfall',
+    description: 'A merchant caravan brings unexpected wealth.',
+    apply: (resources, population) => {
+      resources.gold = (resources.gold || 0) + 500;
+      return { resources, population };
+    },
+  },
+  pop_boom: {
+    name: 'Population Boom',
+    description: 'A wave of settlers arrives, swelling the population.',
+    apply: (resources, population) => {
+      population = Math.floor(population * 1.15) + 50;
+      return { resources, population };
+    },
+  },
+  divine_protection: {
+    name: 'Divine Protection',
+    description: 'The gods smile upon this land — all resources increased.',
+    apply: (resources, population) => {
+      resources.gold  = Math.floor((resources.gold  || 0) * 1.2) + 100;
+      resources.food  = Math.floor((resources.food  || 0) * 1.2) + 100;
+      resources.wood  = Math.floor((resources.wood  || 0) * 1.2) + 100;
+      resources.stone = Math.floor((resources.stone || 0) * 1.2) + 50;
+      return { resources, population };
+    },
+  },
+};
+
+// GET /fiefs/positive-events — list available positive events
+router.get('/fiefs/positive-events', authenticateToken, (req, res) => {
+  const list = Object.entries(POSITIVE_EVENTS).map(([id, ev]) => ({
+    id,
+    name: ev.name,
+    description: ev.description,
+  }));
+  res.json(list);
+});
+
+// POST /fiefs/:id/positive-event — DM applies a positive event
+router.post('/fiefs/:id/positive-event', authenticateToken, async (req, res) => {
+  try {
+    const { eventId } = req.body;
+    const event = POSITIVE_EVENTS[eventId];
+    if (!event) return res.status(400).json({ error: 'Unknown positive event' });
+
+    const fiefId = req.params.id;
+    const fiefRow = await pool.query(
+      `SELECT f.*, k.id AS kingdom_id, k.campaign_id FROM fiefs f JOIN kingdoms k ON f.kingdom_id = k.id WHERE f.id = $1`,
+      [fiefId]
+    );
+    if (!fiefRow.rows[0]) return res.status(404).json({ error: 'Fief not found' });
+    const fief = fiefRow.rows[0];
+
+    let resources = { ...(fief.resources || { gold: 0, food: 0, wood: 0, stone: 0 }) };
+    let population = fief.population || 0;
+    const result = event.apply(resources, population);
+    resources = result.resources;
+    population = result.population;
+
+    await pool.query(`UPDATE fiefs SET resources = $1, population = $2 WHERE id = $3`, [
+      JSON.stringify(resources), population, fiefId
+    ]);
+
+    const campResult = await pool.query(`SELECT current_day FROM campaigns WHERE id = $1`, [fief.campaign_id]);
+    const day = campResult.rows[0]?.current_day || 1;
+    await FiefEventLog.create({
+      fief_id: fiefId,
+      campaign_day: day,
+      event_type: 'positive_event',
+      title: `✨ ${event.name}`,
+      details: { event: event.name, description: event.description, resourcesAfter: resources, populationAfter: population },
+    });
+
+    await KingdomEvent.create({
+      kingdom_id: fief.kingdom_id,
+      fief_id: fiefId,
+      title: `✨ ${event.name}`,
+      description: event.description,
+      event_type: 'positive',
+      severity: 'low',
+      created_by: req.user.id,
+    });
+
+    const io = req.app.get('io');
+    if (io) io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, kingdomId: fief.kingdom_id });
+    const updatedFief = await Fief.findByIdFull(fiefId);
+    res.json(updatedFief);
+  } catch (error) {
+    console.error('Error applying positive event:', error);
+    res.status(500).json({ error: 'Failed to apply positive event' });
+  }
+});
+
+// ── Build Queue Management ────────────────────────────────────────────────────
+
+// POST /fiefs/:id/buildings/:buildingId/prioritize — move building to queue position 1
+router.post('/fiefs/:id/buildings/:buildingId/prioritize', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = req.params.id;
+    const buildingId = req.params.buildingId;
+
+    // Load all incomplete buildings for this fief ordered by queue_position
+    const qRes = await pool.query(
+      `SELECT id, queue_position FROM fief_buildings WHERE fief_id = $1 AND is_complete = false ORDER BY queue_position ASC NULLS LAST`,
+      [fiefId]
+    );
+    const rows = qRes.rows;
+    const target = rows.find(r => String(r.id) === String(buildingId));
+    if (!target) return res.status(404).json({ error: 'Building not found in queue' });
+
+    // Shift all buildings with position < target up by 1, then set target to 1
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const r of rows) {
+        if (r.id !== target.id && r.queue_position < target.queue_position) {
+          await client.query(`UPDATE fief_buildings SET queue_position = $1 WHERE id = $2`, [r.queue_position + 1, r.id]);
+        }
+      }
+      await client.query(`UPDATE fief_buildings SET queue_position = 1 WHERE id = $1`, [buildingId]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    const fiefResult = await pool.query(`SELECT kingdom_id FROM fiefs WHERE id = $1`, [fiefId]);
+    const fiefRow2 = fiefResult.rows[0];
+    const campResult = await pool.query(`SELECT campaign_id FROM kingdoms WHERE id = $1`, [fiefRow2?.kingdom_id]);
+    const io = req.app.get('io');
+    if (io && campResult.rows[0]) io.to(`campaign_${campResult.rows[0].campaign_id}`).emit('kingdomDataChanged', {});
+    const updatedFief = await Fief.findByIdFull(fiefId);
+    res.json(updatedFief);
+  } catch (error) {
+    console.error('Error prioritizing build:', error);
+    res.status(500).json({ error: 'Failed to prioritize building' });
+  }
+});
+
+// POST /fiefs/:id/buildings/:buildingId/pause — move building to end of queue
+router.post('/fiefs/:id/buildings/:buildingId/pause', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = req.params.id;
+    const buildingId = req.params.buildingId;
+
+    const qRes = await pool.query(
+      `SELECT id, queue_position FROM fief_buildings WHERE fief_id = $1 AND is_complete = false ORDER BY queue_position ASC NULLS LAST`,
+      [fiefId]
+    );
+    const rows = qRes.rows;
+    const target = rows.find(r => String(r.id) === String(buildingId));
+    if (!target) return res.status(404).json({ error: 'Building not found in queue' });
+    if (target.queue_position === rows.length) return res.json(await Fief.findByIdFull(fiefId)); // already last
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const r of rows) {
+        if (r.id !== target.id && r.queue_position > target.queue_position) {
+          await client.query(`UPDATE fief_buildings SET queue_position = $1 WHERE id = $2`, [r.queue_position - 1, r.id]);
+        }
+      }
+      await client.query(`UPDATE fief_buildings SET queue_position = $1 WHERE id = $2`, [rows.length, buildingId]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    const updatedFief = await Fief.findByIdFull(fiefId);
+    res.json(updatedFief);
+  } catch (error) {
+    console.error('Error pausing build:', error);
+    res.status(500).json({ error: 'Failed to pause building' });
+  }
+});
+
+// ── Research Routes ───────────────────────────────────────────────────────────
+
+// GET /fiefs/:id/research — queue, completed, and levels
+router.get('/fiefs/:id/research', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = req.params.id;
+    const queueRes = await pool.query(
+      `SELECT * FROM fief_research_queue WHERE fief_id = $1 ORDER BY queue_position ASC NULLS LAST`,
+      [fiefId]
+    );
+    const levelsRes = await pool.query(
+      `SELECT building_type, level FROM fief_research_levels WHERE fief_id = $1`,
+      [fiefId]
+    );
+    res.json({ queue: queueRes.rows, completedLevels: levelsRes.rows });
+  } catch (error) {
+    console.error('Error fetching research:', error);
+    res.status(500).json({ error: 'Failed to fetch research' });
+  }
+});
+
+// POST /fiefs/:id/research/start — add a research item to the queue
+// body: { research_id: 'farm_lv2' }
+router.post('/fiefs/:id/research/start', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = req.params.id;
+    const { research_id } = req.body;
+    if (!research_id) return res.status(400).json({ error: 'research_id required' });
+
+    // Check not already queued or completed
+    const existing = await pool.query(
+      `SELECT id, status FROM fief_research_queue WHERE fief_id = $1 AND research_id = $2`,
+      [fiefId, research_id]
+    );
+    if (existing.rows.some(r => r.status !== 'completed')) {
+      return res.status(409).json({ error: 'Research already queued or in progress' });
+    }
+
+    const countRes = await pool.query(
+      `SELECT COALESCE(MAX(queue_position), 0) AS max_pos FROM fief_research_queue WHERE fief_id = $1 AND status != 'completed'`,
+      [fiefId]
+    );
+    const nextPos = (countRes.rows[0]?.max_pos || 0) + 1;
+    const status = nextPos === 1 ? 'in_progress' : 'queued';
+
+    const campRes = await pool.query(
+      `SELECT c.current_day FROM fiefs f JOIN kingdoms k ON f.kingdom_id=k.id JOIN campaigns c ON k.campaign_id=c.id WHERE f.id=$1`,
+      [fiefId]
+    );
+    const day = campRes.rows[0]?.current_day || 1;
+
+    await pool.query(
+      `INSERT INTO fief_research_queue (fief_id, research_id, status, queue_position, points_accumulated, campaign_day_started)
+       VALUES ($1, $2, $3, $4, 0, $5)`,
+      [fiefId, research_id, status, nextPos, day]
+    );
+
+    const updatedFief = await Fief.findByIdFull(fiefId);
+    res.json(updatedFief);
+  } catch (error) {
+    console.error('Error starting research:', error);
+    res.status(500).json({ error: 'Failed to start research' });
+  }
+});
+
+// POST /fiefs/:id/research/:queueId/prioritize — promote research item to active slot
+router.post('/fiefs/:id/research/:queueId/prioritize', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = req.params.id;
+    const queueId = req.params.queueId;
+
+    const qRes = await pool.query(
+      `SELECT id, queue_position FROM fief_research_queue WHERE fief_id = $1 AND status != 'completed' ORDER BY queue_position ASC NULLS LAST`,
+      [fiefId]
+    );
+    const rows = qRes.rows;
+    const target = rows.find(r => String(r.id) === String(queueId));
+    if (!target) return res.status(404).json({ error: 'Research queue item not found' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const r of rows) {
+        if (r.id !== target.id && r.queue_position < target.queue_position) {
+          await client.query(`UPDATE fief_research_queue SET queue_position = $1, status = 'queued' WHERE id = $2`, [r.queue_position + 1, r.id]);
+        }
+      }
+      await client.query(`UPDATE fief_research_queue SET queue_position = 1, status = 'in_progress' WHERE id = $1`, [queueId]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    const updatedFief = await Fief.findByIdFull(fiefId);
+    res.json(updatedFief);
+  } catch (error) {
+    console.error('Error prioritizing research:', error);
+    res.status(500).json({ error: 'Failed to prioritize research' });
+  }
+});
+
+// POST /fiefs/:id/research/:queueId/pause — move research to end of queue
+router.post('/fiefs/:id/research/:queueId/pause', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = req.params.id;
+    const queueId = req.params.queueId;
+
+    const qRes = await pool.query(
+      `SELECT id, queue_position FROM fief_research_queue WHERE fief_id = $1 AND status != 'completed' ORDER BY queue_position ASC NULLS LAST`,
+      [fiefId]
+    );
+    const rows = qRes.rows;
+    const target = rows.find(r => String(r.id) === String(queueId));
+    if (!target) return res.status(404).json({ error: 'Research queue item not found' });
+    if (target.queue_position === rows.length) return res.json(await Fief.findByIdFull(fiefId));
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const r of rows) {
+        if (r.id !== target.id && r.queue_position > target.queue_position) {
+          const newStatus = r.queue_position - 1 === 1 ? 'in_progress' : 'queued';
+          await client.query(`UPDATE fief_research_queue SET queue_position = $1, status = $2 WHERE id = $3`, [r.queue_position - 1, newStatus, r.id]);
+        }
+      }
+      await client.query(`UPDATE fief_research_queue SET queue_position = $1, status = 'queued' WHERE id = $2`, [rows.length, queueId]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    const updatedFief = await Fief.findByIdFull(fiefId);
+    res.json(updatedFief);
+  } catch (error) {
+    console.error('Error pausing research:', error);
+    res.status(500).json({ error: 'Failed to pause research' });
   }
 });
 

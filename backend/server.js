@@ -320,7 +320,10 @@ const startServer = async () => {
         { name: 'addGarrisonTraining', fn: require('./migrations/add_garrison_training') },
         { name: 'addFaithColumn', fn: require('./migrations/add_faith_column') },
         { name: 'addPlayerArmyTraining', fn: require('./migrations/add_player_army_training') },
-        { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') }
+        { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') },
+        { name: 'addResearchSystem', fn: require('./migrations/add_research_system') },
+        { name: 'addBuildQueue', fn: require('./migrations/add_build_queue') },
+        { name: 'addActiveDisasters', fn: require('./migrations/add_active_disasters') }
       ];
       
       for (const migration of migrations) {
