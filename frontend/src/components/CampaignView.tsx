@@ -8839,9 +8839,9 @@ const CampaignView: React.FC = () => {
                                     })}
                                     {/* Research workers — only shown if Research Lab exists */}
                                     {hasResearchLab && (() => {
-                                      const researchOutput = fiefBuildings.filter(b => (b as any).building_type === 'research_lab').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).research ?? 0) * (b.level || 1), 0);
+                                      const researchOutput = fiefBuildings.filter(b => (b as any).building_type === 'research_lab').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).research ?? 0), 0);
                                       const assigned = (assignments as any).research ?? 0;
-                                      const max = 10 + researchOutput * 2;
+                                      const max = maxWorkers('research');
                                       const yld = parseFloat((1.2 + researchOutput * 0.10).toFixed(2));
                                       const produced = parseFloat((assigned * yld).toFixed(1));
                                       const canAdd = remaining > 0 && assigned < max;

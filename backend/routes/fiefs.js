@@ -149,13 +149,18 @@ router.patch('/fiefs/:id/workers', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'worker_assignments object is required' });
     }
 
-    // Validate total assigned <= workable population
-    const fiefRow = await pool.query('SELECT population FROM fiefs WHERE id = $1', [req.params.id]);
+    // Validate total assigned <= workable population.
+    // EXCEPTION: if the fief is already over-assigned (e.g. pop died), allow requests
+    // that reduce the total, so players can dig their way back to a valid state.
+    const fiefRow = await pool.query('SELECT population, worker_assignments FROM fiefs WHERE id = $1', [req.params.id]);
     if (!fiefRow.rows[0]) return res.status(404).json({ error: 'Fief not found' });
     const pop = fiefRow.rows[0].population || 0;
     const workable = getWorkablePopulation(pop);
     const totalAssigned = Object.values(worker_assignments).reduce((s, v) => s + Math.max(0, Number(v) || 0), 0);
-    if (totalAssigned > workable) {
+    const currentWa = fiefRow.rows[0].worker_assignments || {};
+    const currentTotal = Object.values(currentWa).reduce((s, v) => s + Math.max(0, Number(v) || 0), 0);
+    // Block only if the new total exceeds workable AND is not a reduction from the current total
+    if (totalAssigned > workable && totalAssigned >= currentTotal) {
       return res.status(400).json({ error: `Cannot assign ${totalAssigned} workers — only ${workable} are workable from ${pop} population.` });
     }
 

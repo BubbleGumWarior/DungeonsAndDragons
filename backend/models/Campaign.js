@@ -1,5 +1,6 @@
 const { pool } = require('./database');
 const Army = require('./Army');
+const { getWorkablePopulation } = require('../utils/population');
 
 class Campaign {
   // Create a new campaign
@@ -261,20 +262,20 @@ class Campaign {
         const newlyCompleted = [];
 
         // Process build queue with leftover-days propagation:
-        // When a building finishes with n days to spare, those n days carry over to the next in queue.
-        let daysLeft = days;
-        while (daysLeft > 0 && !tierUpgradeActive) {
-          const front = await client.query(
-            `SELECT * FROM fief_buildings WHERE fief_id = $1 AND is_complete = false AND queue_position = 1 LIMIT 1 FOR UPDATE`,
-            [fiefId]
-          );
-          if (!front.rows[0]) break; // nothing in queue
+        // Sort by queue_position so we always process in correct order using the
+        // already-locked rows — avoids re-querying and any transactional visibility edge cases.
+        const queuedBuildings = incompleteBuildings.rows
+          .filter(r => r.queue_position !== null && r.queue_position !== undefined)
+          .sort((a, b) => a.queue_position - b.queue_position);
 
-          const b = front.rows[0];
+        let daysLeft = days;
+        for (const b of queuedBuildings) {
+          if (tierUpgradeActive || daysLeft <= 0) break;
+
           const surplus = daysLeft - b.days_remaining;
 
           if (surplus >= 0) {
-            // This building completes; surplus carries forward
+            // This building completes; surplus carries forward to the next
             if (b.is_upgrade && b.parent_building_id) {
               await client.query(
                 `UPDATE fief_buildings SET level = $1, resource_output = $2 WHERE id = $3`,
@@ -289,17 +290,9 @@ class Campaign {
             }
             newlyCompleted.push(b);
             completedBuildings.push({ ...b, fiefId, fiefName: fief.name });
-
-            // Promote next building in queue
-            await client.query(
-              `UPDATE fief_buildings SET queue_position = queue_position - 1
-               WHERE fief_id = $1 AND is_complete = false AND queue_position IS NOT NULL AND queue_position > 1`,
-              [fiefId]
-            );
-
-            daysLeft = surplus; // continue with remaining days
+            daysLeft = surplus;
           } else {
-            // Building still in progress
+            // Building still in progress — deduct what we can and stop
             const newRemaining = b.days_remaining - daysLeft;
             await client.query(
               `UPDATE fief_buildings SET days_remaining = $1 WHERE id = $2`,
@@ -308,6 +301,18 @@ class Campaign {
             break;
           }
         }
+
+        // Renumber remaining incomplete buildings so queue_position is always 1, 2, 3...
+        await client.query(
+          `WITH ranked AS (
+             SELECT id, ROW_NUMBER() OVER (ORDER BY queue_position ASC NULLS LAST) AS new_pos
+             FROM fief_buildings
+             WHERE fief_id = $1 AND is_complete = false AND queue_position IS NOT NULL
+           )
+           UPDATE fief_buildings b SET queue_position = r.new_pos
+           FROM ranked r WHERE b.id = r.id`,
+          [fiefId]
+        );
 
         // Decrement temp modifiers on complete buildings
         await client.query(
@@ -498,6 +503,20 @@ class Campaign {
         const newPop = Math.max(0, pop + popChange);
         await client.query(`UPDATE fiefs SET population = $1 WHERE id = $2`, [newPop, fiefId]);
         populationGained[fiefId] = popChange;
+
+        // Clamp worker assignments to the new workable population so over-assignment
+        // can't get stuck after starvation / disaster deaths
+        const newWorkable = getWorkablePopulation(newPop);
+        const wa = fief.worker_assignments || {};
+        const totalWa = Object.values(wa).reduce((s, v) => s + Math.max(0, Number(v) || 0), 0);
+        if (totalWa > newWorkable && totalWa > 0) {
+          const scale = newWorkable / totalWa;
+          const clampedWa = {};
+          for (const [k, v] of Object.entries(wa)) {
+            clampedWa[k] = Math.floor(Math.max(0, Number(v) * scale));
+          }
+          await client.query(`UPDATE fiefs SET worker_assignments = $1 WHERE id = $2`, [JSON.stringify(clampedWa), fiefId]);
+        }
 
         // ── Research completion check ──────────────────────────────────────────
         // Check for research items that have accumulated enough points (RESEARCH_COSTS defined above)
