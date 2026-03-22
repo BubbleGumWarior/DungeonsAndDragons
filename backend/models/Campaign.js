@@ -546,13 +546,22 @@ class Campaign {
 
           // Calculate new resource_output from BUILDING_OUTPUT_TABLE
           const BUILDING_OUTPUTS = {
-            campfire: { food: 3 }, hunting_ground: { food: 8 }, housing: { pop_cap: 15 },
-            farm: { food: 15 }, lumber_camp: { wood: 15 }, basic_mine: { stone: 12 }, tavern: { gold: 10 },
-            research_lab: { research: 5 }, market_stall: { gold: 25 }, mill: { food: 20 },
-            ore_mine: { stone: 30 }, workshop: { gold: 40 }, inn: { gold: 35 },
+            // Tier 1
+            campfire: { food: 3 }, hunting_ground: { food: 8 }, watchtower: {}, basic_storage: {},
+            housing: { pop_cap: 15 },
+            // Tier 2
+            chapel: {}, farm: { food: 15 }, lumber_camp: { wood: 15 }, basic_mine: { stone: 12 },
+            tavern: { gold: 10 }, research_lab: { research: 5 },
+            // Tier 3
+            blacksmith: {}, market_stall: { gold: 25 }, barracks: {}, mill: { food: 20 },
+            // Tier 4
+            ore_mine: { stone: 30 }, stable: {}, school: {}, shrine: {},
+            // Tier 5
+            workshop: { gold: 40 }, inn: { gold: 35 }, library: {}, guard_post: {},
+            // Tier 6+
             bank: { gold: 60 }, alchemist: { gold: 30 }, mason: { stone: 50 },
-            docks: { gold: 80, food: 30 }, grand_market: { gold: 100 }, colosseum: { gold: 60 },
-            imperial_mint: { gold: 150 },
+            grand_market: { gold: 100 }, imperial_mint: { gold: 150 },
+            docks: { gold: 80, food: 30 }, colosseum: { gold: 60 },
           };
           const baseOutput = BUILDING_OUTPUTS[buildingType] || {};
           // Exponential output scaling per level (housing uses linear)

@@ -8899,6 +8899,17 @@ const CampaignView: React.FC = () => {
                                     { label: '🏠 Housing',   color: '#fb923c', accent: 'rgba(251,146,60,',  ids: ['housing'] },
                                     { label: '🔬 Research',  color: '#c084fc', accent: 'rgba(192,132,252,', ids: ['research_lab'] },
                                   ];
+                                  // Max level achievable via research for each building type (matches RESEARCH_COSTS in Campaign.js)
+                                  const MAX_RESEARCH_LEVELS: Record<string, number> = {
+                                    campfire: 5, hunting_ground: 5, watchtower: 3, housing: 5, basic_storage: 3,
+                                    chapel: 5, farm: 5, lumber_camp: 5, basic_mine: 5, tavern: 5,
+                                    mill: 5, market_stall: 5, blacksmith: 3, barracks: 3,
+                                    ore_mine: 5, stable: 3, school: 4, shrine: 4,
+                                    workshop: 2, inn: 2, library: 2, guard_post: 2,
+                                    bank: 3, grand_market: 3, imperial_mint: 3, research_lab: 5,
+                                  };
+                                  // Building types upgraded automatically via research — never show a manual upgrade button for these
+                                  const RESEARCH_AUTO_BLDGS = new Set(Object.keys(MAX_RESEARCH_LEVELS));
                                   const allBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_upgrade);
                                   const inProgressUpgrades = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_complete && b.is_upgrade);
                                   const getBCat = (b: FiefBuilding) => BCAT.find(c => c.ids.includes((b as any).building_type ?? '')) ?? null;
@@ -8935,39 +8946,17 @@ const CampaignView: React.FC = () => {
                                                             <div style={{ height: '100%', width: `${Math.max(0, 100 - (upgradeInProgress.days_remaining / upgradeInProgress.construction_days_required) * 100)}%`, background: '#a78bfa', borderRadius: '2px' }} />
                                                           </div>
                                                         </div>
-                                                      ) : canManage(activeKingdom) && b.level < (BUILDING_CATALOGUE.find(c => c.id === (b as any).building_type || c.name === b.name)?.maxLevel ?? 5) && (() => {
-                                                        const _entry = BUILDING_CATALOGUE.find(c => c.id === (b as any).building_type || c.name === b.name);
-                                                        if (!_entry) return null;
+                                                      ) : (() => {
+                                                        const _bldgType2: string = (b as any).building_type ?? '';
+                                                        const _maxResLv = MAX_RESEARCH_LEVELS[_bldgType2] ?? 0;
+                                                        if (_maxResLv === 0 || b.level >= _maxResLv) return null; // no research exists for further upgrades
                                                         const _resLevels: any[] = (activeFief as any).research_levels ?? [];
-                                                        const _researchedLevel = _resLevels.find(r => r.building_type === (b as any).building_type)?.level ?? 0;
+                                                        const _researchedLevel = _resLevels.find(r => r.building_type === _bldgType2)?.level ?? 0;
                                                         const _targetLevel = (b.level ?? 1) + 1;
                                                         if (_researchedLevel < _targetLevel) {
-                                                          return <div style={{ color: '#94a3b8', fontSize: '0.62rem', marginTop: '4px', fontStyle: 'italic' }}>🔬 Research Lv{_targetLevel} required</div>;
+                                                          return <div style={{ color: '#94a3b8', fontSize: '0.62rem', marginTop: '4px', fontStyle: 'italic' }}>🔬 Research Lv{_targetLevel} to upgrade</div>;
                                                         }
-                                                        const _cost = upgradeCostForLevel(_entry, b.level);
-                                                        const _days = Math.ceil(_entry.baseConstructionDays * Math.pow(b.level + 1, 1.2));
-                                                        const RES_ICONS: Record<string, string> = { gold: '💰', wood: '🪵', stone: '🪨', food: '🌾' };
-                                                        const _costStr = Object.entries(_cost).map(([k, v]) => `${RES_ICONS[k] ?? k} ${v}`).join(' · ');
-                                                        return (
-                                                          <div>
-                                                            <div style={{ color: '#94a3b8', fontSize: '0.62rem', marginTop: '3px' }}>{_costStr} · {_days}d</div>
-                                                            <button onClick={async () => {
-                                                              const entry = BUILDING_CATALOGUE.find(c => c.name === b.name);
-                                                              if (!entry) return;
-                                                              const cost = upgradeCostForLevel(entry, b.level);
-                                                              const days = Math.ceil(entry.baseConstructionDays * Math.pow(b.level + 1, 1.2));
-                                                              const newLevel = b.level + 1;
-                                                              const newOutput: Record<string, number> = {};
-                                                              for (const [k, v] of Object.entries(entry.baseOutput)) {
-                                                                newOutput[k] = Math.ceil((v as number) * newLevel);
-                                                              }
-                                                              try {
-                                                                await fiefAPI.upgradeBuilding(activeFief.id, b.id, { upgrade_cost: cost, construction_days: days, new_resource_output: newOutput });
-                                                                refreshActiveFief(activeFief.id);
-                                                              } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
-                                                            }} style={{ marginTop: '4px', padding: '2px 8px', fontSize: '0.65rem', background: `${cat.accent}0.12)`, border: `1px solid ${cat.accent}0.3)`, borderRadius: '4px', color: cat.color, cursor: 'pointer' }}>↑ Upgrade</button>
-                                                          </div>
-                                                        );
+                                                        return <div style={{ color: '#a78bfa', fontSize: '0.62rem', marginTop: '4px', fontStyle: 'italic' }}>🔄 Upgrading at next campaign tick</div>;
                                                       })()}
                                                     </>
                                                   ) : (
