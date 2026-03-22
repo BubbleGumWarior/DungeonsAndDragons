@@ -37,7 +37,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'A devastating mounted charge aimed at breaking enemy lines.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Knights', 'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Mounted Archers'],
+			eligible_categories: ['Knight', 'Heavy Cavalry', 'Royal Lancer', 'Lancer', 'Man-at-Arms', 'Mounted Archer', 'Horse Archer'],
 			lock_reason: 'Requires mounted units'
 		},
 		{
@@ -46,7 +46,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Concentrated ranged volley to thin enemy ranks.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers', 'Ballistae'],
+			eligible_categories: ['Longbowman', 'Crossbowman', 'Arbalest', 'Skirmisher', 'Ranger', 'Mounted Archer', 'Horse Archer', 'Ballista Crew', 'Heavy Ballista'],
 			lock_reason: 'Requires ranged units'
 		},
 		{
@@ -55,7 +55,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'A disciplined spear thrust against a chosen enemy.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Spear Wall', 'Pikemen', 'Heavy Infantry'],
+			eligible_categories: ['Spearman', 'Pikeman', 'Shield Guard', 'Greatsword Master'],
 			lock_reason: 'Requires heavy infantry'
 		},
 		{
@@ -64,7 +64,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Long-range siege fire directed at a target formation.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards'],
+			eligible_categories: ['Catapult Crew', 'Trebuchet Crew', 'Ballista Crew', 'Heavy Ballista', 'Bombard Crew', 'Grand Bombard'],
 			lock_reason: 'Requires siege weapons'
 		},
 		{
@@ -73,7 +73,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Execute a coordinated attack on enemy flanks and weak points.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Light Cavalry', 'Scouts', 'Light Infantry', 'Lancers'],
+			eligible_categories: ['Lancer', 'Royal Lancer', 'Man-at-Arms', 'Scout', 'Master Scout', 'Recruit', 'Soldier'],
 			lock_reason: 'Requires fast, mobile units',
 			score_requirement: { method: 'ahead', delta: 6 }
 		},
@@ -83,7 +83,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'A risky raid launched when you are outmatched, aimed at disrupting a stronger foe.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Light Infantry'],
+			eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Skirmisher', 'Ranger', 'Recruit', 'Soldier'],
 			lock_reason: 'Requires fast raiders',
 			score_requirement: { method: 'behind', delta: 10 }
 		},
@@ -93,7 +93,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'All-out frontal assault with maximum force deployment.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard'],
+			eligible_categories: ['Pikeman', 'Greatsword Master', 'Knight', 'Heavy Cavalry', 'Royal Guard'],
 			score_requirement: { method: 'ahead', delta: 8 }
 		}
 	],
@@ -112,7 +112,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Fortify your position to blunt enemy assaults.',
 			goal_type: 'defend',
 			target_type: 'self',
-			eligible_categories: ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Royal Guard']
+			eligible_categories: ['Soldier', 'Spearman', 'Pikeman', 'Shield Guard', 'Greatsword Master', 'Royal Guard']
 		},
 		{
 			key: 'brace_for_impact',
@@ -120,7 +120,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Prepare to absorb the next enemy strike.',
 			goal_type: 'defend',
 			target_type: 'self',
-			eligible_categories: ['Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Knights']
+			eligible_categories: ['Soldier', 'Spearman', 'Shield Guard', 'Pikeman', 'Knight']
 		},
 		{
 			key: 'take_cover',
@@ -128,7 +128,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Find cover and minimize casualties from incoming attacks.',
 			goal_type: 'defend',
 			target_type: 'self',
-			eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Light Infantry', 'Scouts'],
+			eligible_categories: ['Longbowman', 'Crossbowman', 'Arbalest', 'Skirmisher', 'Ranger', 'Recruit', 'Soldier', 'Scout', 'Master Scout'],
 			lock_reason: 'Better suited for light units and ranged troops'
 		},
 		{
@@ -137,7 +137,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Dig in and create defensive works for siege units.',
 			goal_type: 'defend',
 			target_type: 'self',
-			eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards', 'Siege Towers'],
+			eligible_categories: ['Catapult Crew', 'Trebuchet Crew', 'Ballista Crew', 'Heavy Ballista', 'Bombard Crew', 'Grand Bombard', 'Siege Tower Operator'],
 			lock_reason: 'Requires siege equipment'
 		},
 		{
@@ -146,7 +146,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Form an impenetrable wall of shields and armor, maximizing defense.',
 			goal_type: 'defend',
 			target_type: 'self',
-			eligible_categories: ['Shield Wall', 'Heavy Infantry', 'Royal Guard', 'Pikemen'],
+			eligible_categories: ['Shield Guard', 'Pikeman', 'Greatsword Master', 'Royal Guard'],
 			lock_reason: 'Requires heavily armored melee units'
 		},
 		{
@@ -155,7 +155,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Use evasion and mobility to avoid and counter enemy attacks.',
 			goal_type: 'defend',
 			target_type: 'self',
-			eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Mounted Archers'],
+			eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Skirmisher', 'Ranger', 'Mounted Archer', 'Horse Archer'],
 			lock_reason: 'Requires fast, mobile units'
 		}
 	],
@@ -176,7 +176,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'logistics',
 			target_type: 'self',
 			effect: 'increase_self',
-			eligible_categories: ['Spies', 'Assassins'],
+			eligible_categories: ['Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'],
 			lock_reason: 'Requires spies or assassins'
 		},
 		{
@@ -186,7 +186,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'logistics',
 			target_type: 'enemy',
 			effect: 'decrease_target',
-			eligible_categories: ['Scouts', 'Light Cavalry', 'Spies', 'Skirmishers'],
+			eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Spy', 'Master Spy', 'Skirmisher', 'Ranger'],
 			lock_reason: 'Requires scouts or spies'
 		},
 		{
@@ -196,7 +196,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'logistics',
 			target_type: 'self',
 			effect: 'increase_self',
-			eligible_categories: ['Royal Guard', 'Knights', 'Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Light Infantry']
+			eligible_categories: ['Royal Guard', 'Knight', 'Soldier', 'Spearman', 'Shield Guard', 'Pikeman', 'Recruit']
 		},
 		{
 			key: 'rapid_resupply',
@@ -205,7 +205,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'logistics',
 			target_type: 'self',
 			effect: 'increase_self',
-			eligible_categories: ['Scouts', 'Spies', 'Light Infantry', 'Light Cavalry']
+			eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Spy', 'Master Spy']
 		},
 		{
 			key: 'disrupt_comms',
@@ -214,7 +214,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'logistics',
 			target_type: 'enemy',
 			effect: 'decrease_target',
-			eligible_categories: ['Spies', 'Scouts'],
+			eligible_categories: ['Spy', 'Master Spy', 'Scout', 'Master Scout'],
 			lock_reason: 'Requires intelligence specialists'
 		},
 		{
@@ -224,7 +224,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'logistics',
 			target_type: 'self',
 			effect: 'increase_self',
-			eligible_categories: ['Scouts', 'Light Cavalry', 'Spies']
+			eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Spy', 'Master Spy']
 		},
 		{
 			key: 'field_medical',
@@ -233,7 +233,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			goal_type: 'logistics',
 			target_type: 'self',
 			effect: 'increase_self',
-			eligible_categories: ['Knights', 'Royal Guard', 'Swordsmen', 'Heavy Infantry']
+			eligible_categories: ['Knight', 'Royal Guard', 'Soldier', 'Shield Guard', 'Pikeman']
 		}
 	],
 	custom: [
@@ -254,7 +254,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'Send elite assassins to eliminate the enemy commander. Success guarantees a kill on the target and halves the enemy\'s battle score, while your casualties scale with how successful the strike was.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Assassins'],
+			eligible_categories: ['Assassin', 'Shadow Assassin'],
 			effect: 'decrease_target_half_score',
 			lock_reason: 'Requires Assassin units',
 			score_requirement: { method: 'ahead', delta: 10 }
@@ -265,7 +265,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'A righteous charge by elite knights that hits hard while bolstering allied courage.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Knights'],
+			eligible_categories: ['Knight'],
 			lock_reason: 'Requires Knight units',
 			score_requirement: { method: 'ahead', delta: 8 }
 		},
@@ -275,7 +275,7 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			description: 'A precision strike guided by scouting that punishes exposed enemy weaknesses.',
 			goal_type: 'attack',
 			target_type: 'enemy',
-			eligible_categories: ['Scouts'],
+			eligible_categories: ['Scout', 'Master Scout'],
 			lock_reason: 'Requires Scout units',
 			score_requirement: { method: 'ahead', delta: 6 }
 		}

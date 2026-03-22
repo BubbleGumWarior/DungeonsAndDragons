@@ -21,13 +21,16 @@ class Army {
       player_id,
       campaign_id,
       name,
-      category = 'Swordsmen',
-      total_troops,
+      category = 'Recruit',
+      total_troops = 0,
       equipment = 5,
       discipline = 5,
       morale = 5,
       command = 5,
-      logistics = 5
+      logistics = 5,
+      unit_type = null,
+      source_fief_id = null,
+      is_garrisoned = false
     } = armyData;
     
     // Calculate numbers stat from troop count
@@ -38,11 +41,11 @@ class Army {
       const result = await pool.query(
         `INSERT INTO armies (
           player_id, campaign_id, name, category, numbers, total_troops, starting_troops,
-          equipment, discipline, morale, command, logistics
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+          equipment, discipline, morale, command, logistics, unit_type, source_fief_id, is_garrisoned
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
         RETURNING *`,
         [player_id, campaign_id, name, category, numbers, total_troops, starting_troops,
-         equipment, discipline, morale, command, logistics]
+         equipment, discipline, morale, command, logistics, unit_type, source_fief_id, is_garrisoned]
       );
       
       return result.rows[0];

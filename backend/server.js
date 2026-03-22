@@ -21,6 +21,9 @@ const journalsRoutes = require('./routes/journals');
 const beastRoutes = require('./routes/beasts');
 const mountRoutes = require('./routes/mounts');
 const kingdomRoutes = require('./routes/kingdoms');
+const fiefRoutes = require('./routes/fiefs');
+const kingdomEventRoutes = require('./routes/kingdom-events');
+const kingdomActionRoutes = require('./routes/kingdom-actions');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 
@@ -168,6 +171,9 @@ app.use('/api/skills', skillRoutes);
 app.use('/api/beasts', beastRoutes);
 app.use('/api/mounts', mountRoutes);
 app.use('/api/kingdoms', kingdomRoutes);
+app.use('/api', fiefRoutes);
+app.use('/api/kingdoms', kingdomEventRoutes);
+app.use('/api/kingdoms', kingdomActionRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -311,7 +317,16 @@ const startServer = async () => {
         { name: 'addImageDataToMonsters', fn: addImageDataToMonsters },
         { name: 'addMonsterAbilities', fn: addMonsterAbilities },
         { name: 'addMonsterCR', fn: addMonsterCR },
-        { name: 'seedDefaultMonsters', fn: seedDefaultMonsters }
+        { name: 'seedDefaultMonsters', fn: seedDefaultMonsters },
+        { name: 'addKingdomSystem', fn: require('./migrations/add_kingdom_system') },
+        { name: 'addFiefConstruction', fn: require('./migrations/add_fief_construction') },
+        { name: 'fiefStatsDefaultOne', fn: require('./migrations/fief_stats_default_one') },
+        { name: 'addWorkerAssignments', fn: require('./migrations/add_worker_assignments') },
+        { name: 'addTierUpgradeTimer', fn: require('./migrations/add_tier_upgrade_timer') },
+        { name: 'addGarrisonTraining', fn: require('./migrations/add_garrison_training') },
+        { name: 'addFaithColumn', fn: require('./migrations/add_faith_column') },
+        { name: 'addPlayerArmyTraining', fn: require('./migrations/add_player_army_training') },
+        { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') }
       ];
       
       for (const migration of migrations) {
@@ -1202,6 +1217,7 @@ const startServer = async () => {
           const kingdom = await Kingdom.setName(kingdomId, name);
           if (kingdom) {
             io.to(`campaign_${campaignId}`).emit('kingdomActivated', { kingdom });
+            io.to(`campaign_${campaignId}`).emit('kingdomDataChanged', { campaignId, kingdomId: kingdom.id });
             console.log(`👑 [nameKingdom] kingdomActivated emitted for "${name}"`);
           } else {
             console.warn(`👑 [nameKingdom] setName returned null for id=${kingdomId}`);

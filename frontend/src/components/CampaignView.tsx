@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+﻿import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character, mountAPI, Mount, kingdomAPI, Kingdom } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character, mountAPI, Mount, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
+import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS, isTemplateUnlocked } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
@@ -25,139 +26,37 @@ interface JournalEntry {
   updated_at?: string;
 }
 
-// Helper function to get army category icon
-const getArmyCategoryIcon = (category: string): string => {
-  const iconMap: Record<string, string> = {
-    // Elite
-    'Royal Guard': '👑',
-    'Assassins': '🗡️',
-    // Infantry
-    'Swordsmen': '⚔️',
-    'Shield Wall': '🛡️',
-    'Spear Wall': '🗡️',
-    'Pikemen': '🔱',
-    'Heavy Infantry': '⚒️',
-    'Light Infantry': '🏃',
-    // Archers
-    'Longbowmen': '🏹',
-    'Crossbowmen': '🎯',
-    'Skirmishers': '🪃',
-    'Mounted Archers': '🏇',
-    // Cavalry
-    'Shock Cavalry': '🐎',
-    'Heavy Cavalry': '🛡️',
-    'Light Cavalry': '🐴',
-    'Lancers': '🎪',
-    // Artillery
-    'Catapults': '💣',
-    'Trebuchets': '🏰',
-    'Ballistae': '🎯',
-    'Siege Towers': '🗼',
-    'Bombards': '💥',
-    // Specialists
-    'Scouts': '👁️',
-    'Spies': '🕵️'
-  };
-  return iconMap[category] || '⚔️';
-};
+// Helper function to get army category icon — driven by UNIT_TEMPLATES
+const getArmyCategoryIcon = (category: string): string =>
+  UNIT_TEMPLATES[category]?.icon ?? '⚔️';
 
 // Army categories organized by type
-const ARMY_CATEGORIES = {
-  'Elite': ['Royal Guard', 'Knights', 'Assassins'],
-  'Infantry': ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry'],
-  'Archers': ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'],
-  'Cavalry': ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers'],
-  'Artillery': ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'],
-  'Specialists': ['Scouts', 'Spies']
-};
+const ARMY_CATEGORIES = ARMY_CATEGORY_GROUPS;
 
-// Stat presets for army categories (power scale: 1=weakest, 10=strongest)
+// Stat presets for army categories — pulled from UNIT_TEMPLATES
 const getArmyCategoryPresets = (category: string): { equipment: number; discipline: number; morale: number; command: number; logistics: number } => {
-  const presets: Record<string, { equipment: number; discipline: number; morale: number; command: number; logistics: number }> = {
-    // Elite Units - Strongest (8-9)
-    'Royal Guard': { equipment: 9, discipline: 9, morale: 9, command: 8, logistics: 7 },
-    'Knights': { equipment: 9, discipline: 8, morale: 8, command: 7, logistics: 6 },
-    'Assassins': { equipment: 8, discipline: 9, morale: 7, command: 6, logistics: 8 },
-    // Heavy Infantry - Strong (6-7)
-    'Swordsmen': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 5 },
-    'Shield Wall': { equipment: 7, discipline: 8, morale: 7, command: 6, logistics: 5 },
-    'Spear Wall': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
-    'Pikemen': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
-    'Heavy Infantry': { equipment: 7, discipline: 7, morale: 7, command: 5, logistics: 5 },
-    // Light Infantry - Average (4-5)
-    'Light Infantry': { equipment: 4, discipline: 5, morale: 5, command: 4, logistics: 6 },
-    // Archers - Medium (5-6)
-    'Longbowmen': { equipment: 6, discipline: 6, morale: 5, command: 5, logistics: 5 },
-    'Crossbowmen': { equipment: 6, discipline: 7, morale: 6, command: 5, logistics: 5 },
-    'Skirmishers': { equipment: 4, discipline: 4, morale: 5, command: 4, logistics: 7 },
-    'Mounted Archers': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 6 },
-    // Cavalry - Strong to Very Strong (6-8)
-    'Shock Cavalry': { equipment: 8, discipline: 7, morale: 8, command: 6, logistics: 5 },
-    'Heavy Cavalry': { equipment: 8, discipline: 7, morale: 7, command: 6, logistics: 5 },
-    'Light Cavalry': { equipment: 5, discipline: 6, morale: 6, command: 5, logistics: 7 },
-    'Lancers': { equipment: 7, discipline: 7, morale: 7, command: 6, logistics: 5 },
-    // Artillery - Specialized (5-7)
-    'Catapults': { equipment: 7, discipline: 5, morale: 5, command: 6, logistics: 4 },
-    'Trebuchets': { equipment: 8, discipline: 6, morale: 5, command: 6, logistics: 4 },
-    'Ballistae': { equipment: 7, discipline: 6, morale: 5, command: 6, logistics: 5 },
-    'Siege Towers': { equipment: 6, discipline: 6, morale: 6, command: 5, logistics: 4 },
-    'Bombards': { equipment: 8, discipline: 5, morale: 5, command: 6, logistics: 3 },
-    // Specialists - Varied (4-7)
-    'Scouts': { equipment: 4, discipline: 6, morale: 6, command: 5, logistics: 8 },
-    'Spies': { equipment: 5, discipline: 7, morale: 6, command: 4, logistics: 7 }
-  };
-
-  return presets[category] || { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
+  const template = UNIT_TEMPLATES[category];
+  if (!template) return { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
+  return { ...template.stats };
 };
 
 // Get army movement speed based on category (in feet per round)
 const getArmyMovementSpeed = (category: string): number => {
-  const speeds: Record<string, number> = {
-    // Elite
-    'Royal Guard': 60,
-    'Knights': 150,
-    'Assassins': 100,
-    // Infantry
-    'Swordsmen': 80,
-    'Shield Wall': 60,
-    'Spear Wall': 60,
-    'Pikemen': 80,
-    'Heavy Infantry': 60,
-    'Light Infantry': 100,
-    // Archers
-    'Longbowmen': 60,
-    'Crossbowmen': 60,
-    'Skirmishers': 60,
-    'Mounted Archers': 150,
-    // Cavalry
-    'Shock Cavalry': 180,
-    'Heavy Cavalry': 120,
-    'Light Cavalry': 180,
-    'Lancers': 150,
-    // Artillery
-    'Catapults': 60,
-    'Trebuchets': 50,
-    'Ballistae': 60,
-    'Siege Towers': 25,
-    'Bombards': 50,
-    // Specialists
-    'Scouts': 200,
-    'Spies': 100,
-  };
-  return speeds[category] ?? 100;
+  const template = UNIT_TEMPLATES[category];
+  if (!template) return 100;
+  if (template.baseType === 'artillery') return 50;
+  if (template.baseType === 'cavalry') return 300;
+  if (template.baseType === 'covert') return 150;
+  return 100;
 };
-
 const BATTLEFIELD_FEET_PER_PERCENT = 20 / 3;
 
 type ArmyRangeBand = 'melee' | 'archer' | 'artillery';
 
 const getArmyRangeBand = (category: string): ArmyRangeBand => {
-  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
-  if (artilleryTypes.includes(category)) return 'artillery';
-
-  const archerTypes = ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'];
-  if (archerTypes.includes(category)) return 'archer';
-
+  const template = UNIT_TEMPLATES[category];
+  if (template?.baseType === 'artillery') return 'artillery';
+  if (template?.baseType === 'archer') return 'archer';
   return 'melee';
 };
 
@@ -177,9 +76,9 @@ const getArmyRangeLabel = (category: string): string => {
 
 const getParticipantCategory = (participant: BattleParticipant): string => {
   if (participant.is_temporary) {
-    return participant.temp_army_category || 'Swordsmen';
+    return participant.temp_army_category || 'Recruit';
   }
-  return participant.army_category || participant.temp_army_category || 'Swordsmen';
+  return participant.army_category || participant.temp_army_category || 'Recruit';
 };
 
 const getBattlefieldDistanceFeet = (
@@ -216,6 +115,100 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
 
 const getCityImageFilename = (cityName: string): string =>
   cityName.replace(/'/g, '').replace(/\s+/g, '_');
+
+// ── Kingdom Building Catalogue ────────────────────────────────────────────────
+interface BuildingCatalogueEntry {
+  id: string; name: string; icon: string; minFiefTier: number; maxLevel: number;
+  baseConstructionDays: number; baseCost: Partial<KingdomResources>;
+  baseOutput: Record<string, number>; description: string;
+}
+declare type KRC = Partial<KingdomResources>;
+const BC = (id: string, name: string, icon: string, tier: number, ml: number, days: number, cost: KRC, output: Record<string, number>, desc: string): BuildingCatalogueEntry =>
+  ({ id, name, icon, minFiefTier: tier, maxLevel: ml, baseConstructionDays: days, baseCost: cost, baseOutput: output, description: desc });
+
+const BUILDING_CATALOGUE: BuildingCatalogueEntry[] = [
+  // Tier 1 — Camp
+  BC('campfire',       'Campfire',       '🔥', 1, 3, 1,  { wood: 5 },            { food: 1 },           'A simple fire pit. Keeps the camp warm and fed.'),
+  BC('basic_storage',  'Basic Storage',  '📦', 1, 3, 2,  { wood: 10 },           {},                    'Stores supplies. Each level adds +200 to the resource storage cap.'),
+  BC('housing',        'Housing',        '🏠', 1, 5, 3,  { wood: 15 },           { pop_cap: 500 },      'Shelter for your people. Raises the population cap. Lv1: Tents · Lv2: Hovels · Lv3: Cottages · Lv4: Houses · Lv5: Townhouses'),
+  BC('watchtower',     'Watchtower',     '🗼', 1, 3, 3,  { wood: 15 },           {},                    'Raised platform to watch for danger. +Military.'),
+  BC('hunting_ground', 'Hunting Ground', '🏹', 1, 3, 2,  { wood: 5 },            { food: 2 },           'Designated hunting area increases food supply.'),
+  // Tier 2 — Hamlet
+  BC('chapel',         'Chapel',         '⛪', 2, 5, 4,  { wood: 15, gold: 20 }, {},                    'A small chapel. Slowly grows community faith.'),
+  BC('farm',           'Farm',           '🌾', 2, 5, 5,  { wood: 20, gold: 10 }, { food: 5 },           'Basic farmland producing steady food output.'),
+  BC('lumber_camp',    'Lumber Camp',    '🪵', 2, 5, 4,  { wood: 10, gold: 5 },  { wood: 5 },           'A camp of woodcutters harvesting the forest.'),
+  BC('basic_mine',     'Basic Mine',     '⛏️', 2, 5, 6,  { wood: 15, gold: 20 }, { stone: 3 },          'Shallow mine extracting stone and ore.'),
+  BC('tavern',         'Tavern',         '🍺', 2, 5, 4,  { wood: 20, gold: 30 }, { gold: 3 },           'A busy tavern bringing coin to the hamlet.'),
+  // Tier 3 — Small Village
+  BC('blacksmith',     'Blacksmith',     '🔨', 3, 5, 7,  { wood: 30, stone: 20, gold: 40 }, {},         'Smithy forging tools and weapons.'),
+  BC('market_stall',   'Market Stall',   '🛒', 3, 5, 5,  { wood: 25, gold: 30 }, { gold: 8 },           'Small market generating trade income.'),
+  BC('barracks',       'Barracks',       '⚔️', 3, 5, 7,  { wood: 30, stone: 15, gold: 50 }, {},         'Training ground improving military strength.'),
+  BC('mill',           'Mill',           '⚙️', 3, 5, 6,  { wood: 40, stone: 10, gold: 20 }, { food: 4 },'Mill improving grain processing efficiency.'),
+  // Tier 4 — Village
+  BC('ore_mine',       'Ore Mine',       '🪨', 4, 5, 10, { wood: 50, gold: 60 }, { stone: 8 },          'Deep mine extracting rich stone and ore deposits.'),
+  BC('stable',         'Stable',         '🐴', 4, 5, 6,  { wood: 30, gold: 40 }, {},                    'Horses and mounts for the village militia.'),
+  BC('school',         'School',         '📚', 4, 4, 8,  { wood: 40, gold: 60 }, {},                    'Education improving the local economy.'),
+  BC('shrine',         'Shrine',         '🕍', 4, 4, 5,  { stone: 20, gold: 30 }, {},                   'A place of worship improving stability.'),
+  // Tier 5 — Large Village
+  BC('workshop',       'Workshop',       '🔧', 5, 5, 8,  { stone: 30, wood: 30, gold: 60 }, { gold: 5 },'Craftsmen producing goods for trade.'),
+  BC('inn',            'Inn',            '🏨', 5, 5, 7,  { wood: 50, gold: 70 }, { gold: 6 },           'A comfortable inn attracting travelers and coin.'),
+  BC('library',        'Library',        '📖', 5, 4, 9,  { wood: 40, stone: 20, gold: 80 }, {},         'Repository of knowledge boosting the economy.'),
+  BC('guard_post',     'Guard Post',     '💂', 5, 4, 6,  { stone: 30, gold: 50 }, {},                   'A guardhouse improving town stability.'),
+  BC('thieves_guild',  'Thieves Guild',  '🗡️', 5, 4, 10, { wood: 20, gold: 80 }, {},                    'A hidden guild of rogues and spies. Unlocks covert unit training.'),
+  BC('siege_workshop', 'Siege Workshop', '⚙️', 5, 4, 14, { wood: 50, stone: 30, gold: 100 }, {},        'Workshop for constructing siege weapons. Unlocks artillery unit training.'),
+  // Tier 6 — Small Town
+  BC('bank',           'Bank',           '🏦', 6, 5, 10, { stone: 50, gold: 120 }, { gold: 15 },        'A bank generating substantial gold income.'),
+  BC('alchemist',      'Alchemist',      '⚗️', 6, 4, 8,  { stone: 30, gold: 80 }, { gold: 4 },'Alchemist lab producing valuable reagents.'),
+  BC('armoury',        'Armoury',        '🛡️', 6, 5, 9,  { stone: 40, gold: 100 }, {},                  'Armoury stocking military equipment.'),
+  BC('mason',          'Mason',          '🪚', 6, 5, 7,  { gold: 60, stone: 10 }, { stone: 6 },         'Skilled masons extracting and shaping stone.'),
+  BC('monastery',      'Monastery',      '🛕', 6, 4, 10, { stone: 50, gold: 100 }, {},                  'A monastery of devoted monks. Greatly grows faith.'),
+  BC('foundry',        'Foundry',        '🔥', 6, 3, 12, { stone: 60, gold: 120 }, {},                  'An ironworks foundry for advanced siege weapons. Unlocks Bombard training.'),
+  // Tier 7 — Town
+  BC('castle_walls',   'Castle Walls',   '🏰', 7, 3, 20, { stone: 200, gold: 150 }, {},                 'Towering walls protecting the settlement.'),
+  BC('cathedral',      'Cathedral',      '⛪', 7, 3, 15, { stone: 100, gold: 120 }, {},                  'Grand cathedral inspiring stability and devotion.'),
+  BC('academy',        'Academy',        '🎓', 7, 4, 12, { stone: 60, wood: 40, gold: 150 }, {},         'Major academy producing scholars and leaders.'),
+  BC('docks',          'Docks',          '⚓', 7, 5, 14, { wood: 120, stone: 40, gold: 100 }, { gold: 20, food: 5 }, 'Docks enabling maritime trade.'),
+  BC('shadow_order',   'Shadow Order',   '🌑', 7, 3, 16, { stone: 80, gold: 150 }, {},                  'A secretive guild of assassins. Unlocks Assassin unit training.'),
+  // Tier 8 — Large Town
+  BC('keep',           'Keep',           '🏯', 8, 3, 25, { stone: 300, gold: 200 }, {},                  'A fortified keep providing strong military.'),
+  BC('grand_market',   'Grand Market',   '🏪', 8, 5, 12, { stone: 80, gold: 200 }, { gold: 25 },         'Bustling grand market generating high income.'),
+  BC('mage_tower',     'Mage Tower',     '🧙', 8, 4, 15, { stone: 100, gold: 200 }, {},                  'Tower of arcane study boosting economy.'),
+  BC('hospital',       'Hospital',       '🏥', 8, 4, 12, { stone: 60, gold: 150 }, {},                   'Medical facility improving stability and growth.'),
+  // Tier 9 — City
+  BC('palace',         'Palace',         '🏛️', 9, 3, 30, { stone: 400, gold: 500 }, {},                  'A royal palace symbolising power and prosperity.'),
+  BC('colosseum',      'Colosseum',      '🏟️', 9, 3, 25, { stone: 300, gold: 350 }, { gold: 15 },        'Entertainment arena drawing crowds and gold.'),
+  BC('university',     'University',     '🏫', 9, 4, 20, { stone: 200, gold: 400 }, {},                  'Major university advancing the city\'s economy.'),
+  BC('grand_cathedral','Grand Cathedral','⛩️', 9, 3, 20, { stone: 300, gold: 300 }, {},                  'Magnificent cathedral boosting city stability.'),
+  // Tier 10 — Citadel
+  BC('citadel_fortress','Citadel Fortress','🗼',10,3,40, { stone: 600, gold: 800 }, {},                   'Impenetrable fortress protecting the citadel.'),
+  BC('royal_academy',  'Royal Academy',  '👑', 10, 3, 30, { stone: 300, gold: 700 }, {},                 'The pinnacle of scholarship.'),
+  BC('imperial_mint',  'Imperial Mint',  '💰', 10, 3, 25, { stone: 200, gold: 600 }, { gold: 40 },       'Minting coins for the entire realm.'),
+  BC('grand_armory',   'Grand Armory',   '⚔️', 10, 3, 30, { stone: 400, gold: 600 }, {},                 'Legendary armoury supplying the finest weapons.'),
+];
+
+const DISASTER_CATALOGUE = [
+  // Natural
+  { id: 'tornado',         name: 'Tornado',         icon: '🌪️', category: 'Natural',     description: 'Destroys 2 random buildings.' },
+  { id: 'flood',           name: 'Flood',           icon: '🌊', category: 'Natural',     description: 'Food and wood reduced by 50%.' },
+  { id: 'earthquake',      name: 'Earthquake',      icon: '💥', category: 'Natural',     description: 'Destroys Walls/Watchtower if present.' },
+  { id: 'drought',         name: 'Drought',         icon: '☀️', category: 'Natural',     description: 'Food reduced by 60%.' },
+  { id: 'wildfire',        name: 'Wildfire',        icon: '🔥', category: 'Natural',     description: 'Destroys Lumber Camp or Farm, wood -70%.' },
+  // Social
+  { id: 'famine',          name: 'Famine',          icon: '💀', category: 'Social',      description: 'Population -20%, food -80%.' },
+  { id: 'plague',          name: 'Plague',          icon: '🦠', category: 'Social',      description: 'Population -30%, stability -3.' },
+  { id: 'rebel_uprising',  name: 'Rebel Uprising',  icon: '⚔️', category: 'Social',      description: 'Military -3, stability -4, gold -40%.' },
+  { id: 'tax_revolt',      name: 'Tax Revolt',      icon: '💸', category: 'Social',      description: 'Economy -3, gold -60%.' },
+  // Magical
+  { id: 'dragon_attack',   name: 'Dragon Attack',   icon: '🐉', category: 'Magical',     description: 'Destroys 2 buildings, population -15%, gold -50%.' },
+  { id: 'curse',           name: 'Curse',           icon: '🔮', category: 'Magical',     description: 'All stats -2.' },
+  { id: 'undead_invasion', name: 'Undead Invasion', icon: '💀', category: 'Magical',     description: 'Military -5, population -25%.' },
+  // Environmental
+  { id: 'blight',          name: 'Blight',          icon: '🍂', category: 'Environmental', description: 'Farm food output reduced 50% for 5 days.' },
+  { id: 'rockslide',       name: 'Rockslide',       icon: '🪨', category: 'Environmental', description: 'Destroys Mine or Ore Mine if present.' },
+  { id: 'storm',           name: 'Storm',           icon: '⛈️', category: 'Environmental', description: 'Gold -50% if Docks present.' },
+];
+
+const TIER_NAMES = ['', 'Camp', 'Hamlet', 'Small Village', 'Village', 'Large Village', 'Small Town', 'Town', 'Large Town', 'City', 'Citadel'];
 
 const CampaignView: React.FC = () => {
   const { campaignName } = useParams<{ campaignName: string }>();
@@ -300,6 +293,10 @@ const CampaignView: React.FC = () => {
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toast = (msg: string, ms = 3000) => { setToastMessage(msg); setTimeout(() => setToastMessage(null), ms); };
+
+  // Confirm modal (replaces all window.confirm dialogs)
+  const [pendingConfirm, setPendingConfirm] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   // Image cropping state
   const [showImageCropModal, setShowImageCropModal] = useState(false);
@@ -333,6 +330,51 @@ const CampaignView: React.FC = () => {
   const [showGrantKingdomModal, setShowGrantKingdomModal] = useState(false);
   const [pendingKingdomId, setPendingKingdomId] = useState<number | null>(null);
   const [kingdomNameInput, setKingdomNameInput] = useState('');
+
+  // Kingdom detail / UI state
+  const [kingdomDetails, setKingdomDetails] = useState<Record<number, Kingdom>>({});
+  const [expandedKingdomId, setExpandedKingdomId] = useState<number | null>(null);
+  const [selectedFiefId, setSelectedFiefId] = useState<number | null>(null);
+  const [fiefEventLogs, setFiefEventLogs] = useState<Record<number, FiefEventLogEntry[]>>({});
+  const [showAddFiefModal, setShowAddFiefModal] = useState(false);
+  const [newFiefName, setNewFiefName] = useState('');
+  const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
+  const [showAddEventModal, setShowAddEventModal] = useState(false);
+  const [showAddActionModal, setShowAddActionModal] = useState(false);
+  const [showDisasterModal, setShowDisasterModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showGarrisonModal, setShowGarrisonModal] = useState(false);
+  const [garrisonTrainUnit, setGarrisonTrainUnit] = useState<string | null>(null);
+  const [garrisonTrainCount, setGarrisonTrainCount] = useState<string>('5');
+  const [garrisonTrainLinkedArmy, setGarrisonTrainLinkedArmy] = useState<number | null>(null);
+  const [garrisonNewArmyName, setGarrisonNewArmyName] = useState<string>('');
+  // DnD garrison transfer state (replaces old click-based withdraw/deposit/recall states)
+  const [garrisonPendingTransfer, setGarrisonPendingTransfer] = useState<{
+    direction: 'to_army' | 'to_garrison';
+    unitKey: string;
+    armyId: number;
+    maxCount: number;
+    amt: string;
+  } | null>(null);
+  const [garrisonDragOver, setGarrisonDragOver] = useState<string | null>(null); // 'garrison' or army-id string
+  const [cancelJobId, setCancelJobId] = useState<number | null>(null);
+  // Sub-tab state for fief detail panel
+  const [activeFiefSubTab, setActiveFiefSubTab] = useState<'overview' | 'workers' | 'buildings' | 'events' | 'log'>('overview');
+  const [editResourceKey, setEditResourceKey] = useState<string | null>(null);
+  const [editResourceVal, setEditResourceVal] = useState<string>('');
+  const [setTroopsArmyId, setSetTroopsArmyId] = useState<number | null>(null);
+  const [setTroopsVal, setSetTroopsVal] = useState<string>('');
+  const [upgradeConfirmLoading, setUpgradeConfirmLoading] = useState(false);
+  const [newEventData, setNewEventData] = useState({ title: '', description: '', event_type: 'announcement', severity: 'low' });
+  const [newActionData, setNewActionData] = useState({ title: '', description: '', action_type: '' });
+  const [selectedBuildingCatalogueId, setSelectedBuildingCatalogueId] = useState<string | null>(null);
+
+  // Rest modal state
+  const [showRestModal, setShowRestModal] = useState(false);
+  const [restType, setRestType] = useState<'short' | 'long' | 'custom'>('long');
+  const [customRestDays, setCustomRestDays] = useState(1);
+  const [currentDay, setCurrentDay] = useState(1);
+  const [restLoading, setRestLoading] = useState(false);
 
   // Combat state
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
@@ -905,9 +947,23 @@ const CampaignView: React.FC = () => {
           setKingdoms(fetched);
           if (user && fetched.some(k => Number(k.player_id) === Number(user.id))) {
             setHasKingdomAccess(true);
+            // Immediately load full details for the player's own kingdom
+            const myKingdom = fetched.find(k => Number(k.player_id) === Number(user.id));
+            if (myKingdom) {
+              kingdomAPI.getKingdomDetails(myKingdom.id)
+                .then(details => setKingdomDetails(prev => ({ ...prev, [myKingdom.id]: details })))
+                .catch(() => {});
+            }
           }
         } catch (error) {
           console.error('Error loading kingdoms:', error);
+        }
+        // Load current campaign day
+        try {
+          const dayData = await campaignAPI.getCurrentDay(currentCampaign.campaign.id);
+          setCurrentDay(dayData.current_day);
+        } catch {
+          // column may not exist yet (pre-migration), default to 1
         }
       }
     };
@@ -1158,7 +1214,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error creating battle:', error);
-      alert('Failed to create battle');
+      toast('Failed to create battle');
     }
   };
 
@@ -1193,7 +1249,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error deleting character field:', error);
-      alert('Failed to delete field');
+      toast('Failed to delete field');
     }
     setDeleteCharacterFieldModal({ isOpen: false, characterId: null, field: '', fieldLabel: '' });
   };
@@ -1228,7 +1284,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error saving character field:', error);
-      alert('Failed to save field');
+      toast('Failed to save field');
     }
     setEditCharacterFieldModal({ isOpen: false, characterId: null, field: '', fieldLabel: '', value: '' });
   };
@@ -1267,40 +1323,37 @@ const CampaignView: React.FC = () => {
         setToastMessage(`Journal entry "${createdEntry.title}" created!`);
         setTimeout(() => setToastMessage(null), 3000);
       } else {
-        alert('Failed to create journal entry');
+        toast('Failed to create journal entry');
       }
     } catch (error) {
       console.error('Error creating journal entry:', error);
-      alert('Failed to create journal entry');
+      toast('Failed to create journal entry');
     }
   };
 
-  const handleDeleteJournalEntry = async (entryId: number) => {
-    if (!currentCampaign || !window.confirm('Are you sure you want to delete this journal entry?')) return;
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/campaigns/${currentCampaign.campaign.id}/journals/${entryId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}`
+  const handleDeleteJournalEntry = (entryId: number) => {
+    if (!currentCampaign) return;
+    setPendingConfirm({ msg: 'Delete this journal entry?', onYes: async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/campaigns/${currentCampaign.campaign.id}/journals/${entryId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          setJournalEntries(prev => prev.filter(e => e.id !== entryId));
+          setShowViewJournalModal(false);
+          setSelectedJournalEntry(null);
+          toast('Journal entry deleted');
+        } else {
+          toast('Failed to delete journal entry');
         }
-      });
-
-      if (response.ok) {
-        setJournalEntries(prev => prev.filter(e => e.id !== entryId));
-        setShowViewJournalModal(false);
-        setSelectedJournalEntry(null);
-        setToastMessage('Journal entry deleted');
-        setTimeout(() => setToastMessage(null), 3000);
-      } else {
-        alert('Failed to delete journal entry');
+      } catch (error) {
+        console.error('Error deleting journal entry:', error);
+        toast('Failed to delete journal entry');
       }
-    } catch (error) {
-      console.error('Error deleting journal entry:', error);
-      alert('Failed to delete journal entry');
-    }
+    }});
   };
 
   const handleToggleMonsterVisibility = async (monsterId: number) => {
@@ -1311,21 +1364,21 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error toggling monster visibility:', error);
-      alert('Failed to update monster visibility');
+      toast('Failed to update monster visibility');
     }
   };
 
-  const handleDeleteMonster = async (monsterId: number) => {
-    if (!window.confirm('Delete this monster from the encyclopedia?')) return;
-    try {
-      await monsterAPI.deleteMonster(monsterId);
-      setMonsters(prev => prev.filter(m => m.id !== monsterId));
-      setToastMessage('Monster deleted');
-      setTimeout(() => setToastMessage(null), 3000);
-    } catch (error) {
-      console.error('Error deleting monster:', error);
-      alert('Failed to delete monster');
-    }
+  const handleDeleteMonster = (monsterId: number) => {
+    setPendingConfirm({ msg: 'Delete this monster from the encyclopedia?', onYes: async () => {
+      try {
+        await monsterAPI.deleteMonster(monsterId);
+        setMonsters(prev => prev.filter(m => m.id !== monsterId));
+        toast('Monster deleted');
+      } catch (error) {
+        console.error('Error deleting monster:', error);
+        toast('Failed to delete monster');
+      }
+    }});
   };
 
   // Helper function to format journal entry text with bold, italic, and reference styling
@@ -1415,7 +1468,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error adding skill:', error);
-      alert('Failed to add skill');
+      toast('Failed to add skill');
     }
   };
 
@@ -1434,22 +1487,21 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error creating skill:', error);
-      alert('Failed to create skill');
+      toast('Failed to create skill');
     }
   };
 
-  const handleRemoveSkill = async (characterId: number, skillId: number) => {
-    if (!window.confirm('Remove this skill from the character?')) return;
-    
-    try {
-      await skillAPI.removeSkillFromCharacter(characterId, skillId);
-      await loadCharacterSkills(characterId);
-      setToastMessage('Skill removed');
-      setTimeout(() => setToastMessage(null), 3000);
-    } catch (error) {
-      console.error('Error removing skill:', error);
-      alert('Failed to remove skill');
-    }
+  const handleRemoveSkill = (characterId: number, skillId: number) => {
+    setPendingConfirm({ msg: 'Remove this skill from the character?', onYes: async () => {
+      try {
+        await skillAPI.removeSkillFromCharacter(characterId, skillId);
+        await loadCharacterSkills(characterId);
+        toast('Skill removed');
+      } catch (error) {
+        console.error('Error removing skill:', error);
+        toast('Failed to remove skill');
+      }
+    }});
   };
 
   // Ability Score Management Functions
@@ -1467,7 +1519,7 @@ const CampaignView: React.FC = () => {
 
       // Clamp between 1 and 20 (standard D&D rules)
       if (newScore < 1 || newScore > 20) {
-        alert('Ability scores must be between 1 and 20');
+        toast('Ability scores must be between 1 and 20');
         return;
       }
 
@@ -1517,7 +1569,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error updating ability:', error);
-      alert('Failed to update ability score');
+      toast('Failed to update ability score');
     }
   };
 
@@ -1532,7 +1584,7 @@ const CampaignView: React.FC = () => {
       const newAC = currentAC + increment;
 
       if (newAC < 1 || newAC > 30) {
-        alert('Armor Class must be between 1 and 30');
+        toast('Armor Class must be between 1 and 30');
         return;
       }
 
@@ -1557,7 +1609,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error updating armor class:', error);
-      alert('Failed to update armor class');
+      toast('Failed to update armor class');
     }
   };
 
@@ -1571,7 +1623,7 @@ const CampaignView: React.FC = () => {
       const newSpeed = currentSpeed + increment;
 
       if (newSpeed < 0 || newSpeed > 120) {
-        alert('Movement Speed must be between 0 and 120');
+        toast('Movement Speed must be between 0 and 120');
         return;
       }
 
@@ -1589,7 +1641,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error updating movement speed:', error);
-      alert('Failed to update movement speed');
+      toast('Failed to update movement speed');
     }
   };
 
@@ -1646,7 +1698,7 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error toggling skill proficiency:', error);
-      alert('Failed to update skill proficiency');
+      toast('Failed to update skill proficiency');
     }
   };
 
@@ -1686,14 +1738,14 @@ const CampaignView: React.FC = () => {
       setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error toggling skill expertise:', error);
-      alert('Failed to update skill expertise');
+      toast('Failed to update skill expertise');
     }
   };
 
   // Experience Management Functions
   const handleGrantExperience = async () => {
     if (!currentCampaign || selectedCharactersForExp.length === 0 || expAmount <= 0) {
-      alert('Please select at least one character and enter a valid EXP amount');
+      toast('Please select at least one character and enter a valid EXP amount');
       return;
     }
 
@@ -1705,7 +1757,7 @@ const CampaignView: React.FC = () => {
       setExpAmount(100);
     } catch (error) {
       console.error('Error granting experience:', error);
-      alert('Failed to grant experience');
+      toast('Failed to grant experience');
     }
   };
 
@@ -1725,7 +1777,7 @@ const CampaignView: React.FC = () => {
       setShowLevelUpModal(true);
     } catch (error) {
       console.error('Error getting level-up info:', error);
-      alert('Failed to get level-up information');
+      toast('Failed to get level-up information');
     }
   };
 
@@ -1772,7 +1824,7 @@ const CampaignView: React.FC = () => {
       await loadCharacterSkills(selectedCharacter);
     } catch (error) {
       console.error('Error leveling up:', error);
-      alert('Failed to level up character');
+      toast('Failed to level up character');
     }
   };
 
@@ -1970,7 +2022,7 @@ const CampaignView: React.FC = () => {
       setShowAddItemModal(false);
     } catch (error) {
       console.error('Error adding item to inventory:', error);
-      alert('Failed to add item to inventory');
+      toast('Failed to add item to inventory');
     }
   };
 
@@ -1983,7 +2035,7 @@ const CampaignView: React.FC = () => {
       loadEquippedItems(characterId);
     } catch (error) {
       console.error('Error removing item from inventory:', error);
-      alert('Failed to remove item from inventory');
+      toast('Failed to remove item from inventory');
     }
   };
 
@@ -1992,7 +2044,7 @@ const CampaignView: React.FC = () => {
     try {
       // Validate required fields
       if (!customItemData.item_name || !customItemData.description) {
-        alert('Item name and description are required');
+        toast('Item name and description are required');
         return;
       }
 
@@ -2034,7 +2086,7 @@ const CampaignView: React.FC = () => {
       setDamageDie(8);
     } catch (error) {
       console.error('Error creating custom item:', error);
-      alert('Failed to create custom item');
+      toast('Failed to create custom item');
     }
   };
 
@@ -2899,12 +2951,55 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('kingdomActivated', (data: { kingdom: Kingdom }) => {
         console.log('👑 [kingdomActivated] received:', data, '| current user id:', user?.id);
-        setKingdoms(prev => {
-          const without = prev.filter(k => k.id !== data.kingdom.id);
-          return [...without, data.kingdom];
-        });
+        // Reload full kingdoms list (includes fiefs)
+        if (currentCampaign) {
+          kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
+            .then(fetched => setKingdoms(fetched))
+            .catch(() => {});
+        }
+        // Load full details for this kingdom (buildings, events, etc.)
+        kingdomAPI.getKingdomDetails(data.kingdom.id)
+          .then(details => setKingdomDetails(prev => ({ ...prev, [data.kingdom.id]: details })))
+          .catch(() => {});
         if (user && Number(data.kingdom.player_id) === Number(user.id)) {
           setHasKingdomAccess(true);
+        }
+      });
+
+      newSocket.on('kingdomDataChanged', (data: { campaignId: number; kingdomId?: number }) => {
+        if (!currentCampaign || Number(data.campaignId) !== Number(currentCampaign.campaign.id)) return;
+        kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
+          .then(fetched => setKingdoms(fetched))
+          .catch(() => {});
+        if (data.kingdomId) {
+          kingdomAPI.getKingdomDetails(data.kingdomId)
+            .then(details => setKingdomDetails(prev => ({ ...prev, [data.kingdomId!]: details })))
+            .catch(() => {});
+        }
+      });
+
+      newSocket.on('kingdomDeleted', (data: { campaignId: number; kingdomId: number }) => {
+        if (!currentCampaign || Number(data.campaignId) !== Number(currentCampaign.campaign.id)) return;
+        setKingdoms(prev => prev.filter(k => k.id !== data.kingdomId));
+        setKingdomDetails(prev => { const next = { ...prev }; delete next[data.kingdomId]; return next; });
+        setExpandedKingdomId(prev => prev === data.kingdomId ? null : prev);
+      });
+
+      newSocket.on('dayAdvanced', (data: AdvanceDaysSummary & { campaignId: number }) => {
+        setCurrentDay(data.newDay);
+        // Refresh kingdoms list and all loaded kingdom details
+        if (currentCampaign) {
+          kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
+            .then(fetched => {
+              setKingdoms(fetched);
+              // Refresh full details for every kingdom already in detail cache
+              fetched.forEach(k => {
+                kingdomAPI.getKingdomDetails(k.id)
+                  .then(details => setKingdomDetails(prev => ({ ...prev, [k.id]: details })))
+                  .catch(() => {});
+              });
+            })
+            .catch(() => {});
         }
       });
 
@@ -3072,7 +3167,7 @@ const CampaignView: React.FC = () => {
           }
         } catch (error) {
           console.error('Error equipping item:', error);
-          alert('Cannot equip this item in this slot. Check item type compatibility.');
+          toast('Cannot equip this item in this slot. Check item type compatibility.');
         }
       }
       
@@ -3146,7 +3241,7 @@ const CampaignView: React.FC = () => {
           }
         } catch (error) {
           console.error('Error equipping item:', error);
-          alert('Cannot equip this item in this slot. Check item type compatibility.');
+          toast('Cannot equip this item in this slot. Check item type compatibility.');
         }
       }
       
@@ -4202,8 +4297,21 @@ const CampaignView: React.FC = () => {
           <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''} ${characterListCollapsed ? 'collapsed' : ''}`}>
             <div className="glass-panel" style={{ position: 'sticky', top: '1rem', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               {/* DM Controls */}
+              <div style={{ textAlign: 'center', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: '0.05em' }}>📅 Day {currentDay}</span>
+                {user?.role === 'Dungeon Master' && (
+                  <button onClick={() => setPendingConfirm({ msg: 'Reset the campaign day back to Day 1? This cannot be undone.', onYes: async () => {
+                    try {
+                      const d = await campaignAPI.resetDay(currentCampaign!.campaign.id);
+                      setCurrentDay(d.current_day);
+                    } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed to reset day'); setTimeout(() => setToastMessage(null), 3000); }
+                  }})}
+                    style={{ padding: '1px 6px', fontSize: '0.65rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '3px', color: '#f87171', cursor: 'pointer' }}>↺ Reset</button>
+                )}
+              </div>
               {user?.role === 'Dungeon Master' && (
-                <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     onClick={() => setShowGrantExpModal(true)}
                     className="btn btn-primary"
@@ -4224,16 +4332,16 @@ const CampaignView: React.FC = () => {
                       flex: 1,
                       padding: '0.5rem',
                       fontSize: '0.75rem',
-                      background: 'rgba(100, 116, 139, 0.3)',
-                      border: '2px solid rgba(100, 116, 139, 0.5)',
-                      color: '#94a3b8',
-                      cursor: 'not-allowed',
-                      opacity: 0.6
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      border: '2px solid rgba(56, 189, 248, 0.5)',
+                      color: '#7dd3fc',
+                      cursor: 'pointer',
                     }}
-                    disabled
+                    onClick={() => setShowRestModal(true)}
                   >
                     💤 Rest
                   </button>
+                  </div>
                 </div>
               )}
 
@@ -5844,20 +5952,11 @@ const CampaignView: React.FC = () => {
                         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
                           {/* End Battle Button - Always available for DM */}
                           <button
-                            onClick={() => {
-                              if (window.confirm('⚠️ Are you sure you want to cancel this battle? All progress will be lost and participants will be removed.')) {
-                                battleAPI.updateStatus(activeBattle.id, 'cancelled')
-                                  .then(() => {
-                                    setActiveBattle(null);
-                                    setToastMessage('Battle cancelled successfully.');
-                                    setTimeout(() => setToastMessage(null), 3000);
-                                  })
-                                  .catch(error => {
-                                    console.error('Error cancelling battle:', error);
-                                    alert('Failed to cancel battle');
-                                  });
-                              }
-                            }}
+                            onClick={() => setPendingConfirm({ msg: '⚠️ Cancel this battle? All progress will be lost and participants will be removed.', onYes: () => {
+                              battleAPI.updateStatus(activeBattle.id, 'cancelled')
+                                .then(() => { setActiveBattle(null); toast('Battle cancelled successfully.'); })
+                                .catch(error => { console.error('Error cancelling battle:', error); toast('Failed to cancel battle'); });
+                            }})}
                             style={{
                               padding: '0.5rem 1rem',
                               background: 'rgba(100, 100, 120, 0.2)',
@@ -8223,55 +8322,1338 @@ const CampaignView: React.FC = () => {
             )}
 
             {/* Kingdom Tab */}
-            {campaignTab === 'kingdom' && (
-              <div className="glass-panel">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>👑 Kingdoms</h5>
-                  {user?.role === 'Dungeon Master' && (
-                    <button
-                      onClick={() => setShowGrantKingdomModal(true)}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#f59e0b',
-                        color: '#000',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
-                    >
-                      + Create a New Kingdom
-                    </button>
+            {campaignTab === 'kingdom' && (() => {
+              const isDM = user?.role === 'Dungeon Master';
+              const myKingdom = !isDM ? kingdoms.find(k => Number(k.player_id) === Number(user?.id)) : null;
+              const activeKingdomId = isDM ? expandedKingdomId : myKingdom?.id ?? null;
+              const activeKingdom = kingdoms.find(k => k.id === activeKingdomId) ?? kingdomDetails[activeKingdomId ?? 0];
+              const fullKingdom: Kingdom | undefined = kingdomDetails[activeKingdomId ?? 0] ?? activeKingdom;
+              const fiefs: Fief[] = (fullKingdom?.fiefs as Fief[]) ?? [];
+              const activeFief = fiefs.find(f => f.id === selectedFiefId) ?? fiefs[0] ?? null;
+
+              const loadKingdomFull = async (kId: number) => {
+                try {
+                  const data = await kingdomAPI.getKingdomDetails(kId);
+                  setKingdomDetails(prev => ({ ...prev, [kId]: data }));
+                  if (!selectedFiefId && data.fiefs?.length) setSelectedFiefId(data.fiefs[0].id);
+                } catch { /* ignore */ }
+              };
+
+              const refreshActiveFief = async (fiefId: number) => {
+                if (!activeKingdomId) return;
+                await loadKingdomFull(activeKingdomId);
+                // reload event log for this fief
+                try {
+                  const log = await fiefAPI.getEventLog(fiefId);
+                  setFiefEventLogs(prev => ({ ...prev, [fiefId]: log.entries }));
+                } catch { /* ignore */ }
+              };
+
+              const canManage = (k: Kingdom | undefined) => isDM || (k && Number(k.player_id) === Number(user?.id));
+
+              const resTile = (icon: string, label: string, val: number, color: string) => (
+                <div key={label} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.6rem 0.8rem', border: `1px solid ${color}40`, minWidth: '70px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.2rem' }}>{icon}</div>
+                  <div style={{ color, fontWeight: 'bold', fontSize: '0.9rem' }}>{val}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.65rem', textTransform: 'uppercase' }}>{label}</div>
+                </div>
+              );
+
+              const availableBuildings = activeFief
+                ? BUILDING_CATALOGUE.filter(b => b.minFiefTier <= (activeFief.tier ?? 1))
+                : [];
+
+              const selectedCatalogueEntry = availableBuildings.find(b => b.id === selectedBuildingCatalogueId) ?? null;
+
+              const upgradeCostForLevel = (entry: BuildingCatalogueEntry, currentLevel: number) => {
+                const factor = Math.pow(currentLevel + 1, 1.5);
+                const result: Record<string, number> = {};
+                for (const [k, v] of Object.entries(entry.baseCost)) {
+                  result[k] = Math.ceil((v as number) * factor);
+                }
+                return result;
+              };
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {/* ── Header row ── */}
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>👑 Kingdoms</h5>
+                    <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>📅 Day {currentDay}</span>
+                    {isDM && (
+                      <button onClick={() => setShowGrantKingdomModal(true)} style={{ marginLeft: 'auto', padding: '6px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.5)', borderRadius: '6px', color: '#fbbf24', cursor: 'pointer', fontSize: '0.8rem' }}>+ New Kingdom</button>
+                    )}
+                  </div>
+
+                  {/* ── DM: Kingdom cards overview ── */}
+                  {isDM && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
+                      {kingdoms.length === 0 && <p style={{ color: '#64748b', gridColumn: '1/-1', textAlign: 'center', padding: '2rem', fontStyle: 'italic' }}>No kingdoms yet. Grant one via "New Kingdom".</p>}
+                      {kingdoms.map(k => (
+                        <div
+                          key={k.id}
+                          onClick={() => { setExpandedKingdomId(k.id === expandedKingdomId ? null : k.id); setSelectedFiefId(null); loadKingdomFull(k.id); }}
+                          style={{ background: expandedKingdomId === k.id ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.1)', border: `1px solid ${expandedKingdomId === k.id ? 'rgba(212,193,156,0.5)' : 'rgba(255,255,255,0.2)'}`, borderRadius: '10px', padding: '1rem', cursor: 'pointer', transition: 'all 0.2s', position: 'relative', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                              <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.95rem' }}>👑 {k.name ?? '(Unnamed)'}</div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginTop: '2px' }}>⚔️ {k.player_name}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                              <span style={{ background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '4px', padding: '2px 6px', fontSize: '0.7rem', color: 'var(--text-gold)' }}>Tier {k.tier ?? 1}: {TIER_NAMES[k.tier ?? 1]}</span>
+                              <button onClick={(e) => { e.stopPropagation(); setPendingConfirm({ msg: `Delete "${k.name ?? 'this kingdom'}"? This cannot be undone.`, onYes: async () => {
+                                try {
+                                  await kingdomAPI.deleteKingdom(k.id);
+                                  if (expandedKingdomId === k.id) { setExpandedKingdomId(null); setSelectedFiefId(null); }
+                                  const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign!.campaign.id);
+                                  setKingdoms(fetched);
+                                } catch(e: any) { toast(e?.response?.data?.error ?? 'Failed to delete'); }
+                              }}); }} style={{ padding: '2px 7px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '4px', color: '#f87171', cursor: 'pointer', fontSize: '0.72rem' }}>🗑</button>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                            {(() => {
+                              const fiefs: Fief[] = (kingdomDetails[k.id]?.fiefs as Fief[] | undefined) ?? (k.fiefs as Fief[] | undefined) ?? [];
+                              const total = fiefs.reduce((acc, f) => ({
+                                gold: acc.gold + (f.resources?.gold ?? 0),
+                                food: acc.food + (f.resources?.food ?? 0),
+                                wood: acc.wood + (f.resources?.wood ?? 0),
+                                stone: acc.stone + (f.resources?.stone ?? 0),
+                              }), { gold: 0, food: 0, wood: 0, stone: 0 });
+                              return (<>
+                                {resTile('💰', 'Gold', total.gold, '#fbbf24')}
+                                {resTile('🌾', 'Food', total.food, '#86efac')}
+                                {resTile('🪵', 'Wood', total.wood, '#a78bfa')}
+                                {resTile('🪨', 'Stone', total.stone, '#94a3b8')}
+                              </>);
+                            })()}
+                          </div>
+                          <div style={{ marginTop: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>👥 {k.population ?? 0} pop · {(k.fiefs as Fief[] | undefined)?.length ?? 0} fief(s)</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── Player: no kingdom message ── */}
+                  {!isDM && !myKingdom && (
+                    <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b', fontStyle: 'italic' }}>
+                      👑 You haven&apos;t been granted a kingdom yet.
+                    </div>
+                  )}
+
+                  {/* ── Kingdom Detail Panel ── */}
+                  {activeKingdom && (
+                    <div className="glass-panel" style={{ border: '1px solid rgba(212,193,156,0.3)', padding: '1.25rem' }}>
+                      {/* Kingdom header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>👑 {activeKingdom.name}</h5>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <span style={{ background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '4px', padding: '3px 8px', fontSize: '0.75rem', color: 'var(--text-gold)' }}>Tier {activeKingdom.tier ?? 1}: {TIER_NAMES[activeKingdom.tier ?? 1]}</span>
+                          <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>⚔️ {activeKingdom.player_name}</span>
+                          {isDM && (
+                            <>
+                              <button onClick={async () => { try { await kingdomAPI.upgradeTier(activeKingdom.id); await loadKingdomFull(activeKingdom.id); const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign!.campaign.id); setKingdoms(fetched); } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }}}
+                                style={{ padding: '3px 10px', fontSize: '0.72rem', background: 'rgba(212,193,156,0.1)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '4px', color: 'var(--text-gold)', cursor: 'pointer' }}>▲ Upgrade Tier</button>
+                              <button onClick={() => setPendingConfirm({ msg: `Delete "${activeKingdom.name ?? 'this kingdom'}"? This cannot be undone.`, onYes: async () => {
+                                try {
+                                  await kingdomAPI.deleteKingdom(activeKingdom.id);
+                                  setExpandedKingdomId(null); setSelectedFiefId(null);
+                                  const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign!.campaign.id);
+                                  setKingdoms(fetched);
+                                } catch(e: any) { toast(e?.response?.data?.error ?? 'Failed to delete'); }
+                              }})} style={{ padding: '3px 10px', fontSize: '0.72rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '4px', color: '#f87171', cursor: 'pointer' }}>🗑 Delete Kingdom</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── Horizontal fief pills ── */}
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                        {fiefs.map(f => {
+                          const underConstruction = (f.construction_days_remaining ?? 0) > 0;
+                          const isActivePill = selectedFiefId === f.id || (!selectedFiefId && activeFief?.id === f.id);
+                          return (
+                            <button key={f.id}
+                              onClick={() => {
+                                setSelectedFiefId(f.id);
+                                setActiveFiefSubTab('overview');
+                                if (!underConstruction) {
+                                  fiefAPI.getEventLog(f.id).then(l => setFiefEventLogs(prev => ({ ...prev, [f.id]: l.entries }))).catch(() => {});
+                                }
+                              }}
+                              style={{ padding: '0.35rem 0.85rem', borderRadius: '20px', cursor: 'pointer', fontSize: '0.82rem', background: isActivePill ? 'rgba(212,193,156,0.25)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isActivePill ? 'rgba(212,193,156,0.6)' : 'rgba(255,255,255,0.12)'}`, color: isActivePill ? 'var(--text-gold)' : '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
+                              {f.is_capital ? '🏰' : '🏘️'} {f.name}
+                              {underConstruction && <span style={{ fontSize: '0.65rem', color: '#fbbf24', background: 'rgba(251,191,36,0.15)', borderRadius: '3px', padding: '0 3px' }}>⏳{f.construction_days_remaining}d</span>}
+                              {!underConstruction && (f.tier_upgrade_days_remaining ?? 0) > 0 && <span style={{ fontSize: '0.65rem', color: '#a78bfa' }}>▲</span>}
+                            </button>
+                          );
+                        })}
+                        {canManage(activeKingdom) && (
+                          <button onClick={() => setShowAddFiefModal(true)} style={{ padding: '0.35rem 0.7rem', borderRadius: '20px', cursor: 'pointer', fontSize: '0.75rem', background: 'transparent', border: '1px dashed rgba(212,193,156,0.3)', color: '#64748b', whiteSpace: 'nowrap' }}>+ Fief</button>
+                        )}
+                      </div>
+
+                      {/* Fief detail */}
+                      {activeFief ? (
+                        (activeFief.construction_days_remaining ?? 0) > 0 ? (
+                          /* Under-construction screen */
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '2rem', textAlign: 'center' }}>
+                            <div style={{ fontSize: '3rem' }}>⏳</div>
+                            <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '1.1rem' }}>{activeFief.is_capital ? '🏰' : '🏘️'} {activeFief.name}</div>
+                            <div style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: '10px', padding: '1rem 1.5rem' }}>
+                              <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '1.5rem' }}>{activeFief.construction_days_remaining} {activeFief.construction_days_remaining === 1 ? 'day' : 'days'}</div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '0.25rem' }}>until camp is established</div>
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: '0.78rem', maxWidth: '260px' }}>Adventurers are clearing and fortifying the site. Advance days to complete construction.</div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                            {/* Fief header */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <h6 style={{ color: 'var(--text-gold)', margin: 0 }}>{activeFief.is_capital ? '🏰' : '🏘️'} {activeFief.name}</h6>
+                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <span style={{ background: 'rgba(212,193,156,0.1)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '4px', padding: '2px 7px', fontSize: '0.7rem', color: 'var(--text-gold)' }}>Tier {activeFief.tier ?? 1}: {TIER_NAMES[activeFief.tier ?? 1]}</span>
+                                {canManage(activeKingdom) && (activeFief.tier_upgrade_days_remaining ?? 0) > 0 ? (
+                                  <span style={{ padding: '2px 8px', fontSize: '0.7rem', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '4px', color: '#fbbf24' }}>⏳ Upgrading… {activeFief.tier_upgrade_days_remaining}d</span>
+                                ) : canManage(activeKingdom) && (activeFief.tier ?? 1) < 10 ? (
+                                  <button onClick={() => setShowUpgradeModal(true)} style={{ padding: '2px 8px', fontSize: '0.7rem', background: 'rgba(212,193,156,0.1)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '4px', color: 'var(--text-gold)', cursor: 'pointer' }}>▲ Upgrade Fief</button>
+                                ) : null}
+                                {isDM && (
+                                  <button onClick={() => setShowDisasterModal(true)} style={{ padding: '2px 8px', fontSize: '0.7rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', color: '#f87171', cursor: 'pointer' }}>⚠️ Disaster</button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Resources */}
+                            <div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Resources {isDM && <span style={{ color: '#64748b', fontSize: '0.65rem', marginLeft: '4px' }}>(click tile to edit)</span>}</div>
+                              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                {(['gold','food','wood','stone'] as const).map((key, i) => {
+                                  const colours = ['#fbbf24','#86efac','#a78bfa','#94a3b8'];
+                                  const icons = ['💰','🌾','🪵','🪨'];
+                                  const val = activeFief.resources?.[key] ?? 0;
+                                  const fiefBuildsForCap = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter((b: FiefBuilding) => b.is_complete && !b.is_upgrade);
+                                  const storageCap = 100 + fiefBuildsForCap.filter((b: FiefBuilding) => (b as any).building_type === 'basic_storage').reduce((sum: number, b: FiefBuilding) => sum + (b.level || 1) * 200, 0);
+                                  const capPct = Math.min(1, val / storageCap);
+                                  return (
+                                    <div key={key}
+                                      onClick={isDM && editResourceKey !== key ? () => { setEditResourceKey(key); setEditResourceVal(String(val)); } : undefined}
+                                      style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.6rem 0.8rem', border: `1px solid ${editResourceKey === key ? colours[i] + '90' : colours[i] + '40'}`, minWidth: '70px', textAlign: 'center', cursor: isDM && editResourceKey !== key ? 'pointer' : 'default', transition: 'border-color 0.15s' }}>
+                                      {editResourceKey === key && isDM
+                                        ? <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <div style={{ color: colours[i], fontSize: '0.6rem', textTransform: 'uppercase' }}>{key}</div>
+                                            <input autoFocus type='number' min='0' value={editResourceVal} onChange={e => setEditResourceVal(e.target.value)}
+                                              onKeyDown={async e => {
+                                                if (e.key === 'Enter') {
+                                                  const n = parseInt(editResourceVal);
+                                                  if (!isNaN(n) && n >= 0) { try { await fiefAPI.updateResources(activeFief.id, { ...(activeFief.resources ?? {}), [key]: n }); refreshActiveFief(activeFief.id); setEditResourceKey(null); } catch(err: any) { toast(err?.response?.data?.error ?? 'Failed'); } }
+                                                } else if (e.key === 'Escape') setEditResourceKey(null);
+                                              }}
+                                              style={{ width: '100%', padding: '3px 5px', background: 'rgba(0,0,0,0.7)', border: `1px solid ${colours[i]}70`, borderRadius: '4px', color: 'white', fontSize: '0.88rem', textAlign: 'center' }} />
+                                            <div style={{ display: 'flex', gap: '3px' }}>
+                                              <button onClick={async () => {
+                                                const n = parseInt(editResourceVal);
+                                                if (!isNaN(n) && n >= 0) { try { await fiefAPI.updateResources(activeFief.id, { ...(activeFief.resources ?? {}), [key]: n }); refreshActiveFief(activeFief.id); setEditResourceKey(null); } catch(err: any) { toast(err?.response?.data?.error ?? 'Failed'); } }
+                                              }} style={{ flex: 1, padding: '2px', background: colours[i] + '22', border: `1px solid ${colours[i]}60`, borderRadius: '3px', color: colours[i], cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>✓</button>
+                                              <button onClick={() => setEditResourceKey(null)} style={{ padding: '2px 5px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '3px', color: '#64748b', cursor: 'pointer', fontSize: '0.7rem' }}>✕</button>
+                                            </div>
+                                          </div>
+                                        : <>
+                                            <div style={{ fontSize: '1.2rem' }}>{icons[i]}</div>
+                                            <div style={{ color: colours[i], fontWeight: 'bold', fontSize: '0.9rem' }}>{val}</div>
+                                            <div style={{ color: '#475569', fontSize: '0.6rem' }}>{storageCap}</div>
+                                            <div style={{ height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,0.08)', marginTop: '4px', overflow: 'hidden' }}>
+                                              <div style={{ height: '100%', width: `${capPct * 100}%`, background: capPct > 0.9 ? '#f87171' : colours[i], borderRadius: '2px', transition: 'width 0.3s' }} />
+                                            </div>
+                                            <div style={{ color: '#94a3b8', fontSize: '0.65rem', textTransform: 'uppercase', marginTop: '2px' }}>{key}</div>
+                                          </>
+                                      }
+                                    </div>
+                                  );
+                                })}
+                                {/* Faith tile */}
+                                {(() => {
+                                  const faith = Math.round((activeFief as any).faith ?? 0);
+                                  return (
+                                    <div
+                                      onClick={isDM && editResourceKey !== 'faith' ? () => { setEditResourceKey('faith'); setEditResourceVal(String(faith)); } : undefined}
+                                      style={{ background: 'rgba(232,121,249,0.06)', borderRadius: '8px', padding: '0.6rem 0.8rem', border: `1px solid ${editResourceKey === 'faith' ? 'rgba(232,121,249,0.7)' : 'rgba(232,121,249,0.3)'}`, minWidth: '70px', textAlign: 'center', cursor: isDM && editResourceKey !== 'faith' ? 'pointer' : 'default' }}>
+                                      {editResourceKey === 'faith' && isDM
+                                        ? <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <div style={{ color: '#e879f9', fontSize: '0.6rem', textTransform: 'uppercase' }}>faith %</div>
+                                            <input autoFocus type='number' min='0' max='100' value={editResourceVal} onChange={e => setEditResourceVal(e.target.value)}
+                                              onKeyDown={async e => {
+                                                if (e.key === 'Enter') {
+                                                  const n = Math.max(0, Math.min(100, parseInt(editResourceVal)));
+                                                  if (!isNaN(n)) { try { await fiefAPI.updateFaith(activeFief.id, n); refreshActiveFief(activeFief.id); setEditResourceKey(null); } catch { toast('Failed'); } }
+                                                } else if (e.key === 'Escape') setEditResourceKey(null);
+                                              }}
+                                              style={{ width: '100%', padding: '3px 5px', background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(232,121,249,0.7)', borderRadius: '4px', color: 'white', fontSize: '0.88rem', textAlign: 'center' }} />
+                                            <div style={{ display: 'flex', gap: '3px' }}>
+                                              <button onClick={async () => {
+                                                const n = Math.max(0, Math.min(100, parseInt(editResourceVal)));
+                                                if (!isNaN(n)) { try { await fiefAPI.updateFaith(activeFief.id, n); refreshActiveFief(activeFief.id); setEditResourceKey(null); } catch { toast('Failed'); } }
+                                              }} style={{ flex: 1, padding: '2px', background: 'rgba(232,121,249,0.2)', border: '1px solid rgba(232,121,249,0.5)', borderRadius: '3px', color: '#e879f9', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>✓</button>
+                                              <button onClick={() => setEditResourceKey(null)} style={{ padding: '2px 5px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '3px', color: '#64748b', cursor: 'pointer', fontSize: '0.7rem' }}>✕</button>
+                                            </div>
+                                          </div>
+                                        : <>
+                                            <div style={{ fontSize: '1.2rem' }}>🙏</div>
+                                            <div style={{ color: '#e879f9', fontWeight: 'bold', fontSize: '0.9rem' }}>{faith}%</div>
+                                            <div style={{ color: '#475569', fontSize: '0.6rem' }}>100%</div>
+                                            <div style={{ height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,0.08)', marginTop: '4px', overflow: 'hidden' }}>
+                                              <div style={{ height: '100%', width: `${faith}%`, background: '#e879f9', borderRadius: '2px', transition: 'width 0.3s' }} />
+                                            </div>
+                                            <div style={{ color: '#94a3b8', fontSize: '0.65rem', textTransform: 'uppercase', marginTop: '2px' }}>Faith</div>
+                                          </>
+                                      }
+                                    </div>
+                                  );
+                                })()}
+                                {/* Garrison tile — sits in resources row, 3× the width of a normal resource tile */}
+                                {canManage(activeKingdom) && (() => {
+                                  const garrison: FiefGarrison = (activeFief as any).garrison ?? {};
+                                  const tq: FiefTraining[] = (activeFief as any).training_queue ?? [];
+                                  const total = Object.values(garrison).reduce((s, v) => s + (v as number), 0);
+                                  return (
+                                    <div
+                                      onClick={() => setShowGarrisonModal(true)}
+                                      style={{ background: 'rgba(248,113,113,0.07)', borderRadius: '8px', padding: '0.6rem 0.8rem', border: '1px solid rgba(248,113,113,0.35)', minWidth: '210px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s' }}
+                                      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(248,113,113,0.65)'; (e.currentTarget as HTMLDivElement).style.background = 'rgba(248,113,113,0.13)'; }}
+                                      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(248,113,113,0.35)'; (e.currentTarget as HTMLDivElement).style.background = 'rgba(248,113,113,0.07)'; }}>
+                                      <div style={{ fontSize: '1.2rem' }}>⚔️</div>
+                                      <div style={{ color: '#f87171', fontWeight: 'bold', fontSize: '0.9rem' }}>{total > 0 ? total : '—'}</div>
+                                      <div style={{ color: '#475569', fontSize: '0.6rem' }}>troops</div>
+                                      <div style={{ height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,0.08)', marginTop: '4px', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: total > 0 ? '100%' : '0%', background: '#f87171', borderRadius: '2px', transition: 'width 0.3s' }} />
+                                      </div>
+                                      <div style={{ color: '#94a3b8', fontSize: '0.65rem', textTransform: 'uppercase', marginTop: '2px' }}>
+                                        Garrison{tq.length > 0 && <span style={{ color: '#fbbf24', marginLeft: '4px' }}>🏗️ {tq.length}</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* Sub-tab navigation */}
+                            <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(255,255,255,0.07)', marginBottom: '0.25rem' }}>
+                              {(['overview', 'workers', 'buildings', 'events', 'log'] as const).map(tab => {
+                                const labels: Record<string, string> = { overview: '📊 Overview', workers: '👷 Workers', buildings: '🏗️ Buildings', events: '📢 Events', log: '📋 Log' };
+                                const isActiveSub = activeFiefSubTab === tab;
+                                return (
+                                  <button key={tab} onClick={() => setActiveFiefSubTab(tab)}
+                                    style={{ padding: '0.5rem 0.9rem', background: 'none', border: 'none', borderBottom: isActiveSub ? '2px solid rgba(212,193,156,0.85)' : '2px solid transparent', marginBottom: '-2px', color: isActiveSub ? 'var(--text-gold)' : '#64748b', cursor: 'pointer', fontSize: '0.8rem', fontWeight: isActiveSub ? 'bold' : 'normal', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+                                    {labels[tab]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* ── Overview Sub-tab: Population + Stats ── */}
+                            {activeFiefSubTab === 'overview' && (
+                              <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+                                <div style={{ flex: '1 1 180px', minWidth: '180px' }}>
+                                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Population</div>
+                                  {(() => {
+                                    const ovPop = activeFief.population ?? 0;
+                                    const ovBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade);
+                                    const ovHousingCap = 1000 + ovBuildings.filter(b => (b as any).building_type === 'housing').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).pop_cap ?? 0), 0);
+                                    const ovAtCap = ovPop >= ovHousingCap;
+                                    return (
+                                      <>
+                                        <div style={{ color: '#f1f5f9', fontWeight: 'bold', fontSize: '1.2rem' }}>👥 {ovPop.toLocaleString()}</div>
+                                        <div style={{ color: ovAtCap ? '#f87171' : '#fb923c', fontSize: '0.68rem', marginTop: '2px' }}>
+                                          🏠 Cap: {ovPop.toLocaleString()} / {ovHousingCap.toLocaleString()}{ovAtCap && <span style={{ marginLeft: '4px' }}>⚠ at cap</span>}
+                                        </div>
+                                        {ovAtCap
+                                          ? <div style={{ color: '#f87171', fontSize: '0.68rem', marginTop: '1px' }}>⚠ Growth stunted: ~1% births/day · no migration (over housing cap)</div>
+                                          : <div style={{ color: '#94a3b8', fontSize: '0.68rem', marginTop: '1px' }}>~5% births/person/day · {Math.round(((activeFief.stats?.stability ?? 1) / 10) * 25)}% migration/day</div>
+                                        }
+                                      </>
+                                    );
+                                  })()}
+                                  {isDM && (
+                                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+                                      {[-100,-10,10,100].map(delta => (
+                                        <button key={delta} onClick={async () => {
+                                          const newPop = Math.max(0, (activeFief.population ?? 0) + delta);
+                                          try { await fiefAPI.updatePopulation(activeFief.id, newPop); refreshActiveFief(activeFief.id); }
+                                          catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                        }} style={{ padding: '1px 5px', fontSize: '0.65rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '3px', color: delta < 0 ? '#f87171' : '#86efac', cursor: 'pointer' }}>
+                                          {delta > 0 ? `+${delta}` : delta}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{ flex: '2 1 220px', minWidth: '220px' }}>
+                                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Stats</div>
+                                  {(['economy','military','stability'] as const).map(stat => {
+                                    const colours: Record<string, string> = { economy: '#fbbf24', military: '#f87171', stability: '#86efac' };
+                                    const descs: Record<string, string> = {
+                                      economy:   `+${Math.round(((activeFief.stats?.economy ?? 1) - 1) * 5)}% gold output`,
+                                      military:  `-${Math.round(((activeFief.stats?.military ?? 1) - 1) * 4)}% training time`,
+                                      stability: `+${Math.floor(((activeFief.stats?.stability ?? 1) - 1) / 2)} pop growth/day`,
+                                    };
+                                    const val = activeFief.stats?.[stat as keyof typeof activeFief.stats] ?? 1;
+                                    return (
+                                      <div key={stat} style={{ marginBottom: '0.5rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '2px' }}>
+                                          <span style={{ textTransform: 'capitalize' }}>{stat}</span>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            {isDM && (
+                                              <button onClick={async () => {
+                                                const n = Math.max(1, val - 1);
+                                                await fiefAPI.updateStats(activeFief.id, { ...(activeFief.stats ?? {}), [stat]: n }).catch(() => {});
+                                                refreshActiveFief(activeFief.id);
+                                              }} style={{ padding: '0 5px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '3px', color: '#f87171', cursor: 'pointer', fontSize: '0.7rem', lineHeight: '14px' }}>−</button>
+                                            )}
+                                            <span>{val}/10</span>
+                                            {isDM && (
+                                              <button onClick={async () => {
+                                                const n = Math.min(10, val + 1);
+                                                await fiefAPI.updateStats(activeFief.id, { ...(activeFief.stats ?? {}), [stat]: n }).catch(() => {});
+                                                refreshActiveFief(activeFief.id);
+                                              }} style={{ padding: '0 5px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '3px', color: '#86efac', cursor: 'pointer', fontSize: '0.7rem', lineHeight: '14px' }}>+</button>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px' }}>
+                                          <div style={{ height: '100%', width: `${val * 10}%`, background: colours[stat], borderRadius: '3px', transition: 'width 0.3s' }} />
+                                        </div>
+                                        <div style={{ fontSize: '0.62rem', color: '#475569', marginTop: '2px' }}>{descs[stat]}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ── Workers Sub-tab ── */}
+                            {activeFiefSubTab === 'workers' && (() => {
+                              const pop = activeFief.population ?? 0;
+                              const workable = pop <= 10 ? pop : Math.floor(pop / (1 + 0.25 * Math.log10(pop / 10)));
+                              const assignments = activeFief.worker_assignments ?? { gold: 0, food: 0, wood: 0, stone: 0 };
+                              const totalAssigned = (assignments.gold ?? 0) + (assignments.food ?? 0) + (assignments.wood ?? 0) + (assignments.stone ?? 0);
+                              const fiefBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade);
+                              const fiefTier = activeFief.tier ?? 1;
+                              const yieldPerWorker = (res: string) => 1 + fiefBuildings.reduce((sum, b) => sum + (((b.resource_output as any) ?? {})[res] ?? 0), 0);
+                              // Worker cap scales with tier: each building level contributes 5 × tier slots, so a tier-10 fief gets 10× more worker capacity than tier 1
+                              const maxWorkers = (res: string) => 5 + fiefBuildings.filter(b => (((b.resource_output as any) ?? {})[res] ?? 0) > 0).reduce((sum, b) => sum + (b.level || 1) * 5 * fiefTier, 0);
+                              const housingCap = 1000 + fiefBuildings.filter(b => (b as any).building_type === 'housing').reduce((sum, b) => sum + (((b.resource_output as any) ?? {}).pop_cap ?? 0), 0);
+                              const atHousingCap = pop >= housingCap;
+                              const foodConsumedPerDay = Math.ceil(pop / 10) * 4;
+                              const canAssign = canManage(activeKingdom);
+                              const remaining = workable - totalAssigned;
+                              const updateWorker = async (res: string, delta: number) => {
+                                const cur = (assignments as any)[res] ?? 0;
+                                const max = maxWorkers(res);
+                                const newVal = Math.max(0, Math.min(max, cur + (delta > 0 ? Math.min(delta, remaining) : delta)));
+                                if (newVal === cur) return;
+                                const next = { ...assignments, [res]: newVal };
+                                try { await fiefAPI.updateWorkerAssignments(activeFief.id, next as any); refreshActiveFief(activeFief.id); }
+                                catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                              };
+                              return (
+                                <div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>👷 Worker Assignments</div>
+                                    <div style={{ fontSize: '0.72rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
+                                      <div>
+                                        <span style={{ color: totalAssigned > workable ? '#f87171' : '#86efac', fontWeight: 'bold' }}>{totalAssigned}</span>
+                                        <span style={{ color: '#64748b' }}>{' / '}{workable} workable</span>
+                                        <span style={{ color: '#475569', marginLeft: '5px' }}>({pop} pop)</span>
+                                      </div>
+                                      <div style={{ color: atHousingCap ? '#f87171' : '#fb923c', fontSize: '0.68rem' }}>
+                                        🏠 Pop cap: <span style={{ fontWeight: 'bold' }}>{pop.toLocaleString()}</span><span style={{ color: '#64748b' }}> / {housingCap.toLocaleString()}</span>{atHousingCap && <span style={{ marginLeft: '4px', color: '#f87171' }}>⚠ at cap — growth halved</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    {(['gold','food','wood','stone'] as const).map((res, i) => {
+                                      const colours = ['#fbbf24','#86efac','#a78bfa','#94a3b8'];
+                                      const icons = ['💰','🌾','🪵','🪨'];
+                                      const assigned = (assignments as any)[res] ?? 0;
+                                      const max = maxWorkers(res);
+                                      const yld = yieldPerWorker(res);
+                                      const canAdd = remaining > 0 && assigned < max;
+                                      const producedPerDay = assigned * yld;
+                                      const isFood = res === 'food';
+                                      const netFoodPerDay = isFood ? producedPerDay - foodConsumedPerDay : null;
+                                      return (
+                                        <div key={res} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: '0.3rem 0.6rem', border: `1px solid ${colours[i]}20` }}>
+                                          <span style={{ fontSize: '1rem', minWidth: '18px' }}>{icons[i]}</span>
+                                          <span style={{ color: colours[i], fontSize: '0.78rem', minWidth: '36px', textTransform: 'capitalize' }}>{res}</span>
+                                          {canAssign && [-100,-10,-5,-1].map(d => (
+                                            <button key={d} onClick={() => updateWorker(res, d)} style={{ padding: '0 4px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', color: '#f87171', cursor: 'pointer', fontSize: '0.72rem', lineHeight: '16px' }}>{d}</button>
+                                          ))}
+                                          <span style={{ minWidth: '30px', textAlign: 'center', color: '#f1f5f9', fontSize: '0.85rem', fontWeight: 'bold' }}>{assigned}</span>
+                                          {canAssign && [1,5,10,100].map(d => (
+                                            <button key={d} onClick={() => updateWorker(res, d)} disabled={!canAdd} style={{ padding: '0 4px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', color: canAdd ? '#86efac' : '#334155', cursor: canAdd ? 'pointer' : 'not-allowed', fontSize: '0.72rem', lineHeight: '16px' }}>+{d}</button>
+                                          ))}
+                                          <span style={{ color: '#475569', fontSize: '0.68rem', flex: 1 }}>/ {max} slots</span>
+                                          {isFood ? (
+                                            <span style={{ fontSize: '0.72rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
+                                              <span style={{ color: '#86efac' }}>+{producedPerDay}<span style={{ color: '#64748b' }}>/day</span></span>
+                                              <span style={{ color: '#f87171' }}>−{foodConsumedPerDay}<span style={{ color: '#64748b' }}>/day</span></span>
+                                              {netFoodPerDay !== null && <span style={{ color: netFoodPerDay >= 0 ? '#86efac' : '#f87171', fontWeight: 'bold', fontSize: '0.68rem' }}>net {netFoodPerDay >= 0 ? '+' : ''}{netFoodPerDay}</span>}
+                                            </span>
+                                          ) : (
+                                            <span style={{ color: colours[i], fontSize: '0.72rem' }}>≈{producedPerDay}<span style={{ color: '#64748b' }}>/day</span>{yld > 1 && <span style={{ color: '#475569', fontSize: '0.65rem' }}> ({yld}×)</span>}</span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* ── Buildings Sub-tab ── */}
+                            {activeFiefSubTab === 'buildings' && (
+                              <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Buildings</div>
+                                  {canManage(activeKingdom) && (
+                                    <button onClick={() => { setSelectedBuildingCatalogueId(null); setShowAddBuildingModal(true); }} style={{ padding: '3px 10px', fontSize: '0.72rem', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '4px', color: '#7dd3fc', cursor: 'pointer' }}>+ Build</button>
+                                  )}
+                                </div>
+                                {(() => {
+                                  type BCategory = { label: string; color: string; accent: string; ids: string[] };
+                                  const BCAT: BCategory[] = [
+                                    { label: '🍖 Food',      color: '#86efac', accent: 'rgba(134,239,172,', ids: ['campfire','hunting_ground','farm','mill','docks','hospital'] },
+                                    { label: '💰 Economy',   color: '#fbbf24', accent: 'rgba(251,191,36,',  ids: ['tavern','market_stall','workshop','inn','bank','alchemist','grand_market','mage_tower','colosseum','imperial_mint','blacksmith'] },
+                                    { label: '🪨 Industry',  color: '#a78bfa', accent: 'rgba(167,139,250,', ids: ['lumber_camp','basic_mine','ore_mine','mason','docks'] },
+                                    { label: '⚔️ Military',  color: '#f87171', accent: 'rgba(248,113,113,', ids: ['watchtower','barracks','stable','guard_post','armoury','castle_walls','keep','citadel_fortress','grand_armory'] },
+                                    { label: '📚 Culture',   color: '#38bdf8', accent: 'rgba(56,189,248,',  ids: ['school','library','academy','palace','university','royal_academy'] },
+                                    { label: '🙏 Faith',     color: '#e879f9', accent: 'rgba(232,121,249,', ids: ['chapel','shrine','monastery','cathedral','grand_cathedral'] },
+                                    { label: '📦 Storage',   color: '#94a3b8', accent: 'rgba(148,163,184,', ids: ['basic_storage'] },
+                                    { label: '🏠 Housing',   color: '#fb923c', accent: 'rgba(251,146,60,',  ids: ['housing'] },
+                                  ];
+                                  const allBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_upgrade);
+                                  const inProgressUpgrades = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => !b.is_complete && b.is_upgrade);
+                                  const getBCat = (b: FiefBuilding) => BCAT.find(c => c.ids.includes((b as any).building_type ?? '')) ?? null;
+                                  const grouped: { cat: BCategory; buildings: FiefBuilding[] }[] = BCAT.map(cat => ({
+                                    cat,
+                                    buildings: allBuildings.filter(b => getBCat(b)?.label === cat.label),
+                                  })).filter(g => g.buildings.length > 0);
+                                  const uncategorised = allBuildings.filter(b => !getBCat(b));
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                      {grouped.map(({ cat, buildings: catBuildings }) => (
+                                        <div key={cat.label}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                                            <span style={{ color: cat.color, fontSize: '0.68rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{cat.label}</span>
+                                            <div style={{ flex: 1, height: '1px', background: `${cat.accent}0.2)` }} />
+                                          </div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.4rem' }}>
+                                            {catBuildings.map(b => {
+                                              const upgradeInProgress = inProgressUpgrades.find(u => u.parent_building_id === b.id);
+                                              return (
+                                                <div key={b.id} style={{ background: `${cat.accent}0.06)`, border: `1px solid ${b.is_complete ? `${cat.accent}0.35)` : 'rgba(251,191,36,0.4)'}`, borderRadius: '8px', padding: '0.55rem 0.7rem' }}>
+                                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                    <span style={{ color: b.is_complete ? cat.color : '#fbbf24', fontWeight: 'bold', fontSize: '0.8rem' }}>{(b as any).building_type === 'housing' ? (['Tents','Hovels','Cottages','Houses','Townhouses'][(b.level ?? 1) - 1] ?? b.name) : b.name} Lv{b.level}</span>
+                                                    {isDM && <button onClick={() => setPendingConfirm({ msg: 'Delete this building?', onYes: async () => { await fiefAPI.deleteBuilding(activeFief.id, b.id); refreshActiveFief(activeFief.id); }})} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.72rem', padding: 0 }}>✕</button>}
+                                                  </div>
+                                                  {b.is_complete ? (
+                                                    <>
+                                                      <div style={{ color: '#86efac', fontSize: '0.68rem', marginTop: '3px' }}>{Object.entries(b.resource_output ?? {}).filter(([,v]) => (v as number) > 0).map(([k, v]) => `+${v} ${k}/wkr`).join(', ') || <span style={{ color: '#475569' }}>No yield</span>}</div>
+                                                      {b.temp_modifier_days_remaining > 0 && <div style={{ color: '#f87171', fontSize: '0.65rem' }}>⚠️ Reduced ({b.temp_modifier_days_remaining}d)</div>}
+                                                      {upgradeInProgress ? (
+                                                        <div style={{ marginTop: '4px' }}>
+                                                          <div style={{ color: '#a78bfa', fontSize: '0.68rem' }}>↑ → Lv{upgradeInProgress.level} · {upgradeInProgress.days_remaining}d</div>
+                                                          <div style={{ height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', marginTop: '3px' }}>
+                                                            <div style={{ height: '100%', width: `${Math.max(0, 100 - (upgradeInProgress.days_remaining / upgradeInProgress.construction_days_required) * 100)}%`, background: '#a78bfa', borderRadius: '2px' }} />
+                                                          </div>
+                                                        </div>
+                                                      ) : canManage(activeKingdom) && b.level < (BUILDING_CATALOGUE.find(c => c.id === (b as any).building_type || c.name === b.name)?.maxLevel ?? 5) && (
+                                                        <button onClick={async () => {
+                                                          const entry = BUILDING_CATALOGUE.find(c => c.name === b.name);
+                                                          if (!entry) return;
+                                                          const cost = upgradeCostForLevel(entry, b.level);
+                                                          const days = Math.ceil(entry.baseConstructionDays * Math.pow(b.level + 1, 1.2));
+                                                          const newLevel = b.level + 1;
+                                                          const newOutput: Record<string, number> = {};
+                                                          for (const [k, v] of Object.entries(entry.baseOutput)) {
+                                                            newOutput[k] = Math.ceil((v as number) * newLevel);
+                                                          }
+                                                          try {
+                                                            await fiefAPI.upgradeBuilding(activeFief.id, b.id, { upgrade_cost: cost, construction_days: days, new_resource_output: newOutput });
+                                                            refreshActiveFief(activeFief.id);
+                                                          } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                                        }} style={{ marginTop: '4px', padding: '2px 8px', fontSize: '0.65rem', background: `${cat.accent}0.12)`, border: `1px solid ${cat.accent}0.3)`, borderRadius: '4px', color: cat.color, cursor: 'pointer' }}>↑ Upgrade</button>
+                                                      )}
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <div style={{ fontSize: '0.68rem', color: '#fbbf24', marginTop: '3px' }}>🏗️ {b.days_remaining}d remaining</div>
+                                                      <div style={{ height: '3px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', marginTop: '4px' }}>
+                                                        <div style={{ height: '100%', width: `${Math.max(0, 100 - (b.days_remaining / b.construction_days_required) * 100)}%`, background: '#fbbf24', borderRadius: '2px' }} />
+                                                      </div>
+                                                    </>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {uncategorised.length > 0 && (
+                                        <div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                                            <span style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.06em' }}>🏠 Other</span>
+                                            <div style={{ flex: 1, height: '1px', background: 'rgba(100,116,139,0.2)' }} />
+                                          </div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.4rem' }}>
+                                            {uncategorised.map(b => (
+                                              <div key={b.id} style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${b.is_complete ? 'rgba(148,163,184,0.3)' : 'rgba(251,191,36,0.4)'}`, borderRadius: '8px', padding: '0.55rem 0.7rem' }}>
+                                                <span style={{ color: '#f1f5f9', fontWeight: 'bold', fontSize: '0.8rem' }}>{b.name} Lv{b.level}</span>
+                                                {!b.is_complete && <div style={{ fontSize: '0.68rem', color: '#fbbf24', marginTop: '3px' }}>🏗️ {b.days_remaining}d</div>}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {allBuildings.length === 0 && <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic', textAlign: 'center', padding: '0.5rem' }}>No buildings yet.</div>}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            )}
+
+                            {/* ── Events Sub-tab: Kingdom Events + Actions ── */}
+                            {activeFiefSubTab === 'events' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kingdom Events</div>
+                                    {isDM && <button onClick={() => setShowAddEventModal(true)} style={{ padding: '3px 10px', fontSize: '0.72rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', color: '#f87171', cursor: 'pointer' }}>+ Add Event</button>}
+                                  </div>
+                                  {(fullKingdom?.events ?? []).length === 0 ? <div style={{ color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>No events.</div> : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '200px', overflowY: 'auto' }}>
+                                      {(fullKingdom?.events ?? []).map(ev => (
+                                        <div key={ev.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', background: ev.is_resolved ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${ev.severity === 'high' ? 'rgba(239,68,68,0.3)' : ev.severity === 'medium' ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '6px', padding: '0.5rem 0.6rem' }}>
+                                          <span style={{ fontSize: '0.9rem' }}>{ev.event_type === 'disaster' ? '⚠️' : ev.event_type === 'crisis' ? '🔴' : ev.event_type === 'opportunity' ? '⭐' : '📢'}</span>
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ color: ev.is_resolved ? '#64748b' : '#f1f5f9', fontSize: '0.82rem', textDecoration: ev.is_resolved ? 'line-through' : 'none' }}>{ev.title}</div>
+                                            {ev.description && <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{ev.description}</div>}
+                                          </div>
+                                          {!ev.is_resolved && canManage(activeKingdom) && (
+                                            <button onClick={async () => { await kingdomEventAPI.resolveEvent(activeKingdom.id, ev.id); loadKingdomFull(activeKingdom.id); }} style={{ fontSize: '0.7rem', background: 'rgba(134,239,172,0.1)', border: '1px solid rgba(134,239,172,0.3)', borderRadius: '4px', color: '#86efac', cursor: 'pointer', padding: '2px 6px', whiteSpace: 'nowrap' }}>✓ Resolve</button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kingdom Actions</div>
+                                    {canManage(activeKingdom) && <button onClick={() => setShowAddActionModal(true)} style={{ padding: '3px 10px', fontSize: '0.72rem', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '4px', color: '#7dd3fc', cursor: 'pointer' }}>+ Add Action</button>}
+                                  </div>
+                                  {(fullKingdom?.actions ?? []).length === 0 ? <div style={{ color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>No actions.</div> : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                      {(fullKingdom?.actions ?? []).map(ac => (
+                                        <div key={ac.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '0.4rem 0.6rem' }}>
+                                          <span style={{ fontSize: '0.85rem' }}>{ac.is_completed ? '✅' : '🔲'}</span>
+                                          <span style={{ flex: 1, color: ac.is_completed ? '#64748b' : '#f1f5f9', fontSize: '0.82rem', textDecoration: ac.is_completed ? 'line-through' : 'none' }}>{ac.title}</span>
+                                          {!ac.is_completed && canManage(activeKingdom) && (
+                                            <button onClick={async () => { await kingdomActionAPI.completeAction(activeKingdom.id, ac.id); loadKingdomFull(activeKingdom.id); }} style={{ fontSize: '0.7rem', background: 'rgba(134,239,172,0.1)', border: '1px solid rgba(134,239,172,0.3)', borderRadius: '4px', color: '#86efac', cursor: 'pointer', padding: '2px 6px' }}>✓</button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ── Log Sub-tab ── */}
+                            {activeFiefSubTab === 'log' && (
+                              <div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Daily Event Log</div>
+                                {!(fiefEventLogs[activeFief.id]?.length) ? (
+                                  <div style={{ color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                                    No log entries yet.{' '}
+                                    <button onClick={() => fiefAPI.getEventLog(activeFief.id).then(l => setFiefEventLogs(prev => ({ ...prev, [activeFief.id]: l.entries }))).catch(() => {})} style={{ background: 'none', border: 'none', color: '#7dd3fc', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>Load</button>
+                                  </div>
+                                ) : (
+                                  <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    {(fiefEventLogs[activeFief.id] ?? []).map(entry => {
+                                      const typeIcon: Record<string, string> = { resource_production: '🏭', population_growth: '👥', building_complete: '🏗️', building_started: '🔨', disaster: '⚠️', manual_change: '✏️' };
+                                      return (
+                                        <div key={entry.id} style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-start', fontSize: '0.78rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.3rem' }}>
+                                          <span>{typeIcon[entry.event_type] ?? '📋'}</span>
+                                          <span style={{ color: '#64748b', minWidth: '48px' }}>Day {entry.campaign_day}</span>
+                                          <span style={{ color: '#94a3b8', flex: 1 }}>{entry.title}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Armies — always visible at bottom */}
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.75rem' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Armies</div>
+                              {(() => {
+                                const ownerArmies = armies.filter(a => String((a as any).player_id) === String(activeKingdom?.player_id) || String((a as any).owner_id) === String(activeKingdom?.player_id));
+                                if (!ownerArmies.length) return <div style={{ color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>No armies for this kingdom&apos;s ruler.</div>;
+                                return (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                    {ownerArmies.map(a => (
+                                      <div key={a.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: `1px solid ${(a as any).is_garrisoned ? 'rgba(248,113,113,0.25)' : 'rgba(56,189,248,0.2)'}`, borderRadius: '6px', padding: '0.35rem 0.65rem' }}>
+                                        <span style={{ fontSize: '0.85rem' }}>{(a as any).is_garrisoned ? '🏰' : '🗡️'}</span>
+                                        <div>
+                                          <div style={{ color: '#f1f5f9', fontSize: '0.82rem', fontWeight: 'bold' }}>{a.name}</div>
+                                          <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{(a as any).category ?? (a as any).army_type ?? ''} · {a.total_troops ?? 0} troops</div>
+                                        </div>
+                                        <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '10px', background: (a as any).is_garrisoned ? 'rgba(248,113,113,0.15)' : 'rgba(56,189,248,0.15)', color: (a as any).is_garrisoned ? '#f87171' : '#7dd3fc', border: `1px solid ${(a as any).is_garrisoned ? 'rgba(248,113,113,0.3)' : 'rgba(56,189,248,0.3)'}` }}>
+                                          {(a as any).is_garrisoned ? 'Garrisoned' : 'Field'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+
+                          </div>
+                        )
+                      ) : (
+                        <div style={{ color: '#64748b', fontStyle: 'italic', textAlign: 'center', padding: '2rem' }}>Select a fief to manage it.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Modals ── */}
+
+                  {/* Add Fief Modal */}
+                  {showAddFiefModal && activeKingdom && (() => {
+                    const fiefCost = { gold: 50, wood: 30, stone: 20 };
+                    const kRes = activeKingdom.resources ?? { gold: 0, food: 0, wood: 0, stone: 0 };
+                    const canAfford = (kRes.gold ?? 0) >= fiefCost.gold && (kRes.wood ?? 0) >= fiefCost.wood && (kRes.stone ?? 0) >= fiefCost.stone;
+                    return (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div className="glass-panel" style={{ width: '380px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🏘️ Found New Fief</h5>
+                        <input
+                          type="text" placeholder="Fief name…" value={newFiefName} onChange={e => setNewFiefName(e.target.value)}
+                          style={{ padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }}
+                        />
+                        <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.75rem' }}>
+                          <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>⏳ Construction: 3 days &nbsp;·&nbsp; Cost</div>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            {([['💰','gold',fiefCost.gold,'#fbbf24'],['🪵','wood',fiefCost.wood,'#a78bfa'],['🪨','stone',fiefCost.stone,'#94a3b8']] as const).map(([icon, res, cost, color]) => {
+                              const have = (kRes as any)[res] ?? 0;
+                              const ok = have >= cost;
+                              return (
+                                <div key={res} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', color: ok ? color : '#f87171', background: ok ? 'rgba(255,255,255,0.05)' : 'rgba(239,68,68,0.1)', border: `1px solid ${ok ? color+'30' : 'rgba(239,68,68,0.3)'}`, borderRadius: '6px', padding: '3px 8px' }}>
+                                  {icon} {cost} <span style={{ color: '#64748b', fontSize: '0.7rem' }}>({have})</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {!canAfford && <div style={{ color: '#f87171', fontSize: '0.75rem', marginTop: '0.5rem' }}>⚠️ Not enough resources in the kingdom treasury.</div>}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                          <button onClick={() => setShowAddFiefModal(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>Cancel</button>
+                          <button disabled={!canAfford || !newFiefName.trim()} onClick={async () => {
+                            if (!newFiefName.trim()) return;
+                            try { await fiefAPI.createFief(activeKingdom.id, { name: newFiefName.trim() }); setNewFiefName(''); setShowAddFiefModal(false); loadKingdomFull(activeKingdom.id); }
+                            catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                          }} style={{ padding: '0.5rem 1.25rem', background: canAfford ? 'rgba(212,193,156,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${canAfford ? 'rgba(212,193,156,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', color: canAfford ? 'var(--text-gold)' : '#475569', cursor: canAfford ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>Found Fief</button>
+                        </div>
+                      </div>
+                    </div>
+                    );
+                  })()}
+
+                  {/* Build Modal */}
+                  {showAddBuildingModal && activeFief && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
+                      <div className="glass-panel" style={{ width: '100%', maxWidth: '520px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '85vh', overflowY: 'auto', margin: '1rem' }}>
+                        <h5 style={{ color: '#7dd3fc', margin: 0 }}>🏗️ Start Construction (Fief Tier {activeFief.tier}: {TIER_NAMES[activeFief.tier ?? 1]})</h5>
+                        <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: 0 }}>Only buildings available at your fief tier or below are shown.</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
+                          {availableBuildings.map(b => (
+                            <button key={b.id} onClick={() => setSelectedBuildingCatalogueId(b.id === selectedBuildingCatalogueId ? null : b.id)}
+                              style={{ textAlign: 'left', padding: '0.6rem 0.75rem', borderRadius: '8px', cursor: 'pointer', background: selectedBuildingCatalogueId === b.id ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${selectedBuildingCatalogueId === b.id ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.1)'}`, color: '#f1f5f9' }}>
+                              <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{b.icon} {b.name}</div>
+                              <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>{b.description}</div>
+                              <div style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: '3px' }}>⏱ {b.baseConstructionDays}d · Cost: {Object.entries(b.baseCost).map(([k, v]) => `${v} ${k}`).join(', ') || 'Free'}</div>                              <div style={{ fontSize: '0.7rem', color: '#86efac' }}>Output: {Object.entries(b.baseOutput).filter(([,v]) => v > 0).map(([k, v]) => k === 'pop_cap' ? `+${v} pop cap` : `+${v} ${k}/day`).join(', ') || '—'}</div>
+                            </button>
+                          ))}
+                        </div>
+                        {selectedCatalogueEntry && (() => {
+                          const techBuilds = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && ['school','library','academy','mage_tower','university','royal_academy'].includes((b as any).building_type ?? ''));
+                          const techRed = Math.min(0.5, techBuilds.reduce((r, b) => r + (b.level || 1) * 0.04, 0));
+                          const effectiveDays = Math.max(1, Math.round(selectedCatalogueEntry.baseConstructionDays * (1 - techRed)));
+                          return (
+                          <div style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', padding: '0.75rem', fontSize: '0.82rem', color: '#cbd5e1' }}>
+                            <strong style={{ color: '#7dd3fc' }}>Selected: {selectedCatalogueEntry.name}</strong>
+                            <br />Cost deducted immediately: {Object.entries(selectedCatalogueEntry.baseCost).map(([k, v]) => `${v} ${k}`).join(', ') || 'Free'}
+                            {techRed > 0 && <><br /><span style={{ color: '#7dd3fc' }}>📚 Tech reduction: -{Math.round(techRed * 100)}% → {effectiveDays}d (was {selectedCatalogueEntry.baseConstructionDays}d)</span></>}
+                            <br />Available resources: 💰{activeFief.resources?.gold ?? 0} 🌾{activeFief.resources?.food ?? 0} 🪵{activeFief.resources?.wood ?? 0} 🪨{activeFief.resources?.stone ?? 0}
+                          </div>
+                          );
+                        })()}
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                          <button onClick={() => setShowAddBuildingModal(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>Cancel</button>
+                          <button disabled={!selectedCatalogueEntry} onClick={async () => {
+                            if (!selectedCatalogueEntry) return;
+                            try {
+                              const techBuilds2 = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && ['school','library','academy','mage_tower','university','royal_academy'].includes((b as any).building_type ?? ''));
+                              const techRed2 = Math.min(0.5, techBuilds2.reduce((r, b) => r + (b.level || 1) * 0.04, 0));
+                              const effectiveDays2 = Math.max(1, Math.round(selectedCatalogueEntry.baseConstructionDays * (1 - techRed2)));
+                              await fiefAPI.addBuilding(activeFief.id, {
+                                name: selectedCatalogueEntry.name,
+                                building_type: selectedCatalogueEntry.id,
+                                level: 1,
+                                description: selectedCatalogueEntry.description,
+                                construction_days: effectiveDays2,
+                                resource_output: selectedCatalogueEntry.baseOutput,
+                                resource_cost: selectedCatalogueEntry.baseCost,
+                              });
+                              setShowAddBuildingModal(false);
+                              refreshActiveFief(activeFief.id);
+                              setToastMessage(`Construction started: ${selectedCatalogueEntry.name}`);
+                              setTimeout(() => setToastMessage(null), 3000);
+                            } catch(e: any) {
+                              setToastMessage(e?.response?.data?.error ?? 'Failed to start construction');
+                              setTimeout(() => setToastMessage(null), 4000);
+                            }
+                          }} style={{ padding: '0.5rem 1.25rem', background: selectedCatalogueEntry ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.05)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '6px', color: '#7dd3fc', cursor: selectedCatalogueEntry ? 'pointer' : 'not-allowed', fontWeight: 'bold', opacity: selectedCatalogueEntry ? 1 : 0.4 }}>
+                            Begin Construction
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tier Upgrade Confirmation Modal */}
+                  {showUpgradeModal && activeFief && (() => {
+                    const UPGRADE_COSTS: Record<number, { gold: number; wood: number; stone: number; days: number }> = {
+                      1: { gold: 100,  wood: 80,   stone: 60,   days: 14 },
+                      2: { gold: 200,  wood: 150,  stone: 120,  days: 21 },
+                      3: { gold: 350,  wood: 250,  stone: 200,  days: 30 },
+                      4: { gold: 500,  wood: 400,  stone: 320,  days: 42 },
+                      5: { gold: 750,  wood: 600,  stone: 500,  days: 56 },
+                      6: { gold: 1100, wood: 900,  stone: 750,  days: 60 },
+                      7: { gold: 1600, wood: 1300, stone: 1100, days: 70 },
+                      8: { gold: 2200, wood: 1800, stone: 1600, days: 80 },
+                      9: { gold: 3000, wood: 2500, stone: 2200, days: 90 },
+                    };
+                    const TIER_NAMES_MODAL = ['', 'Camp', 'Hamlet', 'Small Village', 'Village', 'Large Village', 'Small Town', 'Town', 'Large Town', 'City', 'Citadel'];
+                    const currentTier = activeFief.tier ?? 1;
+                    const cost = UPGRADE_COSTS[currentTier];
+                    const kRes = activeFief.resources ?? { gold: 0, food: 0, wood: 0, stone: 0 };
+                    const canAfford = cost && (['gold','wood','stone'] as const).every(r => (kRes[r] ?? 0) >= cost[r]);
+                    return (
+                      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', margin: '1rem' }}>
+                          <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>▲ Upgrade {activeFief.name}</h5>
+                          <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                            {TIER_NAMES_MODAL[currentTier]} (Tier {currentTier}) → <strong style={{ color: 'var(--text-gold)' }}>{TIER_NAMES_MODAL[currentTier + 1]}</strong> (Tier {currentTier + 1})
+                          </div>
+                          {cost ? (
+                            <>
+                              <div style={{ color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Construction Cost</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                                {(['gold','wood','stone'] as const).map(r => {
+                                  const icons: Record<string,string> = { gold: '💰', food: '🌾', wood: '🪵', stone: '🪨' };
+                                  const have = kRes[r] ?? 0;
+                                  const need = cost[r];
+                                  const ok = have >= need;
+                                  return (
+                                    <div key={r} style={{ background: ok ? 'rgba(134,239,172,0.05)' : 'rgba(239,68,68,0.08)', border: `1px solid ${ok ? 'rgba(134,239,172,0.2)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '6px', padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                      <span>{icons[r]}</span>
+                                      <div style={{ flex: 1 }}>
+                                        <div style={{ color: ok ? '#86efac' : '#f87171', fontWeight: 'bold', fontSize: '0.9rem' }}>{need}</div>
+                                        <div style={{ color: '#64748b', fontSize: '0.68rem' }}>have {have}</div>
+                                      </div>
+                                      <span style={{ fontSize: '0.75rem' }}>{ok ? '✓' : '✗'}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.82rem', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', padding: '0.5rem 0.75rem' }}>
+                                ⏳ Construction time: <strong style={{ color: 'var(--text-gold)' }}>{cost.days} days</strong>
+                              </div>
+                              {!canAfford && <div style={{ color: '#f87171', fontSize: '0.78rem' }}>Your kingdom lacks the required resources.</div>}
+                            </>
+                          ) : (
+                            <div style={{ color: '#f87171', fontSize: '0.82rem' }}>Maximum tier reached.</div>
+                          )}
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                            <button onClick={() => setShowUpgradeModal(false)} style={{ padding: '0.4rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '0.82rem' }}>Cancel</button>
+                            {cost && (
+                              <button disabled={!canAfford || upgradeConfirmLoading} onClick={async () => {
+                                setUpgradeConfirmLoading(true);
+                                try {
+                                  await fiefAPI.upgradeTier(activeFief.id);
+                                  setShowUpgradeModal(false);
+                                  refreshActiveFief(activeFief.id);
+                                  setToastMessage(`⏳ Upgrade started! ${cost.days} days until completion.`);
+                                  setTimeout(() => setToastMessage(null), 5000);
+                                } catch(e: any) {
+                                  setToastMessage(e?.response?.data?.error ?? 'Failed');
+                                  setTimeout(() => setToastMessage(null), 4000);
+                                } finally { setUpgradeConfirmLoading(false); }
+                              }} style={{ padding: '0.4rem 1rem', background: canAfford ? 'rgba(212,193,156,0.15)' : 'rgba(100,116,139,0.15)', border: `1px solid ${canAfford ? 'rgba(212,193,156,0.4)' : 'rgba(100,116,139,0.3)'}`, borderRadius: '6px', color: canAfford ? 'var(--text-gold)' : '#64748b', cursor: canAfford ? 'pointer' : 'not-allowed', fontSize: '0.82rem', fontWeight: 'bold', opacity: upgradeConfirmLoading ? 0.6 : 1 }}>
+                                {upgradeConfirmLoading ? '...' : '▲ Begin Upgrade'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Disaster Modal */}
+                  {showDisasterModal && activeFief && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div className="glass-panel" style={{ width: '100%', maxWidth: '480px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '85vh', overflowY: 'auto', margin: '1rem' }}>
+                        <h5 style={{ color: '#f87171', margin: 0 }}>⚠️ Send Disaster to {activeFief.name}</h5>
+                        {['Natural', 'Social', 'Magical', 'Environmental'].map(cat => (
+                          <div key={cat}>
+                            <div style={{ color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{cat}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                              {DISASTER_CATALOGUE.filter(d => d.category === cat).map(d => (
+                                <button key={d.id} onClick={() => setPendingConfirm({ msg: `Send "${d.name}" to ${activeFief.name}?`, onYes: async () => {
+                                  try {
+                                    await fiefAPI.sendDisaster(activeFief.id, d.id);
+                                    setShowDisasterModal(false);
+                                    refreshActiveFief(activeFief.id);
+                                    toast(`⚠️ ${d.name} struck ${activeFief.name}!`, 5000);
+                                  } catch(e: any) { toast(e?.response?.data?.error ?? 'Failed'); }
+                                }})} style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>
+                                  {d.icon} {d.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <button onClick={() => setShowDisasterModal(false)} style={{ alignSelf: 'flex-end', padding: '0.4rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', marginTop: '0.25rem' }}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Garrison & Training Modal */}
+                  {showGarrisonModal && activeFief && (() => {
+                    const completedBuildings = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter((b: any) => b.is_complete && !b.is_upgrade);
+                    const garrison: FiefGarrison = (activeFief as any).garrison ?? {};
+                    const trainingQueue: FiefTraining[] = (activeFief as any).training_queue ?? [];
+                    const milStat = Math.max(1, Math.min(10, activeFief.stats?.military ?? 1));
+                    const completedBuildingsList = completedBuildings.map((b: any) => ({ building_type: b.building_type, level: b.level }));
+                    const availableTemplates = Object.keys(UNIT_TEMPLATES).filter(name => isTemplateUnlocked(name, completedBuildingsList));
+                    const totalGarrison = Object.values(garrison).reduce((s, v) => s + (v as number), 0);
+                    const garrisonEntries = Object.entries(garrison).filter(([, v]) => (v as number) > 0);
+                    const fiefArmies = armies.filter(a => a.source_fief_id === activeFief.id);
+                    const close = () => {
+                      setShowGarrisonModal(false);
+                      setGarrisonTrainUnit(null);
+                      setGarrisonTrainCount('5');
+                      setGarrisonTrainLinkedArmy(null);
+                      setGarrisonNewArmyName('');
+                      setGarrisonPendingTransfer(null);
+                      setGarrisonDragOver(null);
+                      setCancelJobId(null);
+                    };
+                    const selectedTmpl = garrisonTrainUnit ? UNIT_TEMPLATES[garrisonTrainUnit] : null;
+                    const eligibleArmies = garrisonTrainUnit ? fiefArmies.filter(a => a.category === garrisonTrainUnit || a.unit_type === garrisonTrainUnit) : [];
+                    const totalTrainingDays = selectedTmpl
+                      ? Math.max(1, Math.round(selectedTmpl.baseDays * (parseInt(garrisonTrainCount) || 1) * (1 - (milStat - 1) * 0.04)))
+                      : 0;
+                    return (
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+                        onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+                        <div style={{ background: 'linear-gradient(135deg,rgba(15,15,30,0.99),rgba(10,10,21,0.99))', border: '2px solid rgba(248,113,113,0.35)', borderRadius: '14px', padding: '1.5rem', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+                          {/* Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <h4 style={{ margin: 0, color: '#f87171' }}>⚔️ Garrison & Training</h4>
+                              <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '2px' }}>{activeFief.name} · {totalGarrison} troops · {trainingQueue.length} training</div>
+                            </div>
+                            <button onClick={close} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.4rem', lineHeight: 1 }}>✕</button>
+                          </div>
+
+                          {/* DnD hint */}
+                          {canManage(activeKingdom) && fiefArmies.length > 0 && garrisonEntries.length > 0 && (
+                            <div style={{ background: 'rgba(56,189,248,0.05)', border: '1px dashed rgba(56,189,248,0.25)', borderRadius: '8px', padding: '0.5rem 0.75rem', fontSize: '0.73rem', color: '#64748b', textAlign: 'center' }}>
+                              💡 Drag garrison unit cards onto an army to withdraw · Drag army cards onto the garrison to deposit
+                            </div>
+                          )}
+
+                          {/* ── GARRISON (drop zone for army→garrison) ── */}
+                          <div
+                            onDragOver={e => { e.preventDefault(); setGarrisonDragOver('garrison'); }}
+                            onDrop={e => {
+                              e.preventDefault();
+                              setGarrisonDragOver(null);
+                              const raw = e.dataTransfer.getData('text/plain');
+                              if (!raw) return;
+                              try {
+                                const src = JSON.parse(raw);
+                                if (src.type === 'army') {
+                                  setGarrisonPendingTransfer({ direction: 'to_garrison', unitKey: src.unitKey, armyId: src.armyId, maxCount: src.maxCount, amt: '1' });
+                                }
+                              } catch { /* ignore */ }
+                            }}
+                            style={{ borderRadius: '10px', border: `2px ${garrisonDragOver === 'garrison' ? 'dashed rgba(248,113,113,0.65)' : 'solid transparent'}`, padding: garrisonDragOver === 'garrison' ? '6px' : '0', transition: 'all 0.2s', background: garrisonDragOver === 'garrison' ? 'rgba(248,113,113,0.04)' : 'transparent' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
+                              🏰 Current Garrison {garrisonDragOver === 'garrison' && <span style={{ color: '#f87171', fontStyle: 'italic' }}>— drop army here to deposit</span>}
+                            </div>
+                            {garrisonEntries.length === 0 && (
+                              <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic', padding: '0.5rem', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '6px', textAlign: 'center' }}>
+                                No troops stationed.
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              {garrisonEntries.map(([unitKey, count]) => {
+                                const icon = UNIT_TEMPLATES[unitKey]?.icon ?? '⚔️';
+                                const isDraggable = fiefArmies.length > 0 && canManage(activeKingdom);
+                                return (
+                                  <div key={unitKey}
+                                    draggable={isDraggable}
+                                    onDragStart={e => {
+                                      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'garrison', unitKey, maxCount: count as number }));
+                                      e.dataTransfer.effectAllowed = 'move';
+                                    }}
+                                    onDragEnd={() => setGarrisonDragOver(null)}
+                                    style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '130px', cursor: isDraggable ? 'grab' : 'default', userSelect: 'none' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '1.1rem' }}>{icon}</span>
+                                      <div>
+                                        <div style={{ color: '#f87171', fontWeight: 'bold', fontSize: '0.85rem' }}>{count as number}</div>
+                                        <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{unitKey}</div>
+                                      </div>
+                                    </div>
+                                    {isDraggable && <div style={{ color: '#475569', fontSize: '0.62rem', textAlign: 'center' }}>⇢ drag to an army</div>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Pending to_garrison confirm */}
+                            {garrisonPendingTransfer?.direction === 'to_garrison' && (
+                              <div style={{ marginTop: '0.5rem', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
+                                <div style={{ color: '#f87171', fontWeight: 'bold', fontSize: '0.8rem', marginBottom: '6px' }}>
+                                  Deposit {garrisonPendingTransfer.unitKey} to garrison
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <input type='number' min='1' max={garrisonPendingTransfer.maxCount}
+                                    value={garrisonPendingTransfer.amt}
+                                    onChange={e => setGarrisonPendingTransfer(p => p ? { ...p, amt: e.target.value } : p)}
+                                    style={{ width: '75px', padding: '3px 6px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '5px', color: 'white', fontSize: '0.82rem' }} />
+                                  <span style={{ color: '#64748b', fontSize: '0.72rem' }}>/ {garrisonPendingTransfer.maxCount}</span>
+                                  <button onClick={async () => {
+                                    const pt = garrisonPendingTransfer!;
+                                    const amt = parseInt(pt.amt);
+                                    if (isNaN(amt) || amt < 1) return;
+                                    try {
+                                      const result = await fiefAPI.transferTroops(activeFief.id, pt.armyId, pt.unitKey, amt, 'to_garrison');
+                                      setArmies(prev => prev.map(a => a.id === pt.armyId ? result.army : a));
+                                      refreshActiveFief(activeFief.id);
+                                      setGarrisonPendingTransfer(null);
+                                    } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                  }} style={{ padding: '3px 14px', background: 'rgba(248,113,113,0.2)', border: '1px solid rgba(248,113,113,0.55)', borderRadius: '5px', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>Confirm</button>
+                                  <button onClick={() => setGarrisonPendingTransfer(null)}
+                                    style={{ padding: '3px 10px', background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '5px', color: '#64748b', cursor: 'pointer', fontSize: '0.8rem' }}>Cancel</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ── FIEF ARMIES (drop zone for garrison→army) ── */}
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>🏴 Fief Armies</div>
+                              {availableTemplates.length > 0 && currentCampaign && canManage(activeKingdom) && (
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                  <select style={{ padding: '3px 6px', background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '4px', color: '#f1f5f9', fontSize: '0.72rem' }}
+                                    value={garrisonTrainUnit ?? ''} onChange={e => setGarrisonTrainUnit(e.target.value || null)}>
+                                    <option value=''>Unit type…</option>
+                                    {availableTemplates.map(n => <option key={n} value={n}>{UNIT_TEMPLATES[n].icon} {n}</option>)}
+                                  </select>
+                                  <input placeholder='Army name…' value={garrisonNewArmyName} onChange={e => setGarrisonNewArmyName(e.target.value)}
+                                    style={{ padding: '3px 6px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '4px', color: 'white', fontSize: '0.72rem', width: '130px' }} />
+                                  <button onClick={async () => {
+                                    if (!garrisonTrainUnit || !garrisonNewArmyName.trim() || !currentCampaign) return;
+                                    try {
+                                      const created = await armyAPI.createArmy({
+                                        player_id: user!.id, campaign_id: currentCampaign.campaign.id,
+                                        name: garrisonNewArmyName.trim(), unit_type: garrisonTrainUnit,
+                                        source_fief_id: activeFief.id, category: garrisonTrainUnit,
+                                      });
+                                      setArmies(prev => [...prev, { ...created, battle_history: [] }]);
+                                      setGarrisonNewArmyName('');
+                                      setToastMessage(`Army "${created.name}" created!`);
+                                      setTimeout(() => setToastMessage(null), 3000);
+                                    } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                  }} style={{ padding: '3px 10px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', borderRadius: '4px', color: '#7dd3fc', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>⊕ Create</button>
+                                </div>
+                              )}
+                            </div>
+                            {fiefArmies.length === 0
+                              ? <div style={{ color: '#475569', fontSize: '0.78rem', fontStyle: 'italic' }}>No armies linked to this fief yet.</div>
+                              : <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                {fiefArmies.map(army => {
+                                  const isDropTarget = garrisonDragOver === `army-${army.id}`;
+                                  const isPendingArmy = garrisonPendingTransfer?.direction === 'to_army' && garrisonPendingTransfer.armyId === army.id;
+                                  const draggableArmy = garrisonEntries.length > 0 && canManage(activeKingdom);
+                                  const armyUnitKey = army.unit_type ?? army.category ?? '';
+                                  return (
+                                    <div key={army.id}
+                                      draggable={draggableArmy}
+                                      onDragStart={e => {
+                                        e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'army', armyId: army.id, unitKey: armyUnitKey, maxCount: army.total_troops ?? 0 }));
+                                        e.dataTransfer.effectAllowed = 'move';
+                                      }}
+                                      onDragEnd={() => setGarrisonDragOver(null)}
+                                      onDragOver={e => { e.preventDefault(); setGarrisonDragOver(`army-${army.id}`); }}
+                                      onDrop={e => {
+                                        e.preventDefault();
+                                        setGarrisonDragOver(null);
+                                        const raw = e.dataTransfer.getData('text/plain');
+                                        if (!raw) return;
+                                        try {
+                                          const src = JSON.parse(raw);
+                                          if (src.type === 'garrison') {
+                                            setGarrisonPendingTransfer({ direction: 'to_army', unitKey: src.unitKey, armyId: army.id, maxCount: src.maxCount, amt: '1' });
+                                          }
+                                        } catch { /* ignore */ }
+                                      }}
+                                      style={{ background: isDropTarget ? 'rgba(56,189,248,0.12)' : 'rgba(56,189,248,0.05)', border: `${isDropTarget ? '2px dashed rgba(56,189,248,0.65)' : '1px solid rgba(56,189,248,0.2)'}`, borderRadius: '8px', padding: '0.45rem 0.75rem', cursor: draggableArmy ? 'grab' : 'default', userSelect: 'none', transition: 'all 0.15s' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                        <span style={{ fontSize: '1.1rem' }}>{getArmyCategoryIcon(army.unit_type ?? army.category)}</span>
+                                        <div style={{ flex: 1 }}>
+                                          <div style={{ color: '#f1f5f9', fontWeight: 'bold', fontSize: '0.85rem' }}>{army.name}</div>
+                                          <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                                            {army.unit_type ?? army.category}
+                                            {garrisonEntries.length > 0 && !isPendingArmy && <span style={{ marginLeft: '8px', color: '#334155', fontSize: '0.62rem' }}>← drag a garrison card here</span>}
+                                          </div>
+                                        </div>
+                                        <div style={{ color: '#7dd3fc', fontWeight: 'bold', fontSize: '0.88rem' }}>{army.total_troops ?? 0} troops</div>
+                                      </div>
+                                      {isPendingArmy && garrisonPendingTransfer && (
+                                        <div style={{ borderTop: '1px solid rgba(56,189,248,0.2)', marginTop: '8px', paddingTop: '8px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                          <span style={{ color: '#7dd3fc', fontSize: '0.75rem' }}>Send <strong>{garrisonPendingTransfer.unitKey}</strong> → <strong>{army.name}</strong>:</span>
+                                          <input type='number' min='1' max={garrisonPendingTransfer.maxCount}
+                                            value={garrisonPendingTransfer.amt}
+                                            onChange={e => setGarrisonPendingTransfer(p => p ? { ...p, amt: e.target.value } : p)}
+                                            style={{ width: '75px', padding: '3px 6px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '5px', color: 'white', fontSize: '0.82rem' }} />
+                                          <span style={{ color: '#475569', fontSize: '0.72rem' }}>/ {garrisonPendingTransfer.maxCount}</span>
+                                          <button onClick={async () => {
+                                            const pt = garrisonPendingTransfer!;
+                                            const amt = parseInt(pt.amt);
+                                            if (isNaN(amt) || amt < 1) return;
+                                            try {
+                                              const result = await fiefAPI.transferTroops(activeFief.id, pt.armyId, pt.unitKey, amt, 'to_army');
+                                              setArmies(prev => prev.map(a => a.id === pt.armyId ? result.army : a));
+                                              refreshActiveFief(activeFief.id);
+                                              setGarrisonPendingTransfer(null);
+                                            } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                          }} style={{ padding: '3px 14px', background: 'rgba(56,189,248,0.2)', border: '1px solid rgba(56,189,248,0.55)', borderRadius: '5px', color: '#7dd3fc', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>Confirm</button>
+                                          <button onClick={() => setGarrisonPendingTransfer(null)}
+                                            style={{ padding: '3px 10px', background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '5px', color: '#64748b', cursor: 'pointer', fontSize: '0.8rem' }}>Cancel</button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            }
+                          </div>
+
+                          {/* ── TRAINING QUEUE ── */}
+                          {trainingQueue.length > 0 && (
+                            <div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>🏗️ Training Queue</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {trainingQueue.map(job => {
+                                  const tmpl = UNIT_TEMPLATES[job.unit_type];
+                                  const linkedArmy = job.linked_army_id ? armies.find(a => a.id === job.linked_army_id) : null;
+                                  const pct = Math.max(0, 100 - (job.days_remaining / job.training_days_required) * 100);
+                                  return (
+                                    <div key={job.id} style={{ background: 'rgba(248,113,113,0.05)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                                        <span style={{ fontSize: '1.1rem' }}>{tmpl?.icon ?? '⚔️'}</span>
+                                        <div style={{ flex: 1 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <span style={{ color: '#f87171', fontWeight: 'bold', fontSize: '0.85rem' }}>{job.count}× {job.unit_type}</span>
+                                            {job.tier && <span style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: '4px', padding: '0 4px', fontSize: '0.65rem', color: '#a5b4fc' }}>T{job.tier}</span>}
+                                            {linkedArmy && <span style={{ color: '#7dd3fc', fontSize: '0.72rem' }}>→ {linkedArmy.name}</span>}
+                                            {!linkedArmy && <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>→ Garrison</span>}
+                                          </div>
+                                          <div style={{ color: '#fbbf24', fontSize: '0.72rem' }}>{job.days_remaining} day{job.days_remaining !== 1 ? 's' : ''} remaining</div>
+                                        </div>
+                                        {canManage(activeKingdom) && (
+                                          cancelJobId === job.id
+                                            ? <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                <span style={{ color: '#f87171', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Refund?</span>
+                                                <button onClick={async () => {
+                                                  try { await fiefAPI.cancelTraining(activeFief.id, job.id); refreshActiveFief(activeFief.id); setCancelJobId(null); }
+                                                  catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                                }} style={{ padding: '2px 8px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '4px', color: '#f87171', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold' }}>Yes</button>
+                                                <button onClick={() => setCancelJobId(null)} style={{ padding: '2px 6px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', color: '#64748b', cursor: 'pointer', fontSize: '0.68rem' }}>No</button>
+                                              </div>
+                                            : <button onClick={() => setCancelJobId(job.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', color: '#f87171', cursor: 'pointer', fontSize: '0.72rem', padding: '3px 8px' }}>Refund</button>
+                                        )}
+                                      </div>
+                                      <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#f87171,#fb923c)', borderRadius: '3px', transition: 'width 0.3s' }} />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ── TRAIN NEW UNITS ── */}
+                          {canManage(activeKingdom) && (
+                            <div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
+                                ⚒️ Train New Units
+                                {milStat > 1 && <span style={{ color: '#f87171', marginLeft: '8px', fontWeight: 'bold' }}>-{(milStat - 1) * 4}% training time</span>}
+                              </div>
+                              {availableTemplates.length === 0
+                                ? <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic' }}>No units unlocked — build Barracks, Stable, Guard Post, Siege Workshop, or Thieves Guild.</div>
+                                : (
+                                  <div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px,1fr))', gap: '0.35rem', marginBottom: '0.75rem' }}>
+                                      {availableTemplates.map(unitType => {
+                                        const tmpl = UNIT_TEMPLATES[unitType];
+                                        const days = Math.max(1, Math.round(tmpl.baseDays * (1 - (milStat - 1) * 0.04)));
+                                        const selected = garrisonTrainUnit === unitType;
+                                        return (
+                                          <button key={unitType} onClick={() => { setGarrisonTrainUnit(selected ? null : unitType); setGarrisonTrainLinkedArmy(null); setGarrisonNewArmyName(''); }}
+                                            style={{ padding: '0.45rem 0.55rem', background: selected ? 'rgba(248,113,113,0.2)' : 'rgba(248,113,113,0.06)', border: `1px solid ${selected ? 'rgba(248,113,113,0.7)' : 'rgba(248,113,113,0.25)'}`, borderRadius: '7px', color: '#f87171', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}>
+                                            <div style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{tmpl.icon} {unitType}</div>
+                                            <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px' }}>T{tmpl.tier} · {tmpl.baseCost.gold}💰 {tmpl.baseCost.food}🌾 · {days}d/unit</div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    {garrisonTrainUnit && selectedTmpl && (
+                                      <div style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '10px', padding: '1rem' }}>
+                                        <div style={{ fontWeight: 'bold', color: '#f87171', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+                                          {selectedTmpl.icon} Train {garrisonTrainUnit}
+                                          <span style={{ color: '#64748b', fontWeight: 'normal', fontSize: '0.78rem', marginLeft: '8px' }}>
+                                            {selectedTmpl.baseCost.gold}💰 + {selectedTmpl.baseCost.food}🌾 per unit · <span style={{ color: '#fbbf24' }}>{totalTrainingDays}d total</span>
+                                          </span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                          <div>
+                                            <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '4px' }}>Count</div>
+                                            <input type='number' min='1' value={garrisonTrainCount} onChange={e => setGarrisonTrainCount(e.target.value)}
+                                              style={{ width: '80px', padding: '0.4rem 0.5rem', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '6px', color: 'white', fontSize: '0.9rem' }} />
+                                          </div>
+                                          <div style={{ flex: 1, minWidth: '160px' }}>
+                                            <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '4px' }}>Destination army (optional)</div>
+                                            <select style={{ width: '100%', padding: '0.4rem 0.5rem', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.82rem' }}
+                                              value={garrisonTrainLinkedArmy ?? ''} onChange={e => setGarrisonTrainLinkedArmy(e.target.value ? Number(e.target.value) : null)}>
+                                              <option value=''>→ Garrison</option>
+                                              {eligibleArmies.map(a => <option key={a.id} value={a.id}>{a.name} ({a.total_troops ?? 0} troops)</option>)}
+                                              {eligibleArmies.length === 0 && <option disabled>No matching armies (create one above)</option>}
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '4px' }}>Total cost</div>
+                                            <div style={{ color: '#fbbf24', fontSize: '0.82rem', fontWeight: 'bold' }}>
+                                              {(selectedTmpl.baseCost.gold ?? 0) * (parseInt(garrisonTrainCount) || 0)}💰 {(selectedTmpl.baseCost.food ?? 0) * (parseInt(garrisonTrainCount) || 0)}🌾
+                                            </div>
+                                          </div>
+                                          <button onClick={async () => {
+                                            const cnt = parseInt(garrisonTrainCount);
+                                            if (isNaN(cnt) || cnt < 1) return;
+                                            try {
+                                              await fiefAPI.trainUnits(activeFief.id, garrisonTrainUnit!, cnt, garrisonTrainLinkedArmy);
+                                              refreshActiveFief(activeFief.id);
+                                              setToastMessage(`Training ${cnt} ${garrisonTrainUnit}…`);
+                                              setTimeout(() => setToastMessage(null), 3000);
+                                              setGarrisonTrainUnit(null);
+                                              setGarrisonTrainCount('5');
+                                              setGarrisonTrainLinkedArmy(null);
+                                            } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                          }} style={{ padding: '0.45rem 1.25rem', background: 'rgba(248,113,113,0.25)', border: '2px solid rgba(248,113,113,0.6)', borderRadius: '7px', color: '#f87171', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                            ⚒️ Train
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              }
+                            </div>
+                          )}
+
+                          {/* Footer */}
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <button onClick={close} style={{ padding: '0.5rem 1.5rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '7px', color: '#94a3b8', cursor: 'pointer' }}>Close</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Add Event Modal */}
+                  {showAddEventModal && activeKingdom && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div className="glass-panel" style={{ width: '360px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h5 style={{ color: '#f87171', margin: 0 }}>📢 Add Kingdom Event</h5>
+                        <input type="text" placeholder="Title" value={newEventData.title} onChange={e => setNewEventData(p => ({ ...p, title: e.target.value }))} style={{ padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }} />
+                        <textarea placeholder="Description…" value={newEventData.description} onChange={e => setNewEventData(p => ({ ...p, description: e.target.value }))} rows={3} style={{ padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.85rem', resize: 'vertical' }} />
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <select value={newEventData.event_type} onChange={e => setNewEventData(p => ({ ...p, event_type: e.target.value }))} style={{ flex: 1, padding: '0.4rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: '#f1f5f9', fontSize: '0.8rem' }}>
+                            <option value="announcement">Announcement</option><option value="crisis">Crisis</option><option value="opportunity">Opportunity</option>
+                          </select>
+                          <select value={newEventData.severity} onChange={e => setNewEventData(p => ({ ...p, severity: e.target.value }))} style={{ flex: 1, padding: '0.4rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: '#f1f5f9', fontSize: '0.8rem' }}>
+                            <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                          <button onClick={() => setShowAddEventModal(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>Cancel</button>
+                          <button onClick={async () => {
+                            if (!newEventData.title.trim()) return;
+                            await kingdomEventAPI.createEvent(activeKingdom.id, { ...newEventData, fief_id: activeFief?.id ?? null } as any);
+                            setNewEventData({ title: '', description: '', event_type: 'announcement', severity: 'low' });
+                            setShowAddEventModal(false);
+                            loadKingdomFull(activeKingdom.id);
+                          }} style={{ padding: '0.5rem 1.25rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontWeight: 'bold' }}>Add Event</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add Action Modal */}
+                  {showAddActionModal && activeKingdom && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div className="glass-panel" style={{ width: '360px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h5 style={{ color: '#7dd3fc', margin: 0 }}>🎯 Add Kingdom Action</h5>
+                        <input type="text" placeholder="Action title" value={newActionData.title} onChange={e => setNewActionData(p => ({ ...p, title: e.target.value }))} style={{ padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }} />
+                        <textarea placeholder="Description…" value={newActionData.description} onChange={e => setNewActionData(p => ({ ...p, description: e.target.value }))} rows={2} style={{ padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.85rem', resize: 'vertical' }} />
+                        <input type="text" placeholder="Action type (optional)" value={newActionData.action_type} onChange={e => setNewActionData(p => ({ ...p, action_type: e.target.value }))} style={{ padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.85rem' }} />
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                          <button onClick={() => setShowAddActionModal(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>Cancel</button>
+                          <button onClick={async () => {
+                            if (!newActionData.title.trim()) return;
+                            await kingdomActionAPI.createAction(activeKingdom.id, { ...newActionData, fief_id: activeFief?.id ?? null } as any);
+                            setNewActionData({ title: '', description: '', action_type: '' });
+                            setShowAddActionModal(false);
+                            loadKingdomFull(activeKingdom.id);
+                          }} style={{ padding: '0.5rem 1.25rem', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', borderRadius: '6px', color: '#7dd3fc', cursor: 'pointer', fontWeight: 'bold' }}>Add Action</button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
-
-                {kingdoms.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👑</div>
-                    <p style={{ color: 'var(--text-secondary)' }}>No kingdoms have been established yet.</p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
-                    {kingdoms.map(k => (
-                      <div key={k.id} style={{
-                        background: 'rgba(212,193,156,0.08)',
-                        border: '1px solid rgba(212,193,156,0.3)',
-                        borderRadius: '0.75rem',
-                        padding: '1.25rem'
-                      }}>
-                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>👑</div>
-                        <h6 style={{ color: 'var(--text-gold)', marginBottom: '0.25rem', fontSize: '1.1rem' }}>{k.name}</h6>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>Ruler: {k.player_name}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
 
             {/* DM: Create Kingdom Modal */}
             {showGrantKingdomModal && (
@@ -8333,6 +9715,94 @@ const CampaignView: React.FC = () => {
                   >
                     Cancel
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Rest Modal ─────────────────────────────────────────────── */}
+            {showRestModal && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.4)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <h3 style={{ margin: 0, color: '#7dd3fc', fontSize: '1.1rem' }}>💤 Rest — Day {currentDay}</h3>
+
+                  {/* Rest type selection */}
+                  {(['short', 'long', 'custom'] as const).map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setRestType(type)}
+                      style={{
+                        padding: '0.75rem 1rem', textAlign: 'left', borderRadius: '8px', cursor: 'pointer',
+                        background: restType === type ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.05)',
+                        border: restType === type ? '2px solid rgba(56,189,248,0.6)' : '1px solid rgba(255,255,255,0.15)',
+                        color: restType === type ? '#7dd3fc' : '#cbd5e1',
+                      }}
+                    >
+                      {type === 'short' && <><strong>Short Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— No days pass. Characters recover; no kingdom production.</span></>}
+                      {type === 'long' && <><strong>Long Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance 1 day. Kingdom produces resources &amp; population grows.</span></>}
+                      {type === 'custom' && <><strong>Custom Skip</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance N days.</span></>}
+                    </button>
+                  ))}
+
+                  {restType === 'custom' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '0.85rem', minWidth: '80px' }}>Days to skip:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={9999}
+                        value={customRestDays}
+                        onChange={e => setCustomRestDays(Math.max(1, parseInt(e.target.value) || 1))}
+                        style={{ width: '80px', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }}
+                      />
+                      <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Day {currentDay + customRestDays}</span>
+                    </div>
+                  )}
+
+                  {restType === 'long' && (
+                    <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Will advance to Day {currentDay + 1}</div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                    <button
+                      onClick={() => setShowRestModal(false)}
+                      disabled={restLoading}
+                      style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      disabled={restLoading}
+                      onClick={async () => {
+                        if (!currentCampaign) return;
+                        setRestLoading(true);
+                        try {
+                          const days = restType === 'short' ? 0 : restType === 'long' ? 1 : customRestDays;
+                          const summary = await campaignAPI.advanceDays(currentCampaign.campaign.id, days, restType);
+                          setCurrentDay(summary.newDay);
+                          // Refresh kingdoms
+                          const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
+                          setKingdoms(fetched);
+                          // Build toast
+                          const parts: string[] = [];
+                          if (restType !== 'short') parts.push(`Advanced to Day ${summary.newDay}`);
+                          if (summary.completedBuildings?.length) parts.push(`${summary.completedBuildings.length} building(s) completed`);
+                          const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc, r) => acc + (r.gold || 0), 0);
+                          if (totalGold > 0) parts.push(`+${totalGold} gold produced`);
+                          setToastMessage(parts.join(' • ') || 'Rest complete');
+                          setTimeout(() => setToastMessage(null), 5000);
+                          setShowRestModal(false);
+                        } catch (e: any) {
+                          setToastMessage('Failed to process rest: ' + (e?.response?.data?.error || e.message));
+                          setTimeout(() => setToastMessage(null), 4000);
+                        } finally {
+                          setRestLoading(false);
+                        }
+                      }}
+                      style={{ padding: '0.5rem 1.25rem', background: 'rgba(56,189,248,0.2)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '6px', color: '#7dd3fc', cursor: restLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                    >
+                      {restLoading ? 'Processing…' : 'Confirm Rest'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -10438,37 +11908,52 @@ const CampaignView: React.FC = () => {
                                 <h6 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.2rem' }}>
                                   {getArmyCategoryIcon(army.category)} {army.name}
                                 </h6>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', fontStyle: 'italic' }}>
-                                  {army.category}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{army.category}</span>
+                                  {army.source_fief_id && (
+                                    <span style={{ fontSize: '0.7rem', padding: '1px 7px', borderRadius: '10px', background: (army as any).is_garrisoned ? 'rgba(248,113,113,0.15)' : 'rgba(56,189,248,0.15)', color: (army as any).is_garrisoned ? '#f87171' : '#7dd3fc', border: `1px solid ${(army as any).is_garrisoned ? 'rgba(248,113,113,0.35)' : 'rgba(56,189,248,0.35)'}` }}>
+                                      {(army as any).is_garrisoned ? '🏰 Garrisoned' : '🗡️ Field'}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
-                              {user?.role === 'Dungeon Master' && (
-                                <button
-                                  onClick={async () => {
-                                    if (window.confirm(`Are you sure you want to delete the army "${army.name}"? This will also delete all battle history.`)) {
+                              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                {army.source_fief_id && (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        const updated = await armyAPI.updateGarrisonStatus(army.id, !(army as any).is_garrisoned);
+                                        setArmies(prev => prev.map(a => a.id === army.id ? { ...a, is_garrisoned: (updated as any).is_garrisoned } as any : a));
+                                      } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
+                                    }}
+                                    style={{ padding: '0.25rem 0.65rem', background: (army as any).is_garrisoned ? 'rgba(56,189,248,0.15)' : 'rgba(248,113,113,0.15)', border: `1px solid ${(army as any).is_garrisoned ? 'rgba(56,189,248,0.4)' : 'rgba(248,113,113,0.4)'}`, borderRadius: '0.25rem', color: (army as any).is_garrisoned ? '#7dd3fc' : '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}
+                                  >
+                                    {(army as any).is_garrisoned ? '🗡️ Deploy' : '🏰 Return'}
+                                  </button>
+                                )}
+                                {user?.role === 'Dungeon Master' && (
+                                  <button
+                                    onClick={() => setPendingConfirm({ msg: `Delete army "${army.name}"? This will also delete all battle history.`, onYes: async () => {
                                       try {
                                         await armyAPI.deleteArmy(army.id);
                                         setArmies(armies.filter(a => a.id !== army.id));
-                                        setToastMessage(`Army "${army.name}" deleted`);
-                                        setTimeout(() => setToastMessage(null), 3000);
-                                      } catch (error) {
-                                        console.error('Error deleting army:', error);
-                                      }
-                                    }
-                                  }}
-                                  style={{
-                                    padding: '0.25rem 0.5rem',
-                                    background: 'rgba(239, 68, 68, 0.2)',
-                                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                                    borderRadius: '0.25rem',
-                                    color: '#ef4444',
-                                    cursor: 'pointer',
-                                    fontSize: '0.8rem'
-                                  }}
-                                >
-                                  🗑️ Delete
-                                </button>
-                              )}
+                                        toast(`Army "${army.name}" deleted`);
+                                      } catch (error) { console.error('Error deleting army:', error); }
+                                    }})}
+                                    style={{
+                                      padding: '0.25rem 0.5rem',
+                                      background: 'rgba(239, 68, 68, 0.2)',
+                                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                                      borderRadius: '0.25rem',
+                                      color: '#ef4444',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem'
+                                    }}
+                                  >
+                                    🗑️ Delete
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
                             {/* Army Stats */}
@@ -10537,25 +12022,7 @@ const CampaignView: React.FC = () => {
                                         +10
                                       </button>
                                       <button
-                                        onClick={() => {
-                                          const newValue = prompt(`Enter new troop count for ${army.name}:`, army.total_troops?.toString() || '100');
-                                          if (newValue !== null) {
-                                            const parsed = parseInt(newValue);
-                                            if (!isNaN(parsed) && parsed >= 1) {
-                                              const change = parsed - (army.total_troops || 0);
-                                              armyAPI.updateTroops(army.id, change)
-                                                .then(updated => {
-                                                  setArmies(armies.map(a => a.id === army.id ? updated : a));
-                                                })
-                                                .catch(error => {
-                                                  console.error('Error updating troops:', error);
-                                                  alert('Failed to update troop count');
-                                                });
-                                            } else {
-                                              alert('Please enter a valid number (minimum 1)');
-                                            }
-                                          }
-                                        }}
+                                        onClick={() => { setSetTroopsArmyId(army.id); setSetTroopsVal(army.total_troops?.toString() || '100'); }}
                                         style={{
                                           padding: '0.5rem 0.75rem',
                                           background: 'rgba(168, 85, 247, 0.2)',
@@ -10569,6 +12036,23 @@ const CampaignView: React.FC = () => {
                                       >
                                         ✏️
                                       </button>
+                                      {setTroopsArmyId === army.id && (
+                                        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', marginTop: '0.4rem', gridColumn: '1 / -1' }}>
+                                          <input autoFocus type='number' min='1' value={setTroopsVal} onChange={e => setSetTroopsVal(e.target.value)}
+                                            onKeyDown={async e => {
+                                              if (e.key === 'Enter') {
+                                                const parsed = parseInt(setTroopsVal);
+                                                if (!isNaN(parsed) && parsed >= 1) { try { const up = await armyAPI.updateTroops(army.id, parsed - (army.total_troops || 0)); setArmies(armies.map(a => a.id === army.id ? up : a)); setSetTroopsArmyId(null); } catch(err) { console.error(err); } }
+                                              } else if (e.key === 'Escape') setSetTroopsArmyId(null);
+                                            }}
+                                            style={{ width: '90px', padding: '0.3rem 0.4rem', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(168,85,247,0.4)', borderRadius: '0.25rem', color: 'white', fontSize: '0.85rem' }} />
+                                          <button onClick={async () => {
+                                            const parsed = parseInt(setTroopsVal);
+                                            if (!isNaN(parsed) && parsed >= 1) { try { const up = await armyAPI.updateTroops(army.id, parsed - (army.total_troops || 0)); setArmies(armies.map(a => a.id === army.id ? up : a)); setSetTroopsArmyId(null); } catch(err) { console.error(err); } }
+                                          }} style={{ padding: '0.3rem 0.5rem', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '0.25rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.8rem' }}>✓</button>
+                                          <button onClick={() => setSetTroopsArmyId(null)} style={{ padding: '0.3rem 0.5rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.25rem', color: '#64748b', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -10757,7 +12241,7 @@ const CampaignView: React.FC = () => {
                         <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
                           {user?.role === 'Dungeon Master' 
                             ? 'Click "Add New Army" to create an army for this character.'
-                            : 'The Dungeon Master hasn\'t assigned any armies to this character yet.'}
+                            : 'Train troops from your fief\'s Garrison & Training section to build unit armies, or ask your Dungeon Master to assign one.'}
                         </p>
                       </div>
                     )}
@@ -10961,10 +12445,9 @@ const CampaignView: React.FC = () => {
                                   style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
                                 >✏️ Edit</button>
                                 <button
-                                  onClick={async () => {
-                                    if (!window.confirm(`Delete "${equippedMount.name}"?`)) return;
+                                  onClick={() => setPendingConfirm({ msg: `Delete "${equippedMount.name}"?`, onYes: async () => {
                                     try { await mountAPI.deleteMount(equippedMount.id); setCampaignMounts(prev => prev.filter(m => m.id !== equippedMount.id)); } catch (err) { console.error(err); }
-                                  }}
+                                  }})}
                                   style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
                                 >🗑️ Delete</button>
                               </div>
@@ -11022,7 +12505,7 @@ const CampaignView: React.FC = () => {
                                       {isDM && (
                                         <>
                                           <button onClick={() => { setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id); setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url }); setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true); }} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.12)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem' }}>✏️ Edit</button>
-                                          <button onClick={async () => { if (!window.confirm(`Delete "${mount.name}"?`)) return; try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } }} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>🗑️</button>
+                                          <button onClick={() => setPendingConfirm({ msg: `Delete "${mount.name}"?`, onYes: async () => { try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } }})} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>🗑️</button>
                                         </>
                                       )}
                                     </div>
@@ -12424,7 +13907,7 @@ const CampaignView: React.FC = () => {
                       }
                     } catch (error) {
                       console.error('Error uploading image:', error);
-                      alert('Failed to upload image. Please try again.');
+                      toast('Failed to upload image. Please try again.');
                     }
                   }}
                   style={{
@@ -13334,7 +14817,7 @@ const CampaignView: React.FC = () => {
                 <button
                   onClick={async () => {
                     if (!monsterFormData.name.trim()) {
-                      alert('Please enter a monster name');
+                      toast('Please enter a monster name');
                       return;
                     }
                     try {
@@ -13366,7 +14849,7 @@ const CampaignView: React.FC = () => {
                       setShowAddMonsterModal(false);
                     } catch (error) {
                       console.error('Error creating monster:', error);
-                      alert('Failed to create monster');
+                      toast('Failed to create monster');
                     }
                   }}
                   style={{
@@ -13471,7 +14954,7 @@ const CampaignView: React.FC = () => {
           };
 
           const handleSaveMount = async () => {
-            if (!mountFormData.name?.trim()) { alert('Please enter a name.'); return; }
+            if (!mountFormData.name?.trim()) { toast('Please enter a name.'); return; }
             if (!currentCampaign) return;
             try {
               if (mountModalMode === 'add') {
@@ -13494,7 +14977,7 @@ const CampaignView: React.FC = () => {
               setMountImagePreviewUrl(null);
             } catch (err) {
               console.error('Error saving mount:', err);
-              alert('Failed to save mount. Please try again.');
+              toast('Failed to save mount. Please try again.');
             }
           };
 
@@ -14104,7 +15587,7 @@ const CampaignView: React.FC = () => {
                 <button
                   onClick={async () => {
                     if (!newArmyData.name || !selectedCharacter || !currentCampaign) {
-                      alert('Please enter an army name');
+                      toast('Please enter an army name');
                       return;
                     }
 
@@ -14134,7 +15617,7 @@ const CampaignView: React.FC = () => {
                       setTimeout(() => setToastMessage(null), 3000);
                     } catch (error) {
                       console.error('Error creating army:', error);
-                      alert('Failed to create army');
+                      toast('Failed to create army');
                     }
                   }}
                   className="btn btn-primary"
@@ -14646,7 +16129,7 @@ const CampaignView: React.FC = () => {
                       setTimeout(() => setToastMessage(null), 3000);
                     } catch (error) {
                       console.error('Error adding AI army:', error);
-                      alert('Failed to add AI army');
+                      toast('Failed to add AI army');
                     }
                   }}
                   disabled={!newParticipantData.tempArmyName.trim() || !newParticipantData.team.trim()}
@@ -14892,7 +16375,7 @@ const CampaignView: React.FC = () => {
                       setTimeout(() => setToastMessage(null), 3000);
                     } catch (error) {
                       console.error('Error inviting players:', error);
-                      alert('Failed to invite players');
+                      toast('Failed to invite players');
                     }
                   }}
                   disabled={selectedPlayersToInvite.length === 0 || !inviteTeamName.trim()}
@@ -15095,7 +16578,7 @@ const CampaignView: React.FC = () => {
                       onClick={async () => {
                         const armyIds = (selectedPlayersToInvite as any)[invitation.id] || [];
                         if (armyIds.length === 0) {
-                          alert('Please select at least one army');
+                          toast('Please select at least one army');
                           return;
                         }
                         
@@ -15110,7 +16593,7 @@ const CampaignView: React.FC = () => {
                           setCampaignTab('battlefield');
                         } catch (error) {
                           console.error('Error accepting invitation:', error);
-                          alert('Failed to join battle');
+                          toast('Failed to join battle');
                         }
                       }}
                       disabled={!((selectedPlayersToInvite as any)[invitation.id]?.length > 0)}
@@ -16869,6 +18352,20 @@ const CampaignView: React.FC = () => {
             >
               Establish Kingdom
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Global Confirm Modal (replaces all window.confirm popups) ── */}
+      {pendingConfirm && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={e => { if (e.target === e.currentTarget) setPendingConfirm(null); }}>
+          <div style={{ background: 'linear-gradient(135deg,rgba(15,15,30,0.99),rgba(10,10,21,0.99))', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '12px', padding: '1.5rem 2rem', maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: '0 25px 60px rgba(0,0,0,0.6)' }}>
+            <p style={{ margin: 0, color: '#f1f5f9', fontSize: '0.95rem', lineHeight: 1.6 }}>{pendingConfirm.msg}</p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setPendingConfirm(null)} style={{ padding: '0.45rem 1.25rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '0.88rem' }}>Cancel</button>
+              <button onClick={() => { pendingConfirm.onYes(); setPendingConfirm(null); }} style={{ padding: '0.45rem 1.25rem', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.88rem' }}>Confirm</button>
+            </div>
           </div>
         </div>
       )}

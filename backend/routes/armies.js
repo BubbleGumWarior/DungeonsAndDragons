@@ -7,22 +7,22 @@ const Character = require('../models/Character');
 const { authenticateToken } = require('../middleware/auth');
 const { pool } = require('../models/database');
 const { BATTLE_GOALS, findGoalByKey, isGoalEligible, GOAL_TYPES } = require('../utils/battleGoals');
+const { UNIT_TEMPLATES } = require('../utils/unitTemplates');
 
 const getArmyMovementSpeed = (category) => {
-  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
-  if (artilleryTypes.includes(category)) return 50;
-
-  const cavalryTypes = ['Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Knights', 'Mounted Archers'];
-  if (cavalryTypes.includes(category)) return 300;
-
+  const template = UNIT_TEMPLATES[category];
+  if (!template) return 100;
+  if (template.baseType === 'artillery') return 50;
+  if (template.baseType === 'cavalry') return 300;
+  if (template.baseType === 'covert') return 150;
   return 100;
 };
 
 const getParticipantCategory = (participant) => {
   if (participant.is_temporary) {
-    return participant.temp_army_category || 'Swordsmen';
+    return participant.temp_army_category || 'Recruit';
   }
-  return participant.army_category || participant.temp_army_category || 'Swordsmen';
+  return participant.army_category || participant.temp_army_category || 'Recruit';
 };
 
 // Get all armies for a player in a campaign
@@ -82,17 +82,14 @@ router.get('/campaign/:campaignId', authenticateToken, async (req, res) => {
   }
 });
 
-// Create a new army (DM only)
+// Create a new army — DM path (any category, explicit stats) OR player unit-type path
+// Player path: provides unit_type + source_fief_id + player_id === own id; starts with 0 troops
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { player_id, campaign_id, name, category, total_troops, equipment, discipline, morale, command, logistics } = req.body;
+    const { player_id, campaign_id, name, category, total_troops, equipment, discipline, morale, command, logistics, unit_type, source_fief_id } = req.body;
     
     if (!player_id || !campaign_id || !name) {
       return res.status(400).json({ error: 'player_id, campaign_id, and name are required' });
-    }
-
-    if (!total_troops || total_troops < 1) {
-      return res.status(400).json({ error: 'total_troops is required and must be at least 1' });
     }
     
     const campaign = await Campaign.findById(campaign_id);
@@ -100,32 +97,41 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
     
-    // Only DM can create armies
-    if (req.user.role !== 'Dungeon Master' || campaign.dungeon_master_id !== req.user.id) {
-      return res.status(403).json({ error: 'Only Dungeon Master can create armies' });
+    const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
+    const isOwnPlayerUnitType = req.user.id === parseInt(player_id) && unit_type && source_fief_id;
+    
+    if (!isDM && !isOwnPlayerUnitType) {
+      return res.status(403).json({ error: 'Unauthorized to create this army' });
     }
     
-    const army = await Army.create({
-      player_id,
-      campaign_id,
-      name,
-      category,
-      total_troops,
-      equipment,
-      discipline,
-      morale,
-      command,
-      logistics
-    });
+    let armyData;
+    if (isOwnPlayerUnitType && !isDM) {
+      // Player creating unit-type army — stats auto-set from template, starts empty
+      const template = UNIT_TEMPLATES[unit_type];
+      if (!template) return res.status(400).json({ error: `Unknown unit type: ${unit_type}` });
+      armyData = {
+        player_id,
+        campaign_id,
+        name,
+        category: unit_type,
+        total_troops: 0,
+        unit_type,
+        source_fief_id,
+        is_garrisoned: true,
+        ...template.stats,
+      };
+    } else {
+      // DM creating army — explicit stats, must have troops
+      if (!total_troops || total_troops < 1) {
+        return res.status(400).json({ error: 'total_troops is required and must be at least 1' });
+      }
+      armyData = { player_id, campaign_id, name, category, total_troops, equipment, discipline, morale, command, logistics, is_garrisoned: false };
+    }
     
-    // Emit socket event
+    const army = await Army.create(armyData);
+    
     const io = req.app.get('io');
-    if (io) {
-      io.to(`campaign_${campaign_id}`).emit('armyCreated', {
-        army,
-        timestamp: new Date().toISOString()
-      });
-    }
+    if (io) io.to(`campaign_${campaign_id}`).emit('armyCreated', { army, timestamp: new Date().toISOString() });
     
     res.status(201).json(army);
   } catch (error) {
@@ -1573,6 +1579,46 @@ router.patch('/:id/troops', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error updating troops:', error);
     res.status(500).json({ error: 'Failed to update troops' });
+  }
+});
+
+// Update army garrison status (owner or DM)
+router.patch('/:id/garrison-status', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_garrisoned } = req.body;
+
+    if (typeof is_garrisoned !== 'boolean') {
+      return res.status(400).json({ error: 'is_garrisoned must be a boolean' });
+    }
+
+    const army = await Army.findById(id);
+    if (!army) {
+      return res.status(404).json({ error: 'Army not found' });
+    }
+
+    const campaign = await Campaign.findById(army.campaign_id);
+    const isDM = req.user.role === 'Dungeon Master' && campaign && campaign.dungeon_master_id === req.user.id;
+    const isOwner = army.player_id === req.user.id;
+
+    if (!isDM && !isOwner) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const result = await pool.query(
+      'UPDATE armies SET is_garrisoned = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [is_garrisoned, id]
+    );
+
+    const updatedArmy = result.rows[0];
+
+    const io = req.app.get('io');
+    if (io) io.to(`campaign_${army.campaign_id}`).emit('armyUpdated', { army: updatedArmy, timestamp: new Date().toISOString() });
+
+    res.json(updatedArmy);
+  } catch (error) {
+    console.error('Error updating garrison status:', error);
+    res.status(500).json({ error: 'Failed to update garrison status' });
   }
 });
 

@@ -212,4 +212,54 @@ router.get('/:id/url-name', authenticateToken, async (req, res) => {
   }
 });
 
+// POST reset campaign day back to 1 (DM only)
+router.post('/:id/reset-day', authenticateToken, async (req, res) => {
+  try {
+    if (req.user?.role !== 'Dungeon Master') return res.status(403).json({ error: 'DM only' });
+    const { pool } = require('../models/database');
+    await pool.query(`UPDATE campaigns SET current_day = 1 WHERE id = $1`, [req.params.id]);
+    if (req.io) req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', { campaignId: req.params.id, newDay: 1 });
+    res.json({ current_day: 1 });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to reset day' });
+  }
+});
+
+// GET campaign current day
+router.get('/:id/day', authenticateToken, async (req, res) => {
+  try {
+    const { pool } = require('../models/database');
+    const result = await pool.query(`SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`, [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Campaign not found' });
+    res.json({ current_day: result.rows[0].current_day });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get current day' });
+  }
+});
+
+// PATCH advance campaign days
+router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
+  try {
+    const { days, restType } = req.body;
+    if (!days || days < 0) return res.status(400).json({ error: 'Invalid days value' });
+
+    // Short rest does not advance days
+    if (restType === 'short') {
+      const { pool } = require('../models/database');
+      const result = await pool.query(`SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`, [req.params.id]);
+      return res.json({ newDay: result.rows[0]?.current_day, completedBuildings: [], resourcesGained: {}, populationGained: {}, restType: 'short' });
+    }
+
+    const summary = await Campaign.advanceDays(req.params.id, days);
+    // Notify all players in the campaign via socket
+    if (req.io) {
+      req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', { campaignId: req.params.id, ...summary, restType });
+    }
+    res.json({ ...summary, restType });
+  } catch (error) {
+    console.error('Error advancing days:', error);
+    res.status(500).json({ error: 'Failed to advance days' });
+  }
+});
+
 module.exports = router;

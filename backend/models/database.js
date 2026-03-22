@@ -382,14 +382,19 @@ const runMigrations = async () => {
         player_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
-        category VARCHAR(50) DEFAULT 'Swordsmen' CHECK (category IN (
-          'Royal Guard', 'Knights', 'Assassins', 'Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Light Infantry',
-          'Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers',
-          'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers',
-          'Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards',
-          'Scouts', 'Spies'
+        category VARCHAR(60) DEFAULT 'Recruit' CHECK (category IN (
+          'Recruit', 'Soldier', 'Spearman', 'Pikeman', 'Two-Handed Swordsman', 'Greatsword Master',
+          'Skirmisher', 'Ranger', 'Archer', 'Longbowman', 'Crossbowman', 'Arbalest', 'Mounted Archer', 'Horse Archer',
+          'Squire', 'Man-at-Arms', 'Heavy Cavalry', 'Knight', 'Lancer', 'Royal Lancer',
+          'Watchman', 'Guard', 'Shield Guard', 'Royal Guard', 'Axeman', 'Battle Axeman',
+          'Siege Laborer', 'Siege Apprentice', 'Ballista Crew', 'Heavy Ballista', 'Catapult Crew', 'Trebuchet Crew', 'Siege Tower Operator', 'Bombard Crew', 'Grand Bombard',
+          'Street Informant', 'Infiltrator', 'Scout', 'Master Scout', 'Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'
         )),
+        unit_type VARCHAR(60) DEFAULT NULL,
+        source_fief_id INTEGER REFERENCES fiefs(id) ON DELETE SET NULL,
         numbers INTEGER DEFAULT 5 CHECK (numbers >= 1 AND numbers <= 10),
+        total_troops INTEGER DEFAULT 0,
+        starting_troops INTEGER DEFAULT 0,
         equipment INTEGER DEFAULT 5 CHECK (equipment >= 1 AND equipment <= 10),
         discipline INTEGER DEFAULT 5 CHECK (discipline >= 1 AND discipline <= 10),
         morale INTEGER DEFAULT 5 CHECK (morale >= 1 AND morale <= 10),
