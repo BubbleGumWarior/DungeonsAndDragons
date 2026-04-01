@@ -117,3 +117,105 @@ export interface ImageToCrop {
   url: string;
   characterId: number;
 }
+
+// ── Combat System Types ────────────────────────────────────────────────────
+
+export type CombatCondition =
+  | 'Blinded' | 'Charmed' | 'Deafened' | 'Frightened' | 'Grappled'
+  | 'Incapacitated' | 'Invisible' | 'Paralyzed' | 'Petrified' | 'Poisoned'
+  | 'Prone' | 'Restrained' | 'Stunned' | 'Unconscious' | 'Dead' | 'Stable'
+  | string; // allow custom conditions
+
+export interface CombatLogEntry {
+  id: number;
+  session_id: number;
+  actor_name: string | null;
+  action_type: string;
+  target_name: string | null;
+  limb_name: string | null;
+  roll_result: number | null;
+  damage: number | null;
+  details: string | null;
+  created_at: string;
+}
+
+export interface DeathSaves {
+  successes: number;
+  failures: number;
+  is_stable: boolean;
+  is_dead: boolean;
+}
+
+export interface ActionEconomy {
+  action_used: boolean;
+  bonus_action_used: boolean;
+  reaction_used: boolean;
+}
+
+export interface CombatDiceRequest {
+  requestId: number;
+  requesterName: string;
+  targetCharacterName: string;
+  diceType: string;
+  rollPurpose: 'attack' | 'damage' | 'saving_throw' | 'ability_check' | 'death_save' | 'initiative';
+  purposeDetail: string;
+  campaignId: number;
+  modifier?: string; // 'none' | 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha' | 'prof'
+  precomputedModifier?: number | null; // pre-calculated modifier (e.g. from Quick Roll skill lookup)
+}
+
+// Outcome panel shown to DM after a player submits a dice roll
+export interface CombatRollOutcome {
+  requestId: number;
+  rollerName: string;
+  rawRoll: number;
+  modifier: string;
+  modifierValue: number;
+  total: number;
+  campaignId: number;
+  diceType?: string;
+  rollPurpose?: 'attack' | 'damage' | 'saving_throw' | 'ability_check' | 'death_save' | 'initiative';
+  purposeDetail?: string;
+  // Attack-specific extras (present when this result came from an attack roll sequence)
+  attackerKey?: string;
+  targetKey?: string;
+  targetName?: string;
+  hitRoll?: number;
+  damageRoll?: number;
+  isAttackResult?: boolean;
+}
+
+// Attack request sent by player to DM
+export interface AttackRequest {
+  requestId: number;      // timestamp-based unique id
+  campaignId: number;
+  attackerKey: string;
+  attackerName: string;
+  targetKey: string;
+  targetName: string;
+  targetPlayerId?: number;
+}
+
+// Attack dice config sent by DM back to player
+export interface AttackDiceConfig {
+  requestId: number;
+  campaignId: number;
+  attackerKey: string;
+  attackerName: string;
+  targetKey: string;
+  targetName: string;
+  hitDie: string;   // e.g. 'd20'
+  damageDie: string; // e.g. 'd6'
+  dmName: string;
+}
+
+// Damage-over-time condition applied by DM
+export interface DotCondition {
+  type: 'Burning' | 'Bleeding' | 'Poison';
+  fixedDamage: number | null;       // set damage per tick, OR
+  damageDice: string | null;        // dice the DM rolls each tick (e.g. 'd6')
+  requireRoll: boolean;             // true = DM requests player to roll each tick
+  limbTarget: string | null;        // which limb receives DOT damage (e.g. 'chest', 'head')
+  turnsRemaining: number | null;    // null = indefinite; Burning auto-expires at 0
+}
+

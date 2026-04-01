@@ -241,8 +241,6 @@ router.get('/:id/day', authenticateToken, async (req, res) => {
 router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
   try {
     const { days, restType } = req.body;
-    if (!days || days < 0) return res.status(400).json({ error: 'Invalid days value' });
-
     // Short rest does not advance days
     if (restType === 'short') {
       const { pool } = require('../models/database');
@@ -250,7 +248,13 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
       return res.json({ newDay: result.rows[0]?.current_day, completedBuildings: [], resourcesGained: {}, populationGained: {}, restType: 'short' });
     }
 
-    const summary = await Campaign.advanceDays(req.params.id, days);
+    // Long/custom rests require a positive day amount
+    const numericDays = Number(days);
+    if (!Number.isFinite(numericDays) || numericDays <= 0) {
+      return res.status(400).json({ error: 'Invalid days value' });
+    }
+
+    const summary = await Campaign.advanceDays(req.params.id, numericDays);
     // Notify all players in the campaign via socket
     if (req.io) {
       req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', { campaignId: req.params.id, ...summary, restType });

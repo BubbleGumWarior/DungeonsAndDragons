@@ -44,26 +44,35 @@ export const paginateBackstory = (text: string, wordsPerPage: number = 500): str
   return pages;
 };
 
-// Calculate character health totals
-export const calculateCharacterHealth = (character: any): { current: number; max: number; percentage: number } => {
-  const limbHealth = character.limb_health || {};
-  const maxHealth = Object.values(limbHealth).reduce((sum: number, val: any) => {
-    const numVal = typeof val === 'number' ? val : parseInt(val) || 0;
-    return sum + numVal;
-  }, 0);
-  
-  const currentHealth = Object.entries(limbHealth).reduce((sum: number, [key, maxVal]: [string, any]) => {
-    const currentKey = `current_${key}`;
-    const currentVal = character[currentKey];
-    const current = typeof currentVal === 'number' ? currentVal : parseInt(currentVal) || 0;
-    return sum + current;
-  }, 0);
-  
-  const percentage = maxHealth > 0 ? (currentHealth / maxHealth) * 100 : 0;
-  
-  return {
-    current: currentHealth,
-    max: maxHealth,
-    percentage
-  };
+// Calculate character health totals using limb ratio formula
+// Top-arms percentage and lower-arm percentage support 4-armed races (Secondary Arms trait)
+export const calculateCharacterHealth = (character: any, trackedHp?: { current: number; max: number }): { current: number; max: number; percentage: number } => {
+  const baseHitPoints = typeof character.hit_points === 'number' ? character.hit_points : parseInt(character.hit_points) || 0;
+  if (baseHitPoints <= 0) return { current: 0, max: 0, percentage: 0 };
+
+  const con = character.abilities?.con ?? 10;
+  const conMod = Math.floor((con - 10) / 2);
+  const conBonus = Math.max(0, conMod * 0.1);
+
+  const hasFourArms = character.race === 'Thri-kreen';
+
+  const headMax    = Math.floor(baseHitPoints * Math.min(1.0, 0.25 + conBonus));
+  const torsoMax   = Math.floor(baseHitPoints * Math.min(2.0, 1.0  + conBonus));
+  const armMax     = Math.floor(baseHitPoints * Math.min(1.0, 0.15 + conBonus)); // per arm
+  const lowerArmMax = hasFourArms ? Math.floor(baseHitPoints * 0.05) : 0; // per lower arm
+  const legMax     = Math.floor(baseHitPoints * Math.min(1.0, 0.40 + conBonus));
+
+  const maxHealth = headMax + torsoMax + armMax * 2 + lowerArmMax * 2 + legMax * 2;
+
+  let currentHealth: number;
+  if (trackedHp && trackedHp.max > 0) {
+    // Scale tracked raw HP proportionally to limb total
+    currentHealth = Math.round((trackedHp.current / trackedHp.max) * maxHealth);
+  } else {
+    currentHealth = maxHealth;
+  }
+
+  const percentage = maxHealth > 0 ? Math.min(100, (currentHealth / maxHealth) * 100) : 0;
+
+  return { current: currentHealth, max: maxHealth, percentage };
 };

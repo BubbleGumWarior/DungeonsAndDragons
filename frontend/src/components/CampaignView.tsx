@@ -10,9 +10,15 @@ import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../uti
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
 import { classInfo } from '../data/classInfo';
 import FigureImage from '../assets/images/Board/Figure.png';
+import Figure4ArmsImage from '../assets/images/Board/Figure-4Arms.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
 import BattleMapImage from '../assets/images/Campaign/BattleMap.jpg';
 import io from 'socket.io-client';
+import { AttackModal } from './campaign/AttackModal';
+import { DiceRollModal } from './campaign/DiceRollModal';
+import { CombatLog } from './campaign/CombatLog';
+import { CombatActionsPanel } from './campaign/CombatActionsPanel';
+import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig } from '../types/campaignTypes';
 
 // Journal Entry Interface
 interface JournalEntry {
@@ -314,6 +320,9 @@ const CampaignView: React.FC = () => {
   const [battlePositions, setBattlePositions] = useState<Record<number | string, { x: number; y: number }>>({});
   const [remainingMovement, setRemainingMovement] = useState<Record<number | string, number>>({});
   const [remainingArmyMovement, setRemainingArmyMovement] = useState<Record<number, number>>({});
+  // Darkness: 0 = fully lit, 1 = pitch black. DM sees at half opacity, players see full black.
+  const [darknessLevel, setDarknessLevel] = useState(0);
+  const darknessCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [draggedCharacter, setDraggedCharacter] = useState<number | string | null>(null);
   const [draggedArmyParticipant, setDraggedArmyParticipant] = useState<number | null>(null);
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
@@ -399,8 +408,59 @@ const CampaignView: React.FC = () => {
   const [initiativeOrder, setInitiativeOrder] = useState<(number | string)[]>([]);
   const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(-1);
 
+  // Extended combat state
+  const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
+  const [combatCharacterHp, setCombatCharacterHp] = useState<Record<number, { current: number; max: number }>>({});
+  const [characterLimbHealth, setCharacterLimbHealth] = useState<Record<number, Record<string, number>>>({});
+  const [monsterInstanceHp, setMonsterInstanceHp] = useState<Record<string, { limbHealth: Record<string, number>; totalHP: number }>>({});
+  const [combatConditions, setCombatConditions] = useState<Record<string, string[]>>({});
+  const [deathSaves, setDeathSaves] = useState<Record<number, DeathSaves>>({});
+  const [combatConcentration, setCombatConcentration] = useState<Record<string, string | null>>({});
+  const [combatActionEconomy, setCombatActionEconomy] = useState<Record<string, ActionEconomy>>({});
+  const [pendingDiceRequest, setPendingDiceRequest] = useState<CombatDiceRequest | null>(null);
+  const [pendingRollOutcome, setPendingRollOutcome] = useState<CombatRollOutcome | null>(null);
+  const [showHealModal, setShowHealModal] = useState<{ attackerKey: string; targetKey: string } | null>(null);
+  const [showStatusModal, setShowStatusModal] = useState<{ targetKey: string } | null>(null);
+  const [hitDiceRemaining, setHitDiceRemaining] = useState<Record<number, number>>({});
+  const [characterSpellSlotsUsed, setCharacterSpellSlotsUsed] = useState<Record<number, Record<string, number>>>({});
+  const [characterKiPoints, setCharacterKiPoints] = useState<Record<number, number>>({});
+  const [shortRestPrompt, setShortRestPrompt] = useState<{
+    characterId: number; name: string; die: number;
+    hitDiceRemaining: number; currentHp: number; maxHp: number; conMod: number;
+  } | null>(null);
+  const [shortRestDiceChoice, setShortRestDiceChoice] = useState(0);
+  const [showQuickRollModal, setShowQuickRollModal] = useState<string | null>(null);
+  const [dotConditions, setDotConditions] = useState<Record<string, DotCondition[]>>({});
+  const [pendingDotTick, setPendingDotTick] = useState<{ combatantKey: string; combatantName: string; dotType: string; fixedDamage: number | null; damageDice: string | null; requireRoll: boolean; limbTarget: string | null } | null>(null);
+  const [statusTarget, setStatusTarget] = useState('');
+  const [dotType, setDotType] = useState<string>('Burning');
+  const [dotLimbTarget, setDotLimbTarget] = useState<string>('chest');
+  const [dotDmgMode, setDotDmgMode] = useState<'fixed' | 'dice' | 'roll'>('fixed');
+  const [dotFixed, setDotFixed] = useState('5');
+  const [dotDice, setDotDice] = useState('d6');
+  const [showAttackModal, setShowAttackModal] = useState<{ attackerKey: string; targetKey: string; prefillDamage?: number } | null>(null);
+  // Attack request flow: player sends to DM; DM configures dice; player rolls
+  const [pendingAttackRequest, setPendingAttackRequest] = useState<AttackRequest | null>(null); // DM sees this
+  const [pendingAttackDiceConfig, setPendingAttackDiceConfig] = useState<AttackDiceConfig | null>(null); // player sees this
+  const [attackRollPhase, setAttackRollPhase] = useState<'hit' | 'damage' | null>(null);
+  const [attackHitRoll, setAttackHitRoll] = useState<{ raw: number; total: number } | null>(null);
+  const [attackCompletedSummary, setAttackCompletedSummary] = useState<{ hitTotal: number; damageTotal: number; targetName: string } | null>(null);
+  const [awaitingHitApproval, setAwaitingHitApproval] = useState(false);
+  const [pendingHitRollApproval, setPendingHitRollApproval] = useState<{ requestId: number; attackerName: string; targetName: string; hitTotal: number } | null>(null);
+
+  // Reroll request/approve flow
+  const [pendingRerollRequest, setPendingRerollRequest] = useState<{ requestId: number; rollerName: string; diceType: string } | null>(null);
+  const [rerollApproved, setRerollApproved] = useState(false);
+  // DM attack config picker state
+  const [dmAttackHitDie, setDmAttackHitDie] = useState('d20');
+  const [dmAttackDamageDie, setDmAttackDamageDie] = useState('d6');
+  const [turnNotification, setTurnNotification] = useState<string | null>(null);
+  const [selectedCombatant, setSelectedCombatant] = useState<string | number | null>(null);
+
   // Monster/Encyclopedia state
   const [monsters, setMonsters] = useState<any[]>([]);
+  // Templates for monsters currently in combat — sent by server regardless of visible_to_players
+  const [combatMonsterTemplates, setCombatMonsterTemplates] = useState<Record<string, any>>({});
   const [showAddMonsterModal, setShowAddMonsterModal] = useState(false);
   const [monsterFormData, setMonsterFormData] = useState<any>({
     name: '',
@@ -418,8 +478,10 @@ const CampaignView: React.FC = () => {
   const [encyclopediaSortBy, setEncyclopediaSortBy] = useState<'name' | 'cr' | 'hp' | 'ac'>('name');
   const [encyclopediaSortDir, setEncyclopediaSortDir] = useState<'asc' | 'desc'>('asc');
 
-  // Add to Combat monster search
+  // Add to Combat monster search and sort
   const [combatMonsterSearch, setCombatMonsterSearch] = useState('');
+  const [combatMonsterSortBy, setCombatMonsterSortBy] = useState<'name' | 'cr' | 'hp' | 'ac'>('name');
+  const [combatMonsterSortDir, setCombatMonsterSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Mount state
   const [campaignMounts, setCampaignMounts] = useState<Mount[]>([]);
@@ -599,6 +661,130 @@ const CampaignView: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Prime combat HP state from loaded campaign characters so refresh does not briefly show full HP
+  // before socket sync/events arrive.
+  useEffect(() => {
+    if (!currentCampaign?.characters?.length) return;
+
+    const hpMap: Record<number, { current: number; max: number }> = {};
+    const limbMap: Record<number, Record<string, number>> = {};
+
+    currentCampaign.characters.forEach((character: any) => {
+      hpMap[Number(character.id)] = {
+        current: Number(character.hit_points ?? 0),
+        max: Number((character as any).hit_points_max ?? character.hit_points ?? 1),
+      };
+
+      if ((character as any).limb_health) {
+        limbMap[Number(character.id)] = typeof (character as any).limb_health === 'string'
+          ? JSON.parse((character as any).limb_health)
+          : (character as any).limb_health;
+      }
+    });
+
+    // Merge defaults under existing combat-synced state (existing keys win).
+    setCombatCharacterHp(prev => ({ ...hpMap, ...prev }));
+    if (Object.keys(limbMap).length > 0) {
+      setCharacterLimbHealth(prev => ({ ...limbMap, ...prev }));
+    }
+  }, [currentCampaign]);
+
+  // ── Darkness overlay ────────────────────────────────────────────────────────
+  // Darkness level narrows vision radius (not fog opacity).
+  // Players: strong fog + clear(er) vision holes around their units.
+  // DM:      faded fog + partially revealed zones to visualize unit vision.
+  useEffect(() => {
+    const canvas = darknessCanvasRef.current;
+    if (!canvas) return;
+
+    // Always resize canvas to match its CSS dimensions
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const isDM = user?.role === 'Dungeon Master';
+    const BASE_VISION_RADIUS_FT = 30; // 1% ≈ 1ft on the map
+    const PLAYER_FOG_OPACITY = 1;
+    const DM_FOG_OPACITY = 0.55;
+    const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
+    const hasBlindedOwnCombatant = combatants.some(c => {
+      if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
+      const charConditions = combatConditions[String(c.characterId)] ?? [];
+      return charConditions.some(cond => cond.toLowerCase() === 'blinded');
+    });
+    const shouldApplyVisionOverlay = isDM ? darknessLevel > 0 : (darknessLevel > 0 || hasBlindedOwnCombatant);
+
+    if (!shouldApplyVisionOverlay) return;
+
+    // For players: collect only their own characters.
+    // For DM: collect all combatants to preview what units can see.
+    const ownCombatantPositions: { x: number; y: number; visionRadius: number }[] = [];
+    combatants.forEach(c => {
+      const isOwn = !isDM ? (!c.isMonster && Number(c.playerId) === Number(user?.id)) : true;
+      if (!isOwn) return;
+      const pos = battlePositions[c.characterId];
+      if (!pos) return;
+      const charConditions = combatConditions[String(c.characterId)] ?? [];
+      const isBlinded = charConditions.some(cond => cond.toLowerCase() === 'blinded');
+      const blindMultiplier = isBlinded ? 0.25 : 1;
+      const visionRadius = BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier;
+      ownCombatantPositions.push({ x: pos.x, y: pos.y, visionRadius });
+    });
+
+    if (isDM) {
+      // DM: stable faded veil over entire map
+      ctx.fillStyle = `rgba(0, 0, 0, ${DM_FOG_OPACITY})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // DM: reveal unit-vision areas partially so limits are visible but map remains readable
+      ownCombatantPositions.forEach(({ x, y, visionRadius }) => {
+        const cx = (x / 100) * canvas.width;
+        const cy = (y / 100) * canvas.height;
+        const radiusPx = (visionRadius / 100) * canvas.width;
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalAlpha = 0.72;
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+        gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.65)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      });
+    } else {
+      // Players: fixed fog opacity, radius reduced by darkness level
+      ctx.fillStyle = `rgba(0, 0, 0, ${PLAYER_FOG_OPACITY})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (ownCombatantPositions.length > 0) {
+        ctx.globalCompositeOperation = 'destination-out';
+        ownCombatantPositions.forEach(({ x, y, visionRadius }) => {
+          const cx = (x / 100) * canvas.width;
+          const cy = (y / 100) * canvas.height;
+          const radiusPx = (visionRadius / 100) * canvas.width;
+          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
+          gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+          gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.85)');
+          gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+  }, [darknessLevel, battlePositions, combatants, combatConditions, user]);
+
   const shouldUseSingleOverlayPanel = (() => {
     if (!overlayViewportWidth) return false;
     const overlapSafetyBuffer = 96;
@@ -753,6 +939,7 @@ const CampaignView: React.FC = () => {
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
   const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
   const [showAddSkillModal, setShowAddSkillModal] = useState(false);
+  const [showSkillDbResetConfirm, setShowSkillDbResetConfirm] = useState(false);
   const [showClassProgressionModal, setShowClassProgressionModal] = useState(false);
   const [progressionHoveredSkill, setProgressionHoveredSkill] = useState<string | null>(null);
   const [showCreateSkillModal, setShowCreateSkillModal] = useState(false);
@@ -783,6 +970,7 @@ const CampaignView: React.FC = () => {
   const [levelUpData, setLevelUpData] = useState<{
     hpIncrease: number;
     hpRolled: number | null;
+    hpChoiceLocked: boolean;
     subclassId: number | null;
     featureChoices: any[];
     beastSelection: { beastType: string; beastName: string } | null;
@@ -790,6 +978,7 @@ const CampaignView: React.FC = () => {
   }>({
     hpIncrease: 0,
     hpRolled: null,
+    hpChoiceLocked: false,
     subclassId: null,
     featureChoices: [],
     beastSelection: null,
@@ -877,7 +1066,8 @@ const CampaignView: React.FC = () => {
       });
       
       setCharacterPositions(mapPositions);
-      setBattlePositions(battlePos);
+      // Merge: DB positions are the initial fallback; positions already set by server sync take precedence
+      setBattlePositions(prev => ({ ...battlePos, ...prev }));
       
       // Only initialize movement if not already set by server sync
       // Server sync will override this via battleMovementSync event
@@ -1576,6 +1766,45 @@ const CampaignView: React.FC = () => {
   };
 
   // Armor Class Management (for dungeonmaster to adjust AC)
+  const handleUpdateBaseHp = async (characterId: number, increment: number) => {
+    try {
+      const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
+      if (!currentCharacter || !socket || !currentCampaign) return;
+
+      const characterOverride = characterDataOverrides[characterId];
+      const currentHp = (characterOverride?.hit_points ?? currentCharacter.hit_points) as number;
+      const newHp = currentHp + increment;
+
+      if (newHp < 1 || newHp > 999) {
+        toast('Base HP must be between 1 and 999');
+        return;
+      }
+
+      await characterAPI.update(characterId, { hit_points: newHp });
+
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          hit_points: newHp
+        }
+      }));
+
+      socket.emit('baseHpUpdated', {
+        campaignId: currentCampaign.campaign.id,
+        characterId,
+        newBaseHp: newHp,
+        timestamp: new Date().toISOString()
+      });
+
+      setToastMessage(`Base HP updated to ${newHp}`);
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      console.error('Error updating base HP:', error);
+      toast('Failed to update base HP');
+    }
+  };
+
   const handleUpdateArmorClass = async (characterId: number, increment: number) => {
     try {
       const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
@@ -1768,8 +1997,9 @@ const CampaignView: React.FC = () => {
       const info = await skillAPI.getLevelUpInfo(characterId);
       setLevelUpInfo(info);
       setLevelUpData({
-        hpIncrease: info.hitDieAverage,
+        hpIncrease: 0,
         hpRolled: null,
+        hpChoiceLocked: false,
         subclassId: null,
         featureChoices: [],
         beastSelection: null,
@@ -1784,14 +2014,17 @@ const CampaignView: React.FC = () => {
   };
 
   const handleRollHP = () => {
-    if (!levelUpInfo) return;
-    const rolled = Math.floor(Math.random() * levelUpInfo.hitDie) + 1;
-    setLevelUpData(prev => ({ ...prev, hpIncrease: rolled, hpRolled: rolled }));
+    if (!levelUpInfo || levelUpData.hpChoiceLocked) return;
+    const conMod = Math.floor(((selectedCharacterData?.abilities?.con ?? 10) - 10) / 2);
+    const rolled = Math.max(1, Math.floor(Math.random() * levelUpInfo.hitDie) + 1 + conMod);
+    setLevelUpData(prev => ({ ...prev, hpIncrease: rolled, hpRolled: rolled, hpChoiceLocked: true }));
   };
 
   const handleTakeAverage = () => {
-    if (!levelUpInfo) return;
-    setLevelUpData(prev => ({ ...prev, hpIncrease: levelUpInfo.hitDieAverage, hpRolled: null }));
+    if (!levelUpInfo || levelUpData.hpChoiceLocked) return;
+    const conMod = Math.floor(((selectedCharacterData?.abilities?.con ?? 10) - 10) / 2);
+    const avg = Math.max(1, levelUpInfo.hitDieAverage + conMod);
+    setLevelUpData(prev => ({ ...prev, hpIncrease: avg, hpRolled: null, hpChoiceLocked: true }));
   };
 
   const handleCompleteLevelUp = async () => {
@@ -1840,44 +2073,18 @@ const CampaignView: React.FC = () => {
     }
   };
 
-  // Helper function to calculate total character health from limbs
-  const calculateCharacterHealth = (character: any) => {
-    const baseHitPoints = character.hit_points;
-    const conModifier = Math.floor((character.abilities.con - 10) / 2);
-    const conBonus = Math.max(0, conModifier * 0.1);
-
-    // Calculate limb health ratios (same as in character sheet)
-    const limbHealthRatios = {
-      head: Math.min(1.0, 0.25 + conBonus),
-      torso: Math.min(2.0, 1.0 + conBonus),
-      hand: Math.min(1.0, 0.15 + conBonus),  // Per hand
-      leg: Math.min(1.0, 0.4 + conBonus)      // Per leg
-    };
-
-    const limbHealths = {
-      head: Math.floor(baseHitPoints * limbHealthRatios.head),
-      torso: Math.floor(baseHitPoints * limbHealthRatios.torso),
-      leftHand: Math.floor(baseHitPoints * limbHealthRatios.hand),
-      rightHand: Math.floor(baseHitPoints * limbHealthRatios.hand),
-      leftLeg: Math.floor(baseHitPoints * limbHealthRatios.leg),
-      rightLeg: Math.floor(baseHitPoints * limbHealthRatios.leg)
-    };
-
-    // Calculate total health: each limb counted separately
-    const totalMaxHealth = limbHealths.head + limbHealths.torso + 
-                          limbHealths.leftHand + limbHealths.rightHand + 
-                          limbHealths.leftLeg + limbHealths.rightLeg;
-    
-    // TODO: When we add current health tracking, calculate current health for each limb separately
-    // For now, assuming full health
-    const currentHealth = totalMaxHealth;
-    
+  // Helper: compute per-limb max HP from a character's BASE HP (not normalized — limbs can sum > baseHP)
+  // Formula: Head 25%+CON, Torso 100%+CON (max 200%), Arms 15%+CON, Legs 40%+CON — each +1 CON = +10%
+  const calcCharacterLimbHealthMax = (baseHP: number, con: number): Record<string, number> => {
+    const conMod = Math.floor((con - 10) / 2);
+    const conBonus = Math.max(0, conMod * 0.1);
     return {
-      current: currentHealth,
-      max: totalMaxHealth,
-      percentage: (currentHealth / totalMaxHealth) * 100,
-      isDead: currentHealth <= 0,
-      limbs: limbHealths  // Return individual limb healths for future damage tracking
+      head:      Math.floor(baseHP * Math.min(1.0, 0.25 + conBonus)),
+      chest:     Math.floor(baseHP * Math.min(2.0, 1.0 + conBonus)),
+      left_arm:  Math.floor(baseHP * Math.min(1.0, 0.15 + conBonus)),
+      right_arm: Math.floor(baseHP * Math.min(1.0, 0.15 + conBonus)),
+      left_leg:  Math.floor(baseHP * Math.min(1.0, 0.40 + conBonus)),
+      right_leg: Math.floor(baseHP * Math.min(1.0, 0.40 + conBonus)),
     };
   };
 
@@ -1924,6 +2131,21 @@ const CampaignView: React.FC = () => {
       setActiveTab('board');
     }
   }, [selectedCharacter, canViewAllTabs]);
+
+  // Fetch spell slots and ki points when a character is selected
+  useEffect(() => {
+    if (!selectedCharacter) return;
+    const charData = currentCampaign?.characters.find((c: any) => c.id === selectedCharacter);
+    if (!charData || !isSpellcaster(charData.class) && charData.class !== 'Monk') return;
+    const token = localStorage.getItem('token');
+    characterAPI.getSpellSlots(selectedCharacter).then(data => {
+      if (!data) return;
+      setCharacterSpellSlotsUsed(prev => ({ ...prev, [selectedCharacter]: data.spell_slots_used || {} }));
+      if (data.ki_points_remaining != null) {
+        setCharacterKiPoints(prev => ({ ...prev, [selectedCharacter]: data.ki_points_remaining ?? 0 }));
+      }
+    }).catch(() => {});
+  }, [selectedCharacter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard navigation for backstory pages and character selection
   useEffect(() => {
@@ -2152,16 +2374,15 @@ const CampaignView: React.FC = () => {
         ? window.location.origin 
         : 'http://localhost:5000';
       const newSocket = io(socketUrl);
-      
-      // Register user ID for targeted notifications
-      if (user) {
-        newSocket.emit('registerUser', user.id);
-        console.log('🔗 Registered user:', user.id);
-      }
-      
-      // Join campaign room
-      newSocket.emit('joinCampaign', currentCampaign.campaign.id);
-      console.log('👥 Joined campaign room:', currentCampaign.campaign.id);
+
+      // Re-join campaign room on reconnect (e.g. after server restart)
+      newSocket.on('connect', () => {
+        if (user) {
+          newSocket.emit('registerUser', user.id);
+        }
+        newSocket.emit('joinCampaign', currentCampaign.campaign.id);
+        console.log('🔄 Reconnected — rejoined campaign room:', currentCampaign.campaign.id);
+      });
       
       // Debug: Listen to ALL socket events
       newSocket.onAny((eventName, ...args) => {
@@ -2191,6 +2412,30 @@ const CampaignView: React.FC = () => {
         isCustom?: boolean;
         timestamp: string;
       }) => {
+        // Update the equipment array in characterDataOverrides so the inventory tab shows current items
+        const campaign = currentCampaignRef.current;
+        if (campaign) {
+          setCharacterDataOverrides(prev => {
+            const baseChar = campaign.characters.find(c => c.id === data.characterId);
+            const currentEquipment: string[] = prev[data.characterId]?.equipment ?? baseChar?.equipment ?? [];
+            const newEquipment = data.action === 'add'
+              ? [...currentEquipment, data.itemName]
+              : (() => {
+                  // Remove only ONE copy of the item, not all copies
+                  const idx = currentEquipment.indexOf(data.itemName);
+                  if (idx === -1) return currentEquipment;
+                  return [...currentEquipment.slice(0, idx), ...currentEquipment.slice(idx + 1)];
+                })();
+            return {
+              ...prev,
+              [data.characterId]: {
+                ...prev[data.characterId],
+                equipment: newEquipment
+              }
+            };
+          });
+        }
+
         // Clear equipment details cache for affected characters to force refresh on next load
         setEquipmentDetails(prev => {
           const updated = { ...prev };
@@ -2324,9 +2569,20 @@ const CampaignView: React.FC = () => {
 
       // Listen for battle movement sync (server sends authoritative state on join)
       newSocket.on('battleMovementSync', (data: {
-        movementState: Record<number | string, number>;
+        movementState: Record<string, { x: number; y: number; remainingMovement: number } | number>;
       }) => {
-        setRemainingMovement(data.movementState);
+        const positions: Record<string, { x: number; y: number }> = {};
+        const movement: Record<string, number> = {};
+        Object.entries(data.movementState).forEach(([key, val]) => {
+          if (val !== null && typeof val === 'object') {
+            positions[key] = { x: (val as any).x, y: (val as any).y };
+            movement[key] = (val as any).remainingMovement;
+          } else {
+            movement[key] = val as number;
+          }
+        });
+        setBattlePositions(prev => ({ ...prev, ...positions }));
+        setRemainingMovement(movement);
       });
 
       // Listen for battlefield army/participant movement
@@ -2375,7 +2631,7 @@ const CampaignView: React.FC = () => {
       // Listen for battle combat sync (server sends combat state on join)
       newSocket.on('battleCombatSync', (data: {
         combatants: Array<{ 
-          characterId: number; 
+          characterId: number | string; 
           playerId: number; 
           name: string; 
           initiative: number; 
@@ -2383,13 +2639,96 @@ const CampaignView: React.FC = () => {
           isMonster?: boolean;
           monsterId?: number;
           instanceNumber?: number;
+          conditions?: string[];
+          concentration_spell?: string | null;
+          action_used?: boolean;
+          bonus_action_used?: boolean;
+          reaction_used?: boolean;
         }>;
-        initiativeOrder: number[];
+        initiativeOrder: (number | string)[];
         currentTurnIndex: number;
+        log?: CombatLogEntry[];
       }) => {
         setCombatants(data.combatants);
         setInitiativeOrder(data.initiativeOrder);
         setCurrentTurnIndex(data.currentTurnIndex);
+        if (data.log) setCombatLog(data.log);
+        // Rebuild conditions and action economy from synced combatants
+        const conditions: Record<string, string[]> = {};
+        const economy: Record<string, ActionEconomy> = {};
+        const concentration: Record<string, string | null> = {};
+        data.combatants.forEach(c => {
+          const key = String(c.characterId);
+          if (c.conditions) conditions[key] = c.conditions;
+          economy[key] = { action_used: !!c.action_used, bonus_action_used: !!c.bonus_action_used, reaction_used: !!c.reaction_used };
+          concentration[key] = c.concentration_spell ?? null;
+        });
+        setCombatConditions(conditions);
+        setCombatActionEconomy(economy);
+        setCombatConcentration(concentration);
+        // Assign default positions for any combatant not already in the server movement state
+        setBattlePositions(prev => {
+          const updated = { ...prev };
+          data.combatants.forEach((c, idx) => {
+            const key = c.characterId;
+            if (!updated[key]) {
+              updated[key] = { x: 15 + (idx % 6) * 14, y: 15 + Math.floor(idx / 6) * 20 };
+            }
+          });
+          return updated;
+        });
+        // Prime character HP map — prefer DB values from sync, fall back to currentCampaign characters
+        const charHpFromSync = (data as any).characterHpData as Record<string, { current: number; max: number; limbHealth?: Record<string, number> }> | undefined;
+        if (charHpFromSync && Object.keys(charHpFromSync).length > 0) {
+          // Use authoritative DB values (current + max both correct)
+          const hpMap: Record<number, { current: number; max: number }> = {};
+          const limbMap: Record<number, Record<string, number>> = {};
+          Object.entries(charHpFromSync).forEach(([id, hp]) => {
+            hpMap[Number(id)] = { current: hp.current, max: hp.max };
+            if (hp.limbHealth) {
+              limbMap[Number(id)] = hp.limbHealth;
+            } else {
+              // DB has no limb data yet — compute max values so stale zeros from prior combat are cleared
+              const char = currentCampaign?.characters.find((c: any) => Number(c.id) === Number(id));
+              if (char) limbMap[Number(id)] = calcCharacterLimbHealthMax(hp.max, char.abilities?.con ?? 10);
+            }
+          });
+          setCombatCharacterHp(hpMap);
+          setCharacterLimbHealth(prev => ({ ...prev, ...limbMap }));
+          // Hydrate hit dice remaining from sync payload
+          const hdrMap: Record<number, number> = {};
+          Object.entries(charHpFromSync).forEach(([id, hp]) => {
+            if ((hp as any).hitDiceRemaining != null) hdrMap[Number(id)] = (hp as any).hitDiceRemaining;
+          });
+          if (Object.keys(hdrMap).length > 0) setHitDiceRemaining(prev => ({ ...prev, ...hdrMap }));
+        } else if (currentCampaign) {
+          // Fallback: seed from loaded campaign characters (max may equal current if no max tracked)
+          const hpMap: Record<number, { current: number; max: number }> = {};
+          data.combatants.forEach(c => {
+            if (!c.isMonster) {
+              const charId = Number(c.characterId);
+              const char = currentCampaign.characters.find((ch: any) => Number(ch.id) === charId);
+              if (char) hpMap[charId] = { current: char.hit_points, max: (char as any).hit_points_max ?? char.hit_points };
+            }
+          });
+          setCombatCharacterHp(hpMap);
+        }
+        // Hydrate monster HP from DB data included in sync
+        if ((data as any).monsterHpData) {
+          setMonsterInstanceHp((data as any).monsterHpData);
+        }
+        // Hydrate monster templates for active combat monsters (players may not have them via API)
+        if ((data as any).combatMonsterTemplates) {
+          setCombatMonsterTemplates((data as any).combatMonsterTemplates);
+        }
+        // Seed darkness level from server state
+        if (typeof (data as any).darknessLevel === 'number') {
+          setDarknessLevel((data as any).darknessLevel);
+        }
+        // Seed DOT conditions from server state
+        if ((data as any).dotConditions) {
+          setDotConditions((data as any).dotConditions);
+        }
       });
 
       // Listen for next turn event (DM resets all movement)
@@ -2438,6 +2777,33 @@ const CampaignView: React.FC = () => {
         setCombatants(data.combatants);
         setInitiativeOrder(data.initiativeOrder);
         setCurrentTurnIndex(data.currentTurnIndex);
+        // Assign default positions for newly added combatants not yet in movement state
+        setBattlePositions(prev => {
+          const updated = { ...prev };
+          data.combatants.forEach((c, idx) => {
+            const key = c.characterId;
+            if (!updated[key]) {
+              updated[key] = { x: 15 + (idx % 6) * 14, y: 15 + Math.floor(idx / 6) * 20 };
+            }
+          });
+          return updated;
+        });
+        // Initialize HP tracking for any newly-added character combatants
+        if (currentCampaign) {
+          setCombatCharacterHp(prev => {
+            const updated = { ...prev };
+            data.combatants.forEach(c => {
+              const charId = Number(c.characterId);
+              if (!c.isMonster && !updated[charId]) {
+                const char = currentCampaign.characters.find((ch: any) => Number(ch.id) === charId);
+                if (char) {
+                  updated[charId] = { current: char.hit_points, max: char.hit_points };
+                }
+              }
+            });
+            return updated;
+          });
+        }
       });
 
       // Listen for turn advanced (initiative moves to next combatant)
@@ -2465,6 +2831,310 @@ const CampaignView: React.FC = () => {
         setCombatants([]);
         setInitiativeOrder([]);
         setCurrentTurnIndex(-1);
+        setCombatLog([]);
+        // Note: combatCharacterHp is intentionally NOT cleared — player HP persists after combat reset
+        setMonsterInstanceHp({});
+        setCombatConditions({});
+        setDeathSaves({});
+        setCombatConcentration({});
+        setCombatActionEconomy({});
+        setSelectedCombatant(null);
+        setDotConditions({});
+        setPendingDotTick(null);
+        setPendingRollOutcome(null);
+        setShowHealModal(null);
+        setDarknessLevel(0);
+        setShowStatusModal(null);
+      });
+
+      // Listen for real-time HP updates
+      newSocket.on('healthUpdated', (data: any) => {
+        if (data.type === 'character') {
+          const charId = data.characterId as number;
+          setCombatCharacterHp(prev => {
+            const existing = prev[charId];
+            return {
+              ...prev,
+              [charId]: {
+                current: data.newHP,
+                max: data.maxHP ?? existing?.max ?? data.newHP,
+              },
+            };
+          });
+          if (Object.prototype.hasOwnProperty.call(data, 'limbHealth')) {
+            setCharacterLimbHealth(prev => {
+              const next = { ...prev };
+              if (data.limbHealth === null) {
+                delete next[charId];
+              } else {
+                next[charId] = data.limbHealth;
+              }
+              return next;
+            });
+          }
+          setHitDiceRemaining(prev => {
+            if (data.hitDiceRemaining == null) return prev;
+            return { ...prev, [charId]: data.hitDiceRemaining };
+          });
+          // Also update the character in currentCampaign so the player list reflects changes
+          if (currentCampaign) {
+            const updated = currentCampaign.characters.map((c: any) =>
+              c.id === charId
+                ? {
+                    ...c,
+                    hit_points: data.newHP,
+                    hit_points_max: data.maxHP ?? (c.hit_points_max ?? c.hit_points),
+                    ...(Object.prototype.hasOwnProperty.call(data, 'limbHealth') ? { limb_health: data.limbHealth } : {}),
+                  }
+                : c
+            );
+            // Mutate only temporary — proper update via context re-fetch if needed
+            currentCampaign.characters = updated;
+          }
+        } else if (data.type === 'monster') {
+          setMonsterInstanceHp(prev => ({
+            ...prev,
+            [String(data.instanceId)]: { limbHealth: data.limbHealth, totalHP: data.totalHP },
+          }));
+        }
+      });
+
+      // Listen for conditions changes
+      newSocket.on('conditionsUpdated', (data: { combatantKey: string; conditions: string[] }) => {
+        setCombatConditions(prev => ({ ...prev, [data.combatantKey]: data.conditions }));
+      });
+
+      // Listen for death saves updates
+      newSocket.on('deathSavesUpdated', (data: { characterId: number; saves: DeathSaves }) => {
+        setDeathSaves(prev => ({ ...prev, [data.characterId]: data.saves }));
+      });
+
+      // Listen for concentration changes
+      newSocket.on('concentrationUpdated', (data: { combatantKey: string; spell: string | null }) => {
+        setCombatConcentration(prev => ({ ...prev, [data.combatantKey]: data.spell }));
+      });
+
+      // Short rest — player is prompted to spend hit dice
+      newSocket.on('shortRestStarted', (data: any) => {
+        const myChar = data.characters?.find((c: any) => c.playerId === user?.id);
+        if (myChar) {
+          setShortRestPrompt(myChar);
+          setShortRestDiceChoice(0);
+        }
+      });
+
+      // Server resolves hit dice spending and returns healed HP
+      newSocket.on('shortRestResult', (data: any) => {
+        setHitDiceRemaining(prev => ({ ...prev, [data.characterId]: data.hitDiceRemaining }));
+        setCombatCharacterHp(prev => {
+          const existing = prev[data.characterId];
+          return { ...prev, [data.characterId]: { current: data.newHp, max: existing?.max ?? data.newHp } };
+        });
+        // If Warlock or Monk, pact slots/ki were restored on short rest
+        if (data.class === 'Warlock') {
+          setCharacterSpellSlotsUsed(prev => ({ ...prev, [data.characterId]: {} }));
+        }
+        if (data.class === 'Monk' && data.kiRestored != null) {
+          setCharacterKiPoints(prev => ({ ...prev, [data.characterId]: data.kiRestored }));
+        }
+        if (data.diceSpent > 0) {
+          const rollStr = (data.rolls ?? []).join(', ');
+          const conStr = data.conMod >= 0 ? `+${data.conMod}` : `${data.conMod}`;
+          setToastMessage(`${data.name}: rolled ${data.diceSpent}d${data.die} [${rollStr}] ${conStr} CON = +${data.totalHealed} HP`);
+          setTimeout(() => setToastMessage(null), 6000);
+        }
+        setShortRestPrompt(null);
+      });
+
+      // Long rest — all characters fully restored
+      newSocket.on('longRestCompleted', (data: any) => {
+        const hdrMap: Record<number, number> = {};
+        const hpMap: Record<number, { current: number; max: number }> = {};
+        const spellReset: Record<number, Record<string, number>> = {};
+        const kiReset: Record<number, number> = {};
+        (data.results ?? []).forEach((r: any) => {
+          hdrMap[r.characterId] = r.hitDiceRemaining;
+          hpMap[r.characterId] = { current: r.newHp, max: r.newHp };
+          spellReset[r.characterId] = {};
+          if (r.kiRestored != null) kiReset[r.characterId] = r.kiRestored;
+        });
+        setHitDiceRemaining(prev => ({ ...prev, ...hdrMap }));
+        setCombatCharacterHp(prev => ({ ...prev, ...hpMap }));
+        setCharacterSpellSlotsUsed(prev => ({ ...prev, ...spellReset }));
+        setCharacterKiPoints(prev => ({ ...prev, ...kiReset }));
+        setToastMessage('🌙 Long rest complete — all characters fully restored');
+        setTimeout(() => setToastMessage(null), 5000);
+      });
+
+      // Spell slot / ki point sync from socket (replaces REST-only updates)
+      newSocket.on('spellSlotUpdated', (data: { characterId: number; spell_slots_used: Record<string, number> }) => {
+        setCharacterSpellSlotsUsed(prev => ({ ...prev, [data.characterId]: data.spell_slots_used }));
+      });
+      newSocket.on('kiPointUpdated', (data: { characterId: number; ki_points_remaining: number }) => {
+        setCharacterKiPoints(prev => ({ ...prev, [data.characterId]: data.ki_points_remaining }));
+      });
+
+      // Listen for action economy updates
+      newSocket.on('actionEconomyUpdated', (data: { combatantKey?: string; economy?: ActionEconomy; combatants?: any[]; campaignId?: number }) => {
+        // Backend sends full combatants array; legacy path also handles single {combatantKey, economy}
+        if (data.combatants) {
+          const updated: Record<string, ActionEconomy> = {};
+          data.combatants.forEach((c: any) => {
+            // Raw DB rows use combatant_key; camelCase fallback for any future normalization
+            const key = String(c.combatant_key ?? c.characterId ?? c.character_id);
+            updated[key] = {
+              action_used: !!c.action_used,
+              bonus_action_used: !!c.bonus_action_used,
+              reaction_used: !!c.reaction_used,
+            };
+          });
+          setCombatActionEconomy(prev => ({ ...prev, ...updated }));
+        } else if (data.combatantKey && data.economy) {
+          setCombatActionEconomy(prev => ({ ...prev, [data.combatantKey!]: data.economy! }));
+        }
+      });
+
+      // Listen for combat log updates
+      newSocket.on('combatLogUpdated', (data: { log: CombatLogEntry[] }) => {
+        setCombatLog(data.log);
+      });
+
+      // Listen for turn started — show notification if it's the current user's turn
+      newSocket.on('turnStarted', (data: { campaignId: number; currentCharacterId: number | string; playerId: number; characterName: string }) => {
+        if (user && data.playerId === user.id) {
+          setTurnNotification(`⚔️ It's your turn: ${data.characterName}`);
+          setTimeout(() => setTurnNotification(null), 5000);
+        }
+      });
+
+      // Listen for dice roll requests from DM
+      newSocket.on('diceRollRequested', (data: CombatDiceRequest) => {
+        setPendingDiceRequest(data);
+      });
+
+      // DM receives attack request from player
+      newSocket.on('attackRequested', (data: AttackRequest) => {
+        if (user?.role === 'Dungeon Master') {
+          setPendingAttackRequest(data);
+          setDmAttackHitDie('d20');
+          setDmAttackDamageDie('d6');
+        }
+      });
+
+      // Player receives attack dice config from DM — start rolling
+      newSocket.on('attackDiceConfig', (data: AttackDiceConfig & { attackerPlayerId?: number }) => {
+        // Only show to the attacking player (or DM seeing the full state)
+        const myCharKey = currentCampaign?.userCharacter
+          ? String(currentCampaign.userCharacter.id)
+          : null;
+        if (user?.role !== 'Dungeon Master' && myCharKey && String(data.attackerKey) !== myCharKey) return;
+        if (user?.role === 'Dungeon Master') return; // DM configured it — they don't roll
+        setPendingAttackDiceConfig(data);
+        setAttackRollPhase('hit');
+        setAttackHitRoll(null);
+      });
+
+      // Listen for dice results — players clear modal; DM gets outcome panel
+      newSocket.on('diceResultReceived', (data: any) => {
+        setPendingDiceRequest(null);
+        if (user?.role === 'Dungeon Master') {
+          const isAttack = data.hitRoll != null && data.damageRoll != null;
+          setPendingRollOutcome({
+            requestId: data.requestId,
+            rollerName: data.rollerName,
+            rawRoll: data.rawRoll ?? data.result,
+            modifier: data.modifier ?? 'none',
+            modifierValue: data.modifierValue ?? 0,
+            total: data.total ?? data.result,
+            campaignId: data.campaignId,
+            diceType: data.diceType,
+            rollPurpose: data.rollPurpose,
+            purposeDetail: data.purposeDetail,
+            // Attack-specific fields
+            attackerKey: data.attackerKey,
+            targetKey: data.targetKey,
+            targetName: data.targetName,
+            hitRoll: data.hitRoll,
+            damageRoll: data.damageRoll,
+            isAttackResult: isAttack,
+          });
+
+        }
+      });
+
+      // Hit roll submitted — DM approves/denies before player rolls damage
+      newSocket.on('hitRollResult', (data: { requestId: number; attackerName: string; targetName: string; hitTotal: number }) => {
+        if (user?.role === 'Dungeon Master') setPendingHitRollApproval(data);
+      });
+      newSocket.on('hitRollApproved', (data: { requestId: number; hitTotal: number; hitRaw: number }) => {
+        setAwaitingHitApproval(false);
+        setAttackRollPhase('damage');
+      });
+      newSocket.on('hitRollDenied', () => {
+        setAwaitingHitApproval(false);
+        setPendingAttackDiceConfig(null);
+        setAttackRollPhase(null);
+        setAttackHitRoll(null);
+      });
+
+      // Reconnect restore — server sends this when player rejoins mid-attack
+      newSocket.on('restoreAttackState', (data: { config: AttackDiceConfig; phase: 'awaiting_approval' | 'damage'; hitTotal: number }) => {
+        setPendingAttackDiceConfig(data.config);
+        setAttackHitRoll({ raw: data.hitTotal, total: data.hitTotal });
+        if (data.phase === 'awaiting_approval') {
+          setAttackRollPhase('hit');
+          setAwaitingHitApproval(true);
+        } else {
+          setAttackRollPhase('damage');
+          setAwaitingHitApproval(false);
+        }
+      });
+
+      // Reroll request — DM sees approval panel
+      newSocket.on('rerollRequested', (data: { requestId: number; rollerName: string; diceType: string }) => {
+        if (user?.role === 'Dungeon Master') setPendingRerollRequest(data);
+      });
+      // Reroll approved — player's modal resets so they can roll again
+      newSocket.on('rerollApproved', () => {
+        setRerollApproved(true);
+        setTimeout(() => setRerollApproved(false), 200);
+      });
+      // Reroll denied — no further action needed (player sees their pending message disappear on next render)
+      newSocket.on('rerollDenied', () => {
+        setPendingDiceRequest(null);
+      });
+
+      // DM: DOT tick fires at start of affected combatant's turn
+      newSocket.on('dotTick', (data: { combatantKey: string; combatantName: string; dotType: string; fixedDamage: number | null; damageDice: string | null; requireRoll: boolean; limbTarget: string | null; campaignId: number }) => {
+        if (user?.role === 'Dungeon Master') {
+          setPendingDotTick(data);
+        }
+      });
+
+      // Turn skipped due to stun/incapacitation — add to combat log view
+      newSocket.on('turnSkipped', (data: { characterId: string; characterName: string; reason: string; campaignId: number }) => {
+        setCombatLog(prev => [{
+          id: Date.now(),
+          session_id: 0,
+          actor_name: data.characterName,
+          action_type: 'condition',
+          target_name: null,
+          limb_name: null,
+          roll_result: null,
+          damage: null,
+          details: `⏭️ ${data.characterName}'s turn was skipped (${data.reason})`,
+          created_at: new Date().toISOString(),
+        } as CombatLogEntry, ...prev]);
+      });
+
+      // DOT condition list updated
+      newSocket.on('dotConditionsUpdated', (data: { combatantKey: string; dotConditions: DotCondition[]; campaignId: number }) => {
+        setDotConditions(prev => ({ ...prev, [data.combatantKey]: data.dotConditions }));
+      });
+
+      // Darkness level updated by DM
+      newSocket.on('darknessUpdated', (data: { darknessLevel: number; campaignId: number }) => {
+        setDarknessLevel(data.darknessLevel);
       });
 
       // Listen for army created
@@ -2627,10 +3297,17 @@ const CampaignView: React.FC = () => {
             [data.characterId]: {
               ...prev[data.characterId],
               level: data.newLevel,
-              hp: data.newHP,
+              hit_points: data.newHP,
+              hit_points_max: data.newHP,
               experience_points: data.experiencePoints
             }
           }));
+          // Update combatCharacterHp max so the health bar scales correctly
+          setCombatCharacterHp(prev => {
+            const existing = prev[data.characterId];
+            if (!existing) return prev;
+            return { ...prev, [data.characterId]: { current: existing.current, max: data.newHP } };
+          });
 
           // Reload full campaign data so character cards reflect new level for all users (including DM)
           if (campaignName) {
@@ -2804,6 +3481,36 @@ const CampaignView: React.FC = () => {
       });
 
       // Listen for armor class updates (DM adjusted AC)
+      newSocket.on('baseHpUpdated', (data: {
+        campaignId: number;
+        characterId: number;
+        newBaseHp: number;
+        timestamp: string;
+      }) => {
+        const campaign = currentCampaignRef.current;
+        if (campaign && campaign.campaign.id === data.campaignId) {
+          setCharacterDataOverrides(prev => ({
+            ...prev,
+            [data.characterId]: {
+              ...prev[data.characterId],
+              hit_points: data.newBaseHp,
+              hit_points_max: data.newBaseHp
+            }
+          }));
+          // Update combatCharacterHp max so the health bar scales correctly
+          setCombatCharacterHp(prev => {
+            const existing = prev[data.characterId];
+            if (!existing) return prev;
+            return { ...prev, [data.characterId]: { current: existing.current, max: data.newBaseHp } };
+          });
+          const character = campaign.characters.find(c => c.id === data.characterId);
+          if (character) {
+            setToastMessage(`${character.name}'s Base HP updated to ${data.newBaseHp}`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }
+        }
+      });
+
       newSocket.on('armorClassUpdated', (data: {
         campaignId: number;
         characterId: number;
@@ -3005,6 +3712,14 @@ const CampaignView: React.FC = () => {
         }
       });
 
+      // Register user/campaign only after listeners are bound to avoid missing initial sync events
+      if (user) {
+        newSocket.emit('registerUser', user.id);
+        console.log('🔗 Registered user:', user.id);
+      }
+      newSocket.emit('joinCampaign', currentCampaign.campaign.id);
+      console.log('👥 Joined campaign room:', currentCampaign.campaign.id);
+
       setSocket(newSocket);
       
       return () => {
@@ -3047,11 +3762,16 @@ const CampaignView: React.FC = () => {
 
   const renderEquipTab = (character: any) => {
     // Define equipment slots with their names and types
+    const isFourArmed = character.race === 'Thri-kreen';
     const equipmentSlots = [
       { id: 'head', name: 'Helmet/Hat', className: 'head', icon: '🛡️' },
       { id: 'chest', name: 'Armor/Clothing', className: 'chest', icon: '🛡️' },
       { id: 'main_hand', name: 'Main Hand', className: 'left-hand', icon: '⚔️' },
       { id: 'off_hand', name: 'Off Hand', className: 'right-hand', icon: '⚔️' },
+      ...(isFourArmed ? [
+        { id: 'lower_left_hand', name: 'Lower Left Hand', className: 'lower-left-hand', icon: '⚔️' },
+        { id: 'lower_right_hand', name: 'Lower Right Hand', className: 'lower-right-hand', icon: '⚔️' },
+      ] : []),
       { id: 'feet', name: 'Left Boot', className: 'left-foot', icon: '🥾' },
       { id: 'feet_right', name: 'Right Boot', className: 'right-foot', icon: '🥾', syncWith: 'feet' }
     ];
@@ -3293,29 +4013,42 @@ const CampaignView: React.FC = () => {
 
     // Filter equipment based on current filter
     const getFilteredEquipment = () => {
-      const allEquipment = equipmentDetails[character.id] || [];
+      const allEquipmentDetails = equipmentDetails[character.id] || [];
       const characterEquippedItems = equippedItems[character.id] || {};
-      
-      // Get list of equipped item names to exclude from inventory display
-      const equippedItemNames = Object.values(characterEquippedItems)
-        .filter((item): item is InventoryItem => item !== null)
-        .map(item => item.item_name);
-      
-      let filtered: InventoryItem[] = [];
-      if (inventoryFilter === 'all') {
-        filtered = allEquipment.filter(item => 
-          ['Weapon', 'Armor', 'Tool'].includes(item.category)
-        );
-      } else if (inventoryFilter === 'weapon') {
-        filtered = allEquipment.filter(item => item.category === 'Weapon');
-      } else if (inventoryFilter === 'armor') {
-        filtered = allEquipment.filter(item => item.category === 'Armor');
-      } else if (inventoryFilter === 'tool') {
-        filtered = allEquipment.filter(item => item.category === 'Tool');
+
+      // Count total owned copies of each item from the raw equipment array
+      const ownedCounts: Record<string, number> = {};
+      for (const itemName of (character.equipment || [])) {
+        ownedCounts[itemName] = (ownedCounts[itemName] || 0) + 1;
       }
-      
-      // Filter out equipped items from display to avoid duplication
-      return filtered.filter(item => !equippedItemNames.includes(item.item_name));
+
+      // Count how many copies are currently equipped in slots
+      const equippedCounts: Record<string, number> = {};
+      for (const item of Object.values(characterEquippedItems)) {
+        if (item) {
+          equippedCounts[(item as InventoryItem).item_name] = (equippedCounts[(item as InventoryItem).item_name] || 0) + 1;
+        }
+      }
+
+      // Expand deduplicated detail rows by the number of available (unequipped) copies
+      const expandedEquipment: InventoryItem[] = [];
+      for (const item of allEquipmentDetails) {
+        const total = ownedCounts[item.item_name] || 0;
+        const equipped = equippedCounts[item.item_name] || 0;
+        const available = Math.max(0, total - equipped);
+        for (let i = 0; i < available; i++) {
+          expandedEquipment.push(item);
+        }
+      }
+
+      if (inventoryFilter === 'weapon') {
+        return expandedEquipment.filter(item => item.category === 'Weapon');
+      } else if (inventoryFilter === 'armor') {
+        return expandedEquipment.filter(item => item.category === 'Armor');
+      } else if (inventoryFilter === 'tool') {
+        return expandedEquipment.filter(item => item.category === 'Tool');
+      }
+      return expandedEquipment.filter(item => ['Weapon', 'Armor', 'Tool'].includes(item.category));
     };
 
     const filteredEquipment = getFilteredEquipment();
@@ -3339,7 +4072,7 @@ const CampaignView: React.FC = () => {
             }}>
               <div className="character-figure-container">
                 <img 
-                  src={FigureImage} 
+                  src={character.race === 'Thri-kreen' ? Figure4ArmsImage : FigureImage} 
                   alt="Character Figure" 
                   style={{ 
                     width: '100%', 
@@ -4467,14 +5200,28 @@ const CampaignView: React.FC = () => {
                     
                     {/* Health Bar and Status */}
                     {(() => {
-                      const health = calculateCharacterHealth(character);
-                      const healthColor = health.isDead 
-                        ? '#dc3545' 
-                        : health.percentage > 50 
-                        ? '#28a745' 
-                        : health.percentage > 25 
-                        ? '#ffc107' 
+                      const override = characterDataOverrides[character.id];
+                      const effectiveCharacter = override ? { ...character, ...override } : character;
+                      const tracked = combatCharacterHp[character.id];
+                      const baseHP = Math.max(1, tracked?.max || (effectiveCharacter as any).hit_points_max || effectiveCharacter.hit_points);
+                      const limbMaxValues = calcCharacterLimbHealthMax(baseHP, effectiveCharacter.abilities?.con ?? 10);
+                      const maxHP = Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
+                      const trackedLimbs = characterLimbHealth[character.id];
+                      const currentHP = trackedLimbs
+                        ? Object.values(trackedLimbs).reduce((s: number, v: any) => s + Number(v || 0), 0)
+                        : tracked && tracked.max > 0
+                          ? Math.round((tracked.current / tracked.max) * maxHP)
+                          : maxHP;
+                      const percentage = maxHP > 0 ? Math.min(100, (currentHP / maxHP) * 100) : 0;
+                      const isDead = currentHP <= 0;
+                      const healthColor = isDead
+                        ? '#dc3545'
+                        : percentage > 50
+                        ? '#28a745'
+                        : percentage > 25
+                        ? '#ffc107'
                         : '#dc3545';
+                      const health = { current: currentHP, max: maxHP, percentage, isDead };
                       
                       return (
                         <div style={{ marginTop: '0.5rem' }}>
@@ -4619,59 +5366,45 @@ const CampaignView: React.FC = () => {
                             {isSpellcaster(character.class) && (() => {
                               const slotInfo = getSpellSlots(character.class, character.level);
                               if (!slotInfo) return null;
+                              const isDMView = user?.role === 'Dungeon Master';
+                              const slotsUsed: Record<string, number> = characterSpellSlotsUsed[character.id] || {};
+                              const token = localStorage.getItem('token');
 
-                              const MiniSquare = ({ roman, count, isPact }: { roman: string; count: number; isPact?: boolean }) => (
-                                <div style={{ position: 'relative', display: 'inline-block' }}>
-                                  <div style={{
-                                    width: '22px',
-                                    height: '22px',
-                                    background: isPact ? 'rgba(168, 85, 247, 0.2)' : 'rgba(99, 202, 255, 0.15)',
-                                    border: `1px solid ${isPact ? 'rgba(168, 85, 247, 0.55)' : 'rgba(99, 202, 255, 0.5)'}`,
-                                    borderRadius: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.55rem',
-                                    fontWeight: 'bold',
-                                    color: isPact ? '#c084fc' : '#7dd3fc',
-                                    fontFamily: 'serif'
-                                  }}>{roman}</div>
-                                  <div style={{
-                                    position: 'absolute',
-                                    bottom: '-4px',
-                                    right: '-4px',
-                                    minWidth: '11px',
-                                    height: '11px',
-                                    background: isPact ? '#7c3aed' : '#0369a1',
-                                    border: `1px solid ${isPact ? '#a855f7' : '#38bdf8'}`,
-                                    borderRadius: '50%',
-                                    fontSize: '0.45rem',
-                                    fontWeight: 'bold',
-                                    color: '#fff',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    lineHeight: 1
-                                  }}>{count}</div>
-                                </div>
-                              );
+                              const handleMiniUseSlot = (e: React.MouseEvent, level: number) => {
+                                e.stopPropagation();
+                                if (!isDMView) return;
+                                socket?.emit('useSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: character.id, slotLevel: level });
+                              };
+
+                              const MiniSlotRow = ({ slotLevel, totalCount, isPact }: { slotLevel: number; totalCount: number; isPact?: boolean }) => {
+                                const used = slotsUsed[String(slotLevel)] || 0;
+                                return (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                    <span style={{ fontSize: '0.5rem', color: isPact ? '#c084fc' : '#7dd3fc', fontFamily: 'serif', minWidth: '10px' }}>{toRoman(slotLevel)}</span>
+                                    {Array.from({ length: totalCount }).map((_, idx) => {
+                                      const isUsed = idx < used;
+                                      return (
+                                        <div key={idx} onClick={(e) => { if (!isUsed) handleMiniUseSlot(e, slotLevel); else e.stopPropagation(); }}
+                                          title={isUsed ? 'Used' : (isDMView ? 'Click to use' : 'Available')}
+                                          style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : (isPact ? 'rgba(168,85,247,0.7)' : 'rgba(99,202,255,0.7)'), border: `1px solid ${isPact ? 'rgba(168,85,247,0.8)' : 'rgba(99,202,255,0.8)'}`, opacity: isUsed ? 0.35 : 1, cursor: isDMView && !isUsed ? 'pointer' : 'default' }} />
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              };
 
                               if (slotInfo.type === 'pact') {
                                 return (
                                   <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>✨</span>
-                                    <MiniSquare roman={toRoman(slotInfo.slotLevel)} count={slotInfo.slots} isPact />
+                                    <span style={{ fontSize: '0.55rem', color: '#c084fc' }}>✨</span>
+                                    <MiniSlotRow slotLevel={slotInfo.slotLevel} totalCount={slotInfo.slots} isPact />
                                   </div>
                                 );
                               }
-                              const activeSlots = slotInfo.slots.map((c, i) => c > 0 ? { roman: toRoman(i + 1), count: c } : null).filter(Boolean) as { roman: string; count: number }[];
-                              if (activeSlots.length === 0) return null;
                               return (
-                                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>✨</span>
-                                  {activeSlots.map(({ roman, count }, i) => (
-                                    <MiniSquare key={i} roman={roman} count={count} />
-                                  ))}
+                                  {slotInfo.slots.map((count, i) => count > 0 ? <MiniSlotRow key={i} slotLevel={i + 1} totalCount={count} /> : null)}
                                 </div>
                               );
                             })()}
@@ -4707,7 +5440,21 @@ const CampaignView: React.FC = () => {
                       const character = characters.find(c => c.id === selectedCharacter);
                       if (!character) return null;
 
-                      const health = calculateCharacterHealth(character);
+                      const override = characterDataOverrides[character.id];
+                      const effectiveCharacter = override ? { ...character, ...override } : character;
+                      const tracked = combatCharacterHp[character.id];
+                      const baseHP = Math.max(1, tracked?.max || (effectiveCharacter as any).hit_points_max || effectiveCharacter.hit_points);
+                      const limbMaxValues = calcCharacterLimbHealthMax(baseHP, effectiveCharacter.abilities?.con ?? 10);
+                      const maxHP = Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
+                      const trackedLimbs = characterLimbHealth[character.id];
+                      const currentHP = trackedLimbs
+                        ? Object.values(trackedLimbs).reduce((s: number, v: any) => s + Number(v || 0), 0)
+                        : tracked && tracked.max > 0
+                          ? Math.round((tracked.current / tracked.max) * maxHP)
+                          : maxHP;
+                      const percentage = maxHP > 0 ? Math.min(100, (currentHP / maxHP) * 100) : 0;
+                      const isDead = currentHP <= 0;
+                      const health = { current: currentHP, max: maxHP, percentage, isDead };
                       const healthColor = health.isDead 
                         ? '#dc3545' 
                         : health.percentage > 50 
@@ -5381,6 +6128,31 @@ const CampaignView: React.FC = () => {
                           >
                             🔄 Reset Combat
                           </button>
+
+                          {/* DM Darkness slider */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', width: '100%' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                              {darknessLevel === 0 ? '☀️' : darknessLevel < 0.5 ? '🌙' : '🌑'} Darkness Radius
+                            </span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={darknessLevel}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value);
+                                setDarknessLevel(val);
+                                if (socket && currentCampaign) {
+                                  socket.emit('setDarkness', { campaignId: currentCampaign.campaign.id, darknessLevel: val });
+                                }
+                              }}
+                              style={{ flex: 1, accentColor: '#60a5fa', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: '#60a5fa', minWidth: '56px', textAlign: 'right' }}>
+                              {Math.round(Math.max(15, (1 - darknessLevel * 0.85) * 100))}% vis
+                            </span>
+                          </div>
                         </>
                       )}
                     </div>
@@ -5416,47 +6188,114 @@ const CampaignView: React.FC = () => {
                         if (!combatant) return null;
                         
                         const isCurrentTurn = currentTurnIndex >= 0 && currentTurnIndex === orderIndex;
+                        const isSelected = selectedCombatant === combatant.characterId;
+                        const combatantKey = String(combatant.characterId);
+
+                        // ── Vision / darkness check for initiative list ──────────────────────
+                        const isDMView = user?.role === 'Dungeon Master';
+                        let initiativeHidden = false;
+                        const hasBlindedOwnCombatant = combatants.some(c => {
+                          if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
+                          const charConditions = combatConditions[String(c.characterId)] ?? [];
+                          return charConditions.some(cond => cond.toLowerCase() === 'blinded');
+                        });
+                        if (!isDMView && (darknessLevel > 0 || hasBlindedOwnCombatant)) {
+                          const BASE_VISION_RADIUS_FT = 30;
+                          const tokenPos = battlePositions[combatant.characterId];
+                          const isOwnCharacter = !combatant.isMonster && Number(combatant.playerId) === Number(user?.id);
+                          if (!isOwnCharacter && tokenPos) {
+                            const observers = combatants
+                              .filter(c => !c.isMonster && Number(c.playerId) === Number(user?.id))
+                              .map(c => {
+                                const pos = battlePositions[c.characterId];
+                                if (!pos) return null;
+                                const isBlinded = (combatConditions[String(c.characterId)] ?? []).some(cond => cond.toLowerCase() === 'blinded');
+                                const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
+                                const blindMultiplier = isBlinded ? 0.25 : 1;
+                                return { x: pos.x, y: pos.y, radius: BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier };
+                              })
+                              .filter(Boolean) as { x: number; y: number; radius: number }[];
+                            const isVisible = observers.some(obs => {
+                              const dx = tokenPos.x - obs.x;
+                              const dy = tokenPos.y - obs.y;
+                              return Math.sqrt(dx * dx + dy * dy) <= obs.radius;
+                            });
+                            initiativeHidden = !isVisible;
+                          }
+                        }
+                        // ────────────────────────────────────────────────────────────────────
 
                         // Compute health and AC for this combatant
                         const initCharacter = combatant.isMonster
                           ? null
-                          : currentCampaign?.characters.find((c: any) => c.id === combatant.characterId);
+                          : currentCampaign?.characters.find((c: any) => String(c.id) === String(combatant.characterId));
                         const initMonsterTemplate = (combatant.isMonster && combatant.monsterId)
-                          ? monsters.find((m: any) => m.id === combatant.monsterId)
+                          ? (monsters.find((m: any) => m.id === combatant.monsterId) ?? combatMonsterTemplates[String(combatant.monsterId)])
                           : null;
 
                         let healthPct = 100;
+                        let healthLabel = '';
                         let displayAC = 10;
 
                         if (initCharacter) {
-                          const h = calculateCharacterHealth(initCharacter);
-                          healthPct = h.percentage;
+                          const charId = Number(combatant.characterId);
+                          const hpTracked = combatCharacterHp[charId];
+                          const baseHP = Math.max(1, hpTracked?.max || (initCharacter as any).hit_points_max || initCharacter.hit_points);
+                          const limbMaxValues = calcCharacterLimbHealthMax(baseHP, initCharacter.abilities?.con ?? 10);
+                          const limbMax = Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
+                          const trackedLimbs = characterLimbHealth[charId];
+                          const limbCurrent = trackedLimbs
+                            ? Object.values(trackedLimbs).reduce((s: number, v: any) => s + Number(v || 0), 0)
+                            : limbMax;
+                          healthPct = limbMax > 0 ? (limbCurrent / limbMax) * 100 : 0;
+                          healthLabel = `${limbCurrent}/${limbMax}`;
                           displayAC = initCharacter.armor_class || 10;
-                        } else if (initMonsterTemplate?.limb_health) {
-                          healthPct = 100; // no current HP tracking yet
-                          displayAC = initMonsterTemplate.limb_ac?.chest || 10;
+                        } else if (combatant.isMonster) {
+                          const instanceHp = monsterInstanceHp[String(combatant.characterId)];
+                          if (instanceHp) {
+                            const maxHp = initMonsterTemplate
+                              ? Object.values(initMonsterTemplate.limb_health as Record<string,number>).reduce((s,v)=>s+v,0)
+                              : instanceHp.totalHP;
+                            healthPct = maxHp > 0 ? (instanceHp.totalHP / maxHp) * 100 : 0;
+                            healthLabel = `${instanceHp.totalHP}`;
+                          }
+                          displayAC = initMonsterTemplate?.limb_ac?.chest || 10;
                         }
 
                         const hpBarColor = healthPct > 66 ? '#4ade80' : healthPct > 33 ? '#fbbf24' : '#ef4444';
+                        const conditions = combatConditions[combatantKey] ?? [];
+                        const economy = combatActionEconomy[combatantKey] ?? { action_used: false, bonus_action_used: false, reaction_used: false };
+                        const ds = !combatant.isMonster ? deathSaves[Number(combatant.characterId)] : undefined;
+                        const isDead = combatant.isMonster ? healthPct === 0 : (ds?.is_dead ?? false);
+                        const isStable = ds?.is_stable;
+                        const isDown = healthPct === 0 && !combatant.isMonster;
 
                         return (
                           <div
                             key={combatant.characterId}
-                            onClick={() => setCombatantDetailModal({ combatantId: combatant.characterId })}
+                            onClick={() => {
+                              if (!initiativeHidden) setSelectedCombatant(prev => prev === combatant.characterId ? null : combatant.characterId);
+                            }}
                             style={{
                               padding: '0.75rem',
                               background: isCurrentTurn 
                                 ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.2), rgba(90, 184, 90, 0.2))'
-                                : 'rgba(212, 193, 156, 0.05)',
+                                : isSelected
+                                  ? 'rgba(167,139,250,0.12)'
+                                  : 'rgba(212, 193, 156, 0.05)',
                               border: isCurrentTurn 
                                 ? '2px solid #4a4'
-                                : '1px solid rgba(212, 193, 156, 0.2)',
+                                : isSelected
+                                  ? '2px solid rgba(167,139,250,0.7)'
+                                  : '1px solid rgba(212, 193, 156, 0.2)',
                               borderRadius: '0.5rem',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '1rem',
                               transition: 'all 0.3s ease',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              opacity: isDead ? 0.5 : 1,
+                              filter: isDead ? 'grayscale(0.7)' : 'none',
                             }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.3), rgba(90, 184, 90, 0.3))' : 'rgba(212, 193, 156, 0.1)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.2), rgba(90, 184, 90, 0.2))' : 'rgba(212, 193, 156, 0.05)'; }}
@@ -5479,22 +6318,119 @@ const CampaignView: React.FC = () => {
                               {combatant.initiative}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{
-                                color: isCurrentTurn ? '#4a4' : (combatant.isMonster ? '#f87171' : 'var(--text-gold)'),
-                                fontWeight: isCurrentTurn ? 'bold' : 'normal',
-                                fontSize: isCurrentTurn ? '1.05rem' : '0.95rem',
-                                marginBottom: '0.3rem'
-                              }}>
-                                {combatant.name}
-                                {isCurrentTurn && <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem' }}>← Current Turn</span>}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
+                                <span style={{
+                                  color: initiativeHidden ? '#64748b' : (isDead ? '#ef4444' : isCurrentTurn ? '#4a4' : (combatant.isMonster ? '#f87171' : 'var(--text-gold)')),
+                                  fontWeight: isCurrentTurn ? 'bold' : 'normal',
+                                  fontSize: isCurrentTurn ? '1.05rem' : '0.95rem',
+                                  textDecoration: isDead ? 'line-through' : 'none',
+                                  fontStyle: initiativeHidden ? 'italic' : 'normal',
+                                }}>
+                                  {initiativeHidden ? '??? (Unknown)' : combatant.name}
+                                </span>
+                                {!initiativeHidden && isCurrentTurn && <span style={{ fontSize: '0.75rem', color: '#4a4' }}>← Turn</span>}
+                                {!initiativeHidden && isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#ef4444' }}>💀 Dead</span>}
+                                {!initiativeHidden && isDead && user?.role === 'Dungeon Master' && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const targetType = combatant.isMonster ? 'monster' : 'character';
+                                      socket?.emit('reviveCombatant', {
+                                        campaignId: currentCampaign?.campaign.id,
+                                        targetKey: String(combatant.characterId),
+                                        targetType,
+                                        targetName: combatant.name,
+                                        reviverName: user?.username || 'DM',
+                                      });
+                                    }}
+                                    style={{ fontSize: '0.65rem', padding: '1px 5px', background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '0.25rem', color: '#4ade80', cursor: 'pointer' }}
+                                  >
+                                    ✨ Revive
+                                  </button>
+                                )}
+                                {!initiativeHidden && isStable && !isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#4ade80' }}>💚 Stable</span>}
+                                {!initiativeHidden && isDown && !isDead && !isStable && <span style={{ fontSize: '0.7rem', background: 'rgba(251,146,60,0.2)', border: '1px solid #fb923c', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#fb923c' }}>☠️ Down</span>}
+                                {!initiativeHidden && conditions.slice(0,3).map(c => {
+                                  const condStyle: Record<string, {bg:string;border:string;color:string}> = {
+                                    Stunned:      {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                                    Paralyzed:    {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                                    Unconscious:  {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                                    Incapacitated:{bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                                    Petrified:    {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                                    Grappled:     {bg:'rgba(249,115,22,0.2)',   border:'rgba(249,115,22,0.5)',   color:'#fb923c'},
+                                    Restrained:   {bg:'rgba(249,115,22,0.2)',   border:'rgba(249,115,22,0.5)',   color:'#fb923c'},
+                                    Blinded:      {bg:'rgba(148,163,184,0.2)', border:'rgba(148,163,184,0.5)', color:'#94a3b8'},
+                                    Deafened:     {bg:'rgba(148,163,184,0.2)', border:'rgba(148,163,184,0.5)', color:'#94a3b8'},
+                                    Frightened:   {bg:'rgba(167,139,250,0.2)', border:'rgba(167,139,250,0.5)', color:'#a78bfa'},
+                                    Charmed:      {bg:'rgba(244,114,182,0.2)', border:'rgba(244,114,182,0.5)', color:'#f472b6'},
+                                    Invisible:    {bg:'rgba(103,232,249,0.2)', border:'rgba(103,232,249,0.5)', color:'#67e8f9'},
+                                  };
+                                  const s = condStyle[c] ?? {bg:'rgba(250,204,21,0.15)',border:'rgba(250,204,21,0.4)',color:'#fbbf24'};
+                                  return <span key={c} style={{ fontSize: '0.65rem', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '0.25rem', padding: '0 0.25rem', color: s.color }}>{c}</span>;
+                                })}
+                                {!initiativeHidden && conditions.length > 3 && <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>+{conditions.length-3}</span>}
+                                {!initiativeHidden && (dotConditions[combatantKey] ?? []).map(dot => {
+                                  const dotStyle: Record<string, {bg:string;border:string;color:string;icon:string}> = {
+                                    Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'🔥'},
+                                    Bleeding: {bg:'rgba(239,68,68,0.2)',   border:'rgba(239,68,68,0.6)',   color:'#f87171', icon:'🩸'},
+                                    Poison:   {bg:'rgba(34,197,94,0.2)',   border:'rgba(34,197,94,0.6)',   color:'#4ade80', icon:'☠️'},
+                                  };
+                                  const s = dotStyle[dot.type] ?? dotStyle.Poison;
+                                  const turns = dot.turnsRemaining !== null ? ` (${dot.turnsRemaining})` : '';
+                                  return <span key={`dot-${dot.type}`} style={{ fontSize: '0.65rem', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '0.25rem', padding: '0 0.25rem', color: s.color }}>{s.icon} {dot.type}{turns}</span>;
+                                })}
                               </div>
                               {/* Health bar */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
                                 <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                                  <div style={{ width: `${healthPct}%`, height: '100%', background: hpBarColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                                  {!initiativeHidden && <div style={{ width: `${healthPct}%`, height: '100%', background: hpBarColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />}
                                 </div>
-                                <span style={{ fontSize: '0.7rem', color: hpBarColor, minWidth: '30px', textAlign: 'right' }}>{Math.round(healthPct)}%</span>
+                                <span style={{ fontSize: '0.7rem', color: initiativeHidden ? '#64748b' : hpBarColor, minWidth: '40px', textAlign: 'right' }}>
+                                  {initiativeHidden ? '???' : (healthLabel || `${Math.round(healthPct)}%`)}
+                                </span>
                               </div>
+                              {/* Action economy row */}
+                              {economy && (
+                                <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.2rem' }}>
+                                  {(['action', 'bonusAction', 'reaction'] as const).map((aType) => {
+                                    const fieldKey = aType === 'action' ? 'action_used' : aType === 'bonusAction' ? 'bonus_action_used' : 'reaction_used';
+                                    const label = aType === 'action' ? 'A' : aType === 'bonusAction' ? 'BA' : 'R';
+                                    const fullLabel = aType === 'action' ? 'Action' : aType === 'bonusAction' ? 'Bonus Action' : 'Reaction';
+                                    const isUsed = !!(economy as any)[fieldKey];
+                                    const color = isUsed ? '#ef4444' : '#4ade80';
+                                    return (
+                                      <button
+                                        key={aType}
+                                        title={`${fullLabel}: ${isUsed ? 'Used (click to restore)' : 'Available (click to use)'}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          socket?.emit('spendActionEconomy', {
+                                            campaignId: currentCampaign?.campaign.id,
+                                            combatantKey,
+                                            actionType: aType,
+                                            spent: !isUsed,
+                                          });
+                                        }}
+                                        style={{
+                                          width: '28px', height: '22px', borderRadius: '4px',
+                                          background: isUsed ? 'rgba(239,68,68,0.2)' : 'rgba(74,222,128,0.15)',
+                                          border: `1px solid ${color}`,
+                                          color, cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold',
+                                          padding: 0, lineHeight: 1,
+                                        }}
+                                      >{label}</button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {/* Death saves mini */}
+                              {ds && !isDead && !isStable && (
+                                <div style={{ display: 'flex', gap: '0.2rem', fontSize: '0.65rem' }}>
+                                  <span style={{ color: '#4ade80' }}>{'✓'.repeat(ds.successes)}{'○'.repeat(3 - ds.successes)}</span>
+                                  <span style={{ color: '#999', margin: '0 0.1rem' }}>|</span>
+                                  <span style={{ color: '#ef4444' }}>{'✗'.repeat(ds.failures)}{'○'.repeat(3 - ds.failures)}</span>
+                                </div>
+                              )}
                               <div style={{ fontSize: '0.7rem', color: '#999' }}>
                                 Move: {(remainingMovement[combatant.characterId] ?? combatant.movement_speed).toFixed(1)}/{combatant.movement_speed}ft
                               </div>
@@ -5513,7 +6449,7 @@ const CampaignView: React.FC = () => {
                               justifyContent: 'center'
                             }}>
                               <div style={{ fontSize: '0.65rem', color: '#60a5fa', lineHeight: 1 }}>AC</div>
-                              <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#93c5fd', lineHeight: 1 }}>{displayAC}</div>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#93c5fd', lineHeight: 1 }}>{initiativeHidden ? '?' : displayAC}</div>
                             </div>
                           </div>
                         );
@@ -5521,6 +6457,137 @@ const CampaignView: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Actions Panel + Combat Log — shown when combat is active */}
+                {combatants.length > 0 && (() => {
+                  const activeCombatantData = selectedCombatant
+                    ? combatants.find(c => c.characterId === selectedCombatant)
+                    : currentTurnIndex >= 0 && initiativeOrder[currentTurnIndex] !== undefined
+                      ? combatants.find(c => c.characterId === initiativeOrder[currentTurnIndex])
+                      : null;
+
+                  const activeCombatantKey = activeCombatantData ? String(activeCombatantData.characterId) : null;
+                  const isMyTurn = activeCombatantData
+                    ? (user?.id === activeCombatantData.playerId && currentTurnIndex >= 0 && initiativeOrder[currentTurnIndex] === activeCombatantData.characterId)
+                    : false;
+                  const isDM = user?.role === 'Dungeon Master';
+
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                      {/* Actions panel */}
+                      <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '0.75rem', padding: '1rem' }}>
+                        <h6 style={{ color: 'var(--text-gold)', margin: '0 0 0.75rem', fontSize: '0.9rem' }}>
+                          ⚡ Actions{activeCombatantData ? ` — ${activeCombatantData.name}` : ''}
+                          {!activeCombatantData && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal' }}> (select a combatant)</span>}
+                        </h6>
+                        <CombatActionsPanel
+                          activeCombatant={activeCombatantData ? {
+                            characterId: activeCombatantData.characterId,
+                            name: activeCombatantData.name,
+                            isMonster: activeCombatantData.isMonster,
+                            playerId: activeCombatantData.playerId,
+                            conditions: activeCombatantKey ? (combatConditions[activeCombatantKey] ?? []) : [],
+                            concentration_spell: activeCombatantKey ? (combatConcentration[activeCombatantKey] ?? null) : null,
+                          } : null}
+                          isMyTurn={isMyTurn}
+                          isDM={isDM}
+                          actionEconomy={activeCombatantKey ? (combatActionEconomy[activeCombatantKey] ?? null) : null}
+                          onAttack={() => {
+                            if (!activeCombatantData || !currentCampaign || !socket) return;
+                            // Players open a target picker and send attack request to DM
+                            // DMs open the full AttackModal directly (they control both sides)
+                            if (isDM) {
+                              setShowAttackModal({ attackerKey: String(activeCombatantData.characterId), targetKey: '' });
+                            } else {
+                              // Player picks target, then we send request to DM
+                              setShowAttackModal({ attackerKey: String(activeCombatantData.characterId), targetKey: '' });
+                            }
+                          }}
+                          onDealDamage={() => {
+                            if (!activeCombatantData || !currentCampaign) return;
+                            setShowAttackModal({ attackerKey: String(activeCombatantData.characterId), targetKey: '' });
+                          }}
+                          onHealHealth={() => {
+                            if (!activeCombatantData || !currentCampaign) return;
+                            setShowHealModal({ attackerKey: '', targetKey: String(activeCombatantData.characterId) });
+                          }}
+                          onOpenStatusEffects={() => {
+                            if (!activeCombatantData) return;
+                            setShowStatusModal({ targetKey: String(activeCombatantData.characterId) });
+                            setStatusTarget(String(activeCombatantData.characterId));
+                            setDotType('Burning');
+                            setDotLimbTarget('chest');
+                            setDotDmgMode('fixed');
+                            setDotFixed('5');
+                            setDotDice('d6');
+                          }}
+                          onSpendAction={(type, spent) => {
+                            if (!activeCombatantData || !socket || !currentCampaign) return;
+                            socket.emit('spendActionEconomy', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: String(activeCombatantData.characterId),
+                              actionType: type,
+                              spent,
+                            });
+                          }}
+                          onAddCondition={(condition) => {
+                            if (!activeCombatantData || !socket || !currentCampaign) return;
+                            socket.emit('applyCondition', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: String(activeCombatantData.characterId),
+                              condition,
+                            });
+                          }}
+                          onRemoveCondition={(condition) => {
+                            if (!activeCombatantData || !socket || !currentCampaign) return;
+                            socket.emit('removeCondition', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: String(activeCombatantData.characterId),
+                              condition,
+                            });
+                          }}
+                          onRemoveCombatant={() => {
+                            if (!activeCombatantData || !socket || !currentCampaign) return;
+                            socket.emit('removeCombatant', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: String(activeCombatantData.characterId),
+                            });
+                            setSelectedCombatant(null);
+                          }}
+                          dotConditions={activeCombatantKey ? (dotConditions[activeCombatantKey] ?? []) : []}
+                          onRemoveDotCondition={(dotType) => {
+                            if (!activeCombatantData || !socket || !currentCampaign) return;
+                            socket.emit('removeDotCondition', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: String(activeCombatantData.characterId),
+                              dotType,
+                            });
+                          }}
+                          onRequestDiceRoll={(params) => {
+                            if (!activeCombatantData || !socket || !currentCampaign || !isDM) return;
+                            const targetPlayerId = activeCombatantData.playerId;
+                            socket.emit('requestDiceRoll', {
+                              campaignId: currentCampaign.campaign.id,
+                              targetPlayerId,
+                              targetCharacterName: activeCombatantData.name,
+                              diceType: params.diceType,
+                              rollPurpose: params.rollPurpose,
+                              purposeDetail: params.purposeDetail || params.rollPurpose,
+                              modifier: params.modifier,
+                            });
+                          }}
+                          onQuickRequestRoll={() => {
+                            if (!activeCombatantData) return;
+                            setShowQuickRollModal(String(activeCombatantData.characterId));
+                          }}
+                        />
+                      </div>
+
+                      {/* Combat log */}
+                      <CombatLog entries={combatLog} maxHeight="350px" />
+                    </div>
+                  );
+                })()}
 
                 <div style={{
                   position: 'relative',
@@ -5570,6 +6637,16 @@ const CampaignView: React.FC = () => {
                     
                     // DM can move characters beyond their movement limit
                     const isDM = user?.role === 'Dungeon Master';
+
+                    // Grappled or Restrained characters cannot move (0 movement)
+                    const draggedConditions = combatConditions[String(draggedCharacter)] ?? [];
+                    const isMovementLocked = !isDM && (draggedConditions.includes('Grappled') || draggedConditions.includes('Restrained'));
+                    if (isMovementLocked) {
+                      setDraggedCharacter(null);
+                      setDragStartPosition(null);
+                      setCurrentDragPosition(null);
+                      return;
+                    }
                     
                     // Check if character has enough movement (only enforce for non-DMs)
                     if (!isDM && distanceFeet > currentRemaining) {
@@ -5633,6 +6710,25 @@ const CampaignView: React.FC = () => {
                       userSelect: 'none',
                       pointerEvents: 'none'
                     }} 
+                  />
+
+                  {/* Darkness overlay canvas — drawn by useEffect when darknessLevel > 0 */}
+                  <canvas
+                    ref={darknessCanvasRef}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      pointerEvents: 'none',
+                      zIndex: 998,
+                      display: (darknessLevel > 0 || (user?.role !== 'Dungeon Master' && combatants.some(c => {
+                        if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
+                        const charConditions = combatConditions[String(c.characterId)] ?? [];
+                        return charConditions.some(cond => cond.toLowerCase() === 'blinded');
+                      }))) ? 'block' : 'none',
+                    }}
                   />
                   
                   {/* Visual movement line while dragging */}
@@ -5738,15 +6834,43 @@ const CampaignView: React.FC = () => {
                   {/* Combat tokens on battle map (Characters and Monsters) */}
                   {combatants.map(combatant => {
                     const position = battlePositions[combatant.characterId];
-                    if (!position) {
-                      // Set initial random position for new combatants
-                      const randomX = 20 + Math.random() * 60;
-                      const randomY = 20 + Math.random() * 60;
-                      setBattlePositions(prev => ({ ...prev, [combatant.characterId]: { x: randomX, y: randomY } }));
-                      return null;
-                    }
+                    // Skip rendering until the server position sync has populated this combatant's position
+                    if (!position) return null;
                     
                     const isDM = user?.role === 'Dungeon Master';
+
+                    // ── Vision / darkness check ──────────────────────────────
+                    const hasBlindedOwnCombatant = combatants.some(c => {
+                      if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
+                      const charConditions = combatConditions[String(c.characterId)] ?? [];
+                      return charConditions.some(cond => cond.toLowerCase() === 'blinded');
+                    });
+                    if (!isDM && (darknessLevel > 0 || hasBlindedOwnCombatant)) {
+                      const BASE_VISION_RADIUS_FT = 30;
+                      // Collect own character positions + radii
+                      const observers = combatants
+                        .filter(c => !c.isMonster && Number(c.playerId) === Number(user?.id))
+                        .map(c => {
+                          const pos = battlePositions[c.characterId];
+                          if (!pos) return null;
+                          const isBlinded = (combatConditions[String(c.characterId)] ?? []).some(cond => cond.toLowerCase() === 'blinded');
+                          const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
+                          const blindMultiplier = isBlinded ? 0.25 : 1;
+                          return { x: pos.x, y: pos.y, radius: BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier };
+                        })
+                        .filter(Boolean) as { x: number; y: number; radius: number }[];
+
+                      const isVisible = observers.some(obs => {
+                        const dx = position.x - obs.x;
+                        const dy = position.y - obs.y;
+                        return Math.sqrt(dx * dx + dy * dy) <= obs.radius;
+                      });
+
+                      // Own characters are always visible to their owner
+                      const isOwnCharacter = !combatant.isMonster && Number(combatant.playerId) === Number(user?.id);
+                      if (!isVisible && !isOwnCharacter) return null;
+                    }
+                    // ─────────────────────────────────────────────────────────
                     const remaining = remainingMovement[combatant.characterId] ?? combatant.movement_speed ?? 30;
                     
                     // Check if it's this token's turn (in combat)
@@ -5759,20 +6883,29 @@ const CampaignView: React.FC = () => {
                     // which can accidentally match a real character ID, causing wrong name/image
                     const character = combatant.isMonster
                       ? null
-                      : currentCampaign?.characters.find((c: any) => c.id === combatant.characterId);
+                      : currentCampaign?.characters.find((c: any) => Number(c.id) === Number(combatant.characterId));
                     
                     // For monsters, look up the template by monsterId
+                    // Fall back to combatMonsterTemplates for players (who may not have monsters in their monsters list)
                     let monsterTemplate = null;
                     let isMonster = false;
                     if (combatant.isMonster && combatant.monsterId) {
-                      monsterTemplate = monsters.find((m: any) => m.id === combatant.monsterId);
+                      monsterTemplate = monsters.find((m: any) => m.id === combatant.monsterId)
+                        ?? combatMonsterTemplates[String(combatant.monsterId)];
                       isMonster = true;
                     }
                     
                     // Can move if: (DM always can) OR (combat started AND is owner AND it's their turn)
-                    const isOwner = character ? character.player_id === user?.id : false;
+                    const isOwner = combatant.playerId
+                      ? Number(combatant.playerId) === Number(user?.id)
+                      : character ? Number(character.player_id) === Number(user?.id) : false;
                     const combatStarted = currentTurnIndex >= 0;
                     const canMove = isDM || (combatStarted && isOwner && isTheirTurn);
+
+                    // Dead detection for map rendering
+                    const mapIsDead = combatant.isMonster
+                      ? (monsterInstanceHp[String(combatant.characterId)]?.totalHP ?? 1) <= 0
+                      : (deathSaves[Number(combatant.characterId)]?.is_dead ?? false);
                     
                     const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url);
                     
@@ -5792,7 +6925,10 @@ const CampaignView: React.FC = () => {
                           flexDirection: 'column',
                           alignItems: 'center',
                           zIndex: draggedCharacter === combatant.characterId ? 1000 : 1,
-                          cursor: 'pointer'
+                          cursor: 'pointer',
+                          opacity: mapIsDead ? 0.45 : 1,
+                          filter: mapIsDead ? 'grayscale(0.85)' : 'none',
+                          transition: 'opacity 0.4s ease, filter 0.4s ease',
                         }}
                       >
                         <div
@@ -5816,12 +6952,10 @@ const CampaignView: React.FC = () => {
                             border: isTheirTurn 
                               ? `3px solid ${remaining > 0 ? '#4a4' : remaining === 0 ? '#888' : '#f44336'}`
                               : `3px solid ${isMonster ? '#d9534f' : remaining > 0 ? 'var(--text-gold)' : remaining === 0 ? '#888' : '#f44336'}`,
+                            backgroundColor: isMonster ? 'rgba(180, 60, 60, 0.85)' : 'rgba(101, 67, 33, 0.85)',
                             backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
-                            backgroundColor: !imageUrl 
-                              ? (isMonster ? 'linear-gradient(135deg, rgba(217, 83, 79, 0.8), rgba(200, 60, 60, 0.8))' : 'linear-gradient(135deg, rgba(139, 69, 19, 0.8), rgba(101, 67, 33, 0.8))')
-                              : undefined,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -5832,7 +6966,6 @@ const CampaignView: React.FC = () => {
                             userSelect: 'none',
                             boxShadow: isTheirTurn ? '0 0 12px rgba(74, 164, 74, 0.6)' : '0 4px 8px rgba(0, 0, 0, 0.3)',
                             transition: 'all 0.3s ease',
-                            opacity: isDM ? 1 : (canMove && remaining > 0 ? 1 : 0.5)
                           }}
                           title={`${displayName} - ${remaining.toFixed(2)}ft remaining${!combatStarted ? ' (Combat not started - DM only)' : !isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? ' (Monster)' : ''}`}
                         >
@@ -10997,7 +12130,7 @@ const CampaignView: React.FC = () => {
                       {/* Center - Character Figure with Limb Health */}
                       <div className="character-sheet-figure" style={{ position: 'relative', width: '300px' }}>
                         <img 
-                          src={FigureImage} 
+                          src={selectedCharacterData?.race === 'Thri-kreen' ? Figure4ArmsImage : FigureImage} 
                           alt="Character Figure" 
                           style={{ 
                             width: '100%', 
@@ -11012,25 +12145,25 @@ const CampaignView: React.FC = () => {
                         {/* Limb Health Overlays */}
                         {(() => {
                           const baseHitPoints = selectedCharacterData.hit_points;
-                          const conModifier = Math.floor((selectedCharacterData.abilities.con - 10) / 2);
-                          const conBonus = Math.max(0, conModifier * 0.1); // 10% bonus per positive CON modifier
-                          
-                          // Calculate limb health ratios
-                          const limbHealthRatios = {
-                            head: Math.min(1.0, 0.25 + conBonus), // 25% base, up to 100% with high CON
-                            torso: Math.min(2.0, 1.0 + conBonus), // 100% base, up to 200% with high CON
-                            hands: Math.min(1.0, 0.15 + conBonus), // 15% base, up to 100% with high CON
-                            legs: Math.min(1.0, 0.4 + conBonus) // 40% base, up to 100% with high CON
-                          };
-                          
-                          const limbHealths = {
-                            head: Math.floor(baseHitPoints * limbHealthRatios.head),
-                            torso: Math.floor(baseHitPoints * limbHealthRatios.torso),
-                            hands: Math.floor(baseHitPoints * limbHealthRatios.hands),
-                            legs: Math.floor(baseHitPoints * limbHealthRatios.legs)
-                          };
                           
                           // Get limb AC from equipped items (item bonuses only from backend)
+                          const _trackedLimbs = characterLimbHealth[selectedCharacterData.id];
+                          const _maxHP = Math.max(1,
+                            combatCharacterHp[selectedCharacterData.id]?.max ||
+                            (selectedCharacterData as any).hit_points_max ||
+                            baseHitPoints
+                          );
+                          const _limbMax = calcCharacterLimbHealthMax(_maxHP, selectedCharacterData.abilities.con);
+                          // Map backend keys to the IIFE's display slots
+                          const csLimbs = {
+                            head:  { cur: _trackedLimbs?.head      ?? _limbMax.head,      max: _limbMax.head },
+                            torso: { cur: _trackedLimbs?.chest     ?? _limbMax.chest,     max: _limbMax.chest },
+                            leftArm:  { cur: _trackedLimbs?.left_arm  ?? _limbMax.left_arm,  max: _limbMax.left_arm },
+                            rightArm: { cur: _trackedLimbs?.right_arm ?? _limbMax.right_arm, max: _limbMax.right_arm },
+                            leftLeg:  { cur: _trackedLimbs?.left_leg  ?? _limbMax.left_leg,  max: _limbMax.left_leg },
+                            rightLeg: { cur: _trackedLimbs?.right_leg ?? _limbMax.right_leg, max: _limbMax.right_leg },
+                          };
+                          
                           const rawLimbAC = limbAC[selectedCharacterData.id];
                           const baseAC = selectedCharacterData.armor_class || 10;
                           const helmAC      = rawLimbAC?.head      ?? 0;
@@ -11074,7 +12207,7 @@ const CampaignView: React.FC = () => {
                                 minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.head, limbHealths.head) }}>{limbHealths.head}/{limbHealths.head}</div>
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(csLimbs.head.cur, csLimbs.head.max) }}>{csLimbs.head.cur}/{csLimbs.head.max}</div>
                                 <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.head}</div>
                               </div>
 
@@ -11094,7 +12227,7 @@ const CampaignView: React.FC = () => {
                                 minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.torso, limbHealths.torso) }}>{limbHealths.torso}/{limbHealths.torso}</div>
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(csLimbs.torso.cur, csLimbs.torso.max) }}>{csLimbs.torso.cur}/{csLimbs.torso.max}</div>
                                 <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.chest}</div>
                               </div>
 
@@ -11113,7 +12246,7 @@ const CampaignView: React.FC = () => {
                                 minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.hands, limbHealths.hands) }}>{limbHealths.hands}/{limbHealths.hands}</div>
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(csLimbs.leftArm.cur, csLimbs.leftArm.max) }}>{csLimbs.leftArm.cur}/{csLimbs.leftArm.max}</div>
                                 <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.main_hand}</div>
                               </div>
 
@@ -11132,7 +12265,7 @@ const CampaignView: React.FC = () => {
                                 minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.hands, limbHealths.hands) }}>{limbHealths.hands}/{limbHealths.hands}</div>
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(csLimbs.rightArm.cur, csLimbs.rightArm.max) }}>{csLimbs.rightArm.cur}/{csLimbs.rightArm.max}</div>
                                 <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.off_hand}</div>
                               </div>
 
@@ -11151,7 +12284,7 @@ const CampaignView: React.FC = () => {
                                 minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.legs, limbHealths.legs) }}>{limbHealths.legs}/{limbHealths.legs}</div>
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(csLimbs.leftLeg.cur, csLimbs.leftLeg.max) }}>{csLimbs.leftLeg.cur}/{csLimbs.leftLeg.max}</div>
                                 <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.feet}</div>
                               </div>
 
@@ -11170,7 +12303,7 @@ const CampaignView: React.FC = () => {
                                 minWidth: '60px',
                                 textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: '0.75rem', color: getHealthColor(limbHealths.legs, limbHealths.legs) }}>{limbHealths.legs}/{limbHealths.legs}</div>
+                                <div style={{ fontSize: '0.75rem', color: getHealthColor(csLimbs.rightLeg.cur, csLimbs.rightLeg.max) }}>{csLimbs.rightLeg.cur}/{csLimbs.rightLeg.max}</div>
                                 <div style={{ fontSize: '0.65rem', color: '#60a5fa', marginTop: '2px' }}>AC {characterLimbAC.feet}</div>
                               </div>
                               
@@ -11301,8 +12434,46 @@ const CampaignView: React.FC = () => {
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Hit Points Base
                         </div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: user?.role === 'Dungeon Master' ? '0.5rem' : '0' }}>
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUpdateBaseHp(selectedCharacterData.id, -1); }}
+                              disabled={selectedCharacterData.hit_points <= 1}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.3)',
+                                border: '1px solid rgba(239, 68, 68, 0.5)',
+                                color: selectedCharacterData.hit_points <= 1 ? 'rgba(255,255,255,0.3)' : '#fca5a5',
+                                borderRadius: '4px',
+                                padding: '0.25rem 0.4rem',
+                                cursor: selectedCharacterData.hit_points <= 1 ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                                flex: '0 0 auto'
+                              }}
+                            >
+                              −
+                            </button>
+                          )}
                           {selectedCharacterData.hit_points}
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUpdateBaseHp(selectedCharacterData.id, 1); }}
+                              disabled={selectedCharacterData.hit_points >= 999}
+                              style={{
+                                background: 'rgba(34, 197, 94, 0.3)',
+                                border: '1px solid rgba(34, 197, 94, 0.5)',
+                                color: selectedCharacterData.hit_points >= 999 ? 'rgba(255,255,255,0.3)' : '#86efac',
+                                borderRadius: '4px',
+                                padding: '0.25rem 0.4rem',
+                                cursor: selectedCharacterData.hit_points >= 999 ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                                flex: '0 0 auto'
+                              }}
+                            >
+                              +
+                            </button>
+                          )}
                         </div>
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Limb HP: Head (25%+CON), Torso (100%+CON), Hands (15%+CON), Legs (40%+CON). Each +1 CON adds 10% HP to all limbs. Torso can reach up to 200% of base HP.
@@ -11423,7 +12594,8 @@ const CampaignView: React.FC = () => {
                               'Sorcerer': 6, 'Wizard': 6
                             };
                             const die = hitDiceMap[selectedCharacterData.class] ?? 8;
-                            return `${selectedCharacterData.level}d${die}`;
+                            const remaining = hitDiceRemaining[selectedCharacterData.id] ?? selectedCharacterData.level;
+                            return `${remaining}d${die}`;
                           })()}
                         </div>
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
@@ -11435,7 +12607,9 @@ const CampaignView: React.FC = () => {
                               'Sorcerer': 6, 'Wizard': 6
                             };
                             const die = hitDiceMap[selectedCharacterData.class] ?? 8;
-                            return `d${die} per level`;
+                            const remaining = hitDiceRemaining[selectedCharacterData.id] ?? selectedCharacterData.level;
+                            const recovered = Math.max(1, Math.floor(selectedCharacterData.level / 2));
+                            return `${remaining} / ${selectedCharacterData.level} remaining · long rest +${recovered}d${die}`;
                           })()}
                         </div>
                       </div>
@@ -11509,46 +12683,54 @@ const CampaignView: React.FC = () => {
                     {isSpellcaster(selectedCharacterData.class) && (() => {
                       const slotInfo = getSpellSlots(selectedCharacterData.class, selectedCharacterData.level);
                       if (!slotInfo) return null;
+                      const isDM = user?.role === 'Dungeon Master';
+                      const canInteract = isDM;
+                      const slotsUsed: Record<string, number> = characterSpellSlotsUsed[selectedCharacterData.id] || {};
 
-                      // Render a single Roman-numeral square with a floating count badge
-                      const SlotSquare = ({ roman, count, isPact }: { roman: string; count: number; isPact?: boolean }) => (
-                        <div style={{ position: 'relative', display: 'inline-block' }}>
-                          <div style={{
-                            width: '54px',
-                            height: '54px',
-                            background: isPact ? 'rgba(168, 85, 247, 0.18)' : 'rgba(99, 202, 255, 0.14)',
-                            border: `2px solid ${isPact ? 'rgba(168, 85, 247, 0.55)' : 'rgba(99, 202, 255, 0.5)'}`,
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '1.1rem',
-                            fontWeight: 'bold',
-                            color: isPact ? '#c084fc' : '#7dd3fc',
-                            fontFamily: 'serif',
-                            letterSpacing: '0.02em'
-                          }}>{roman}</div>
-                          {/* Count badge — bottom-right corner */}
-                          <div style={{
-                            position: 'absolute',
-                            bottom: '-6px',
-                            right: '-6px',
-                            minWidth: '18px',
-                            height: '18px',
-                            background: isPact ? '#7c3aed' : '#0369a1',
-                            border: `1.5px solid ${isPact ? '#a855f7' : '#38bdf8'}`,
-                            borderRadius: '50%',
-                            fontSize: '0.65rem',
-                            fontWeight: 'bold',
-                            color: '#fff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            lineHeight: 1,
-                            padding: '0 3px'
-                          }}>{count}</div>
-                        </div>
-                      );
+                      const handleUseSlot = (level: number) => {
+                        if (!canInteract) return;
+                        const usedNow = slotsUsed[String(level)] || 0;
+                        const totalSlots = slotInfo.type === 'pact' ? (level === slotInfo.slotLevel ? slotInfo.slots : 0) : (slotInfo.slots[level - 1] ?? 0);
+                        if (usedNow >= totalSlots) return;
+                        socket?.emit('useSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id, slotLevel: level });
+                      };
+
+                      const handleRestoreSlot = (level: number) => {
+                        if (!isDM) return;
+                        socket?.emit('restoreSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id, slotLevel: level });
+                      };
+
+                      // Render slot bubbles for a given level: filled = available, dim = used
+                      const SlotRow = ({ slotLevel, totalCount, isPact }: { slotLevel: number; totalCount: number; isPact?: boolean }) => {
+                        const used = slotsUsed[String(slotLevel)] || 0;
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: isPact ? '#c084fc' : '#7dd3fc', fontFamily: 'serif', fontWeight: 'bold' }}>
+                              {toRoman(slotLevel)}
+                            </span>
+                            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                              {Array.from({ length: totalCount }).map((_, idx) => {
+                                const isUsed = idx < used;
+                                return (
+                                  <div
+                                    key={idx}
+                                    title={isUsed ? (isDM ? 'Click to restore slot' : 'Used') : (canInteract ? 'Click to use slot' : 'Available')}
+                                    onClick={() => { if (isUsed) handleRestoreSlot(slotLevel); else handleUseSlot(slotLevel); }}
+                                    style={{
+                                      width: '20px', height: '20px', borderRadius: '50%',
+                                      background: isUsed ? 'rgba(0,0,0,0.3)' : (isPact ? 'rgba(168,85,247,0.7)' : 'rgba(99,202,255,0.7)'),
+                                      border: `2px solid ${isPact ? 'rgba(168,85,247,0.8)' : 'rgba(99,202,255,0.8)'}`,
+                                      cursor: canInteract ? 'pointer' : 'default',
+                                      opacity: isUsed ? 0.4 : 1,
+                                      transition: 'opacity 0.2s, background 0.2s',
+                                    }}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      };
 
                       return (
                         <div style={{
@@ -11562,25 +12744,68 @@ const CampaignView: React.FC = () => {
                             ✨ Spell Slots
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
                               {slotInfo.type === 'pact' ? '(Pact Magic — recharge on short rest)' : '(recharge on long rest)'}
+                              {canInteract && <span style={{ marginLeft: '0.5rem', color: '#7dd3fc' }}>· click to use/restore</span>}
                             </span>
                           </h6>
                           {slotInfo.type === 'pact' ? (
-                            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                              <SlotSquare roman={toRoman(slotInfo.slotLevel)} count={slotInfo.slots} isPact />
+                            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                              <SlotRow slotLevel={slotInfo.slotLevel} totalCount={slotInfo.slots} isPact />
                               {selectedCharacterData.level >= 11 && (
-                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', alignSelf: 'center' }}>
                                   Mystic Arcanum:{' '}
                                   {[6,7,8,9].filter((_, i) => selectedCharacterData.level >= [11,13,15,17][i]).map(lvl => toRoman(lvl)).join('  ')}
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                               {slotInfo.slots.map((count, i) => count > 0 && (
-                                <SlotSquare key={i} roman={toRoman(i + 1)} count={count} />
+                                <SlotRow key={i} slotLevel={i + 1} totalCount={count} />
                               ))}
                             </div>
                           )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Ki Points Panel (Monk only) */}
+                    {selectedCharacterData.class === 'Monk' && (() => {
+                      const maxKi = selectedCharacterData.level;
+                      const remaining = characterKiPoints[selectedCharacterData.id] ?? maxKi;
+                      const isDM = user?.role === 'Dungeon Master';
+                      const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
+                      const canInteract = isDM || isOwner;
+                      const token = localStorage.getItem('token');
+                      return (
+                        <div style={{ background: 'rgba(250,204,21,0.06)', border: '2px solid rgba(250,204,21,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem' }}>
+                          <h6 style={{ color: '#fbbf24', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            🌀 Ki Points
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on short/long rest{canInteract ? ' · click to use/restore' : ''})</span>
+                          </h6>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {Array.from({ length: maxKi }).map((_, idx) => {
+                              const isUsed = idx >= remaining;
+                              return (
+                                <div
+                                  key={idx}
+                                  title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                  onClick={() => {
+                                    if (!canInteract) return;
+                                    socket?.emit(isUsed ? 'restoreKiPoint' : 'useKiPoint', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id });
+                                  }}
+                                  style={{
+                                    width: '22px', height: '22px', borderRadius: '50%',
+                                    background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(250,204,21,0.7)',
+                                    border: '2px solid rgba(250,204,21,0.8)',
+                                    cursor: canInteract ? 'pointer' : 'default',
+                                    opacity: isUsed ? 0.35 : 1,
+                                    transition: 'opacity 0.2s',
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{remaining}/{maxKi} remaining</div>
                         </div>
                       );
                     })()}
@@ -11790,6 +13015,43 @@ const CampaignView: React.FC = () => {
                           >
                             ➕ Add Skill
                           </button>
+                        )}
+                        {user?.role === 'Dungeon Master' && (
+                          showSkillDbResetConfirm ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(239,68,68,0.1)', border: '2px solid rgba(239,68,68,0.5)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem' }}>
+                              <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 'bold' }}>⚠️ This will clear ALL skills from ALL characters. Cannot be undone!</span>
+                              <button
+                                onClick={async () => {
+                                  const token = localStorage.getItem('token');
+                                  const r = await fetch('/api/skills/reset', { method: 'DELETE', credentials: 'include', headers: { 'Authorization': `Bearer ${token}` } });
+                                  const d = await r.json();
+                                  if (r.ok) {
+                                    toast(`🗑️ Skills reset: ${d.characterSkillsRemoved} links removed, ${d.customSkillsDeleted} custom skills deleted`, 6000);
+                                    setCharacterSkills({});
+                                  } else {
+                                    toast('Failed to reset skills: ' + (d.error || 'unknown error'), 5000);
+                                  }
+                                  setShowSkillDbResetConfirm(false);
+                                }}
+                                style={{ padding: '0.3rem 0.75rem', background: 'rgba(239,68,68,0.3)', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                              >
+                                Confirm Reset
+                              </button>
+                              <button
+                                onClick={() => setShowSkillDbResetConfirm(false)}
+                                style={{ padding: '0.3rem 0.6rem', background: 'rgba(100,100,100,0.3)', border: '1px solid #666', color: '#aaa', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8rem' }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setShowSkillDbResetConfirm(true)}
+                              style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', background: 'rgba(239,68,68,0.15)', border: '2px solid rgba(239,68,68,0.4)', color: '#f87171', borderRadius: '0.5rem', cursor: 'pointer' }}
+                            >
+                              🗑️ DB Reset
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
@@ -14357,6 +15619,865 @@ const CampaignView: React.FC = () => {
           </div>
         )}
 
+        {/* Turn notification toast */}
+        {turnNotification && (
+          <div style={{
+            position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)',
+            background: 'linear-gradient(135deg, #1a2e1a, #1e3a1e)',
+            border: '2px solid #4a4', borderRadius: '0.75rem',
+            padding: '0.75rem 1.5rem', zIndex: 9998,
+            color: '#4ade80', fontWeight: 'bold', fontSize: '1rem',
+            boxShadow: '0 0 30px rgba(74,222,128,0.4)',
+            animation: 'fadeIn 0.3s ease',
+          }}>
+            {turnNotification}
+          </div>
+        )}
+
+        {/* Attack Modal */}
+        {showAttackModal && socket && currentCampaign && (() => {
+          const attacker = combatants.find(c => String(c.characterId) === showAttackModal.attackerKey)
+            ?? (showAttackModal.attackerKey === '' ? { characterId: 'dm', name: 'Dungeon Master', isMonster: false } : undefined);
+          if (!attacker) return null;
+
+          // If no target selected yet, show target picker
+          if (!showAttackModal.targetKey) {
+            const possibleTargets = combatants.filter(c => String(c.characterId) !== showAttackModal.attackerKey);
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                <div style={{ background: 'linear-gradient(135deg,#1a1a2e,#16213e)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.5rem', width: '380px', maxWidth: '95vw' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Choose Target</h4>
+                    <button onClick={() => setShowAttackModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {possibleTargets.map(t => (
+                      <button key={t.characterId}
+                        onClick={() => {
+                          if (user?.role === 'Dungeon Master') {
+                            // DM goes straight to AttackModal
+                            setShowAttackModal(prev => prev ? { ...prev, targetKey: String(t.characterId) } : null);
+                          } else {
+                            // Player sends request to DM and closes the picker
+                            const reqId = Date.now();
+                            socket.emit('requestAttack', {
+                              campaignId: currentCampaign.campaign.id,
+                              requestId: reqId,
+                              attackerKey: showAttackModal.attackerKey,
+                              attackerName: attacker.name,
+                              targetKey: String(t.characterId),
+                              targetName: t.name,
+                            });
+                            setShowAttackModal(null);
+                          }
+                        }}
+                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster ? 'rgba(248,113,113,0.5)' : 'rgba(212,193,156,0.3)'}`, color: t.isMonster ? '#f87171' : 'var(--text-gold)', cursor: 'pointer', textAlign: 'left' }}>
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          const target = combatants.find(c => String(c.characterId) === showAttackModal.targetKey);
+          if (!target) return null;
+
+          // Build limb AC for target
+          const targetCharacter = !target.isMonster ? currentCampaign.characters.find((c: any) => c.id === target.characterId) : null;
+          const targetMonsterTemplate = (target.isMonster && target.monsterId)
+            ? (monsters.find((m: any) => m.id === target.monsterId) ?? combatMonsterTemplates[String(target.monsterId)])
+            : null;
+          const limbAC = targetMonsterTemplate?.limb_ac ?? {
+            head: targetCharacter?.armor_class ?? 10,
+            chest: targetCharacter?.armor_class ?? 10,
+            left_arm: targetCharacter?.armor_class ?? 10,
+            right_arm: targetCharacter?.armor_class ?? 10,
+            left_leg: targetCharacter?.armor_class ?? 10,
+            right_leg: targetCharacter?.armor_class ?? 10,
+          };
+
+          // Build per-limb current + max HP for the target
+          let targetLimbHealth: Record<string, number> | undefined;
+          let targetLimbHealthMax: Record<string, number> | undefined;
+          if (target.isMonster) {
+            const instHp = monsterInstanceHp[String(target.characterId)];
+            if (instHp) targetLimbHealth = instHp.limbHealth;
+            if (targetMonsterTemplate?.limb_health) targetLimbHealthMax = targetMonsterTemplate.limb_health as Record<string, number>;
+          } else if (targetCharacter) {
+            const charId = Number(target.characterId);
+            targetLimbHealth = characterLimbHealth[charId];
+            const hpEntry = combatCharacterHp[charId];
+            const maxHp = hpEntry?.max ?? targetCharacter.hit_points;
+            const con = (targetCharacter as any).abilities?.con ?? 10;
+            targetLimbHealthMax = calcCharacterLimbHealthMax(maxHp, con);
+          }
+
+          return (
+            <AttackModal
+              attacker={{ characterId: attacker.characterId, name: attacker.name, isMonster: attacker.isMonster }}
+              target={{ characterId: target.characterId, name: target.name, isMonster: target.isMonster, monsterId: target.monsterId }}
+              targetLimbAC={limbAC}
+              targetLimbHealth={targetLimbHealth}
+              targetLimbHealthMax={targetLimbHealthMax}
+              prefillDamage={showAttackModal.prefillDamage}
+              onConfirm={(params) => {
+                socket.emit('applyDamage', {
+                  campaignId: currentCampaign.campaign.id,
+                  targetKey: params.targetKey,
+                  targetType: params.targetType,
+                  targetName: params.targetName,
+                  limbName: params.limbName,
+                  damage: params.damage,
+                  attackerName: params.attackerName,
+                  monsterInstanceId: target.monsterId ?? null,
+                });
+                if (params.hit && attacker) {
+                  socket.emit('spendActionEconomy', {
+                    campaignId: currentCampaign.campaign.id,
+                    combatantKey: String(attacker.characterId),
+                    actionType: 'action',
+                    spent: true,
+                  });
+                }
+                setShowAttackModal(null);
+              }}
+              onClose={() => setShowAttackModal(null)}
+            />
+          );
+        })()}
+
+        {/* Dice Roll Modal — shown to players when DM requests a roll */}
+        {pendingDiceRequest && socket && currentCampaign && (
+          <DiceRollModal
+            request={pendingDiceRequest}
+            rollerName={currentCampaign.userCharacter?.name ?? 'You'}
+            character={currentCampaign.userCharacter}
+            rerollApproved={rerollApproved}
+            precomputedModifier={pendingDiceRequest.precomputedModifier ?? undefined}
+            onRequestReroll={(diceType) => {
+              socket.emit('requestReroll', {
+                campaignId: currentCampaign.campaign.id,
+                requestId: pendingDiceRequest.requestId,
+                rollerName: currentCampaign.userCharacter?.name ?? 'Player',
+                diceType,
+              });
+            }}
+            onConfirm={(rawRoll, total, modifierValue, modifier) => {
+              socket.emit('submitDiceResult', {
+                campaignId: currentCampaign.campaign.id,
+                requestId: pendingDiceRequest.requestId,
+                result: rawRoll,
+                rawRoll,
+                total,
+                modifierValue,
+                modifier,
+                purposeDetail: pendingDiceRequest.purposeDetail,
+                rollerName: currentCampaign.userCharacter?.name ?? 'Player',
+              });
+              setPendingDiceRequest(null);
+            }}
+            onClose={() => setPendingDiceRequest(null)}
+          />
+        )}
+
+        {/* DM Attack Request Panel — player wants to attack, DM picks dice */}
+        {pendingAttackRequest && user?.role === 'Dungeon Master' && socket && currentCampaign && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000,
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+              border: '2px solid rgba(248,113,113,0.5)',
+              borderRadius: '1rem', padding: '1.75rem', width: '400px', maxWidth: '95vw',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <h4 style={{ color: '#f87171', margin: 0 }}>⚔️ Attack Request</h4>
+                <button onClick={() => setPendingAttackRequest(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', margin: '0 0 1.25rem', fontSize: '0.95rem' }}>
+                <strong style={{ color: 'var(--text-gold)' }}>{pendingAttackRequest.attackerName}</strong> wants to attack <strong style={{ color: '#f87171' }}>{pendingAttackRequest.targetName}</strong>
+              </p>
+
+              {/* Hit die picker */}
+              <div style={{ marginBottom: '1rem' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Hit Die</p>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {['d4','d6','d8','d10','d12','d20'].map(d => (
+                    <button key={d} onClick={() => setDmAttackHitDie(d)}
+                      style={{
+                        padding: '0.3rem 0.7rem', borderRadius: '0.4rem', fontSize: '0.85rem', cursor: 'pointer',
+                        background: dmAttackHitDie === d ? 'rgba(96,165,250,0.3)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${dmAttackHitDie === d ? '#60a5fa' : 'rgba(255,255,255,0.15)'}`,
+                        color: dmAttackHitDie === d ? '#93c5fd' : 'rgba(255,255,255,0.5)',
+                        fontWeight: dmAttackHitDie === d ? 'bold' : 'normal',
+                      }}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Damage die picker */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Damage Die</p>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {['d4','d6','d8','d10','d12','d20'].map(d => (
+                    <button key={d} onClick={() => setDmAttackDamageDie(d)}
+                      style={{
+                        padding: '0.3rem 0.7rem', borderRadius: '0.4rem', fontSize: '0.85rem', cursor: 'pointer',
+                        background: dmAttackDamageDie === d ? 'rgba(248,113,113,0.3)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${dmAttackDamageDie === d ? '#f87171' : 'rgba(255,255,255,0.15)'}`,
+                        color: dmAttackDamageDie === d ? '#fca5a5' : 'rgba(255,255,255,0.5)',
+                        fontWeight: dmAttackDamageDie === d ? 'bold' : 'normal',
+                      }}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={() => setPendingAttackRequest(null)}
+                  style={{ flex: 1, padding: '0.6rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#999', cursor: 'pointer' }}>
+                  Deny
+                </button>
+                <button onClick={() => {
+                  socket.emit('confirmAttackDice', {
+                    campaignId: currentCampaign.campaign.id,
+                    requestId: pendingAttackRequest.requestId,
+                    attackerKey: pendingAttackRequest.attackerKey,
+                    attackerName: pendingAttackRequest.attackerName,
+                    targetKey: pendingAttackRequest.targetKey,
+                    targetName: pendingAttackRequest.targetName,
+                    hitDie: dmAttackHitDie,
+                    damageDie: dmAttackDamageDie,
+                    dmName: user?.username ?? 'DM',
+                  });
+                  setPendingAttackRequest(null);
+                }}
+                  style={{ flex: 2, padding: '0.6rem', borderRadius: '0.5rem', background: 'linear-gradient(135deg,#f87171cc,#ef4444)', border: '2px solid #ef4444', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.95rem' }}>
+                  ⚔️ Send Roll Request ({dmAttackHitDie} hit / {dmAttackDamageDie} dmg)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Player Attack Roll Modal — hit die first, then damage die */}
+        {pendingAttackDiceConfig && attackRollPhase && !awaitingHitApproval && socket && currentCampaign && (() => {
+          const cfg = pendingAttackDiceConfig;
+          const isHitPhase = attackRollPhase === 'hit';
+          const diceRequest: CombatDiceRequest = {
+            requestId: cfg.requestId,
+            requesterName: cfg.dmName,
+            targetCharacterName: cfg.attackerName,
+            diceType: isHitPhase ? cfg.hitDie : cfg.damageDie,
+            rollPurpose: isHitPhase ? 'attack' : 'damage',
+            purposeDetail: isHitPhase
+              ? `Attack roll vs ${cfg.targetName}`
+              : `Damage roll vs ${cfg.targetName}`,
+            campaignId: cfg.campaignId,
+            modifier: isHitPhase ? 'none' : 'none',
+          };
+          return (
+            <DiceRollModal
+              key={attackRollPhase}
+              request={diceRequest}
+              rollerName={currentCampaign.userCharacter?.name ?? 'You'}
+              character={currentCampaign.userCharacter}
+              rerollApproved={rerollApproved}
+              previousRollResult={attackHitRoll && !isHitPhase ? { label: 'Hit Roll', total: attackHitRoll.total, color: '#60a5fa' } : undefined}
+              onRequestReroll={(diceType) => {
+                socket.emit('requestReroll', {
+                  campaignId: cfg.campaignId,
+                  requestId: cfg.requestId,
+                  rollerName: currentCampaign.userCharacter?.name ?? 'Player',
+                  diceType,
+                });
+              }}
+              onConfirm={(rawRoll, total, modifierValue, modifier) => {
+                if (isHitPhase) {
+                  // Send hit roll to DM for approval before proceeding to damage
+                  setAttackHitRoll({ raw: rawRoll, total });
+                  setAwaitingHitApproval(true);
+                  socket.emit('submitHitRoll', {
+                    campaignId: cfg.campaignId,
+                    requestId: cfg.requestId,
+                    attackerName: cfg.attackerName,
+                    targetName: cfg.targetName,
+                    hitTotal: total,
+                    hitRaw: rawRoll,
+                  });
+                } else {
+                  // Both rolls done — send to server for DM
+                  const hitRoll = attackHitRoll ?? { raw: rawRoll, total };
+                  socket.emit('submitDiceResult', {
+                    campaignId: cfg.campaignId,
+                    requestId: cfg.requestId,
+                    result: hitRoll.raw,
+                    rawRoll: hitRoll.raw,
+                    total: hitRoll.total,
+                    modifierValue: 0,
+                    modifier: 'none',
+                    rollerName: currentCampaign.userCharacter?.name ?? 'Player',
+                    purposeDetail: `Attack vs ${cfg.targetName}: hit ${hitRoll.total}, dmg ${total}`,
+                    attackerKey: cfg.attackerKey,
+                    targetKey: cfg.targetKey,
+                    targetName: cfg.targetName,
+                    hitRoll: hitRoll.total,
+                    damageRoll: total,
+                    hitDie: cfg.hitDie,
+                    damageDie: cfg.damageDie,
+                  });
+                  // Spend action economy
+                  socket.emit('spendActionEconomy', {
+                    campaignId: cfg.campaignId,
+                    combatantKey: cfg.attackerKey,
+                    actionType: 'action',
+                    spent: true,
+                  });
+                  setAttackCompletedSummary({ hitTotal: hitRoll.total, damageTotal: total, targetName: cfg.targetName });
+                  setTimeout(() => setAttackCompletedSummary(null), 8000);
+                  setPendingAttackDiceConfig(null);
+                  setAttackRollPhase(null);
+                  setAttackHitRoll(null);
+                }
+              }}
+              onClose={() => {
+                setPendingAttackDiceConfig(null);
+                setAttackRollPhase(null);
+                setAttackHitRoll(null);
+                setAwaitingHitApproval(false);
+              }}
+            />
+          );
+        })()}
+
+        {/* Player waiting panel — shown after confirming hit roll, before DM approves damage */}
+        {awaitingHitApproval && attackHitRoll && pendingAttackDiceConfig && (
+          <div style={{
+            position: 'fixed', bottom: '20px', left: '20px', zIndex: 9998,
+            background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+            border: '2px solid rgba(96,165,250,0.5)',
+            borderRadius: '1rem', padding: '1.25rem', width: '270px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+          }}>
+            <p style={{ color: '#60a5fa', fontWeight: 'bold', margin: '0 0 0.4rem', fontSize: '0.9rem' }}>🎲 Hit Roll Submitted</p>
+            <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.75rem', fontSize: '0.8rem' }}>
+              vs <strong style={{ color: '#e2e8f0' }}>{pendingAttackDiceConfig.targetName}</strong>
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ textAlign: 'center', padding: '0.4rem 1rem', borderRadius: '0.5rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.35)' }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem' }}>YOUR ROLL</div>
+                <div style={{ color: '#60a5fa', fontSize: '1.6rem', fontWeight: 'bold' }}>{attackHitRoll.total}</div>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>⏳ Waiting for DM to approve...</p>
+            </div>
+            <button
+              onClick={() => { setAwaitingHitApproval(false); setPendingAttackDiceConfig(null); setAttackRollPhase(null); setAttackHitRoll(null); }}
+              style={{ width: '100%', padding: '0.4rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', fontSize: '0.8rem' }}>
+              Cancel Attack
+            </button>
+          </div>
+        )}
+
+        {/* Attack Roll Results Summary — shown to player after both rolls are submitted */}
+        {pendingHitRollApproval && user?.role === 'Dungeon Master' && socket && currentCampaign && (
+          <div style={{
+            position: 'fixed', bottom: '20px', left: '20px', zIndex: 9998,
+            background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+            border: '2px solid rgba(96,165,250,0.5)',
+            borderRadius: '1rem', padding: '1.25rem', width: '290px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+          }}>
+            <p style={{ color: '#60a5fa', fontWeight: 'bold', margin: '0 0 0.3rem', fontSize: '0.9rem' }}>
+              ⚔️ Attack Hit Roll
+            </p>
+            <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.6rem', fontSize: '0.8rem' }}>
+              <strong style={{ color: '#e2e8f0' }}>{pendingHitRollApproval.attackerName}</strong> attacks{' '}
+              <strong style={{ color: '#f87171' }}>{pendingHitRollApproval.targetName}</strong>
+            </p>
+            <div style={{ textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.35)', marginBottom: '0.75rem' }}>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem', marginBottom: '0.15rem' }}>HIT ROLL</div>
+              <div style={{ color: '#60a5fa', fontSize: '2rem', fontWeight: 'bold' }}>{pendingHitRollApproval.hitTotal}</div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => {
+                  socket.emit('approveHitRoll', { campaignId: currentCampaign.campaign.id, requestId: pendingHitRollApproval.requestId, hitTotal: pendingHitRollApproval.hitTotal, hitRaw: pendingHitRollApproval.hitTotal });
+                  setPendingHitRollApproval(null);
+                }}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(74,222,128,0.2)', border: '1px solid #4ade80', color: '#4ade80', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                ✅ Roll Damage
+              </button>
+              <button
+                onClick={() => {
+                  socket.emit('denyHitRoll', { campaignId: currentCampaign.campaign.id, requestId: pendingHitRollApproval.requestId });
+                  setPendingHitRollApproval(null);
+                }}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#f87171', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                ❌ Miss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Attack Roll Results Summary — shown to player after both rolls are submitted */}
+        {attackCompletedSummary && (
+          <div style={{
+            position: 'fixed', bottom: '20px', left: '20px', zIndex: 9998,
+            background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+            border: '2px solid rgba(248,113,113,0.5)',
+            borderRadius: '1rem', padding: '1.25rem', width: '260px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <p style={{ color: '#f87171', fontWeight: 'bold', margin: 0, fontSize: '0.9rem' }}>⚔️ Attack Results</p>
+              <button onClick={() => setAttackCompletedSummary(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.75rem', fontSize: '0.8rem' }}>
+              vs <strong style={{ color: '#e2e8f0' }}>{attackCompletedSummary.targetName}</strong>
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ flex: 1, textAlign: 'center', padding: '0.4rem', borderRadius: '0.4rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.35)' }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem', marginBottom: '0.15rem' }}>HIT ROLL</div>
+                <div style={{ color: '#60a5fa', fontSize: '1.4rem', fontWeight: 'bold' }}>{attackCompletedSummary.hitTotal}</div>
+              </div>
+              <div style={{ flex: 1, textAlign: 'center', padding: '0.4rem', borderRadius: '0.4rem', background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)' }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem', marginBottom: '0.15rem' }}>DAMAGE</div>
+                <div style={{ color: '#f87171', fontSize: '1.4rem', fontWeight: 'bold' }}>{attackCompletedSummary.damageTotal}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DM Reroll Approval Panel */}
+        {pendingRerollRequest && user?.role === 'Dungeon Master' && socket && currentCampaign && (
+          <div style={{
+            position: 'fixed', bottom: '20px', right: '20px', zIndex: 9998,
+            background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+            border: '2px solid rgba(251,191,36,0.5)',
+            borderRadius: '1rem', padding: '1.25rem', width: '280px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+          }}>
+            <p style={{ color: '#fbbf24', fontWeight: 'bold', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>
+              🔄 Reroll Request
+            </p>
+            <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.85rem', fontSize: '0.85rem' }}>
+              <strong style={{ color: '#e2e8f0' }}>{pendingRerollRequest.rollerName}</strong> wants to reroll their{' '}
+              <strong style={{ color: '#fbbf24' }}>{pendingRerollRequest.diceType}</strong>
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => {
+                  socket.emit('approveReroll', { campaignId: currentCampaign.campaign.id, requestId: pendingRerollRequest.requestId });
+                  setPendingRerollRequest(null);
+                }}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(74,222,128,0.2)', border: '1px solid #4ade80', color: '#4ade80', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                ✅ Approve
+              </button>
+              <button
+                onClick={() => {
+                  socket.emit('denyReroll', { campaignId: currentCampaign.campaign.id, requestId: pendingRerollRequest.requestId });
+                  setPendingRerollRequest(null);
+                }}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#f87171', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                ❌ Deny
+              </button>
+            </div>
+          </div>
+        )}
+
+
+
+        {/* DM Roll Outcome Panel — floats top-right, shows after a player submits a roll */}
+        {pendingRollOutcome && user?.role === 'Dungeon Master' && socket && currentCampaign && (
+          <div style={{
+            position: 'fixed', top: '80px', right: '20px', zIndex: 9998,
+            background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+            border: '2px solid rgba(212, 193, 156, 0.5)',
+            borderRadius: '1rem', padding: '1.25rem', width: '300px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
+              <div>
+                <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.9rem' }}>🎲 Roll Result</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{pendingRollOutcome.rollerName}</div>
+              </div>
+              <button onClick={() => setPendingRollOutcome(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>×</button>
+            </div>
+
+            {/* Roll breakdown */}
+            {pendingRollOutcome.isAttackResult ? (
+              <div style={{ padding: '0.6rem', background: 'rgba(248,113,113,0.07)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Hit Roll</span>
+                  <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '1rem' }}>{pendingRollOutcome.hitRoll}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Damage Roll</span>
+                  <span style={{ color: '#f87171', fontWeight: 'bold', fontSize: '1rem' }}>{pendingRollOutcome.damageRoll}</span>
+                </div>
+                {pendingRollOutcome.targetName && (
+                  <div style={{ marginTop: '0.3rem', color: 'var(--text-secondary)', fontSize: '0.7rem', textAlign: 'center' }}>
+                    vs {pendingRollOutcome.targetName}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ padding: '0.6rem', background: 'rgba(212,193,156,0.07)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+                <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {(pendingRollOutcome.rollPurpose ?? 'ability_check').replace('_', ' ')}
+                  {pendingRollOutcome.purposeDetail ? ` • ${pendingRollOutcome.purposeDetail}` : ''}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: '0.2rem', columnGap: '0.5rem', marginBottom: '0.4rem' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Die</span>
+                  <span style={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: '600' }}>{pendingRollOutcome.diceType ?? 'd20'}</span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Raw roll</span>
+                  <span style={{ color: '#93c5fd', fontSize: '0.84rem', fontWeight: '700' }}>{pendingRollOutcome.rawRoll}</span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Modifier</span>
+                  <span style={{ color: '#a78bfa', fontSize: '0.78rem', fontWeight: '600' }}>
+                    {pendingRollOutcome.modifier === 'none'
+                      ? `${pendingRollOutcome.modifierValue >= 0 ? '+' : ''}${pendingRollOutcome.modifierValue}`
+                      : `${pendingRollOutcome.modifier.toUpperCase()} (${pendingRollOutcome.modifierValue >= 0 ? '+' : ''}${pendingRollOutcome.modifierValue})`}
+                  </span>
+                </div>
+                <div style={{ textAlign: 'center', borderTop: '1px solid rgba(148,163,184,0.25)', paddingTop: '0.4rem' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginRight: '0.35rem' }}>Total</span>
+                  <span style={{ color: 'var(--text-gold)', fontSize: '1.45rem', fontWeight: 'bold' }}>{pendingRollOutcome.total}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <button
+                onClick={() => {
+                  const ak = pendingRollOutcome.attackerKey ?? '';
+                  const tk = pendingRollOutcome.targetKey ?? '';
+                  const pd = pendingRollOutcome.isAttackResult ? (pendingRollOutcome.damageRoll ?? undefined) : undefined;
+                  setShowAttackModal({ attackerKey: ak, targetKey: tk, prefillDamage: pd });
+                  setPendingRollOutcome(null);
+                }}
+                style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.45)', color: '#f87171', fontWeight: '600', fontSize: '0.82rem' }}>
+                ⚔️ Deal Damage
+              </button>
+              <button
+                onClick={() => { setShowHealModal({ attackerKey: '', targetKey: '' }); setPendingRollOutcome(null); }}
+                style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.45)', color: '#4ade80', fontWeight: '600', fontSize: '0.82rem' }}>
+                💚 Heal Health
+              </button>
+              <button
+                onClick={() => { setShowStatusModal({ targetKey: '' }); setStatusTarget(''); setDotType('Burning'); setDotLimbTarget('chest'); setDotDmgMode('fixed'); setDotFixed('5'); setDotDice('d6'); setPendingRollOutcome(null); }}
+                style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.45)', color: '#a78bfa', fontWeight: '600', fontSize: '0.82rem' }}>
+                ✨ Apply Status Effect
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* DOT Tick Panel — shown to DM at the start of an affected combatant's turn */}
+        {pendingDotTick && user?.role === 'Dungeon Master' && socket && currentCampaign && (() => {
+          const dotTick = pendingDotTick;
+          // Find character target for DOT damage
+          const dotTarget = combatants.find(c => String(c.characterId) === String(dotTick.combatantKey));
+          const dotTargetType = dotTarget?.isMonster ? 'monster' : 'character';
+          return (
+            <div style={{
+              position: 'fixed', bottom: '80px', left: '20px', zIndex: 9997,
+              background: 'linear-gradient(135deg, #1a0a0a, #2a1010)',
+              border: '2px solid rgba(239,68,68,0.5)',
+              borderRadius: '1rem', padding: '1rem', width: '280px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                <div style={{ color: '#f87171', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                  🔥 {dotTick.dotType} Tick
+                </div>
+                <button onClick={() => setPendingDotTick(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+                {dotTick.combatantName}'s turn starts — {dotTick.dotType} damage
+                {dotTick.limbTarget && dotTick.limbTarget !== 'chest' && (
+                  <span style={{ display: 'block', color: '#f87171', fontSize: '0.75rem', marginTop: '0.15rem' }}>→ {dotTick.limbTarget.replace('_', ' ')}</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {dotTick.fixedDamage !== null && (
+                  <button
+                    onClick={() => {
+                      socket.emit('confirmDotDamage', {
+                        campaignId: currentCampaign.campaign.id,
+                        targetKey: String(dotTick.combatantKey),
+                        targetType: dotTargetType,
+                        combatantName: dotTick.combatantName,
+                        dotType: dotTick.dotType,
+                        damage: dotTick.fixedDamage,
+                        limbTarget: dotTick.limbTarget ?? 'chest',
+                      });
+                      setPendingDotTick(null);
+                    }}
+                    style={{ padding: '0.4rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(239,68,68,0.25)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', fontWeight: '600', fontSize: '0.8rem' }}>
+                    Apply {dotTick.fixedDamage} damage
+                  </button>
+                )}
+                {dotTick.damageDice && (
+                  <button
+                    onClick={() => {
+                      // Request targeted player to roll for DOT damage
+                      if (dotTarget && !dotTarget.isMonster) {
+                        socket.emit('requestDiceRoll', {
+                          campaignId: currentCampaign.campaign.id,
+                          targetPlayerId: dotTarget.playerId,
+                          targetCharacterName: dotTarget.name,
+                          diceType: dotTick.damageDice,
+                          rollPurpose: 'damage',
+                          purposeDetail: `${dotTick.dotType} damage`,
+                          modifier: 'none',
+                        });
+                      }
+                      setPendingDotTick(null);
+                    }}
+                    style={{ padding: '0.4rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(251,191,36,0.2)', border: '1px solid rgba(251,191,36,0.4)', color: '#fde68a', fontWeight: '600', fontSize: '0.8rem' }}>
+                    Request {dotTick.damageDice} roll
+                  </button>
+                )}
+                <button onClick={() => setPendingDotTick(null)}
+                  style={{ padding: '0.35rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Heal Modal — DM picks target + limb + amount, then heals */}
+        {showHealModal && socket && currentCampaign && (() => {
+          // If no target yet, show target picker
+          if (!showHealModal.targetKey) {
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                <div style={{ background: 'linear-gradient(135deg,#0f1a0f,#1a2e1a)', border: '2px solid rgba(74,222,128,0.4)', borderRadius: '1rem', padding: '1.5rem', width: '360px', maxWidth: '95vw' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4 style={{ color: '#4ade80', margin: 0 }}>💚 Choose Target to Heal</h4>
+                    <button onClick={() => setShowHealModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {combatants.map(t => (
+                      <button key={t.characterId}
+                        onClick={() => setShowHealModal(prev => prev ? { ...prev, targetKey: String(t.characterId) } : null)}
+                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster ? 'rgba(248,113,113,0.5)' : 'rgba(74,222,128,0.4)'}`, color: t.isMonster ? '#f87171' : '#4ade80', cursor: 'pointer', textAlign: 'left' }}>
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          const healTarget = combatants.find(c => String(c.characterId) === showHealModal.targetKey);
+          if (!healTarget) return null;
+          const healTargetChar = !healTarget.isMonster ? currentCampaign.characters.find((c: any) => c.id === healTarget.characterId) : null;
+          const healTargetMonster = (healTarget.isMonster && healTarget.monsterId) ? monsters.find((m: any) => m.id === healTarget.monsterId) : null;
+          const limbAC = healTargetMonster?.limb_ac ?? {
+            head: healTargetChar?.armor_class ?? 10,
+            chest: healTargetChar?.armor_class ?? 10,
+            left_arm: healTargetChar?.armor_class ?? 10,
+            right_arm: healTargetChar?.armor_class ?? 10,
+            left_leg: healTargetChar?.armor_class ?? 10,
+            right_leg: healTargetChar?.armor_class ?? 10,
+          };
+          return (
+            <AttackModal
+              attacker={{ characterId: 'dm', name: 'Dungeon Master', isMonster: false }}
+              target={{ characterId: healTarget.characterId, name: healTarget.name, isMonster: healTarget.isMonster, monsterId: healTarget.monsterId }}
+              targetLimbAC={limbAC}
+              mode="heal"
+              onConfirm={(params) => {
+                socket.emit('applyHeal', {
+                  campaignId: currentCampaign.campaign.id,
+                  targetKey: params.targetKey,
+                  targetType: params.targetType,
+                  targetName: params.targetName,
+                  limbName: params.limbName,
+                  healAmount: params.damage,
+                  healerName: 'Dungeon Master',
+                });
+                setShowHealModal(null);
+              }}
+              onClose={() => setShowHealModal(null)}
+            />
+          );
+        })()}
+
+        {/* Status Effect Modal — DM picks target, applies D&D condition or DOT effect */}
+        {showStatusModal && user?.role === 'Dungeon Master' && socket && currentCampaign && (() => {
+          const D5E_QUICK = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
+          const DOT_TYPES = ['Burning', 'Bleeding', 'Poison'] as const;
+
+          const targetCombatant = combatants.find(c => String(c.characterId) === statusTarget);
+          const targetKey = statusTarget ? String(statusTarget) : null;
+
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+              <div style={{ background: 'linear-gradient(135deg, #0f0f1a, #1a1a2e)', border: '2px solid rgba(167,139,250,0.4)', borderRadius: '1rem', padding: '1.5rem', width: '480px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h4 style={{ color: '#a78bfa', margin: 0 }}>✨ Apply Status Effect</h4>
+                  <button onClick={() => setShowStatusModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                </div>
+
+                {/* Target picker */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Target</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                    {combatants.map(c => (
+                      <button key={c.characterId} onClick={() => setStatusTarget(String(c.characterId))}
+                        style={{ padding: '0.25rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', cursor: 'pointer',
+                          background: statusTarget === String(c.characterId) ? (c.isMonster ? 'rgba(248,113,113,0.3)' : 'rgba(167,139,250,0.3)') : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${statusTarget === String(c.characterId) ? (c.isMonster ? '#f87171' : '#a78bfa') : 'rgba(255,255,255,0.15)'}`,
+                          color: statusTarget === String(c.characterId) ? '#e2e8f0' : 'rgba(255,255,255,0.4)',
+                        }}>
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 1: Standard D&D 5e conditions */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>📋 D&D Conditions (instantly applied)</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                    {D5E_QUICK.map(cond => (
+                      <button key={cond}
+                        disabled={!targetKey}
+                        onClick={() => {
+                          if (!targetKey) return;
+                          socket.emit('applyCondition', {
+                            campaignId: currentCampaign.campaign.id,
+                            combatantKey: targetKey,
+                            condition: cond,
+                            appliedBy: 'Dungeon Master',
+                          });
+                          setShowStatusModal(null);
+                        }}
+                        style={{ padding: '0.25rem 0.55rem', borderRadius: '0.4rem', fontSize: '0.75rem', cursor: targetKey ? 'pointer' : 'not-allowed',
+                          background: 'rgba(250,204,21,0.1)', border: '1px solid rgba(250,204,21,0.35)',
+                          color: targetKey ? '#fbbf24' : 'rgba(251,191,36,0.3)',
+                        }}>
+                        {cond}
+                        {cond === 'Stunned' && ' (skip turn)'}
+                        {cond === 'Incapacitated' && ' (skip turn)'}
+                        {cond === 'Paralyzed' && ' (skip turn)'}
+                        {cond === 'Unconscious' && ' (skip turn)'}
+                        {cond === 'Petrified' && ' (skip turn)'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 2: DOT effects */}
+                <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.5rem' }}>
+                  <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0 0 0.6rem', fontWeight: 'bold' }}>🔥 Damage Over Time</p>
+
+                  {/* DOT type */}
+                  <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.6rem' }}>
+                    {DOT_TYPES.map(t => (
+                      <button key={t} onClick={() => setDotType(t)}
+                        style={{ flex: 1, padding: '0.3rem', borderRadius: '0.4rem', fontSize: '0.8rem', cursor: 'pointer',
+                          background: dotType === t ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${dotType === t ? '#f87171' : 'rgba(255,255,255,0.15)'}`,
+                          color: dotType === t ? '#fca5a5' : 'rgba(255,255,255,0.4)',
+                          fontWeight: dotType === t ? 'bold' : 'normal',
+                        }}>
+                        {t === 'Burning' ? '🔥' : t === 'Bleeding' ? '💉' : '☠️'} {t}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Target limb */}
+                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', margin: '0 0 0.3rem' }}>Target limb</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginBottom: '0.6rem' }}>
+                    {[['head','Head'],['chest','Chest'],['left_arm','L. Arm'],['right_arm','R. Arm'],['left_leg','L. Leg'],['right_leg','R. Leg']].map(([val, label]) => (
+                      <button key={val} onClick={() => setDotLimbTarget(val)}
+                        style={{ padding: '0.2rem 0.45rem', borderRadius: '0.3rem', fontSize: '0.72rem', cursor: 'pointer',
+                          background: dotLimbTarget === val ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${dotLimbTarget === val ? '#f87171' : 'rgba(255,255,255,0.12)'}`,
+                          color: dotLimbTarget === val ? '#fca5a5' : 'rgba(255,255,255,0.4)',
+                        }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Damage mode */}
+                  <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.6rem' }}>
+                    {[['fixed', 'Fixed Amount'], ['dice', 'DM Rolls Dice'], ['roll', 'Player Rolls']] .map(([mode, label]) => (
+                      <button key={mode} onClick={() => setDotDmgMode(mode as any)}
+                        style={{ flex: 1, padding: '0.25rem', borderRadius: '0.3rem', fontSize: '0.72rem', cursor: 'pointer',
+                          background: dotDmgMode === mode ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${dotDmgMode === mode ? '#60a5fa' : 'rgba(255,255,255,0.12)'}`,
+                          color: dotDmgMode === mode ? '#93c5fd' : 'rgba(255,255,255,0.4)',
+                        }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {dotDmgMode === 'fixed' && (
+                    <input type="number" min={1} max={100} value={dotFixed} onChange={e => setDotFixed(e.target.value)}
+                      placeholder="Damage per turn"
+                      style={{ width: '100%', padding: '0.35rem 0.6rem', borderRadius: '0.3rem', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0', marginBottom: '0.6rem' }} />
+                  )}
+                  {(dotDmgMode === 'dice' || dotDmgMode === 'roll') && (
+                    <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.6rem' }}>
+                      {['d4', 'd6', 'd8', 'd10', 'd12'].map(d => (
+                        <button key={d} onClick={() => setDotDice(d)}
+                          style={{ flex: 1, padding: '0.25rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer',
+                            background: dotDice === d ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${dotDice === d ? '#fbbf24' : 'rgba(255,255,255,0.12)'}`,
+                            color: dotDice === d ? '#fde68a' : 'rgba(255,255,255,0.4)',
+                          }}>
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    disabled={!targetKey}
+                    onClick={() => {
+                      if (!targetKey || !targetCombatant) return;
+                      socket.emit('applyDotCondition', {
+                        campaignId: currentCampaign.campaign.id,
+                        combatantKey: targetKey,
+                        combatantName: targetCombatant.name,
+                        dotType,
+                        fixedDamage: dotDmgMode === 'fixed' ? (parseInt(dotFixed, 10) || 5) : null,
+                        damageDice: dotDmgMode !== 'fixed' ? dotDice : null,
+                        requireRoll: dotDmgMode === 'roll',
+                        limbTarget: dotLimbTarget,
+                      });
+                      setShowStatusModal(null);
+                    }}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', cursor: targetKey ? 'pointer' : 'not-allowed',
+                      background: targetKey ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${targetKey ? '#f87171' : 'rgba(255,255,255,0.1)'}`,
+                      color: targetKey ? '#fca5a5' : 'rgba(255,255,255,0.3)',
+                      fontWeight: 'bold', fontSize: '0.82rem',
+                    }}>
+                    🔥 Apply {dotType} → {dotLimbTarget.replace('_', ' ')} ({dotDmgMode === 'fixed' ? `${dotFixed} dmg/turn` : `${dotDice}/turn${dotDmgMode === 'roll' ? ' — player rolls' : ''}`})
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Reset Combat Confirmation Modal */}
         <ConfirmationModal
           isOpen={showResetCombatModal}
@@ -14515,26 +16636,53 @@ const CampaignView: React.FC = () => {
                   <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem', fontSize: '1.1rem' }}>
                     🐉 Monsters
                   </h4>
-                  <input
-                    type="text"
-                    placeholder="Search monsters..."
-                    value={combatMonsterSearch}
-                    onChange={(e) => setCombatMonsterSearch(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      marginBottom: '0.75rem',
-                      background: 'rgba(0,0,0,0.3)',
-                      border: '1px solid rgba(217,83,79,0.3)',
-                      borderRadius: '0.5rem',
-                      color: '#fff',
-                      fontSize: '0.9rem',
-                      boxSizing: 'border-box'
-                    }}
-                  />
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <input
+                      type="text"
+                      placeholder="Search monsters..."
+                      value={combatMonsterSearch}
+                      onChange={(e) => setCombatMonsterSearch(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '0.5rem 0.75rem',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(217,83,79,0.3)',
+                        borderRadius: '0.5rem',
+                        color: '#fff',
+                        fontSize: '0.9rem',
+                      }}
+                    />
+                    <select
+                      value={combatMonsterSortBy}
+                      onChange={(e) => setCombatMonsterSortBy(e.target.value as any)}
+                      style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(217,83,79,0.3)', borderRadius: '0.5rem', color: '#fff', fontSize: '0.85rem', cursor: 'pointer' }}
+                    >
+                      <option value="name">Name</option>
+                      <option value="cr">CR</option>
+                      <option value="hp">HP</option>
+                      <option value="ac">AC</option>
+                    </select>
+                    <button
+                      onClick={() => setCombatMonsterSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                      title={combatMonsterSortDir === 'asc' ? 'Ascending' : 'Descending'}
+                      style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(217,83,79,0.3)', borderRadius: '0.5rem', color: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}
+                    >
+                      {combatMonsterSortDir === 'asc' ? '↑' : '↓'}
+                    </button>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {monsters
                       .filter((m: Monster) => m.name.toLowerCase().includes(combatMonsterSearch.toLowerCase()))
+                      .sort((a: Monster, b: Monster) => {
+                        let aVal: any, bVal: any;
+                        if (combatMonsterSortBy === 'name') { aVal = a.name.toLowerCase(); bVal = b.name.toLowerCase(); }
+                        else if (combatMonsterSortBy === 'cr') { aVal = (a as any).challenge_rating ?? 0; bVal = (b as any).challenge_rating ?? 0; }
+                        else if (combatMonsterSortBy === 'hp') { aVal = Object.values((a.limb_health || {}) as Record<string,number>).reduce((s,v)=>s+v,0); bVal = Object.values((b.limb_health || {}) as Record<string,number>).reduce((s,v)=>s+v,0); }
+                        else { aVal = (a as any).limb_ac?.chest ?? 10; bVal = (b as any).limb_ac?.chest ?? 10; }
+                        if (aVal < bVal) return combatMonsterSortDir === 'asc' ? -1 : 1;
+                        if (aVal > bVal) return combatMonsterSortDir === 'asc' ? 1 : -1;
+                        return 0;
+                      })
                       .map((monster: Monster) => {
                       const imageUrl = getImageUrl(monster.image_url) ?? null;
                       
@@ -14721,9 +16869,9 @@ const CampaignView: React.FC = () => {
 
           const detailCharacter = detailCombatant.isMonster
             ? null
-            : currentCampaign?.characters.find((c: any) => c.id === detailCombatant.characterId);
+            : currentCampaign?.characters.find((c: any) => Number(c.id) === Number(detailCombatant.characterId));
           const detailMonster = (detailCombatant.isMonster && detailCombatant.monsterId)
-            ? monsters.find((m: any) => m.id === detailCombatant.monsterId)
+            ? (monsters.find((m: any) => m.id === detailCombatant.monsterId) ?? combatMonsterTemplates[String(detailCombatant.monsterId)] ?? null)
             : null;
 
           const getHealthColor = (pct: number) =>
@@ -14755,7 +16903,20 @@ const CampaignView: React.FC = () => {
 
                 {/* CHARACTER layout */}
                 {detailCharacter && (() => {
-                  const hp = calculateCharacterHealth(detailCharacter);
+                  const charIdNum = Number(detailCharacter.id);
+                  const trackedHp = combatCharacterHp[charIdNum];
+                  // base HP = hit_points_max from DB (preserved on first combat action), fallback to char stat
+                  const baseHP = Math.max(1, trackedHp?.max || (detailCharacter as any).hit_points_max || detailCharacter.hit_points);
+                  // Per-limb max HP using the non-normalized formula
+                  const limbMaxValues = calcCharacterLimbHealthMax(baseHP, detailCharacter.abilities?.con ?? 10);
+                  const totalMax = Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
+                  // Per-limb current HP: use tracked state if available, else assume full health (= max values)
+                  const trackedLimbs = characterLimbHealth[charIdNum];
+                  const curLimbs = trackedLimbs ?? limbMaxValues;
+                  // Derive totalCurrent from actual limb state so it aligns with the non-normalized totalMax
+                  const totalCurrent = Object.values(curLimbs).reduce((s: number, v: number) => s + v, 0);
+                  const totalPct = totalMax > 0 ? Math.min(100, (totalCurrent / totalMax) * 100) : 0;
+
                   const baseAC = detailCharacter.armor_class || 10;
                   const rawLimbAC = limbAC[detailCharacter.id];
                   const helmAC     = rawLimbAC?.head      ?? 0;
@@ -14785,35 +16946,35 @@ const CampaignView: React.FC = () => {
                         </div>
                         {/* Figure with limb overlays */}
                         <div style={{ position: 'relative', width: '180px', flexShrink: 0 }}>
-                          <img src={FigureImage} alt="Figure" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '0.5rem', border: '1px solid rgba(212,193,156,0.2)' }} />
+                          <img src={detailCharacter?.race === 'Thri-kreen' ? Figure4ArmsImage : FigureImage} alt="Figure" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '0.5rem', border: '1px solid rgba(212,193,156,0.2)' }} />
                           {/* Head */}
                           <div style={{ position: 'absolute', top: '6%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.head}/{hp.limbs.head}</div>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.head > 0 ? (curLimbs.head / limbMaxValues.head) * 100 : 100) }}>{curLimbs.head}/{limbMaxValues.head}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.head}</div>
                           </div>
                           {/* Torso */}
                           <div style={{ position: 'absolute', top: '33%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.torso}/{hp.limbs.torso}</div>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.chest > 0 ? (curLimbs.chest / limbMaxValues.chest) * 100 : 100) }}>{curLimbs.chest}/{limbMaxValues.chest}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.chest}</div>
                           </div>
                           {/* Left hand */}
                           <div style={{ position: 'absolute', top: '30%', left: '2%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.leftHand}/{hp.limbs.leftHand}</div>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.left_arm > 0 ? (curLimbs.left_arm / limbMaxValues.left_arm) * 100 : 100) }}>{curLimbs.left_arm}/{limbMaxValues.left_arm}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.main_hand}</div>
                           </div>
                           {/* Right hand */}
                           <div style={{ position: 'absolute', top: '30%', right: '2%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.rightHand}/{hp.limbs.rightHand}</div>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.right_arm > 0 ? (curLimbs.right_arm / limbMaxValues.right_arm) * 100 : 100) }}>{curLimbs.right_arm}/{limbMaxValues.right_arm}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.off_hand}</div>
                           </div>
                           {/* Left leg */}
                           <div style={{ position: 'absolute', bottom: '12%', left: '14%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.leftLeg}/{hp.limbs.leftLeg}</div>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.left_leg > 0 ? (curLimbs.left_leg / limbMaxValues.left_leg) * 100 : 100) }}>{curLimbs.left_leg}/{limbMaxValues.left_leg}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.feet}</div>
                           </div>
                           {/* Right leg */}
                           <div style={{ position: 'absolute', bottom: '12%', right: '14%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(100) }}>{hp.limbs.rightLeg}/{hp.limbs.rightLeg}</div>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.right_leg > 0 ? (curLimbs.right_leg / limbMaxValues.right_leg) * 100 : 100) }}>{curLimbs.right_leg}/{limbMaxValues.right_leg}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.feet}</div>
                           </div>
                         </div>
@@ -14825,9 +16986,9 @@ const CampaignView: React.FC = () => {
                         <div style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', marginBottom: '0.4rem', fontWeight: 'bold' }}>Total HP</div>
                           <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '0.3rem' }}>
-                            <div style={{ width: `${hp.percentage}%`, height: '100%', background: getHealthColor(hp.percentage), borderRadius: '5px' }} />
+                            <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: '5px' }} />
                           </div>
-                          <div style={{ fontSize: '0.85rem', color: getHealthColor(hp.percentage) }}>{hp.current}/{hp.max}</div>
+                          <div style={{ fontSize: '0.85rem', color: getHealthColor(totalPct) }}>{totalCurrent}/{totalMax}</div>
                         </div>
 
                         {/* Base AC + Movement side by side */}
@@ -14865,17 +17026,25 @@ const CampaignView: React.FC = () => {
 
                 {/* MONSTER layout */}
                 {detailMonster && (() => {
-                  const lh = detailMonster.limb_health || {};
+                  // Template data = max values
+                  const lhMax = detailMonster.limb_health || {};
                   const lac = detailMonster.limb_ac || {};
-                  const limbs = [
-                    { label: 'Head',      hp: lh.head || 0,      ac: lac.head || 10 },
-                    { label: 'Chest',     hp: lh.chest || 0,     ac: lac.chest || 10 },
-                    { label: 'Left Arm',  hp: lh.left_arm || 0,  ac: lac.left_arm || 10 },
-                    { label: 'Right Arm', hp: lh.right_arm || 0, ac: lac.right_arm || 10 },
-                    { label: 'Left Leg',  hp: lh.left_leg || 0,  ac: lac.left_leg || 10 },
-                    { label: 'Right Leg', hp: lh.right_leg || 0, ac: lac.right_leg || 10 }
+                  // Live combat HP (updated by healthUpdated events)
+                  const instHp = monsterInstanceHp[String(detailCombatant.characterId)];
+                  const lhCur = instHp?.limbHealth ?? lhMax; // fallback: show full health if no damage yet
+                  const limbMaxTotal = Object.values(lhMax as Record<string, number>).reduce((s, v) => s + v, 0);
+                  const totalMax = detailMonster.hit_points || limbMaxTotal || 0;
+                  const totalCur = instHp?.totalHP ?? totalMax;
+                  const totalPct = totalMax > 0 ? Math.min(100, (totalCur / totalMax) * 100) : 100;
+                  const limbDefs = [
+                    { key: 'head',      label: 'Head',      ac: lac.head || 10 },
+                    { key: 'chest',     label: 'Chest',     ac: lac.chest || 10 },
+                    { key: 'left_arm',  label: 'Left Arm',  ac: lac.left_arm || 10 },
+                    { key: 'right_arm', label: 'Right Arm', ac: lac.right_arm || 10 },
+                    { key: 'left_leg',  label: 'Left Leg',  ac: lac.left_leg || 10 },
+                    { key: 'right_leg', label: 'Right Leg', ac: lac.right_leg || 10 }
                   ];
-                  const totalHp = limbs.reduce((s, l) => s + l.hp, 0);
+                  const isPlayerViewing = user?.role !== 'Dungeon Master';
 
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
@@ -14891,22 +17060,35 @@ const CampaignView: React.FC = () => {
                       <div>
                         {/* Total HP bar */}
                         <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '1rem' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#f87171', marginBottom: '0.4rem', fontWeight: 'bold' }}>Total HP — {totalHp}</div>
-                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px' }}>
-                            <div style={{ width: '100%', height: '100%', background: '#4ade80', borderRadius: '5px' }} />
+                          <div style={{ fontSize: '0.75rem', color: '#f87171', marginBottom: '0.4rem', fontWeight: 'bold' }}>
+                            {isPlayerViewing
+                              ? `Total HP — ${Math.round(totalPct)}%`
+                              : `Total HP — ${totalCur}/${totalMax}`}
+                          </div>
+                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden' }}>
+                            <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: '5px' }} />
                           </div>
                         </div>
                         {/* Limb table */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                          {limbs.map(l => (
-                            <div key={l.label} style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '0.4rem', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          {limbDefs.map(l => {
+                            const cur = lhCur[l.key] ?? 0;
+                            const max = lhMax[l.key] ?? 0;
+                            const pct = max > 0 ? Math.min(100, (cur / max) * 100) : 100;
+                            return (
+                            <div key={l.key} style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '0.4rem', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontSize: '0.8rem', color: '#f87171' }}>{l.label}</span>
                               <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '0.8rem', color: '#4ade80' }}>{l.hp} HP</div>
-                                <div style={{ fontSize: '0.7rem', color: '#60a5fa' }}>AC {l.ac}</div>
+                                <div style={{ fontSize: '0.8rem', color: getHealthColor(pct) }}>
+                                  {isPlayerViewing ? `${Math.round(pct)}%` : `${cur}/${max} HP`}
+                                </div>
+                                {!isPlayerViewing && (
+                                  <div style={{ fontSize: '0.7rem', color: '#60a5fa' }}>AC {l.ac}</div>
+                                )}
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         {detailMonster.description && (
                           <div style={{ marginTop: '1rem', color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
@@ -17646,27 +19828,37 @@ const CampaignView: React.FC = () => {
                 <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
                   ❤️ Hit Points Increase
                 </h5>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
-                  Choose how to increase your maximum HP (Hit Die: d{levelUpInfo.hitDie})
+                <p style={{ color: 'var(--text-secondary)', marginBottom: levelUpData.hpChoiceLocked ? '0.75rem' : '2rem', textAlign: 'center' }}>
+                  {levelUpData.hpChoiceLocked
+                    ? '🔒 Choice locked — cannot be changed'
+                    : `Choose how to increase your maximum HP (Hit Die: d${levelUpInfo.hitDie})`}
                 </p>
+                {levelUpData.hpChoiceLocked && (
+                  <div style={{ textAlign: 'center', marginBottom: '1.5rem', padding: '0.5rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.5rem', fontSize: '0.85rem', color: '#f87171' }}>
+                    ⚠️ This decision is permanent and cannot be re-rolled or changed.
+                  </div>
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
                   <div
                     onClick={handleRollHP}
                     style={{
                       padding: '2rem',
-                      background: levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
-                      border: `3px solid ${levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                      background: levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.2)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.1)' : 'rgba(212, 193, 156, 0.1)'),
+                      border: `3px solid ${levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.2)' : 'rgba(212, 193, 156, 0.3)')}`,
                       borderRadius: '0.75rem',
-                      cursor: 'pointer',
+                      cursor: levelUpData.hpChoiceLocked ? 'not-allowed' : 'pointer',
                       textAlign: 'center',
-                      transition: 'all 0.3s ease'
+                      transition: 'all 0.3s ease',
+                      opacity: levelUpData.hpChoiceLocked && levelUpData.hpRolled === null ? 0.35 : 1,
                     }}
                     onMouseEnter={(e) => {
+                      if (levelUpData.hpChoiceLocked) return;
                       e.currentTarget.style.transform = 'scale(1.05)';
                       e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.8)';
                     }}
                     onMouseLeave={(e) => {
+                      if (levelUpData.hpChoiceLocked) return;
                       e.currentTarget.style.transform = 'scale(1)';
                       e.currentTarget.style.borderColor = levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
                     }}
@@ -17680,7 +19872,7 @@ const CampaignView: React.FC = () => {
                     </div>
                     {levelUpData.hpRolled !== null && (
                       <div style={{ fontSize: '2rem', color: '#4ade80', fontWeight: 'bold' }}>
-                        +{levelUpData.hpIncrease} HP
+                        +{levelUpData.hpIncrease} HP {levelUpData.hpChoiceLocked && '🔒'}
                       </div>
                     )}
                   </div>
@@ -17689,20 +19881,23 @@ const CampaignView: React.FC = () => {
                     onClick={handleTakeAverage}
                     style={{
                       padding: '2rem',
-                      background: levelUpData.hpRolled === null && levelUpData.hpIncrease > 0 ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
-                      border: `3px solid ${levelUpData.hpRolled === null && levelUpData.hpIncrease > 0 ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                      background: levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.2)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.1)' : 'rgba(212, 193, 156, 0.1)'),
+                      border: `3px solid ${levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.6)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.2)' : 'rgba(212, 193, 156, 0.3)')}`,
                       borderRadius: '0.75rem',
-                      cursor: 'pointer',
+                      cursor: levelUpData.hpChoiceLocked ? 'not-allowed' : 'pointer',
                       textAlign: 'center',
-                      transition: 'all 0.3s ease'
+                      transition: 'all 0.3s ease',
+                      opacity: levelUpData.hpChoiceLocked && levelUpData.hpRolled !== null ? 0.35 : 1,
                     }}
                     onMouseEnter={(e) => {
+                      if (levelUpData.hpChoiceLocked) return;
                       e.currentTarget.style.transform = 'scale(1.05)';
                       e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.8)';
                     }}
                     onMouseLeave={(e) => {
+                      if (levelUpData.hpChoiceLocked) return;
                       e.currentTarget.style.transform = 'scale(1)';
-                      e.currentTarget.style.borderColor = levelUpData.hpRolled === null && levelUpData.hpIncrease > 0 ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                      e.currentTarget.style.borderColor = levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
                     }}
                   >
                     <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
@@ -17713,14 +19908,16 @@ const CampaignView: React.FC = () => {
                       Guaranteed {levelUpInfo.hitDieAverage} + CON modifier
                     </div>
                     <div style={{ fontSize: '2rem', color: '#4ade80', fontWeight: 'bold' }}>
-                      +{levelUpInfo.hitDieAverage} HP
+                      +{levelUpInfo.hitDieAverage} HP {levelUpData.hpChoiceLocked && levelUpData.hpRolled === null && '🔒'}
                     </div>
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'center', marginBottom: '2rem', padding: '1rem', background: 'rgba(212, 193, 156, 0.1)', borderRadius: '0.5rem' }}>
                   <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>
-                    Current HP: {levelUpInfo.currentHP} → New HP: {levelUpInfo.currentHP + levelUpData.hpIncrease}
+                    {levelUpData.hpChoiceLocked
+                      ? <>Current HP: {levelUpInfo.currentHP} → New HP: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{levelUpInfo.currentHP + levelUpData.hpIncrease}</span> (+{levelUpData.hpIncrease})</>
+                      : 'Click a card above to lock in your HP choice'}
                   </div>
                 </div>
 
@@ -17736,17 +19933,17 @@ const CampaignView: React.FC = () => {
                       setLevelUpStep('summary');
                     }
                   }}
-                  disabled={levelUpData.hpIncrease === 0}
+                  disabled={!levelUpData.hpChoiceLocked}
                   className="btn btn-primary"
                   style={{
                     width: '100%',
                     padding: '1rem',
-                    background: levelUpData.hpIncrease === 0 ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
+                    background: !levelUpData.hpChoiceLocked ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.3))',
                     border: '2px solid rgba(34, 197, 94, 0.5)',
-                    color: levelUpData.hpIncrease === 0 ? '#64748b' : '#4ade80',
+                    color: !levelUpData.hpChoiceLocked ? '#64748b' : '#4ade80',
                     fontSize: '1.1rem',
-                    cursor: levelUpData.hpIncrease === 0 ? 'not-allowed' : 'pointer',
-                    opacity: levelUpData.hpIncrease === 0 ? 0.5 : 1
+                    cursor: !levelUpData.hpChoiceLocked ? 'not-allowed' : 'pointer',
+                    opacity: !levelUpData.hpChoiceLocked ? 0.5 : 1
                   }}
                 >
                   Continue →
@@ -18759,6 +20956,15 @@ const CampaignView: React.FC = () => {
                     setToastMessage(parts.join(' • ') || 'Rest complete');
                     setTimeout(() => setToastMessage(null), 5000);
                     setShowRestModal(false);
+                    // Trigger rest handlers for the whole campaign.
+                    // Server already falls back to all campaign characters when no active combat session exists.
+                    if (socket && currentCampaign) {
+                      if (restType === 'short') {
+                        socket.emit('initiateShortRest', { campaignId: currentCampaign.campaign.id });
+                      } else if (restType === 'long') {
+                        socket.emit('performLongRest', { campaignId: currentCampaign.campaign.id });
+                      }
+                    }
                   } catch (e: any) {
                     setToastMessage('Failed to process rest: ' + (e?.response?.data?.error || e.message));
                     setTimeout(() => setToastMessage(null), 4000);
@@ -18769,6 +20975,164 @@ const CampaignView: React.FC = () => {
                 style={{ padding: '0.5rem 1.25rem', background: 'rgba(56,189,248,0.2)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '6px', color: '#7dd3fc', cursor: restLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
               >
                 {restLoading ? 'Processing…' : 'Confirm Rest'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Roll Modal (DM requests skill/save from target player) ── */}
+      {showQuickRollModal && socket && currentCampaign && (() => {
+        const charId = Number(showQuickRollModal);
+        const char = currentCampaign.characters.find((c: any) => Number(c.id) === charId);
+        const combatant = combatants.find(c => Number(c.characterId) === charId);
+        if (!char || !combatant) return null;
+
+        const level: number = char.level ?? 1;
+        const profBonus = Math.floor((level - 1) / 4) + 2;
+        const abs = char.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+        const profSkills: string[] = char.skills ?? [];
+        const expertiseSkills: string[] = (char as any).expertise ?? [];
+        const abMod = (score: number) => Math.floor(((score ?? 10) - 10) / 2);
+
+        const skillAbility: [string, keyof typeof abs][] = [
+          ['Acrobatics', 'dex'], ['Animal Handling', 'wis'], ['Arcana', 'int'],
+          ['Athletics', 'str'], ['Deception', 'cha'], ['History', 'int'],
+          ['Insight', 'wis'], ['Intimidation', 'cha'], ['Investigation', 'int'],
+          ['Medicine', 'wis'], ['Nature', 'int'], ['Perception', 'wis'],
+          ['Performance', 'cha'], ['Persuasion', 'cha'], ['Religion', 'int'],
+          ['Sleight of Hand', 'dex'], ['Stealth', 'dex'], ['Survival', 'wis'],
+        ];
+        const saveAbility: [string, keyof typeof abs][] = [
+          ['STR Save', 'str'], ['DEX Save', 'dex'], ['CON Save', 'con'],
+          ['INT Save', 'int'], ['WIS Save', 'wis'], ['CHA Save', 'cha'],
+        ];
+
+        const computeMod = (skillName: string, ability: keyof typeof abs) => {
+          const base = abMod(abs[ability] ?? 10);
+          const isExpert = expertiseSkills.some(s => s.toLowerCase() === skillName.toLowerCase());
+          const isProf = isExpert || profSkills.some(s => s.toLowerCase() === skillName.toLowerCase());
+          return base + (isExpert ? profBonus * 2 : isProf ? profBonus : 0);
+        };
+
+        const emitRoll = (skillName: string, ability: keyof typeof abs, isSave: boolean) => {
+          const mod = computeMod(skillName, ability);
+          socket.emit('requestDiceRoll', {
+            campaignId: currentCampaign.campaign.id,
+            targetPlayerId: combatant.playerId,
+            targetCharacterName: char.name,
+            diceType: 'd20',
+            rollPurpose: isSave ? 'saving_throw' : 'ability_check',
+            purposeDetail: skillName,
+            modifier: 'none',
+            precomputedModifier: mod,
+          });
+          setShowQuickRollModal(null);
+        };
+
+        const fmtMod = (v: number) => v >= 0 ? `+${v}` : `${v}`;
+
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+            onClick={e => { if (e.target === e.currentTarget) setShowQuickRollModal(null); }}
+          >
+            <div style={{ background: 'linear-gradient(135deg,#0f1a1f,#1a2e2e)', border: '2px solid rgba(167,139,250,0.5)', borderRadius: '1rem', padding: '1.5rem', width: '540px', maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 0 40px rgba(167,139,250,0.2)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ color: '#c4b5fd', margin: 0 }}>🎲 Quick Roll — {char.name}</h3>
+                <button onClick={() => setShowQuickRollModal(null)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0 }}>Click any skill or save to request that roll. Modifiers are auto-calculated from the character sheet.</p>
+              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div>
+                  <p style={{ color: '#94a3b8', fontSize: '0.7rem', fontWeight: 'bold', margin: '0 0 0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Skills</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.3rem' }}>
+                    {skillAbility.map(([name, ab]) => {
+                      const mod = computeMod(name, ab);
+                      const isExpert = expertiseSkills.some(s => s.toLowerCase() === name.toLowerCase());
+                      const isProf = !isExpert && profSkills.some(s => s.toLowerCase() === name.toLowerCase());
+                      return (
+                        <button
+                          key={name}
+                          onClick={() => emitRoll(name, ab, false)}
+                          style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', cursor: 'pointer', background: isExpert ? 'rgba(251,191,36,0.12)' : isProf ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isExpert ? 'rgba(251,191,36,0.4)' : isProf ? 'rgba(167,139,250,0.35)' : 'rgba(255,255,255,0.1)'}`, color: '#e2e8f0', fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem', textAlign: 'left' }}
+                        >
+                          <span style={{ flex: 1 }}>{name}</span>
+                          <span style={{ color: isExpert ? '#fbbf24' : isProf ? '#c4b5fd' : '#94a3b8', fontWeight: 'bold', fontSize: '0.8rem' }}>{fmtMod(mod)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <p style={{ color: '#94a3b8', fontSize: '0.7rem', fontWeight: 'bold', margin: '0 0 0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Saving Throws</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.3rem' }}>
+                    {saveAbility.map(([name, ab]) => {
+                      const mod = computeMod(name, ab);
+                      return (
+                        <button
+                          key={name}
+                          onClick={() => emitRoll(name, ab, true)}
+                          style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', cursor: 'pointer', background: 'rgba(74,222,128,0.07)', border: '1px solid rgba(74,222,128,0.25)', color: '#e2e8f0', fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem' }}
+                        >
+                          <span>{name}</span>
+                          <span style={{ color: '#86efac', fontWeight: 'bold', fontSize: '0.8rem' }}>{fmtMod(mod)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Short Rest Hit Dice Prompt ── */}
+      {shortRestPrompt && socket && currentCampaign && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: 'linear-gradient(135deg,#0f1a1f,#1a2e2e)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '1rem', padding: '1.75rem', width: '380px', maxWidth: '95vw', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 0 40px rgba(56,189,248,0.2)' }}>
+            <h3 style={{ color: '#7dd3fc', margin: 0, textAlign: 'center' }}>💊 Short Rest — {shortRestPrompt.name}</h3>
+            <div style={{ background: 'rgba(56,189,248,0.08)', borderRadius: '0.5rem', padding: '0.75rem', fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center' }}>
+              d{shortRestPrompt.die} Hit Die · CON {shortRestPrompt.conMod >= 0 ? '+' : ''}{shortRestPrompt.conMod} · HP {shortRestPrompt.currentHp}/{shortRestPrompt.maxHp}
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 0.5rem', textAlign: 'center' }}>
+                How many hit dice to spend? ({shortRestPrompt.hitDiceRemaining} remaining)
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+                <button
+                  onClick={() => setShortRestDiceChoice(Math.max(0, shortRestDiceChoice - 1))}
+                  style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#7dd3fc', fontSize: '1.2rem', cursor: 'pointer' }}>
+                  −
+                </button>
+                <input
+                  type="number" min={0} max={shortRestPrompt.hitDiceRemaining}
+                  value={shortRestDiceChoice}
+                  onChange={e => setShortRestDiceChoice(Math.min(shortRestPrompt!.hitDiceRemaining, Math.max(0, parseInt(e.target.value) || 0)))}
+                  style={{ width: '64px', textAlign: 'center', padding: '0.4rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.4rem', color: '#e2e8f0', fontSize: '1.1rem' }}
+                />
+                <button
+                  onClick={() => setShortRestDiceChoice(Math.min(shortRestPrompt.hitDiceRemaining, shortRestDiceChoice + 1))}
+                  style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#7dd3fc', fontSize: '1.2rem', cursor: 'pointer' }}>
+                  +
+                </button>
+              </div>
+              <p style={{ color: '#475569', fontSize: '0.7rem', marginTop: '0.5rem', textAlign: 'center' }}>
+                ⚠️ The server rolls your dice — result is final, no rerolls
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button
+                onClick={() => { socket.emit('spendHitDice', { campaignId: currentCampaign.campaign.id, characterId: shortRestPrompt.characterId, diceToSpend: 0 }); setShortRestPrompt(null); }}
+                style={{ padding: '0.5rem 1.25rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>
+                Skip
+              </button>
+              <button
+                onClick={() => { if (shortRestDiceChoice > 0) socket.emit('spendHitDice', { campaignId: currentCampaign.campaign.id, characterId: shortRestPrompt.characterId, diceToSpend: shortRestDiceChoice }); }}
+                disabled={shortRestDiceChoice < 1}
+                style={{ padding: '0.5rem 1.25rem', background: shortRestDiceChoice > 0 ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.04)', border: `2px solid ${shortRestDiceChoice > 0 ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', color: shortRestDiceChoice > 0 ? '#7dd3fc' : 'rgba(255,255,255,0.3)', cursor: shortRestDiceChoice > 0 ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                💊 Spend {shortRestDiceChoice}d{shortRestPrompt.die}
               </button>
             </div>
           </div>

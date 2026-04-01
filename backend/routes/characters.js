@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -160,7 +160,7 @@ router.post('/', authenticateToken, async (req, res) => {
         `, [character.id, skill.id]);
       }
       
-      console.log(`✅ Assigned ${level1Skills.rows.length} level 1 skills to new character ${character.name} (${characterClass})`);
+      console.log(`âœ… Assigned ${level1Skills.rows.length} level 1 skills to new character ${character.name} (${characterClass})`);
     } catch (skillError) {
       console.error('Error assigning level 1 skills:', skillError);
       // Don't fail character creation if skill assignment fails
@@ -243,7 +243,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (characterClass !== undefined) updateData.class = characterClass;
     if (background !== undefined) updateData.background = background;
     if (level !== undefined) updateData.level = level;
-    if (hit_points !== undefined) updateData.hit_points = hit_points;
+    if (hit_points !== undefined) { updateData.hit_points = hit_points; updateData.hit_points_max = hit_points; }
     if (armor_class !== undefined) updateData.armor_class = armor_class;
     if (abilities !== undefined) updateData.abilities = abilities;
     if (skills !== undefined) updateData.skills = skills;
@@ -539,7 +539,7 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
       }
     }
     
-    // Calculate limb-specific AC (item bonuses only — base AC percentages applied on the frontend)
+    // Calculate limb-specific AC (item bonuses only â€” base AC percentages applied on the frontend)
     const limbAC = {
       head: 0,       // Helmet item AC bonus
       chest: 0,      // Chest armour item AC bonus
@@ -597,7 +597,7 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Item name and slot are required' });
     }
     
-    const validSlots = ['head', 'chest', 'legs', 'feet', 'main_hand', 'off_hand'];
+    const validSlots = ['head', 'chest', 'legs', 'feet', 'main_hand', 'off_hand', 'lower_left_hand', 'lower_right_hand'];
     if (!validSlots.includes(slot)) {
       return res.status(400).json({ error: 'Invalid slot. Valid slots are: ' + validSlots.join(', ') });
     }
@@ -626,7 +626,9 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       legs: ['Armor'], 
       feet: ['Armor'],
       main_hand: ['Weapon', 'Tool'], // Only weapons and tools in main hand
-      off_hand: ['Weapon', 'Tool', 'Armor'] // Weapons, tools, and shields (armor subcategory)
+      off_hand: ['Weapon', 'Tool', 'Armor'], // Weapons, tools, and shields (armor subcategory)
+      lower_left_hand: ['Weapon', 'Tool'], // Thri-kreen lower arms can hold weapons/tools
+      lower_right_hand: ['Weapon', 'Tool']
     };
 
     // Special validation for off-hand armor - only shields allowed
@@ -636,9 +638,10 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       });
     }
 
-    if (!slotItemCompatibility[slot].includes(item.category)) {
+    if (!slotItemCompatibility[slot] || !slotItemCompatibility[slot].includes(item.category)) {
+      const validCategories = slotItemCompatibility[slot] ? slotItemCompatibility[slot].join(', ') : 'none';
       return res.status(400).json({ 
-        error: `Cannot equip ${item.category} in ${slot} slot. Valid categories for ${slot}: ${slotItemCompatibility[slot].join(', ')}` 
+        error: `Cannot equip ${item.category} in ${slot} slot. Valid categories for ${slot}: ${validCategories}` 
       });
     }
 
@@ -778,7 +781,7 @@ router.post('/:id/unequip', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Slot is required' });
     }
     
-    const validSlots = ['head', 'chest', 'legs', 'feet', 'main_hand', 'off_hand'];
+    const validSlots = ['head', 'chest', 'legs', 'feet', 'main_hand', 'off_hand', 'lower_left_hand', 'lower_right_hand'];
     if (!validSlots.includes(slot)) {
       return res.status(400).json({ error: 'Invalid slot. Valid slots are: ' + validSlots.join(', ') });
     }
@@ -1256,6 +1259,121 @@ router.put('/:id/battle-position', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error updating character battle position:', error);
     res.status(500).json({ error: 'Failed to update character battle position' });
+  }
+});
+
+// â”€â”€â”€ Spell Slot Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// GET current spell slot usage for a character
+router.get('/:id/spell-slots', authenticateToken, async (req, res) => {
+  try {
+    const charId = parseInt(req.params.id, 10);
+    const result = await pool.query(
+      `SELECT spell_slots_used, ki_points_remaining, class, level, abilities
+       FROM characters WHERE id = $1`,
+      [charId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Character not found' });
+    const row = result.rows[0];
+    res.json({
+      spell_slots_used: row.spell_slots_used || {},
+      ki_points_remaining: row.ki_points_remaining,
+      class: row.class,
+      level: row.level,
+    });
+  } catch (error) {
+    console.error('Error fetching spell slots:', error);
+    res.status(500).json({ error: 'Failed to fetch spell slots' });
+  }
+});
+
+// POST use a spell slot (increment used count for a level)
+router.post('/:id/use-spell-slot', authenticateToken, async (req, res) => {
+  try {
+    const charId = parseInt(req.params.id, 10);
+    const { slotLevel } = req.body;
+    if (!slotLevel || slotLevel < 1 || slotLevel > 9) return res.status(400).json({ error: 'Invalid slot level' });
+
+    const result = await pool.query(
+      `UPDATE characters
+       SET spell_slots_used = jsonb_set(
+         COALESCE(spell_slots_used, '{}'::jsonb),
+         ARRAY[$1::text],
+         (COALESCE((spell_slots_used->>$1::text)::int, 0) + 1)::text::jsonb
+       )
+       WHERE id = $2
+       RETURNING spell_slots_used`,
+      [String(slotLevel), charId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Character not found' });
+    res.json({ spell_slots_used: result.rows[0].spell_slots_used });
+  } catch (error) {
+    console.error('Error using spell slot:', error);
+    res.status(500).json({ error: 'Failed to use spell slot' });
+  }
+});
+
+// POST restore a spell slot (decrement used count â€” for DM manual restore)
+router.post('/:id/restore-spell-slot', authenticateToken, async (req, res) => {
+  try {
+    const charId = parseInt(req.params.id, 10);
+    const { slotLevel } = req.body;
+    if (!slotLevel || slotLevel < 1 || slotLevel > 9) return res.status(400).json({ error: 'Invalid slot level' });
+
+    const result = await pool.query(
+      `UPDATE characters
+       SET spell_slots_used = jsonb_set(
+         COALESCE(spell_slots_used, '{}'::jsonb),
+         ARRAY[$1::text],
+         GREATEST(0, COALESCE((spell_slots_used->>$1::text)::int, 0) - 1)::text::jsonb
+       )
+       WHERE id = $2
+       RETURNING spell_slots_used`,
+      [String(slotLevel), charId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Character not found' });
+    res.json({ spell_slots_used: result.rows[0].spell_slots_used });
+  } catch (error) {
+    console.error('Error restoring spell slot:', error);
+    res.status(500).json({ error: 'Failed to restore spell slot' });
+  }
+});
+
+// POST use a ki point (decrement remaining)
+router.post('/:id/use-ki-point', authenticateToken, async (req, res) => {
+  try {
+    const charId = parseInt(req.params.id, 10);
+    const result = await pool.query(
+      `UPDATE characters
+       SET ki_points_remaining = GREATEST(0, COALESCE(ki_points_remaining, level) - 1)
+       WHERE id = $1
+       RETURNING ki_points_remaining, level`,
+      [charId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Character not found' });
+    res.json({ ki_points_remaining: result.rows[0].ki_points_remaining });
+  } catch (error) {
+    console.error('Error using ki point:', error);
+    res.status(500).json({ error: 'Failed to use ki point' });
+  }
+});
+
+// POST restore a ki point (increment remaining, capped at level)
+router.post('/:id/restore-ki-point', authenticateToken, async (req, res) => {
+  try {
+    const charId = parseInt(req.params.id, 10);
+    const result = await pool.query(
+      `UPDATE characters
+       SET ki_points_remaining = LEAST(level, COALESCE(ki_points_remaining, level) + 1)
+       WHERE id = $1
+       RETURNING ki_points_remaining, level`,
+      [charId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Character not found' });
+    res.json({ ki_points_remaining: result.rows[0].ki_points_remaining });
+  } catch (error) {
+    console.error('Error restoring ki point:', error);
+    res.status(500).json({ error: 'Failed to restore ki point' });
   }
 });
 

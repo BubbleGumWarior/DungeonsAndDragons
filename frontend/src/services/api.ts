@@ -110,6 +110,7 @@ export interface Character {
   campaign_name?: string;
   created_at: string;
   updated_at: string;
+  race_traits?: string[];
 }
 
 export interface EquippedItems {
@@ -119,6 +120,8 @@ export interface EquippedItems {
   feet?: string | null;
   main_hand?: string | null;
   off_hand?: string | null;
+  lower_left_hand?: string | null;
+  lower_right_hand?: string | null;
 }
 
 export interface CampaignDetails {
@@ -513,6 +516,31 @@ export const characterAPI = {
 
   updateBattlePosition: async (characterId: number, x: number, y: number): Promise<{ message: string; position: { x: number; y: number } }> => {
     const response = await api.put(`/characters/${characterId}/battle-position`, { x, y });
+    return response.data;
+  },
+
+  getSpellSlots: async (characterId: number): Promise<{ spell_slots_used: Record<string, number>; ki_points_remaining: number | null; class: string; level: number }> => {
+    const response = await api.get(`/characters/${characterId}/spell-slots`);
+    return response.data;
+  },
+
+  useSpellSlot: async (characterId: number, slotLevel: number): Promise<{ spell_slots_used: Record<string, number> }> => {
+    const response = await api.post(`/characters/${characterId}/use-spell-slot`, { slotLevel });
+    return response.data;
+  },
+
+  restoreSpellSlot: async (characterId: number, slotLevel: number): Promise<{ spell_slots_used: Record<string, number> }> => {
+    const response = await api.post(`/characters/${characterId}/restore-spell-slot`, { slotLevel });
+    return response.data;
+  },
+
+  useKiPoint: async (characterId: number): Promise<{ ki_points_remaining: number }> => {
+    const response = await api.post(`/characters/${characterId}/use-ki-point`);
+    return response.data;
+  },
+
+  restoreKiPoint: async (characterId: number): Promise<{ ki_points_remaining: number }> => {
+    const response = await api.post(`/characters/${characterId}/restore-ki-point`);
     return response.data;
   }
 };

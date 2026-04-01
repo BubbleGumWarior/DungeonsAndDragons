@@ -57,9 +57,9 @@ class Character {
       const result = await pool.query(
         `INSERT INTO characters (
           player_id, campaign_id, name, race, class, background, level,
-          hit_points, armor_class, abilities, skills, equipment, spells,
+          hit_points, hit_points_max, armor_class, abilities, skills, equipment, spells,
           backstory, personality_traits, ideals, bonds, flaws, movement_speed
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) 
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) 
         RETURNING *`,
         [
           player_id, campaign_id, name, race, characterClass, background, level,
@@ -200,7 +200,7 @@ class Character {
   static async update(id, updateData) {
     const {
       name, race, class: characterClass, background, level,
-      hit_points, armor_class, abilities, skills, expertise, equipment, spells,
+      hit_points, hit_points_max, armor_class, abilities, skills, expertise, equipment, spells,
       backstory, personality_traits, ideals, bonds, flaws, equipped_items, image_url,
       movement_speed
     } = updateData;
@@ -214,26 +214,29 @@ class Character {
              background = COALESCE($5, background),
              level = COALESCE($6, level),
              hit_points = COALESCE($7, hit_points),
-             armor_class = COALESCE($8, armor_class),
-             abilities = COALESCE($9, abilities),
-             skills = COALESCE($10, skills),
-             expertise = COALESCE($11, expertise),
-             equipment = COALESCE($12, equipment),
-             spells = COALESCE($13, spells),
-             backstory = COALESCE($14, backstory),
-             personality_traits = COALESCE($15, personality_traits),
-             ideals = COALESCE($16, ideals),
-             bonds = COALESCE($17, bonds),
-             flaws = COALESCE($18, flaws),
-             equipped_items = COALESCE($19, equipped_items),
-             image_url = COALESCE($20, image_url),
-             movement_speed = COALESCE($21, movement_speed),
+             hit_points_max = COALESCE($8, hit_points_max),
+             armor_class = COALESCE($9, armor_class),
+             abilities = COALESCE($10, abilities),
+             skills = COALESCE($11, skills),
+             expertise = COALESCE($12, expertise),
+             equipment = COALESCE($13, equipment),
+             spells = COALESCE($14, spells),
+             backstory = COALESCE($15, backstory),
+             personality_traits = COALESCE($16, personality_traits),
+             ideals = COALESCE($17, ideals),
+             bonds = COALESCE($18, bonds),
+             flaws = COALESCE($19, flaws),
+             equipped_items = COALESCE($20, equipped_items),
+             image_url = COALESCE($21, image_url),
+             movement_speed = COALESCE($22, movement_speed),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 
          RETURNING *`,
         [
           id, name, race, characterClass, background, level,
-          hit_points, armor_class,
+          hit_points !== undefined ? hit_points : null,
+          hit_points_max !== undefined ? hit_points_max : null,
+          armor_class,
           abilities ? JSON.stringify(abilities) : null,
           skills ? JSON.stringify(skills) : null,
           expertise ? JSON.stringify(expertise) : null,

@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../models/database');
 const { authenticateToken } = require('../middleware/auth');
+const createSkillsTable = require('../migrations/create_skills_table');
+const addPrimalBondSkills = require('../migrations/add_primal_bond_skills');
+const addShadowSovereignSkills = require('../migrations/add_shadow_sovereign_skills');
+const addCharlatanSkills = require('../migrations/add_charlatan_skills');
 
 // Get all available skills
 router.get('/', authenticateToken, async (req, res) => {
@@ -448,7 +452,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     }
     
     const newLevel = character.level + 1;
-    const newHP = (character.hit_points_max || 0) + hpIncrease;
+    const newHP = (character.hit_points_max || character.hit_points || 0) + hpIncrease;
     
     // Apply ability score increases - create a copy to avoid mutation issues
     const currentAbilities = { ...character.abilities };
@@ -460,12 +464,68 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       }
     }
     
-    // Update character level, HP, abilities, and reset experience to 0
+    // Update character level, HP (both current and max), abilities, and reset experience to 0
     await pool.query(`
       UPDATE characters
-      SET level = $1, hit_points_max = $2, abilities = $3, experience_points = 0, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
-    `, [newLevel, newHP, JSON.stringify(currentAbilities), characterId]);
+      SET level = $1,
+          hit_points_max = $2,
+          hit_points = LEAST(hit_points + $3, $2),
+          abilities = $4,
+          experience_points = 0,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+    `, [newLevel, newHP, hpIncrease, JSON.stringify(currentAbilities), characterId]);
+
+    // If the character has per-limb combat damage tracked, distribute the HP gain across limbs
+    let updatedLimbHealth = character.limb_health ?? null;
+    if (character.limb_health && hpIncrease > 0) {
+      const conMod = Math.floor(((currentAbilities.con || 10) - 10) / 2);
+      const conBonus = Math.max(0, conMod * 0.1);
+      const limbMax = {
+        head:      Math.floor(newHP * Math.min(1.0, 0.25 + conBonus)),
+        chest:     Math.floor(newHP * Math.min(2.0, 1.0  + conBonus)),
+        left_arm:  Math.floor(newHP * Math.min(1.0, 0.15 + conBonus)),
+        right_arm: Math.floor(newHP * Math.min(1.0, 0.15 + conBonus)),
+        left_leg:  Math.floor(newHP * Math.min(1.0, 0.40 + conBonus)),
+        right_leg: Math.floor(newHP * Math.min(1.0, 0.40 + conBonus)),
+      };
+      const healed = typeof character.limb_health === 'string'
+        ? JSON.parse(character.limb_health)
+        : { ...character.limb_health };
+      // Ensure all limb keys exist
+      for (const limb of Object.keys(limbMax)) {
+        if (healed[limb] == null) healed[limb] = limbMax[limb];
+      }
+      // Priority 1: vital limbs (head, chest)
+      let remaining = hpIncrease;
+      for (const limb of ['head', 'chest']) {
+        if (remaining <= 0) break;
+        const cur = healed[limb]; const max = limbMax[limb];
+        const give = Math.min(max - cur, remaining);
+        if (give > 0) { healed[limb] = cur + give; remaining -= give; }
+      }
+      // Priority 2: distribute remaining evenly across arms/legs
+      if (remaining > 0) {
+        const others = ['left_arm', 'right_arm', 'left_leg', 'right_leg'];
+        let pass = 0;
+        while (remaining > 0 && pass < 100) {
+          pass++;
+          let gave = 0;
+          for (const limb of others) {
+            if (remaining <= 0) break;
+            const cur = healed[limb]; const max = limbMax[limb];
+            if (cur < max) { healed[limb] = cur + 1; remaining--; gave++; }
+          }
+          if (gave === 0) break;
+        }
+      }
+      // If all limbs now at max, clear to null (full-health convention)
+      const allFull = Object.keys(limbMax).every(l => (healed[l] ?? limbMax[l]) >= limbMax[l]);
+      updatedLimbHealth = allFull ? null : healed;
+      await pool.query('UPDATE characters SET limb_health = $1 WHERE id = $2', [
+        updatedLimbHealth ? JSON.stringify(updatedLimbHealth) : null, characterId
+      ]);
+    }
     
     // If subclass was selected, save it
     if (subclassId) {
@@ -717,6 +777,17 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         beastCreated,
         timestamp: new Date().toISOString()
       });
+      // Sync HP bars — includes updated limb health so combat health state stays accurate
+      req.io.to(`campaign_${character.campaign_id}`).emit('healthUpdated', {
+        type: 'character',
+        characterId: parseInt(characterId),
+        newHP,
+        maxHP: newHP,
+        limbHealth: updatedLimbHealth,
+        isDead: false,
+        campaignId: character.campaign_id,
+        timestamp: new Date().toISOString()
+      });
     }
     
     res.json({
@@ -730,6 +801,51 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error leveling up character:', error);
     res.status(500).json({ error: 'Failed to level up character' });
+  }
+});
+
+// ─── DB Reset: Remove all custom skills and detach all skills from all characters ───
+// DM only. Deletes all rows from character_skills, then deletes all non-default skills.
+router.delete('/reset', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only Dungeon Masters can reset skills' });
+    }
+
+    // Step 1: Remove all skill associations from all characters
+    const charSkillsResult = await pool.query('DELETE FROM character_skills');
+    const charSkillsDeleted = charSkillsResult.rowCount;
+
+    // Step 2: Delete all non-default skills (default skills are seeded; identified by is_default = true)
+    // Fall back to keeping skills that have is_default column = true; if column doesn't exist, keep nothing
+    let customDeleted = 0;
+    try {
+      const customResult = await pool.query(`DELETE FROM skills WHERE is_default IS NOT TRUE`);
+      customDeleted = customResult.rowCount;
+    } catch {
+      // is_default column might not exist yet — delete all skills as fallback
+      const allResult = await pool.query('DELETE FROM skills');
+      customDeleted = allResult.rowCount;
+    }
+
+    console.log(`🗑️  Skills DB Reset: removed ${charSkillsDeleted} character-skill links, ${customDeleted} custom/default skills`);
+
+    // Step 3: Re-seed all default skills
+    console.log('Re-seeding default skills...');
+    await createSkillsTable();
+    await addPrimalBondSkills();
+    await addShadowSovereignSkills();
+    await addCharlatanSkills();
+    console.log('✅ Default skills re-seeded successfully');
+
+    res.json({
+      message: 'Skills database reset and reseeded successfully',
+      characterSkillsRemoved: charSkillsDeleted,
+      customSkillsDeleted: customDeleted,
+    });
+  } catch (error) {
+    console.error('Error resetting skills:', error);
+    res.status(500).json({ error: 'Failed to reset skills database' });
   }
 });
 

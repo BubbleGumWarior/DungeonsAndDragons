@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
@@ -508,7 +508,7 @@ const CharacterCreation: React.FC = () => {
         {/* Step 1: Class Selection */}
         {currentStep === 1 && (
           <div className="glass-panel primary">
-            <h3>âš”ï¸ Choose Your Class</h3>
+            <h3>⚔️ Choose Your Class</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', minHeight: '500px' }}>
               {/* Left side: All classes */}
               <div>
@@ -572,7 +572,7 @@ const CharacterCreation: React.FC = () => {
                           marginLeft: '1rem'
                         }}
                       >
-                        â„¹ï¸ Info
+                        ℹ️ Info
                       </button>
                     </div>
                   ))}
@@ -597,7 +597,7 @@ const CharacterCreation: React.FC = () => {
                     border: '1px solid rgba(212, 193, 156, 0.2)'
                   }}>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                      â„¹ï¸ Your Random Classes
+                      ℹ️ Your Random Classes
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                       These three classes are saved for this character creation session. You'll get new random options when you create your next character.
@@ -663,7 +663,7 @@ const CharacterCreation: React.FC = () => {
                               marginLeft: '1rem'
                             }}
                           >
-                            â„¹ï¸ Info
+                            ℹ️ Info
                           </button>
                         </div>
                       );
@@ -680,7 +680,7 @@ const CharacterCreation: React.FC = () => {
                     borderRadius: '8px' 
                   }}>
                     <div style={{ fontWeight: 'bold', color: '#4ade80', marginBottom: '0.25rem' }}>
-                      ðŸŽ‰ Bonus Unlocked!
+                      🎉 Bonus Unlocked!
                     </div>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                       You'll get +4 extra points in the Point Buy system for choosing randomly!
@@ -707,7 +707,7 @@ const CharacterCreation: React.FC = () => {
         {/* Step 2: Character Name, Race, Background */}
         {currentStep === 2 && (
           <div className="glass-panel primary">
-            <h3>ðŸ§™â€â™‚ï¸ Character Details</h3>
+            <h3>🧙‍♂️ Character Details</h3>
             <div style={{ display: 'grid', gap: '2rem' }}>
               <div>
                 <label className="form-label">Character Name</label>
@@ -739,7 +739,7 @@ const CharacterCreation: React.FC = () => {
                     <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px' }}>
                       <h6>Racial Traits:</h6>
                       {referenceData?.races.find(r => r.name === characterData.race)?.traits.map(trait => (
-                        <p key={trait} className="text-muted" style={{ fontSize: '0.9rem', margin: '0.25rem 0' }}>â€¢ {trait}</p>
+                        <p key={trait} className="text-muted" style={{ fontSize: '0.9rem', margin: '0.25rem 0' }}>• {trait}</p>
                       ))}
                     </div>
                   )}
@@ -750,7 +750,7 @@ const CharacterCreation: React.FC = () => {
                 <div style={{ padding: '1rem', backgroundColor: 'rgba(212, 193, 156, 0.1)', borderRadius: '8px' }}>
                   <h6 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Selected Class: {characterData.class}</h6>
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>
-                    {characterData.usedRandomClass && "ðŸŽ² Random selection - you'll get +4 bonus points for abilities!"}
+                    {characterData.usedRandomClass && "🎲 Random selection - you'll get +4 bonus points for abilities!"}
                   </p>
                 </div>
               )}
@@ -761,7 +761,7 @@ const CharacterCreation: React.FC = () => {
         {/* Step 3: Point Buy System */}
         {currentStep === 3 && (
           <div className="glass-panel primary">
-            <h3>ðŸ’ª Point Buy System</h3>
+            <h3>💪 Point Buy System</h3>
             <div style={{ marginBottom: '2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <div>
@@ -824,7 +824,7 @@ const CharacterCreation: React.FC = () => {
                           opacity: canDecrease ? 1 : 0.3
                         }}
                       >
-                        âˆ’
+                        −
                       </button>
                       
                       <div style={{ minWidth: '60px' }}>
@@ -868,7 +868,7 @@ const CharacterCreation: React.FC = () => {
                 borderRadius: '8px' 
               }}>
                 <div style={{ fontWeight: 'bold', color: '#ef4444' }}>
-                  âš ï¸ Too many points spent!
+                  ⚠️ Too many points spent!
                 </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                   You've spent {calculatePointsSpent() - getAvailablePoints()} too many points. Please reduce some ability scores.
@@ -881,7 +881,7 @@ const CharacterCreation: React.FC = () => {
         {/* Step 4: Skills and Proficiencies */}
         {currentStep === 4 && (
           <div className="glass-panel primary">
-            <h3>ðŸŽ¯ Skills and Proficiencies</h3>
+            <h3>🎯 Skills and Proficiencies</h3>
             <div style={{ marginBottom: '1.5rem' }}>
               <h5>Skills (Select up to 4)</h5>
               <p className="text-muted" style={{ marginBottom: '1rem' }}>
@@ -928,7 +928,7 @@ const CharacterCreation: React.FC = () => {
         {/* Step 5: Backstory, Personality, etc. */}
         {currentStep === 5 && (
           <div className="glass-panel primary">
-            <h3>ðŸ“– Character Personality & Backstory</h3>
+            <h3>📖 Character Personality & Backstory</h3>
             <div style={{ display: 'grid', gap: '1.5rem' }}>
               <div>
                 <label className="form-label">Backstory</label>
@@ -995,11 +995,11 @@ const CharacterCreation: React.FC = () => {
         {/* Step 6: Character Summary */}
         {currentStep === 6 && (
           <div className="glass-panel primary">
-            <h3>ðŸ“‹ Character Summary</h3>
+            <h3>📋 Character Summary</h3>
             <p className="text-muted" style={{ marginBottom: '2rem' }}>
               Review all your character's details before creating them. Make sure everything looks correct! 
               <span style={{ fontSize: '0.85rem', display: 'block', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                âœ¨ Note: Your backstory and personality details will preserve line breaks exactly as you typed them.
+                ✨ Note: Your backstory and personality details will preserve line breaks exactly as you typed them.
               </span>
             </p>
             
@@ -1016,7 +1016,7 @@ const CharacterCreation: React.FC = () => {
                   </div>
                   <div>
                     <strong>Class:</strong> {characterData.class || 'Not set'}
-                    {characterData.usedRandomClass && <span style={{ color: '#4ade80', marginLeft: '0.5rem' }}>ðŸŽ²</span>}
+                    {characterData.usedRandomClass && <span style={{ color: '#4ade80', marginLeft: '0.5rem' }}>🎲</span>}
                   </div>
                   <div>
                     <strong>Background:</strong> {characterData.background || 'Not set'}
@@ -1185,7 +1185,7 @@ const CharacterCreation: React.FC = () => {
               minWidth: '140px'
             }}
           >
-            â† Previous
+            ← Previous
           </button>
 
           <span className="text-muted">
@@ -1202,7 +1202,7 @@ const CharacterCreation: React.FC = () => {
                 minWidth: '140px'
               }}
             >
-              Next â†’
+              Next →
             </button>
           ) : (
             <button
@@ -1230,7 +1230,7 @@ const CharacterCreation: React.FC = () => {
               fontSize: '0.9rem'
             }}
           >
-            â† Cancel & Return to Campaign Select
+            ← Cancel & Return to Campaign Select
           </button>
         </div>
       </div>
@@ -1270,7 +1270,7 @@ const CharacterCreation: React.FC = () => {
                 className="btn btn-secondary"
                 style={{ padding: '0.5rem 1rem' }}
               >
-                âœ•
+                ✕
               </button>
             </div>
 

@@ -25,6 +25,7 @@ const kingdomEventRoutes = require('./routes/kingdom-events');
 const kingdomActionRoutes = require('./routes/kingdom-actions');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
+const CombatSession = require('./models/CombatSession');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -70,19 +71,8 @@ const corsOptions = {
       return callback(null, true); // Allow all in production for now
     }
     
-    // In development, only allow localhost
-    const allowedOrigins = [
-      'http://localhost:3000', 
-      'http://127.0.0.1:3000', 
-      'http://localhost:3001',
-      'http://localhost:5000'
-    ];
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // In development, allow all origins
+    return callback(null, true);
   },
   credentials: true,
   optionsSuccessStatus: 200,
@@ -279,6 +269,7 @@ const startServer = async () => {
       const addMonsterAbilities = require('./migrations/add_monster_abilities');
       const addMonsterCR = require('./migrations/add_monster_cr');
       const seedDefaultMonsters = require('./migrations/seed_default_monsters');
+      const addCombatSystem = require('./migrations/add_combat_system');
       
       // Execute migrations in correct order
       const migrations = [
@@ -323,7 +314,8 @@ const startServer = async () => {
         { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') },
         { name: 'addResearchSystem', fn: require('./migrations/add_research_system') },
         { name: 'addBuildQueue', fn: require('./migrations/add_build_queue') },
-        { name: 'addActiveDisasters', fn: require('./migrations/add_active_disasters') }
+        { name: 'addActiveDisasters', fn: require('./migrations/add_active_disasters') },
+        { name: 'addCombatSystem', fn: addCombatSystem },
       ];
       
       for (const migration of migrations) {
@@ -361,19 +353,120 @@ const startServer = async () => {
       }
     });
 
+  // ─── Hit dice map by class ───
+  const HIT_DICE_MAP = {
+    Barbarian: 12, Oathknight: 12,
+    Fighter: 10, Paladin: 10, Ranger: 10, 'Primal Bond': 10, 'Shadow Sovereign': 10,
+    Bard: 8, Cleric: 8, Druid: 8, Monk: 8, Rogue: 8, Reaver: 8, Warlock: 8, Charlatan: 8,
+    Sorcerer: 6, Wizard: 6,
+  };
+
+  // ─── Anti-cheat: track pending/resolved dice requests per campaign ───
+  // Structure: { campaignId: { requestId: { type, config, targetPlayerId, status } } }
+  const battleRollState = {};
+
+  // ─── Helper: initialise per-limb health for a character (proportional to current HP) ───
+  function initCharacterLimbHealth(character) {
+    const abilities = typeof character.abilities === 'string' ? JSON.parse(character.abilities) : (character.abilities || {});
+    const con = abilities.con ?? 10;
+    const conMod = Math.floor((con - 10) / 2);
+    const conBonus = Math.max(0, conMod * 0.1);
+    // Each limb HP = floor(baseHP × ratio) — NOT normalized, so limbs can exceed baseHP in sum
+    const hp = character.hit_points || 1;
+    return {
+      head:      Math.floor(hp * Math.min(1.0, 0.25 + conBonus)),
+      chest:     Math.floor(hp * Math.min(2.0, 1.0 + conBonus)),
+      left_arm:  Math.floor(hp * Math.min(1.0, 0.15 + conBonus)),
+      right_arm: Math.floor(hp * Math.min(1.0, 0.15 + conBonus)),
+      left_leg:  Math.floor(hp * Math.min(1.0, 0.40 + conBonus)),
+      right_leg: Math.floor(hp * Math.min(1.0, 0.40 + conBonus)),
+    };
+  }
+
   // Server-side storage for battle movement tracking (prevents client-side exploits)
   // Structure: { campaignId: { characterId: remainingMovement } }
   const battleMovementState = {};
 
-  // Server-side combat state per campaign
-  // Structure: {
-  //   campaignId: {
-  //     combatants: [{ characterId, playerId, name, initiative, movement_speed }],
-  //     initiativeOrder: [characterId,...] (sorted desc by initiative),
-  //     currentTurnIndex: -1
-  //   }
-  // }
+  // Server-side combat state per campaign (lightweight cache — DB is source of truth)
+  // Structure: { campaignId: { sessionId, combatants: [...], initiativeOrder: [...], currentTurnIndex } }
   const battleCombatState = {};
+
+  // DOT (damage-over-time) conditions: { campaignId: { combatantKey: [{ type, fixedDamage, damageDice, requireRoll, limbTarget, turnsRemaining }] } }
+  const battleDotState = {};
+
+  // Darkness level per campaign: 0 = fully lit, 1 = pitch black
+  const battleDarknessState = {};
+
+  // Rebuild combat cache from any active DB sessions (handles server restarts)
+  try {
+    const activeSessions = await pool.query(
+      `SELECT cs.*,
+              array_agg(cc.combatant_key ORDER BY cc.initiative DESC, cc.id ASC)
+                FILTER (WHERE cc.id IS NOT NULL) as initiative_order,
+              json_agg(
+                json_build_object(
+                  'id',                 cc.id,
+                  'combatant_key',      cc.combatant_key,
+                  'character_id',       cc.character_id,
+                  'monster_instance_id',cc.monster_instance_id,
+                  'monster_id',         mi.monster_id,
+                  'player_id',          cc.player_id,
+                  'name',               cc.name,
+                  'initiative',         cc.initiative,
+                  'movement_speed',     cc.movement_speed,
+                  'remaining_movement', cc.remaining_movement,
+                  'is_monster',         cc.is_monster,
+                  'is_beast',           cc.is_beast,
+                  'owner_character_id', cc.owner_character_id,
+                  'position_x',         cc.position_x,
+                  'position_y',         cc.position_y
+                ) ORDER BY cc.initiative DESC, cc.id ASC
+              ) FILTER (WHERE cc.id IS NOT NULL) as combatants_data
+       FROM combat_sessions cs
+       LEFT JOIN combat_combatants cc ON cc.session_id = cs.id AND cc.is_active = TRUE
+       LEFT JOIN monster_instances mi ON mi.id = cc.monster_instance_id
+       WHERE cs.status = 'active'
+       GROUP BY cs.id`
+    );
+    for (const session of activeSessions.rows) {
+      const combatantsData = (session.combatants_data || []).filter(Boolean);
+      const combatants = combatantsData.map(c => ({
+        characterId: c.combatant_key,
+        dbId: c.id,
+        characterDbId: c.character_id,
+        monsterInstanceId: c.monster_instance_id,
+        monsterId: c.monster_id,
+        playerId: c.player_id,
+        name: c.name,
+        initiative: c.initiative,
+        movement_speed: c.movement_speed,
+        isMonster: c.is_monster,
+        isBeast: c.is_beast,
+        ownerId: c.owner_character_id,
+      }));
+      const validKeys = (session.initiative_order || []).filter(Boolean);
+      battleCombatState[session.campaign_id] = {
+        sessionId: session.id,
+        combatants,
+        initiativeOrder: validKeys,
+        currentTurnIndex: session.current_turn_index,
+      };
+      // Restore token positions from DB so they survive server restarts
+      if (!battleMovementState[session.campaign_id]) battleMovementState[session.campaign_id] = {};
+      combatantsData.forEach(c => {
+        battleMovementState[session.campaign_id][c.combatant_key] = {
+          x: c.position_x != null ? c.position_x : 50,
+          y: c.position_y != null ? c.position_y : 50,
+          remainingMovement: c.remaining_movement != null ? c.remaining_movement : (c.movement_speed || 30),
+        };
+      });
+    }
+    if (activeSessions.rows.length > 0) {
+      console.log(`✅ Rebuilt combat cache for ${activeSessions.rows.length} active session(s)`);
+    }
+  } catch (e) {
+    console.warn('⚠️  Could not rebuild combat cache (tables may not exist yet):', e.message);
+  }
 
   // Server-side campaign party grouping state
   // Structure: { campaignId: { partyMemberIds: number[], partyPosition: { x, y } } }
@@ -453,12 +546,136 @@ const startServer = async () => {
           
           // Send current combat state for this campaign (combatants, initiative order, current turn)
           if (battleCombatState[campaignId]) {
+            const log = battleCombatState[campaignId].sessionId
+              ? await CombatSession.getLog(battleCombatState[campaignId].sessionId)
+              : [];
+            // Fetch current monster HP from DB so clients hydrate correctly after refresh
+            const monsterHpData = {};
+            try {
+              const MonsterInstanceSync = require('./models/MonsterInstance');
+              const monsterCombatants = battleCombatState[campaignId].combatants.filter(c => c.isMonster);
+              for (const mc of monsterCombatants) {
+                const instanceId = parseInt(String(mc.characterId), 10);
+                if (!isNaN(instanceId)) {
+                  const inst = await MonsterInstanceSync.findById(instanceId);
+                  if (inst) {
+                    const limbHealth = inst.current_limb_health;
+                    const totalHP = Object.values(limbHealth).reduce((s, v) => s + v, 0);
+                    monsterHpData[String(instanceId)] = { limbHealth, totalHP };
+                  }
+                }
+              }
+            } catch (e) { console.warn('Could not fetch monster HP for sync:', e.message); }
+            // Fetch current character HP from DB (current + max) so all clients show correct bars
+            const characterHpData = {};
+            try {
+              const charCombatants = battleCombatState[campaignId].combatants.filter(c => !c.isMonster);
+              if (charCombatants.length > 0) {
+                const charIds = charCombatants.map(c => parseInt(String(c.characterId), 10)).filter(id => !isNaN(id));
+                const hpRes = await pool.query(
+                  `SELECT id, hit_points,
+                          CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN GREATEST(hit_points, 1) ELSE hit_points_max END AS max_hp,
+                          limb_health, abilities, COALESCE(hit_dice_remaining, level) AS hit_dice_remaining
+                   FROM characters WHERE id = ANY($1::int[])`,
+                  [charIds]
+                );
+                for (const row of hpRes.rows) {
+                  let limbHealth = row.limb_health ?? null;
+
+                  // Backfill limb health for legacy rows where HP was reduced but limb data is missing.
+                  // Persisting this ensures combat HP survives server restarts.
+                  if (!limbHealth && Number(row.max_hp) > 0 && Number(row.hit_points) < Number(row.max_hp)) {
+                    const maxHp = Number(row.max_hp);
+                    const currentHp = Math.max(0, Number(row.hit_points));
+                    const limbMax = initCharacterLimbHealth({ hit_points: maxHp, abilities: row.abilities || {} });
+
+                    const ratio = maxHp > 0 ? (currentHp / maxHp) : 0;
+                    const derived = {};
+                    let runningTotal = 0;
+                    const keys = Object.keys(limbMax);
+
+                    keys.forEach((k, idx) => {
+                      const v = idx === keys.length - 1
+                        ? Math.max(0, currentHp - runningTotal)
+                        : Math.max(0, Math.round(Number(limbMax[k] || 0) * ratio));
+                      derived[k] = v;
+                      runningTotal += v;
+                    });
+
+                    limbHealth = derived;
+                    await pool.query('UPDATE characters SET limb_health = $1 WHERE id = $2', [JSON.stringify(derived), row.id]);
+                  }
+
+                  characterHpData[String(row.id)] = {
+                    current: row.hit_points,
+                    max: row.max_hp,
+                    limbHealth,
+                    hitDiceRemaining: row.hit_dice_remaining,
+                  };
+                }
+              }
+            } catch (e) { console.warn('Could not fetch character HP for sync:', e.message); }
+            // Fetch monster templates for active combat monsters (sent to all clients so players
+            // see correct AC and max HP even if visible_to_players is false)
+            const combatMonsterTemplates = {};
+            try {
+              const MonsterModel = require('./models/Monster');
+              const monsterCombatantsForTemplates = battleCombatState[campaignId].combatants.filter(c => c.isMonster && c.monsterId);
+              const uniqueMonsterIds = [...new Set(monsterCombatantsForTemplates.map(c => c.monsterId))];
+              for (const mid of uniqueMonsterIds) {
+                const template = await MonsterModel.findById(mid);
+                if (template) {
+                  // Only send essential fields for display (no image data to keep payload small)
+                  combatMonsterTemplates[String(mid)] = {
+                    id: template.id,
+                    name: template.name,
+                    image_url: template.image_url,
+                    limb_health: template.limb_health,
+                    limb_ac: template.limb_ac,
+                  };
+                }
+              }
+            } catch (e) { console.warn('Could not fetch monster templates for sync:', e.message); }
             socket.emit('battleCombatSync', {
               combatants: battleCombatState[campaignId].combatants,
               initiativeOrder: battleCombatState[campaignId].initiativeOrder,
-              currentTurnIndex: battleCombatState[campaignId].currentTurnIndex
+              currentTurnIndex: battleCombatState[campaignId].currentTurnIndex,
+              log,
+              monsterHpData,
+              characterHpData,
+              combatMonsterTemplates,
+              darknessLevel: battleDarknessState[campaignId] ?? 0,
+              dotConditions: battleDotState[campaignId] ?? {},
             });
             console.log(`⚔️ Sent combat state to user ${socket.id} for campaign ${campaignId}`);
+          }
+
+          // Anti-cheat: re-send any pending dice roll to this user if they just reconnected
+          if (socket.userId && battleRollState[campaignId]) {
+            for (const [reqId, rollEntry] of Object.entries(battleRollState[campaignId])) {
+              if (rollEntry.targetPlayerId !== socket.userId) continue;
+              if (rollEntry.status === 'pending') {
+                // Attack or generic roll not yet started — resend the original config
+                socket.emit(rollEntry.type, rollEntry.config);
+                console.log(`🔒 Re-sent pending roll ${reqId} to reconnected user ${socket.userId}`);
+              } else if (rollEntry.status === 'hit_submitted') {
+                // Player submitted hit roll, DM hasn't approved yet — restore awaiting-approval state
+                socket.emit('restoreAttackState', {
+                  config: rollEntry.config,
+                  phase: 'awaiting_approval',
+                  hitTotal: rollEntry.hitTotal,
+                });
+                console.log(`🔒 Restored hit_submitted state for ${reqId} to user ${socket.userId}`);
+              } else if (rollEntry.status === 'damage_pending') {
+                // DM approved hit roll, player needs to roll damage — restore damage phase
+                socket.emit('restoreAttackState', {
+                  config: rollEntry.config,
+                  phase: 'damage',
+                  hitTotal: rollEntry.hitTotal,
+                });
+                console.log(`🔒 Restored damage_pending state for ${reqId} to user ${socket.userId}`);
+              }
+            }
           }
 
           // Restore party group from DB if not already in memory
@@ -594,8 +811,17 @@ const startServer = async () => {
             battleMovementState[campaignId] = {};
           }
 
-          // Update server-side movement state (authoritative)
-          battleMovementState[campaignId][characterId] = remainingMovement;
+          // Update server-side movement state (authoritative) — store full position + movement
+          battleMovementState[campaignId][characterId] = { x, y, remainingMovement };
+
+          // Persist position to DB so it survives server restarts
+          const session = battleCombatState[campaignId];
+          if (session?.sessionId) {
+            pool.query(
+              'UPDATE combat_combatants SET position_x = $1, position_y = $2, remaining_movement = $3 WHERE session_id = $4 AND combatant_key = $5 AND is_active = TRUE',
+              [x, y, remainingMovement, session.sessionId, String(characterId)]
+            ).catch(err => console.warn('Could not persist position to DB:', err.message));
+          }
 
           // Broadcast to all users in the campaign except sender
           socket.to(`campaign_${campaignId}`).emit('characterBattleMoved', {
@@ -707,79 +933,106 @@ const startServer = async () => {
       socket.on('inviteToCombat', async (data) => {
         try {
           const { campaignId, characterId, targetPlayerId, isMonster } = data;
-          
-          // If it's a monster, add directly to combat (DM-controlled)
-          if (isMonster) {
-            // Ensure combat state exists for this campaign
-            if (!battleCombatState[campaignId]) {
-              battleCombatState[campaignId] = { combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
-              // Fresh combat session — delete stale instance rows so the counter resets to #1
+
+          // Get or create a combat session for this campaign
+          let session = battleCombatState[campaignId];
+          if (!session) {
+            // Check DB first
+            let dbSession = await CombatSession.findActiveByCampaign(campaignId);
+            if (!dbSession) {
+              // Fresh combat — clean up stale monster instances so counter resets
               const MonsterInstanceCleanup = require('./models/MonsterInstance');
               try { await MonsterInstanceCleanup.deleteAllByCampaign(campaignId); } catch (e) { console.warn('Could not clean up stale monster instances:', e.message); }
+              dbSession = await CombatSession.create(campaignId);
             }
+            session = {
+              sessionId: dbSession.id,
+              combatants: [],
+              initiativeOrder: [],
+              currentTurnIndex: -1,
+            };
+            battleCombatState[campaignId] = session;
+          }
 
-            // Fetch monster details
+          if (isMonster) {
             const Monster = require('./models/Monster');
             const MonsterInstance = require('./models/MonsterInstance');
+
             const monster = await Monster.findById(characterId);
-            if (!monster) {
-              console.warn(`Monster ${characterId} not found for combat`);
-              return;
-            }
+            if (!monster) { console.warn(`Monster ${characterId} not found for combat`); return; }
 
-            // Get next instance number for this monster type in this campaign
             const instanceNumber = await MonsterInstance.getNextInstanceNumber(monster.id, campaignId);
-
-            // Roll initiative for monster (d20 + 0 for now; can be enhanced later)
             const roll = Math.floor(Math.random() * 20) + 1;
-            const initiative = roll;
-
-            // Create a new monster instance with its own health pool
             const monsterInstance = await MonsterInstance.create({
               monster_id: monster.id,
               campaign_id: campaignId,
               instance_number: instanceNumber,
               current_limb_health: monster.limb_health,
-              initiative: initiative
+              initiative: roll,
             });
 
-            // Add to combatants list using the instance ID
-            battleCombatState[campaignId].combatants.push({
-              characterId: monsterInstance.id, // Use instance ID, not monster template ID
-              monsterId: monster.id, // Keep reference to monster template
-              playerId: targetPlayerId, // DM's ID
-              name: `${monster.name} #${instanceNumber}`,
-              initiative,
-              movement_speed: 30, // Default monster speed
+            const monsterSpeed = monster.movement_speed || 30;
+            const combatantKey = String(monsterInstance.id);
+            const combatantName = `${monster.name} #${instanceNumber}`;
+
+            // Persist to DB
+            await CombatSession.addCombatant({
+              session_id: session.sessionId,
+              monster_instance_id: monsterInstance.id,
+              combatant_key: combatantKey,
+              name: combatantName,
+              player_id: targetPlayerId,
+              initiative: roll,
+              movement_speed: monsterSpeed,
+              is_monster: true,
+            });
+
+            // Update cache
+            const newCombatant = {
+              characterId: combatantKey,
+              dbId: null,
+              monsterInstanceId: monsterInstance.id,
+              monsterId: monster.id,
+              playerId: targetPlayerId,
+              name: combatantName,
+              initiative: roll,
+              movement_speed: monsterSpeed,
               isMonster: true,
-              instanceNumber: instanceNumber
-            });
+              instanceNumber,
+            };
+            session.combatants.push(newCombatant);
 
-            // Re-sort initiative order
-            battleCombatState[campaignId].initiativeOrder = battleCombatState[campaignId].combatants
-              .sort((a, b) => b.initiative - a.initiative)
+            // Add monster to movement state with a default position so it appears on the map
+            if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
+            if (!battleMovementState[campaignId][combatantKey]) {
+              const existingCount = session.combatants.length - 1; // monsters added so far (current is last)
+              battleMovementState[campaignId][combatantKey] = {
+                x: 70 + (existingCount % 4) * 8,
+                y: 15 + Math.floor(existingCount / 4) * 15,
+                remainingMovement: monsterSpeed,
+              };
+            }
+
+            session.initiativeOrder = session.combatants
+              .slice().sort((a, b) => b.initiative - a.initiative)
               .map(c => c.characterId);
 
-            // Don't auto-start combat - let DM click "Start Combat" button
-            // currentTurnIndex stays at -1 until nextTurn is clicked
-
-            // Broadcast updated combatants
             io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
-              combatants: battleCombatState[campaignId].combatants,
-              initiativeOrder: battleCombatState[campaignId].initiativeOrder,
-              currentTurnIndex: battleCombatState[campaignId].currentTurnIndex
+              combatants: session.combatants,
+              initiativeOrder: session.initiativeOrder,
+              currentTurnIndex: session.currentTurnIndex,
+              timestamp: new Date().toISOString(),
             });
-
-            console.log(`🐉 Monster ${monster.name} #${instanceNumber} (instance ID: ${monsterInstance.id}) added to combat in campaign ${campaignId} (initiative: ${initiative})`);
+            console.log(`🐉 Monster ${combatantName} added to combat in campaign ${campaignId} (initiative: ${roll})`);
           } else {
             // Regular player character invite
             io.to(`campaign_${campaignId}`).emit('combatInvite', {
               campaignId,
               characterId,
               targetPlayerId,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
             });
-            console.log(`📣 Combat invite sent for character ${characterId} in campaign ${campaignId} to player ${targetPlayerId}`);
+            console.log(`📣 Combat invite sent for character ${characterId} in campaign ${campaignId}`);
           }
         } catch (error) {
           console.error('Error sending combat invite:', error);
@@ -788,23 +1041,21 @@ const startServer = async () => {
 
       // Player accepts an invite to combat
       socket.on('acceptCombatInvite', async (data) => {
-        console.log('🚀 DEBUG: acceptCombatInvite called with data:', JSON.stringify(data));
+        console.log('🚀 acceptCombatInvite called:', JSON.stringify(data));
         try {
           const { campaignId, characterId, playerId } = data;
 
-          // Ensure combat state exists for this campaign
-          if (!battleCombatState[campaignId]) {
-            battleCombatState[campaignId] = { combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
+          // Get or create a combat session
+          let session = battleCombatState[campaignId];
+          if (!session) {
+            let dbSession = await CombatSession.findActiveByCampaign(campaignId);
+            if (!dbSession) dbSession = await CombatSession.create(campaignId);
+            session = { sessionId: dbSession.id, combatants: [], initiativeOrder: [], currentTurnIndex: -1 };
+            battleCombatState[campaignId] = session;
           }
 
-          // Fetch character to get abilities and movement_speed
           const character = await Character.findById(characterId);
-          if (!character) {
-            console.warn(`Character ${characterId} not found for combat`);
-            return;
-          }
-
-          console.log(`🔍 DEBUG: Character found - Name: "${character.name}", Class: "${character.class}", Level: ${character.level}`);
+          if (!character) { console.warn(`Character ${characterId} not found for combat`); return; }
 
           // Roll initiative: d20 + dex modifier
           const roll = Math.floor(Math.random() * 20) + 1;
@@ -812,167 +1063,241 @@ const startServer = async () => {
           const dexMod = Character.getAbilityModifier(dex);
           const initiative = roll + dexMod;
 
-          // Add to combatants list
-          battleCombatState[campaignId].combatants.push({
-            characterId: character.id,
-            playerId: playerId,
+          const movementSpeed = character.movement_speed || 30;
+          const combatantKey = String(characterId);
+
+          // Persist combatant to DB
+          await CombatSession.addCombatant({
+            session_id: session.sessionId,
+            character_id: character.id,
+            combatant_key: combatantKey,
+            name: character.name,
+            player_id: playerId,
+            initiative,
+            movement_speed: movementSpeed,
+            position_x: character.battle_position_x || 50,
+            position_y: character.battle_position_y || 50,
+          });
+
+          // Mark as in combat in DB
+          await pool.query('UPDATE characters SET combat_active = TRUE WHERE id = $1', [characterId]);
+
+          // Update movement state cache
+          if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
+          battleMovementState[campaignId][combatantKey] = movementSpeed;
+
+          const newCombatant = {
+            characterId: combatantKey,
+            playerId,
             name: character.name,
             initiative,
-            movement_speed: character.movement_speed ?? 30
-          });
+            movement_speed: movementSpeed,
+          };
+          session.combatants.push(newCombatant);
 
-          // Mark character as in combat in DB
-          try {
-            await pool.query('UPDATE characters SET combat_active = TRUE WHERE id = $1', [characterId]);
-          } catch (dbErr) {
-            console.error('Error setting combat_active in DB:', dbErr);
-          }
-
-          // Initialize movement state for this character
-          if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
-          battleMovementState[campaignId][characterId] = character.movement_speed ?? 30;
-
-          // Check if character is Primal Bond and should have their beast companion added
-          console.log(`🔍 DEBUG: Checking if character is Primal Bond - Class is: "${character.class}"`);
+          // Beast companion logic for Primal Bond
+          console.log(`🔍 Checking Primal Bond for ${character.name} (class: "${character.class}")`);
           if (character.class === 'Primal Bond') {
-            console.log(`🐾 DEBUG: ${character.name} is Primal Bond class, checking for beast companion...`);
             try {
-              // Fetch beast companion
-              const beastResult = await pool.query(
-                'SELECT * FROM character_beasts WHERE character_id = $1',
-                [characterId]
-              );
-
-              console.log(`🔍 DEBUG: Beast query result - Rows found: ${beastResult.rows.length}`);
-
+              const beastResult = await pool.query('SELECT * FROM character_beasts WHERE character_id = $1', [characterId]);
               if (beastResult.rows.length > 0) {
                 const beast = beastResult.rows[0];
-                const beastType = beast.beast_type;
-                const characterLevel = character.level;
-                
-                console.log(`🐾 DEBUG: Beast found - Type: "${beastType}", Character Level: ${characterLevel}`);
-                
-                // Check if beast should be added based on level requirements
+                const level = character.level;
                 let shouldAddBeast = false;
-                let matchReason = '';
-                
-                // Agile Hunter (Cheetah/Leopard) gets beast at level 3
-                if ((beastType === 'Cheetah' || beastType === 'Leopard') && characterLevel >= 3) {
-                  shouldAddBeast = true;
-                  matchReason = `Agile Hunter (${beastType}) at level ${characterLevel} >= 3`;
-                }
-                // Packbound (Alpha Wolf/Omega Wolf) gets beast at level 6
-                else if ((beastType === 'AlphaWolf' || beastType === 'OmegaWolf') && characterLevel >= 6) {
-                  shouldAddBeast = true;
-                  matchReason = `Packbound (${beastType}) at level ${characterLevel} >= 6`;
-                }
-                // Colossal Bond (Elephant/Owlbear) gets beast at level 10
-                else if ((beastType === 'Elephant' || beastType === 'Owlbear') && characterLevel >= 10) {
-                  shouldAddBeast = true;
-                  matchReason = `Colossal Bond (${beastType}) at level ${characterLevel} >= 10`;
-                } else {
-                  matchReason = `No match - Beast type "${beastType}" at level ${characterLevel}`;
-                }
-
-                console.log(`🔍 DEBUG: Should add beast: ${shouldAddBeast} - Reason: ${matchReason}`);
+                if ((beast.beast_type === 'Cheetah' || beast.beast_type === 'Leopard') && level >= 3) shouldAddBeast = true;
+                else if ((beast.beast_type === 'AlphaWolf' || beast.beast_type === 'OmegaWolf') && level >= 6) shouldAddBeast = true;
+                else if ((beast.beast_type === 'Elephant' || beast.beast_type === 'Owlbear') && level >= 10) shouldAddBeast = true;
 
                 if (shouldAddBeast) {
-                  // Beast uses same initiative as character (they act together)
-                  const beastName = beast.beast_name || beastType;
+                  const beastName = beast.beast_name || beast.beast_type;
                   const beastSpeed = beast.speed || 30;
+                  const beastKey = `beast_${characterId}`;
 
-                  console.log(`✅ DEBUG: Adding beast to combat - Name: "${beastName}", Speed: ${beastSpeed}, Initiative: ${initiative}`);
-
-                  // Add beast to combatants with same initiative
-                  battleCombatState[campaignId].combatants.push({
-                    characterId: `beast_${characterId}`, // Unique ID for the beast
-                    playerId: playerId, // Same player controls the beast
+                  await CombatSession.addCombatant({
+                    session_id: session.sessionId,
+                    combatant_key: beastKey,
                     name: `${beastName} (Companion)`,
-                    initiative: initiative, // Same initiative as the character
+                    player_id: playerId,
+                    initiative,
+                    movement_speed: beastSpeed,
+                    is_beast: true,
+                    owner_character_id: character.id,
+                  });
+                  battleMovementState[campaignId][beastKey] = beastSpeed;
+                  session.combatants.push({
+                    characterId: beastKey,
+                    playerId,
+                    name: `${beastName} (Companion)`,
+                    initiative,
                     movement_speed: beastSpeed,
                     isBeast: true,
-                    ownerId: characterId // Track which character owns this beast
+                    ownerId: character.id,
                   });
-
-                  // Initialize movement state for the beast
-                  battleMovementState[campaignId][`beast_${characterId}`] = beastSpeed;
-
-                  console.log(`🐾 Beast companion ${beastName} added to combat with ${character.name} (same initiative: ${initiative})`);
-                } else {
-                  console.log(`❌ DEBUG: Beast NOT added - ${matchReason}`);
+                  console.log(`🐾 Beast companion ${beastName} added to combat`);
                 }
-              } else {
-                console.log(`❌ DEBUG: No beast found in database for character ${characterId}`);
               }
             } catch (beastErr) {
-              console.error('❌ ERROR: Error adding beast companion to combat:', beastErr);
-              console.error('Stack trace:', beastErr.stack);
-              // Continue without beast if there's an error - don't block character from joining
+              console.error('Error adding beast companion:', beastErr);
             }
-          } else {
-            console.log(`ℹ️ DEBUG: Character ${character.name} is not Primal Bond class (class is "${character.class}"), skipping beast check`);
           }
 
-          // Sort initiative order (highest first)
-          const sorted = [...battleCombatState[campaignId].combatants].sort((a, b) => b.initiative - a.initiative);
-          battleCombatState[campaignId].initiativeOrder = sorted.map(c => c.characterId);
+          // Sort initiative order
+          session.initiativeOrder = session.combatants
+            .slice().sort((a, b) => b.initiative - a.initiative)
+            .map(c => c.characterId);
 
-          // Don't auto-start combat - let DM click "Start Combat" button
-          // currentTurnIndex stays at -1 until nextTurn is clicked
-
-          // Broadcast updated combatants to all in campaign
           io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
-            combatants: sorted,
-            initiativeOrder: battleCombatState[campaignId].initiativeOrder,
-            currentTurnIndex: battleCombatState[campaignId].currentTurnIndex,
-            timestamp: new Date().toISOString()
+            combatants: session.combatants,
+            initiativeOrder: session.initiativeOrder,
+            currentTurnIndex: session.currentTurnIndex,
+            timestamp: new Date().toISOString(),
           });
-
-          console.log(`🛡️ ${character.name} added to combat in campaign ${campaignId} with initiative ${initiative}`);
+          console.log(`🛡️ ${character.name} added to combat in campaign ${campaignId} (initiative: ${initiative})`);
         } catch (error) {
           console.error('Error accepting combat invite:', error);
         }
       });
 
       // Advance to next turn in initiative order (DM action)
-      socket.on('nextTurn', (data) => {
+      socket.on('nextTurn', async (data) => {
         try {
           const { campaignId } = data;
-          const state = battleCombatState[campaignId];
-          if (!state || !state.initiativeOrder || state.initiativeOrder.length === 0) {
+          const session = battleCombatState[campaignId];
+          if (!session || !session.initiativeOrder || session.initiativeOrder.length === 0) {
             console.warn('No combat state for campaign', campaignId);
             return;
           }
 
-          // If combat hasn't started yet (currentTurnIndex is -1), start it
-          if (state.currentTurnIndex === -1) {
-            state.currentTurnIndex = 0;
-            console.log(`⚔️ Starting combat in campaign ${campaignId}`);
-          } else {
-            // Advance to next turn
-            state.currentTurnIndex = (state.currentTurnIndex + 1) % state.initiativeOrder.length;
-          }
-          
-          const currentCharacterId = state.initiativeOrder[state.currentTurnIndex];
+          // Conditions that cause turn to auto-skip
+          const SKIP_CONDITIONS = ['stunned', 'incapacitated', 'paralyzed', 'unconscious', 'petrified', 'dead'];
 
-          // Reset only the current character's movement to their movement_speed
-          const combatant = state.combatants.find(c => c.characterId === currentCharacterId);
-          if (combatant) {
-            if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
-            battleMovementState[campaignId][currentCharacterId] = combatant.movement_speed;
+          // Helper: advance index
+          const advanceIndex = (idx) => {
+            if (idx === -1) return 0;
+            return (idx + 1) % session.initiativeOrder.length;
+          };
+
+          // Advance at least once
+          session.currentTurnIndex = advanceIndex(session.currentTurnIndex);
+          if (session.currentTurnIndex === 0 && session.combatants.length > 0) {
+            console.log(`⚔️ Starting/looping combat round in campaign ${campaignId}`);
           }
 
-          // Broadcast turn advance with movement speed included
+          // Skip stunned/dead combatants (max one full loop to avoid infinite skip)
+          let skipped = 0;
+          while (skipped < session.initiativeOrder.length) {
+            const key = session.initiativeOrder[session.currentTurnIndex];
+            const c = session.combatants.find(c => c.characterId === key);
+            const conditions = (c?.conditions ?? []).map(s => s.toLowerCase());
+            const skipReason = c?.isDead ? 'dead' : conditions.find(s => SKIP_CONDITIONS.includes(s));
+
+            if (!skipReason) break;
+
+            // Notify clients this turn is being skipped
+            io.to(`campaign_${campaignId}`).emit('turnSkipped', {
+              characterId: key,
+              characterName: c?.name || key,
+              reason: skipReason.charAt(0).toUpperCase() + skipReason.slice(1),
+              campaignId,
+              timestamp: new Date().toISOString(),
+            });
+            console.log(`⏭️ Skipping ${c?.name || key} (${skipReason}) in campaign ${campaignId}`);
+
+            session.currentTurnIndex = advanceIndex(session.currentTurnIndex);
+            skipped++;
+          }
+
+          const currentCombatantKey = session.initiativeOrder[session.currentTurnIndex];
+          const combatant = session.combatants.find(c => c.characterId === currentCombatantKey);
+          // Grappled or Restrained combatants have 0 movement this turn
+          const combatantConditions = (combatant?.conditions ?? []).map(s => s.toLowerCase());
+          const isMovementLocked = combatantConditions.includes('grappled') || combatantConditions.includes('restrained');
+          const movementSpeed = isMovementLocked ? 0 : (combatant ? combatant.movement_speed : 30);
+
+          // Persist new turn index
+          await CombatSession.updateTurnIndex(session.sessionId, session.currentTurnIndex);
+
+          // Reset action economy + movement for the combatant now taking their turn
+          if (session.sessionId) {
+            await CombatSession.resetTurnEconomy(session.sessionId, currentCombatantKey);
+          }
+
+          // Update movement cache
+          if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
+          battleMovementState[campaignId][currentCombatantKey] = movementSpeed;
+
+          // Broadcast turn advance
           io.to(`campaign_${campaignId}`).emit('turnAdvanced', {
-            currentCharacterId,
-            initiativeOrder: state.initiativeOrder,
-            currentTurnIndex: state.currentTurnIndex,
-            resetMovementFor: currentCharacterId,
-            movementSpeed: combatant ? combatant.movement_speed : 30,
-            timestamp: new Date().toISOString()
+            currentCharacterId: currentCombatantKey,
+            initiativeOrder: session.initiativeOrder,
+            currentTurnIndex: session.currentTurnIndex,
+            resetMovementFor: currentCombatantKey,
+            movementSpeed,
+            timestamp: new Date().toISOString(),
           });
 
-          console.log(`➡️ Advanced turn in campaign ${campaignId} to character ${currentCharacterId} (index: ${state.currentTurnIndex})`);
+          // Also emit turnStarted for player notification
+          io.to(`campaign_${campaignId}`).emit('turnStarted', {
+            currentCharacterId: currentCombatantKey,
+            playerId: combatant?.playerId,
+            characterName: combatant?.name || '',
+            campaignId,
+            timestamp: new Date().toISOString(),
+          });
+
+          // Emit DOT ticks for the current combatant; handle Burning auto-expiry after 3 turns
+          const dotList = battleDotState[campaignId]?.[currentCombatantKey] ?? [];
+          const expiredTypes = [];
+          const remainingDots = [];
+          for (const dot of dotList) {
+            io.to(`campaign_${campaignId}`).emit('dotTick', {
+              combatantKey: currentCombatantKey,
+              combatantName: combatant?.name || String(currentCombatantKey),
+              dotType: dot.type,
+              fixedDamage: dot.fixedDamage ?? null,
+              damageDice: dot.damageDice ?? null,
+              requireRoll: dot.requireRoll ?? false,
+              limbTarget: dot.limbTarget ?? 'chest',
+              campaignId,
+              timestamp: new Date().toISOString(),
+            });
+            if (dot.turnsRemaining !== null) {
+              const newTurns = dot.turnsRemaining - 1;
+              if (newTurns <= 0) {
+                expiredTypes.push(dot.type);
+              } else {
+                remainingDots.push({ ...dot, turnsRemaining: newTurns });
+              }
+            } else {
+              remainingDots.push(dot);
+            }
+          }
+          if (battleDotState[campaignId]) {
+            battleDotState[campaignId][currentCombatantKey] = remainingDots;
+          }
+          // Remove expired DOT conditions from the combatant's conditions array
+          if (expiredTypes.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('dotConditionsUpdated', { combatantKey: currentCombatantKey, dotConditions: remainingDots, campaignId });
+            try {
+              if (session.sessionId) {
+                const combatantRow = await CombatSession.getCombatantByKey(session.sessionId, currentCombatantKey);
+                if (combatantRow) {
+                  const newConditions = (combatantRow.conditions || []).filter(c => !expiredTypes.includes(c));
+                  await CombatSession.updateCombatant(combatantRow.id, { conditions: newConditions });
+                  const cached = session.combatants.find(c => c.characterId === currentCombatantKey);
+                  if (cached) cached.conditions = newConditions;
+                  io.to(`campaign_${campaignId}`).emit('conditionsUpdated', { combatantKey: currentCombatantKey, conditions: newConditions, campaignId });
+                  for (const expired of expiredTypes) {
+                    await CombatSession.addLogEntry({ session_id: session.sessionId, actor_name: 'System', action_type: 'condition', target_name: combatant?.name || String(currentCombatantKey), details: `${expired} condition expired` });
+                  }
+                  const log = await CombatSession.getLog(session.sessionId);
+                  io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+                }
+              }
+            } catch (e) { console.warn('Error removing expired DOT conditions:', e.message); }
+          }
+
+          console.log(`➡️ Advanced turn in campaign ${campaignId} to ${currentCombatantKey} (index: ${session.currentTurnIndex})`);
         } catch (error) {
           console.error('Error advancing turn:', error);
         }
@@ -982,34 +1307,1224 @@ const startServer = async () => {
       socket.on('resetCombat', async (data) => {
         try {
           const { campaignId } = data;
-          
-          // Clear combat state for this campaign
-          if (battleCombatState[campaignId]) {
-            delete battleCombatState[campaignId];
+          const session = battleCombatState[campaignId];
+
+          // End DB session (cascades to all combat_* tables)
+          if (session?.sessionId) {
+            await CombatSession.endSession(session.sessionId);
           }
-          
-          // Clear movement state for this campaign
-          if (battleMovementState[campaignId]) {
-            delete battleMovementState[campaignId];
-          }
-          
-          // Set all characters' combat_active to false in database
+
+          // Clear caches
+          delete battleCombatState[campaignId];
+          if (battleMovementState[campaignId]) delete battleMovementState[campaignId];
+          if (battleDotState[campaignId]) delete battleDotState[campaignId];
+          if (battleDarknessState[campaignId]) delete battleDarknessState[campaignId];
+
+          // Reset characters in DB
           await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0 WHERE campaign_id = $1', [campaignId]);
-          
-          // Remove all monster instances from combat, then delete so the counter resets
+
+          // Remove monster instances
           const MonsterInstance = require('./models/MonsterInstance');
           await MonsterInstance.removeAllFromCombat(campaignId);
           try { await MonsterInstance.deleteAllByCampaign(campaignId); } catch (e) { console.warn('Could not delete monster instances:', e.message); }
-          
-          // Broadcast combat reset to all users in campaign
-          io.to(`campaign_${campaignId}`).emit('combatReset', {
-            timestamp: new Date().toISOString()
-          });
-          
+
+          io.to(`campaign_${campaignId}`).emit('combatReset', { timestamp: new Date().toISOString() });
           console.log(`🔄 Combat reset for campaign ${campaignId}`);
         } catch (error) {
           console.error('Error resetting combat:', error);
         }
+      });
+
+      // Player requests an attack — notifies DM to configure dice
+      socket.on('requestAttack', (data) => {
+        try {
+          const { campaignId, requestId, attackerKey, attackerName, targetKey, targetName } = data;
+          // Forward to all DMs in this campaign room
+          io.to(`campaign_${campaignId}`).emit('attackRequested', {
+            requestId,
+            campaignId,
+            attackerKey,
+            attackerName,
+            targetKey,
+            targetName,
+          });
+          console.log(`⚔️ Attack request from ${attackerName} targeting ${targetName} in campaign ${campaignId}`);
+        } catch (error) {
+          console.error('Error handling attack request:', error);
+        }
+      });
+
+      // DM confirms attack dice — sends hit die + damage die back to the attacking player
+      socket.on('confirmAttackDice', (data) => {
+        try {
+          const { campaignId, requestId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, dmName, targetPlayerId } = data;
+          const session = battleCombatState[campaignId];
+          if (!session) return;
+          // Find the attacking combatant's player socket and send only to them
+          const attacker = session.combatants.find(c => String(c.characterId) === String(attackerKey));
+          const attackerPlayerId = attacker ? attacker.playerId : null;
+          // Anti-cheat: record this pending roll so we can re-send on reconnect
+          if (!battleRollState[campaignId]) battleRollState[campaignId] = {};
+          battleRollState[campaignId][requestId] = {
+            type: 'attackDiceConfig',
+            status: 'pending',
+            targetPlayerId: attackerPlayerId,
+            config: { requestId, campaignId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, dmName, attackerPlayerId },
+          };
+          // Emit to whole room — frontend filters by attackerKey
+          io.to(`campaign_${campaignId}`).emit('attackDiceConfig', {
+            requestId,
+            campaignId,
+            attackerKey,
+            attackerName,
+            targetKey,
+            targetName,
+            hitDie,
+            damageDie,
+            dmName,
+            attackerPlayerId,
+          });
+          console.log(`⚔️ DM configured attack: ${hitDie} hit / ${damageDie} damage for ${attackerName} vs ${targetName}`);
+        } catch (error) {
+          console.error('Error handling confirm attack dice:', error);
+        }
+      });
+
+      // Apply damage to a combatant (DM action — real-time HP updates)
+      socket.on('applyDamage', async (data) => {
+        try {
+          const { campaignId, targetKey, targetType, limbName, damage, attackerName } = data;
+          const session = battleCombatState[campaignId];
+          if (!session) return;
+
+          let updatedHealthData = null;
+
+          if (targetType === 'monster') {
+            // targetKey is JSON string of monster instance id ("42")
+            const instanceId = parseInt(targetKey, 10);
+            const MonsterInstance = require('./models/MonsterInstance');
+            const instance = await MonsterInstance.findById(instanceId);
+            if (!instance) return;
+
+            const limbHealth = { ...instance.current_limb_health };
+            const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
+            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - damage);
+
+            // Vital hit: head or chest reduced to 0 = instant death — zero all limbs
+            const vitalKeys = ['head', 'chest'];
+            const vitalKilled = vitalKeys.some(k => limbHealth[k] !== undefined && limbHealth[k] === 0);
+            if (vitalKilled) {
+              Object.keys(limbHealth).forEach(k => { limbHealth[k] = 0; });
+            }
+
+            await MonsterInstance.updateHealth(instanceId, limbHealth);
+
+            const totalHP = Object.values(limbHealth).reduce((s, v) => s + v, 0);
+            updatedHealthData = { type: 'monster', instanceId, limbHealth, totalHP, isDead: totalHP <= 0 };
+
+            if (totalHP <= 0) {
+              await MonsterInstance.removeFromCombat(instanceId);
+              // Mark in session cache so turn-skip logic works
+              const cachedMonster = session.combatants.find(c => c.characterId === String(instanceId));
+              if (cachedMonster) cachedMonster.isDead = true;
+            }
+          } else if (targetType === 'character') {
+            const charId = parseInt(targetKey, 10);
+            const character = await Character.findById(charId);
+            if (!character) return;
+
+            // Get or initialize per-limb health
+            const isFirstInit = !character.limb_health;
+            let limbHealth = character.limb_health ?? null;
+            if (!limbHealth) {
+              limbHealth = initCharacterLimbHealth(character);
+            }
+
+            // Apply damage to specific limb (fall back to chest if limb key not found)
+            const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
+            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - damage);
+
+            // Vital hit: head or chest reduced to 0 = instant death — zero all limbs
+            const vitalKeys = ['head', 'chest'];
+            const vitalKilled = vitalKeys.some(k => limbHealth[k] !== undefined && limbHealth[k] === 0);
+            if (vitalKilled) {
+              Object.keys(limbHealth).forEach(k => { limbHealth[k] = 0; });
+            }
+
+            // Total HP = sum of limb HPs
+            const newHP = Math.max(0, Object.values(limbHealth).reduce((s, v) => s + Number(v), 0));
+
+            if (isFirstInit) {
+              // Preserve the base HP stat in hit_points_max so the UI can always compute limb maxes
+              await pool.query(
+                'UPDATE characters SET hit_points = $1, limb_health = $2, hit_points_max = COALESCE(hit_points_max, $3) WHERE id = $4',
+                [newHP, JSON.stringify(limbHealth), character.hit_points, charId]
+              );
+            } else {
+              await pool.query(
+                'UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3',
+                [newHP, JSON.stringify(limbHealth), charId]
+              );
+            }
+            updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth, isDead: newHP <= 0 };
+
+            if (newHP <= 0 && session.sessionId) {
+              if (vitalKilled) {
+                // Vital hit = instant death — bypass death saves
+                await CombatSession.upsertDeathSaves(session.sessionId, charId, { successes: 0, failures: 3, is_stable: false, is_dead: true });
+                // Apply Dead condition
+                const combatantKey = String(charId);
+                const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+                if (combatant) {
+                  const conditions = [...(combatant.conditions || []).filter(c => c !== 'Unconscious'), 'Dead'];
+                  await CombatSession.updateCombatant(combatant.id, { conditions });
+                  const cached = session.combatants.find(c => c.characterId === combatantKey);
+                  if (cached) { cached.conditions = conditions; cached.isDead = true; }
+                  io.to(`campaign_${campaignId}`).emit('conditionsUpdated', { combatantKey, conditions, campaignId });
+                }
+                io.to(`campaign_${campaignId}`).emit('characterDied', { characterId: charId, campaignId });
+                const allSaves = await CombatSession.getDeathSaves(session.sessionId);
+                io.to(`campaign_${campaignId}`).emit('deathSavesUpdated', { deathSaves: allSaves, campaignId });
+              } else {
+                const existing = await CombatSession.getDeathSavesForCharacter(session.sessionId, charId);
+                if (!existing) {
+                  await CombatSession.upsertDeathSaves(session.sessionId, charId, { successes: 0, failures: 0 });
+                }
+                io.to(`campaign_${campaignId}`).emit('characterDowned', { characterId: charId, campaignId });
+              }
+            }
+          }
+
+          // Add to combat log
+          if (session.sessionId) {
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: attackerName || 'Unknown',
+              action_type: 'damage',
+              target_name: data.targetName || targetKey,
+              limb_name: limbName,
+              damage,
+            });
+          }
+          const log = session.sessionId ? await CombatSession.getLog(session.sessionId) : [];
+          io.to(`campaign_${campaignId}`).emit('healthUpdated', { ...updatedHealthData, campaignId, timestamp: new Date().toISOString() });
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log, timestamp: new Date().toISOString() });
+        } catch (error) {
+          console.error('Error applying damage:', error);
+        }
+      });
+
+      // Apply a condition to a combatant
+      socket.on('applyCondition', async (data) => {
+        try {
+          const { campaignId, combatantKey, condition, appliedBy } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+          if (!combatant) return;
+
+          let conditions = Array.isArray(combatant.conditions) ? combatant.conditions : [];
+          if (!conditions.includes(condition)) conditions = [...conditions, condition];
+          await CombatSession.updateCombatant(combatant.id, { conditions });
+
+          // Update cache
+          const cachedCombatant = session.combatants.find(c => c.characterId === combatantKey);
+          if (cachedCombatant) cachedCombatant.conditions = conditions;
+
+          await CombatSession.addLogEntry({ session_id: session.sessionId, actor_name: appliedBy, action_type: 'condition', target_name: combatant.name, details: `${condition} applied` });
+          const log = await CombatSession.getLog(session.sessionId);
+          io.to(`campaign_${campaignId}`).emit('conditionsUpdated', { combatantKey, conditions, campaignId });
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+        } catch (error) { console.error('Error applying condition:', error); }
+      });
+
+      // Remove a condition from a combatant
+      socket.on('removeCondition', async (data) => {
+        try {
+          const { campaignId, combatantKey, condition } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+          if (!combatant) return;
+
+          let conditions = (Array.isArray(combatant.conditions) ? combatant.conditions : []).filter(c => c !== condition);
+          await CombatSession.updateCombatant(combatant.id, { conditions });
+
+          const cachedCombatant = session.combatants.find(c => c.characterId === combatantKey);
+          if (cachedCombatant) cachedCombatant.conditions = conditions;
+
+          io.to(`campaign_${campaignId}`).emit('conditionsUpdated', { combatantKey, conditions, campaignId });
+        } catch (error) { console.error('Error removing condition:', error); }
+      });
+
+      // Apply a DOT (damage-over-time) condition to a combatant (DM action)
+      socket.on('applyDotCondition', async (data) => {
+        try {
+          const { campaignId, combatantKey, combatantName, dotType, fixedDamage, damageDice, requireRoll, limbTarget } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          // Burning auto-expires after 3 turns; other DOTs persist indefinitely
+          const turnsRemaining = dotType === 'Burning' ? 3 : null;
+
+          if (!battleDotState[campaignId]) battleDotState[campaignId] = {};
+          const existing = battleDotState[campaignId][combatantKey] ?? [];
+          // Avoid duplicate DOT of same type
+          const updated = existing.filter(d => d.type !== dotType);
+          updated.push({ type: dotType, fixedDamage: fixedDamage ?? null, damageDice: damageDice ?? null, requireRoll: !!requireRoll, limbTarget: limbTarget ?? 'chest', turnsRemaining });
+          battleDotState[campaignId][combatantKey] = updated;
+
+          await CombatSession.addLogEntry({
+            session_id: session.sessionId,
+            actor_name: 'Dungeon Master',
+            action_type: 'condition',
+            target_name: combatantName,
+            details: `${dotType} applied (${fixedDamage ? fixedDamage + ' dmg/turn' : (damageDice || 'roll') + ' dmg/turn'})`,
+          });
+          const log = await CombatSession.getLog(session.sessionId);
+          io.to(`campaign_${campaignId}`).emit('dotConditionsUpdated', { combatantKey, dotConditions: updated, campaignId });
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+        } catch (error) { console.error('Error applying DOT condition:', error); }
+      });
+
+      // Remove a DOT condition from a combatant
+      socket.on('removeDotCondition', async (data) => {
+        try {
+          const { campaignId, combatantKey, dotType } = data;
+          if (battleDotState[campaignId]?.[combatantKey]) {
+            battleDotState[campaignId][combatantKey] = battleDotState[campaignId][combatantKey].filter(d => d.type !== dotType);
+          }
+          const updated = battleDotState[campaignId]?.[combatantKey] ?? [];
+          io.to(`campaign_${campaignId}`).emit('dotConditionsUpdated', { combatantKey, dotConditions: updated, campaignId });
+        } catch (error) { console.error('Error removing DOT condition:', error); }
+      });
+
+      // DM sets darkness level for the campaign (0 = fully lit, 1 = pitch black)
+      socket.on('setDarkness', (data) => {
+        try {
+          const { campaignId, darknessLevel } = data;
+          const clamped = Math.max(0, Math.min(1, Number(darknessLevel) || 0));
+          battleDarknessState[campaignId] = clamped;
+          io.to(`campaign_${campaignId}`).emit('darknessUpdated', { darknessLevel: clamped, campaignId });
+        } catch (error) { console.error('Error setting darkness:', error); }
+      });
+
+      // DM confirms DOT damage amount for a tick (fixed or after manual determination)
+      socket.on('confirmDotDamage', async (data) => {
+        try {
+          const { campaignId, targetKey, targetType, combatantName, dotType, damage, limbTarget } = data;
+          const session = battleCombatState[campaignId];
+          if (!session) return;
+
+          if (targetType === 'character') {
+            const charId = parseInt(targetKey, 10);
+            const character = await Character.findById(charId);
+            if (!character) return;
+
+            // Apply DOT damage to the specific limb (limb-based system)
+            const isFirstInit = !character.limb_health;
+            let limbHealth = character.limb_health ? { ...character.limb_health } : initCharacterLimbHealth(character);
+            const validLimb = limbTarget && limbHealth[limbTarget] !== undefined ? limbTarget : 'chest';
+            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - damage);
+
+            // Vital hit check
+            const vitalKilled = ['head', 'chest'].some(k => limbHealth[k] !== undefined && limbHealth[k] === 0);
+            if (vitalKilled) Object.keys(limbHealth).forEach(k => { limbHealth[k] = 0; });
+
+            const newHP = Math.max(0, Object.values(limbHealth).reduce((s, v) => s + Number(v), 0));
+            if (isFirstInit) {
+              await pool.query(
+                'UPDATE characters SET hit_points = $1, limb_health = $2, hit_points_max = COALESCE(hit_points_max, $3) WHERE id = $4',
+                [newHP, JSON.stringify(limbHealth), character.hit_points, charId]
+              );
+            } else {
+              await pool.query('UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3', [newHP, JSON.stringify(limbHealth), charId]);
+            }
+
+            if (session.sessionId) {
+              await CombatSession.addLogEntry({
+                session_id: session.sessionId,
+                actor_name: dotType,
+                action_type: 'damage',
+                target_name: combatantName,
+                limb_name: validLimb,
+                damage,
+                details: `${dotType} deals ${damage} damage to ${validLimb}`,
+              });
+            }
+            const updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth, isDead: newHP <= 0, campaignId };
+            const log = session.sessionId ? await CombatSession.getLog(session.sessionId) : [];
+            io.to(`campaign_${campaignId}`).emit('healthUpdated', { ...updatedHealthData, timestamp: new Date().toISOString() });
+            io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+          } else if (targetType === 'monster') {
+            const instanceId = parseInt(targetKey, 10);
+            const MonsterInstance = require('./models/MonsterInstance');
+            const instance = await MonsterInstance.findById(instanceId);
+            if (!instance) return;
+            const limbHealth = { ...instance.current_limb_health };
+            const validLimb = limbTarget && limbHealth[limbTarget] !== undefined ? limbTarget : 'chest';
+            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - damage);
+            const vitalKilled = ['head', 'chest'].some(k => limbHealth[k] !== undefined && limbHealth[k] === 0);
+            if (vitalKilled) Object.keys(limbHealth).forEach(k => { limbHealth[k] = 0; });
+            await MonsterInstance.updateHealth(instanceId, limbHealth);
+            const totalHP = Object.values(limbHealth).reduce((s, v) => s + v, 0);
+            if (session.sessionId) {
+              await CombatSession.addLogEntry({
+                session_id: session.sessionId,
+                actor_name: dotType,
+                action_type: 'damage',
+                target_name: combatantName,
+                limb_name: validLimb,
+                damage,
+                details: `${dotType} deals ${damage} damage to ${validLimb}`,
+              });
+            }
+            const updatedHealthData = { type: 'monster', instanceId, limbHealth, totalHP, isDead: totalHP <= 0 };
+            const log = session.sessionId ? await CombatSession.getLog(session.sessionId) : [];
+            io.to(`campaign_${campaignId}`).emit('healthUpdated', { ...updatedHealthData, timestamp: new Date().toISOString() });
+            io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+          }
+        } catch (error) { console.error('Error confirming DOT damage:', error); }
+      });
+
+      // Apply healing to a combatant (DM action)
+      socket.on('applyHeal', async (data) => {
+        try {
+          const { campaignId, targetKey, targetType, targetName, limbName, healAmount, healerName } = data;
+          const session = battleCombatState[campaignId];
+          if (!session) return;
+
+          let updatedHealthData = null;
+
+          if (targetType === 'character') {
+            const charId = parseInt(targetKey, 10);
+            const character = await Character.findById(charId);
+            if (!character) return;
+            // Fetch max HP from DB (hit_points_max column or use current as max if not tracked)
+            const maxHpResult = await pool.query(
+              `SELECT CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN GREATEST(hit_points, 1) ELSE hit_points_max END as max_hp
+               FROM characters WHERE id = $1`,
+              [charId]
+            );
+            const maxHp = maxHpResult.rows[0]?.max_hp ?? character.hit_points;
+
+            // Get or initialize per-limb health
+            const healIsFirstInit = !character.limb_health;
+            let limbHealth = character.limb_health ? { ...character.limb_health } : initCharacterLimbHealth(character);
+
+            // maxHp = COALESCE(hit_points_max, hit_points) = base HP stat, used for per-limb caps
+            const limbMaxValues = initCharacterLimbHealth({ ...character, hit_points: maxHp });
+
+            // Heal the specified limb (defaults to chest if none specified or not found)
+            const validLimb = limbName && limbHealth[limbName] !== undefined ? limbName : 'chest';
+            limbHealth[validLimb] = Math.min(limbMaxValues[validLimb] ?? (limbHealth[validLimb] || 0) + healAmount, (limbHealth[validLimb] || 0) + healAmount);
+
+            // Total HP = sum of current limb HPs
+            const newHP = Math.max(0, Object.values(limbHealth).reduce((s, v) => s + Number(v), 0));
+
+            if (healIsFirstInit) {
+              await pool.query(
+                'UPDATE characters SET hit_points = $1, limb_health = $2, hit_points_max = COALESCE(hit_points_max, $3) WHERE id = $4',
+                [newHP, JSON.stringify(limbHealth), character.hit_points, charId]
+              );
+            } else {
+              await pool.query('UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3', [newHP, JSON.stringify(limbHealth), charId]);
+            }
+            updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth, isDead: false };
+          } else if (targetType === 'monster') {
+            const instanceId = parseInt(targetKey, 10);
+            const MonsterInstance = require('./models/MonsterInstance');
+            const instance = await MonsterInstance.findById(instanceId);
+            if (!instance) return;
+            const limbHealth = { ...instance.current_limb_health };
+            const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
+            // No max per-limb tracked — just add (DM responsibility for limits)
+            limbHealth[validLimb] = (limbHealth[validLimb] || 0) + healAmount;
+            await MonsterInstance.updateHealth(instanceId, limbHealth);
+            const totalHP = Object.values(limbHealth).reduce((s, v) => s + v, 0);
+            updatedHealthData = { type: 'monster', instanceId, limbHealth, totalHP, isDead: false };
+          }
+
+          if (session.sessionId && updatedHealthData) {
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: healerName || 'Dungeon Master',
+              action_type: 'heal',
+              target_name: targetName,
+              limb_name: limbName || null,
+              damage: -healAmount,
+              details: `Healed ${healAmount} HP${limbName ? ` (${limbName})` : ''}`,
+            });
+          }
+          const log = session.sessionId ? await CombatSession.getLog(session.sessionId) : [];
+          if (updatedHealthData) {
+            io.to(`campaign_${campaignId}`).emit('healthUpdated', { ...updatedHealthData, campaignId, timestamp: new Date().toISOString() });
+          }
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log, timestamp: new Date().toISOString() });
+        } catch (error) { console.error('Error applying heal:', error); }
+      });
+
+      // ─── Short Rest: DM initiates, each player sees a hit-dice-spending prompt ───
+      socket.on('initiateShortRest', async (data) => {
+        try {
+          const { campaignId } = data;
+          const session = battleCombatState[campaignId];
+          const charCombatants = session
+            ? session.combatants.filter(c => !c.isMonster)
+            : [];
+
+          let charIds = charCombatants.map(c => parseInt(String(c.characterId), 10)).filter(id => !isNaN(id));
+
+          // Fallback: if no combat session, fetch all campaign characters
+          if (charIds.length === 0) {
+            const campChars = await pool.query('SELECT id FROM characters WHERE campaign_id = $1', [parseInt(campaignId, 10)]);
+            charIds = campChars.rows.map(r => r.id);
+          }
+          if (charIds.length === 0) return;
+
+          const res = await pool.query(
+            `SELECT id, name, hit_points,
+                    CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN GREATEST(hit_points, 1) ELSE hit_points_max END as max_hp,
+                    level, class, abilities, player_id,
+                    COALESCE(hit_dice_remaining, level) as hdr,
+                    limb_health
+             FROM characters WHERE id = ANY($1::int[])`,
+            [charIds]
+          );
+
+          const characters = res.rows.map(ch => {
+            const abilities = typeof ch.abilities === 'string' ? JSON.parse(ch.abilities) : (ch.abilities || {});
+            const con = abilities.con ?? 10;
+            const conMod = Math.floor((con - 10) / 2);
+            const die = HIT_DICE_MAP[ch.class] ?? 8;
+            const limbMax = initCharacterLimbHealth({ hit_points: ch.max_hp, abilities });
+            const limbMaxTotal = Object.values(limbMax).reduce((s, v) => s + Number(v), 0);
+            let limbCurrentTotal = limbMaxTotal;
+
+            if (ch.limb_health) {
+              const current = typeof ch.limb_health === 'string' ? JSON.parse(ch.limb_health) : ch.limb_health;
+              limbCurrentTotal = Object.values(current || {}).reduce((s, v) => s + Number(v || 0), 0);
+            } else if (Number(ch.max_hp) > 0) {
+              limbCurrentTotal = Math.round((Number(ch.hit_points) / Number(ch.max_hp)) * limbMaxTotal);
+            }
+
+            return {
+              characterId: ch.id,
+              playerId: ch.player_id,
+              name: ch.name,
+              die,
+              hitDiceRemaining: ch.hdr,
+              currentHp: limbCurrentTotal,
+              maxHp: limbMaxTotal,
+              conMod,
+            };
+          });
+
+          io.to(`campaign_${campaignId}`).emit('shortRestStarted', { campaignId, characters });
+
+          // Immediately restore short-rest resources: Warlock pact magic, Monk ki points
+          if (charIds.length > 0) {
+            // Clear used pact magic slots for Warlocks (pact magic recharges on short rest)
+            await pool.query(
+              `UPDATE characters
+               SET spell_slots_used = '{}'::jsonb,
+                   ki_points_remaining = CASE WHEN class = 'Monk' THEN level ELSE ki_points_remaining END
+               WHERE id = ANY($1::int[]) AND class IN ('Warlock', 'Monk')`,
+              [charIds]
+            );
+          }
+          console.log(`💤 Short rest initiated for campaign ${campaignId} (${characters.length} characters)`);
+        } catch (error) { console.error('Error initiating short rest:', error); }
+      });
+
+      // ─── Short Rest: player spends hit dice (server rolls for them) ───
+      socket.on('spendHitDice', async (data) => {
+        try {
+          const { campaignId, characterId, diceToSpend } = data;
+          const charId = parseInt(characterId, 10);
+          const res = await pool.query(
+            `SELECT id, name, hit_points,
+                    CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN GREATEST(hit_points, 1) ELSE hit_points_max END as max_hp,
+                    level, class, abilities, COALESCE(hit_dice_remaining, level) as hdr,
+                    limb_health
+             FROM characters WHERE id = $1`,
+            [charId]
+          );
+          if (res.rows.length === 0) return;
+          const ch = res.rows[0];
+          const abilities = typeof ch.abilities === 'string' ? JSON.parse(ch.abilities) : (ch.abilities || {});
+          const con = abilities.con ?? 10;
+          const conMod = Math.floor((con - 10) / 2);
+          const die = HIT_DICE_MAP[ch.class] ?? 8;
+          const clampedDice = Math.min(Math.max(0, diceToSpend), ch.hdr);
+
+          // Server rolls — player cannot influence or reroll
+          const rolls = [];
+          for (let i = 0; i < clampedDice; i++) {
+            rolls.push(Math.floor(Math.random() * die) + 1);
+          }
+          const rawHealing = rolls.reduce((s, r) => s + r, 0) + clampedDice * conMod;
+          const totalHealing = Math.max(0, rawHealing);
+          const newHp = Math.min(ch.max_hp, ch.hit_points + totalHealing);
+          const newRemaining = ch.hdr - clampedDice;
+
+          // Heal limbs in priority order: head → chest → then split evenly across arms/legs
+          let newLimbHealth = null;
+          if (totalHealing > 0 && ch.limb_health) {
+            const limbHealth = typeof ch.limb_health === 'string' ? JSON.parse(ch.limb_health) : ch.limb_health;
+            const conBonus = Math.max(0, conMod * 0.1);
+            const baseHP = ch.max_hp;
+            const limbMax = {
+              head:      Math.floor(baseHP * Math.min(1.0, 0.25 + conBonus)),
+              chest:     Math.floor(baseHP * Math.min(2.0, 1.0  + conBonus)),
+              left_arm:  Math.floor(baseHP * Math.min(1.0, 0.15 + conBonus)),
+              right_arm: Math.floor(baseHP * Math.min(1.0, 0.15 + conBonus)),
+              left_leg:  Math.floor(baseHP * Math.min(1.0, 0.40 + conBonus)),
+              right_leg: Math.floor(baseHP * Math.min(1.0, 0.40 + conBonus)),
+            };
+            let remaining = totalHealing;
+            const healed = { ...limbHealth };
+            // Ensure all limb keys exist (NULL means full)
+            for (const limb of Object.keys(limbMax)) {
+              if (healed[limb] == null) healed[limb] = limbMax[limb];
+            }
+            // Priority 1: vital limbs
+            for (const limb of ['head', 'chest']) {
+              if (remaining <= 0) break;
+              const cur = healed[limb];
+              const max = limbMax[limb];
+              const needed = max - cur;
+              if (needed > 0) { const h = Math.min(needed, remaining); healed[limb] = cur + h; remaining -= h; }
+            }
+            // Priority 2: split remaining evenly across limbs
+            if (remaining > 0) {
+              const others = ['left_arm', 'right_arm', 'left_leg', 'right_leg'];
+              let pass = 0;
+              while (remaining > 0 && pass < 100) {
+                pass++;
+                let gave = 0;
+                for (const limb of others) {
+                  if (remaining <= 0) break;
+                  const cur = healed[limb]; const max = limbMax[limb];
+                  if (cur < max) { healed[limb] = cur + 1; remaining--; gave++; }
+                }
+                if (gave === 0) break;
+              }
+            }
+            // Check if all limbs are at max (set to NULL if so, same as long rest convention)
+            const allFull = Object.keys(limbMax).every(l => (healed[l] ?? limbMax[l]) >= limbMax[l]);
+            newLimbHealth = allFull ? null : JSON.stringify(healed);
+          }
+
+          if (newLimbHealth !== undefined) {
+            await pool.query(
+              'UPDATE characters SET hit_points = $1, hit_dice_remaining = $2, limb_health = $3 WHERE id = $4',
+              [newHp, newRemaining, newLimbHealth, charId]
+            );
+          } else {
+            await pool.query(
+              'UPDATE characters SET hit_points = $1, hit_dice_remaining = $2 WHERE id = $3',
+              [newHp, newRemaining, charId]
+            );
+          }
+
+          const session = battleCombatState[campaignId];
+          if (session?.sessionId && clampedDice > 0) {
+            const rollStr = rolls.join(', ');
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: ch.name,
+              action_type: 'heal',
+              target_name: ch.name,
+              damage: -totalHealing,
+              details: `Short rest: rolled ${clampedDice}d${die} [${rollStr}] + CON(${conMod >= 0 ? '+' : ''}${conMod}) = ${totalHealing} HP healed`,
+            });
+            const log = await CombatSession.getLog(session.sessionId);
+            io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+          }
+
+          io.to(`campaign_${campaignId}`).emit('shortRestResult', {
+            characterId: charId,
+            name: ch.name,
+            die,
+            diceSpent: clampedDice,
+            rolls,
+            conMod,
+            totalHealed: totalHealing,
+            newHp,
+            hitDiceRemaining: newRemaining,
+            campaignId,
+          });
+          // Also emit healthUpdated so existing HP bars update
+          io.to(`campaign_${campaignId}`).emit('healthUpdated', {
+            type: 'character',
+            characterId: charId,
+            newHP: newHp,
+            maxHP: ch.max_hp,
+            limbHealth: newLimbHealth === null ? null : (typeof newLimbHealth === 'string' ? JSON.parse(newLimbHealth) : newLimbHealth),
+            isDead: newHp <= 0,
+            campaignId,
+            timestamp: new Date().toISOString(),
+          });
+          console.log(`💤 ${ch.name} spent ${clampedDice}d${die} → +${totalHealing} HP (now ${newHp}/${ch.max_hp}), ${newRemaining} dice left`);
+        } catch (error) { console.error('Error spending hit dice:', error); }
+      });
+
+      // ─── Long Rest: restore full HP + recover hit dice for all combatant characters ───
+      socket.on('performLongRest', async (data) => {
+        try {
+          const { campaignId } = data;
+          const session = battleCombatState[campaignId];
+          // Always rest all campaign characters — a long rest restores everyone, not just active combatants
+          const campChars = await pool.query('SELECT id FROM characters WHERE campaign_id = $1', [parseInt(campaignId, 10)]);
+          const charIds = campChars.rows.map(r => r.id);
+          if (charIds.length === 0) return;
+
+          const res = await pool.query(
+            `SELECT id, name,
+                    CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN GREATEST(hit_points, 1) ELSE hit_points_max END as max_hp,
+                    level, class, COALESCE(hit_dice_remaining, level) as hdr
+             FROM characters WHERE id = ANY($1::int[])`,
+            [charIds]
+          );
+
+          const results = [];
+          for (const ch of res.rows) {
+            const recovered = Math.max(1, Math.floor(ch.level / 2));
+            const newRemaining = Math.min(ch.level, ch.hdr + recovered);
+            const kiRestored = ch.class === 'Monk' ? ch.level : null;
+            // Long rest: full HP, clear limb damage, reset all spell slots, restore ki to full
+            await pool.query(
+              `UPDATE characters
+               SET hit_points = $1, hit_dice_remaining = $2, limb_health = NULL,
+                   hit_points_max = CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN $1 ELSE hit_points_max END,
+                   spell_slots_used = '{}'::jsonb,
+                   ki_points_remaining = CASE WHEN class = 'Monk' THEN level ELSE ki_points_remaining END
+               WHERE id = $3`,
+              [ch.max_hp, newRemaining, ch.id]
+            );
+            results.push({ characterId: ch.id, name: ch.name, newHp: ch.max_hp, hitDiceRemaining: newRemaining, kiRestored, class: ch.class });
+            // Update live HP bars for each character
+            io.to(`campaign_${campaignId}`).emit('healthUpdated', {
+              type: 'character',
+              characterId: ch.id,
+              newHP: ch.max_hp,
+              maxHP: ch.max_hp,
+              limbHealth: null,
+              isDead: false,
+              campaignId,
+              timestamp: new Date().toISOString(),
+            });
+            // Explicitly sync cleared spell slots and ki so all clients update regardless of local state
+            io.to(`campaign_${campaignId}`).emit('spellSlotUpdated', { characterId: ch.id, spell_slots_used: {} });
+            if (kiRestored != null) {
+              io.to(`campaign_${campaignId}`).emit('kiPointUpdated', { characterId: ch.id, ki_points_remaining: kiRestored });
+            }
+          }
+
+          if (session?.sessionId) {
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: 'Dungeon Master',
+              action_type: 'heal',
+              target_name: 'Party',
+              details: `Long rest: all characters fully restored`,
+            });
+            const log = await CombatSession.getLog(session.sessionId);
+            io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+          }
+
+          io.to(`campaign_${campaignId}`).emit('longRestCompleted', { campaignId, results });
+          console.log(`🌙 Long rest completed for campaign ${campaignId} (${results.length} characters restored)`);
+        } catch (error) { console.error('Error performing long rest:', error); }
+      });
+
+      // ─── Spell Slot & Ki Point sync (DM or player toggles) ───
+      socket.on('useSpellSlot', async (data) => {
+        try {
+          const { campaignId, characterId, slotLevel } = data;
+          const result = await pool.query(
+            `UPDATE characters
+             SET spell_slots_used = jsonb_set(
+               COALESCE(spell_slots_used, '{}'::jsonb),
+               ARRAY[$1::text],
+               (COALESCE((spell_slots_used->>$1)::int, 0) + 1)::text::jsonb
+             )
+             WHERE id = $2
+             RETURNING spell_slots_used`,
+            [String(slotLevel), characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('spellSlotUpdated', {
+              characterId, spell_slots_used: result.rows[0].spell_slots_used
+            });
+          }
+        } catch (error) { console.error('Error using spell slot:', error); }
+      });
+
+      socket.on('restoreSpellSlot', async (data) => {
+        try {
+          const { campaignId, characterId, slotLevel } = data;
+          const result = await pool.query(
+            `UPDATE characters
+             SET spell_slots_used = jsonb_set(
+               COALESCE(spell_slots_used, '{}'::jsonb),
+               ARRAY[$1::text],
+               GREATEST(0, COALESCE((spell_slots_used->>$1)::int, 0) - 1)::text::jsonb
+             )
+             WHERE id = $2
+             RETURNING spell_slots_used`,
+            [String(slotLevel), characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('spellSlotUpdated', {
+              characterId, spell_slots_used: result.rows[0].spell_slots_used
+            });
+          }
+        } catch (error) { console.error('Error restoring spell slot:', error); }
+      });
+
+      socket.on('useKiPoint', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters
+             SET ki_points_remaining = GREATEST(0, COALESCE(ki_points_remaining, level) - 1)
+             WHERE id = $1
+             RETURNING ki_points_remaining`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('kiPointUpdated', {
+              characterId, ki_points_remaining: result.rows[0].ki_points_remaining
+            });
+          }
+        } catch (error) { console.error('Error using ki point:', error); }
+      });
+
+      socket.on('restoreKiPoint', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters
+             SET ki_points_remaining = LEAST(level, COALESCE(ki_points_remaining, level) + 1)
+             WHERE id = $1
+             RETURNING ki_points_remaining`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('kiPointUpdated', {
+              characterId, ki_points_remaining: result.rows[0].ki_points_remaining
+            });
+          }
+        } catch (error) { console.error('Error restoring ki point:', error); }
+      });
+
+      // Roll death saves for a downed character
+      socket.on('rollDeathSave', async (data) => {
+        try {
+          const { campaignId, characterId, result } = data; // result: 'success' | 'failure'
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          let current = await CombatSession.getDeathSavesForCharacter(session.sessionId, characterId);
+          const saves = {
+            successes: current?.successes || 0,
+            failures: current?.failures || 0,
+            is_stable: current?.is_stable || false,
+            is_dead: current?.is_dead || false,
+          };
+
+          if (result === 'success') {
+            saves.successes = Math.min(3, saves.successes + 1);
+            if (saves.successes >= 3) saves.is_stable = true;
+          } else {
+            saves.failures = Math.min(3, saves.failures + 1);
+            if (saves.failures >= 3) {
+              saves.is_dead = true;
+              // Apply Dead condition
+              const combatantKey = String(characterId);
+              const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+              if (combatant) {
+                const conditions = [...(combatant.conditions || []).filter(c => c !== 'Unconscious'), 'Dead'];
+                await CombatSession.updateCombatant(combatant.id, { conditions });
+                const cached = session.combatants.find(c => c.characterId === combatantKey);
+                if (cached) { cached.conditions = conditions; cached.isDead = true; }
+                io.to(`campaign_${campaignId}`).emit('conditionsUpdated', { combatantKey, conditions, campaignId });
+              }
+              io.to(`campaign_${campaignId}`).emit('characterDied', { characterId, campaignId });
+            }
+          }
+
+          await CombatSession.upsertDeathSaves(session.sessionId, characterId, saves);
+          const allSaves = await CombatSession.getDeathSaves(session.sessionId);
+          await CombatSession.addLogEntry({ session_id: session.sessionId, action_type: 'death_save', target_name: String(characterId), details: `Death save ${result} (${saves.successes}✓ / ${saves.failures}✗)` });
+          const log = await CombatSession.getLog(session.sessionId);
+          io.to(`campaign_${campaignId}`).emit('deathSavesUpdated', { deathSaves: allSaves, campaignId });
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+        } catch (error) { console.error('Error rolling death save:', error); }
+      });
+
+      // DM: Revive a dead combatant (all limbs set to 1 HP)
+      socket.on('reviveCombatant', async (data) => {
+        try {
+          const { campaignId, targetKey, targetType, reviverName } = data;
+          const session = battleCombatState[campaignId];
+          if (!session) return;
+
+          let updatedHealthData = null;
+
+          if (targetType === 'monster') {
+            const instanceId = parseInt(targetKey, 10);
+            const MonsterInstance = require('./models/MonsterInstance');
+            const instance = await MonsterInstance.findById(instanceId);
+            if (!instance) return;
+
+            const limbHealth = { ...instance.current_limb_health };
+            Object.keys(limbHealth).forEach(k => { limbHealth[k] = 1; });
+            await MonsterInstance.updateHealth(instanceId, limbHealth);
+            // Restore to combat
+            await pool.query('UPDATE monster_instances SET in_combat = TRUE WHERE id = $1', [instanceId]);
+
+            const totalHP = Object.values(limbHealth).reduce((s, v) => s + v, 0);
+            updatedHealthData = { type: 'monster', instanceId, limbHealth, totalHP, isDead: false };
+
+            const cached = session.combatants.find(c => c.characterId === String(instanceId));
+            if (cached) cached.isDead = false;
+          } else if (targetType === 'character') {
+            const charId = parseInt(targetKey, 10);
+            const character = await Character.findById(charId);
+            if (!character) return;
+
+            let limbHealth = character.limb_health ?? initCharacterLimbHealth(character);
+            const numLimbs = Object.keys(limbHealth).length;
+            Object.keys(limbHealth).forEach(k => { limbHealth[k] = 1; });
+            const newHP = numLimbs;
+
+            await pool.query(
+              'UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3',
+              [newHP, JSON.stringify(limbHealth), charId]
+            );
+            updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth, isDead: false };
+
+            if (session.sessionId) {
+              // Clear death saves — character is revived
+              await CombatSession.upsertDeathSaves(session.sessionId, charId, { successes: 0, failures: 0, is_stable: true, is_dead: false });
+              const allSaves = await CombatSession.getDeathSaves(session.sessionId);
+              io.to(`campaign_${campaignId}`).emit('deathSavesUpdated', { deathSaves: allSaves, campaignId });
+
+              // Remove Dead/Unconscious conditions
+              const combatantKey = String(charId);
+              const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+              if (combatant) {
+                const conditions = (combatant.conditions || []).filter(c => c !== 'Dead' && c !== 'Unconscious');
+                await CombatSession.updateCombatant(combatant.id, { conditions });
+                const cached = session.combatants.find(c => c.characterId === combatantKey);
+                if (cached) { cached.conditions = conditions; cached.isDead = false; }
+                io.to(`campaign_${campaignId}`).emit('conditionsUpdated', { combatantKey, conditions, campaignId });
+              }
+            }
+          }
+
+          if (updatedHealthData && session.sessionId) {
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: reviverName || 'DM',
+              action_type: 'revive',
+              target_name: data.targetName || targetKey,
+              details: 'Revived — all limbs restored to 1 HP',
+            });
+            const log = await CombatSession.getLog(session.sessionId);
+            io.to(`campaign_${campaignId}`).emit('healthUpdated', { ...updatedHealthData, campaignId, timestamp: new Date().toISOString() });
+            io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log, timestamp: new Date().toISOString() });
+          }
+        } catch (error) { console.error('Error reviving combatant:', error); }
+      });
+
+      // Set/clear spell concentration for a character
+      socket.on('setConcentration', async (data) => {
+        try {
+          const { campaignId, combatantKey, spellName } = data; // spellName null to clear
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+          if (!combatant) return;
+          await CombatSession.updateCombatant(combatant.id, { concentration_spell: spellName || null });
+
+          const cached = session.combatants.find(c => c.characterId === combatantKey);
+          if (cached) cached.concentration_spell = spellName || null;
+
+          await CombatSession.addLogEntry({ session_id: session.sessionId, actor_name: combatant.name, action_type: 'concentration', details: spellName ? `Concentrating on ${spellName}` : 'Concentration ended' });
+          const log = await CombatSession.getLog(session.sessionId);
+          io.to(`campaign_${campaignId}`).emit('concentrationUpdated', { combatantKey, spellName: spellName || null, campaignId });
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+        } catch (error) { console.error('Error setting concentration:', error); }
+      });
+
+      // Remove a combatant from active combat (DM action)
+      socket.on('removeCombatant', async (data) => {
+        try {
+          const { campaignId, combatantKey } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+          if (combatant) {
+            await CombatSession.removeCombatant(combatant.id);
+            if (combatant.monster_instance_id) {
+              const MonsterInstance = require('./models/MonsterInstance');
+              await MonsterInstance.removeFromCombat(combatant.monster_instance_id);
+            }
+          }
+
+          // Update cache
+          session.combatants = session.combatants.filter(c => c.characterId !== combatantKey);
+          session.initiativeOrder = session.initiativeOrder.filter(k => k !== combatantKey);
+
+          // Adjust turn index if needed
+          if (session.currentTurnIndex >= session.initiativeOrder.length && session.initiativeOrder.length > 0) {
+            session.currentTurnIndex = session.initiativeOrder.length - 1;
+          }
+          await CombatSession.updateTurnIndex(session.sessionId, session.currentTurnIndex);
+
+          io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
+            combatants: session.combatants,
+            initiativeOrder: session.initiativeOrder,
+            currentTurnIndex: session.currentTurnIndex,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) { console.error('Error removing combatant:', error); }
+      });
+
+      // Spend an action economy resource
+      socket.on('spendActionEconomy', async (data) => {
+        try {
+          const { campaignId, combatantKey, actionType, spent } = data; // actionType: 'action'|'bonusAction'|'reaction', spent: boolean
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+          if (!combatant) return;
+
+          const fieldMap = { action: 'action_used', bonusAction: 'bonus_action_used', reaction: 'reaction_used' };
+          const field = fieldMap[actionType];
+          if (!field) return;
+          await CombatSession.updateCombatant(combatant.id, { [field]: spent });
+
+          const allCombatants = await CombatSession.getCombatants(session.sessionId);
+          io.to(`campaign_${campaignId}`).emit('actionEconomyUpdated', {
+            combatants: allCombatants,
+            campaignId,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) { console.error('Error spending action economy:', error); }
+      });
+
+      // DM requests a player to roll dice
+      socket.on('requestDiceRoll', async (data) => {
+        try {
+          const { campaignId, targetPlayerId, targetCharacterName, diceType, rollPurpose, purposeDetail, requesterName, modifier } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const request = await CombatSession.createDiceRequest({
+            session_id: session.sessionId,
+            requester_id: socket.userId || 0,
+            requester_name: requesterName || 'Dungeon Master',
+            target_player_id: targetPlayerId,
+            target_character_name: targetCharacterName,
+            dice_type: diceType,
+            roll_purpose: rollPurpose,
+            purpose_detail: purposeDetail,
+          });
+
+          // Anti-cheat: track pending general roll requests
+          if (!battleRollState[campaignId]) battleRollState[campaignId] = {};
+          battleRollState[campaignId][request.id] = {
+            type: 'diceRollRequested',
+            status: 'pending',
+            targetPlayerId,
+            config: {
+              requestId: request.id,
+              requesterName: request.requester_name,
+              targetCharacterName,
+              diceType,
+              rollPurpose,
+              purposeDetail,
+              campaignId,
+              modifier: modifier || 'none',
+              precomputedModifier: data.precomputedModifier ?? null,
+            },
+          };
+          // Send only to the target player
+          const targetSocketId = userSocketMap.get(targetPlayerId);
+          if (targetSocketId) {
+            io.to(targetSocketId).emit('diceRollRequested', {
+              requestId: request.id,
+              requesterName: request.requester_name,
+              targetCharacterName,
+              diceType,
+              rollPurpose,
+              purposeDetail,
+              campaignId,
+              modifier: modifier || 'none',
+              precomputedModifier: data.precomputedModifier ?? null,
+            });
+          }
+          console.log(`🎲 Dice roll requested: ${diceType} ${rollPurpose} (mod: ${modifier || 'none'}) for player ${targetPlayerId}`);
+        } catch (error) { console.error('Error requesting dice roll:', error); }
+      });
+
+      // Player submits dice roll result
+      socket.on('submitDiceResult', async (data) => {
+        try {
+          const { campaignId, requestId, result, rawRoll, total, modifierValue, modifier, rollerName,
+                  attackerKey, targetKey, targetName: attackTargetName, hitRoll, damageRoll,
+                  purposeDetail, diceType: submittedDiceType, rollPurpose: submittedRollPurpose } = data;
+          const session = battleCombatState[campaignId];
+
+          let resolvedPurposeDetail = purposeDetail || null;
+          let resolvedDiceType = submittedDiceType || null;
+          let resolvedRollPurpose = submittedRollPurpose || null;
+
+          // Anti-cheat: reject duplicate submissions for the same requestId
+          if (requestId && battleRollState[campaignId]?.[requestId]) {
+            const entry = battleRollState[campaignId][requestId];
+            const cfg = entry.config || {};
+            if (!resolvedPurposeDetail && cfg.purposeDetail) resolvedPurposeDetail = cfg.purposeDetail;
+            if (!resolvedDiceType && cfg.diceType) resolvedDiceType = cfg.diceType;
+            if (!resolvedRollPurpose && cfg.rollPurpose) resolvedRollPurpose = cfg.rollPurpose;
+            if (entry.status === 'resolved') {
+              console.warn(`⛔ Duplicate submitDiceResult blocked for requestId ${requestId}`);
+              return;
+            }
+            // Allow hit_submitted (shouldn't normally call submitDiceResult) and damage_pending
+            entry.status = 'resolved';
+          }
+
+          // total is raw + modifier; result (legacy) is just the raw roll if no modifier
+          const finalRaw = rawRoll ?? result;
+          const finalTotal = total ?? result;
+
+          // Try to resolve in DB — attack rolls don't create a DB dice request so this may throw; don't let it block the emit
+          try {
+            await CombatSession.resolveDiceRequest(requestId, finalTotal);
+          } catch (_) { /* expected for attack-based rolls */ }
+
+          if (session?.sessionId) {
+            const pd = resolvedPurposeDetail;
+            const dt = resolvedDiceType || 'd20';
+            let breakdown;
+            if (modifier && modifier !== 'none' && modifierValue !== undefined && modifierValue !== 0) {
+              // Named ability modifier (str/dex/etc)
+              const modSign = modifierValue >= 0 ? `+${modifierValue}` : `${modifierValue}`;
+              const label = pd ? `${pd} (${modifier.toUpperCase()} ${modSign})` : `${modifier.toUpperCase()} ${modSign}`;
+              breakdown = `${rollerName} rolled ${dt}: ${finalRaw} + ${label} = ${finalTotal}`;
+            } else if (modifierValue !== undefined && modifierValue !== 0) {
+              // Precomputed modifier (Quick Roll skill/save)
+              const modSign = modifierValue >= 0 ? `+${modifierValue}` : `${modifierValue}`;
+              const label = pd ? `${pd} (${modSign})` : modSign;
+              breakdown = `${rollerName} rolled ${dt}: ${finalRaw} + ${label} = ${finalTotal}`;
+            } else if (pd) {
+              breakdown = `${rollerName} rolled ${dt} for ${pd}: ${finalTotal}`;
+            } else {
+              breakdown = `${rollerName} rolled ${dt}: ${finalTotal}`;
+            }
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: rollerName,
+              action_type: 'dice_roll',
+              roll_result: finalTotal,
+              details: breakdown,
+            });
+            const log = await CombatSession.getLog(session.sessionId);
+            io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+          }
+
+          io.to(`campaign_${campaignId}`).emit('diceResultReceived', {
+            requestId,
+            rollerName,
+            result: finalRaw,
+            rawRoll: finalRaw,
+            total: finalTotal,
+            modifierValue: modifierValue ?? 0,
+            modifier: modifier ?? 'none',
+            campaignId,
+            attackerKey: attackerKey ?? null,
+            targetKey: targetKey ?? null,
+            targetName: attackTargetName ?? null,
+            hitRoll: hitRoll ?? null,
+            damageRoll: damageRoll ?? null,
+            diceType: resolvedDiceType,
+            rollPurpose: resolvedRollPurpose,
+            purposeDetail: resolvedPurposeDetail,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) { console.error('Error submitting dice result:', error); }
+      });
+
+      // Reroll request/approve/deny
+      socket.on('requestReroll', (data) => {
+        const { campaignId, requestId, rollerName: rerollRollerName, diceType } = data;
+        io.to(`campaign_${campaignId}`).emit('rerollRequested', { requestId, rollerName: rerollRollerName, diceType });
+      });
+
+      socket.on('approveReroll', (data) => {
+        const { campaignId, requestId } = data;
+        io.to(`campaign_${campaignId}`).emit('rerollApproved', { requestId });
+      });
+
+      socket.on('denyReroll', (data) => {
+        const { campaignId, requestId } = data;
+        io.to(`campaign_${campaignId}`).emit('rerollDenied', { requestId });
+      });
+
+      // Hit roll submitted by player — DM approves (proceed to damage) or denies (miss)
+      socket.on('submitHitRoll', (data) => {
+        const { campaignId, requestId, attackerName, targetName, hitTotal, hitRaw } = data;
+        // Anti-cheat: advance to hit_submitted (NOT resolved — damage roll still coming)
+        if (requestId && battleRollState[campaignId]?.[requestId]) {
+          battleRollState[campaignId][requestId].status = 'hit_submitted';
+          battleRollState[campaignId][requestId].hitTotal = hitTotal;
+          battleRollState[campaignId][requestId].attackerName = attackerName;
+          battleRollState[campaignId][requestId].targetName = targetName;
+        }
+        io.to(`campaign_${campaignId}`).emit('hitRollResult', { requestId, attackerName, targetName, hitTotal, hitRaw });
+      });
+
+      socket.on('approveHitRoll', (data) => {
+        const { campaignId, requestId, hitTotal, hitRaw } = data;
+        // Advance to damage_pending so refresh restores the player to damage-roll phase
+        if (requestId && battleRollState[campaignId]?.[requestId]) {
+          battleRollState[campaignId][requestId].status = 'damage_pending';
+          battleRollState[campaignId][requestId].hitTotal = hitTotal;
+        }
+        io.to(`campaign_${campaignId}`).emit('hitRollApproved', { requestId, hitTotal, hitRaw });
+      });
+
+      socket.on('denyHitRoll', (data) => {
+        const { campaignId, requestId } = data;
+        // Attack denied — fully resolved
+        if (requestId && battleRollState[campaignId]?.[requestId]) {
+          battleRollState[campaignId][requestId].status = 'resolved';
+        }
+        io.to(`campaign_${campaignId}`).emit('hitRollDenied', { requestId });
+      });
+
+      // Manually add a combat log entry (DM notes, spell casts, etc.)
+      socket.on('addCombatLog', async (data) => {
+        try {
+          const { campaignId, actorName, actionType, targetName, details } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          await CombatSession.addLogEntry({ session_id: session.sessionId, actor_name: actorName, action_type: actionType || 'note', target_name: targetName, details });
+          const log = await CombatSession.getLog(session.sessionId);
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
+        } catch (error) { console.error('Error adding combat log entry:', error); }
       });
 
       // ===== BATTLEFIELD / ARMY BATTLE EVENTS =====
@@ -1132,6 +2647,20 @@ const startServer = async () => {
           });
         } catch (error) {
           console.error('Error handling ability update:', error);
+        }
+      });
+
+      socket.on('baseHpUpdated', (data) => {
+        try {
+          const { campaignId, characterId, newBaseHp } = data;
+          io.to(`campaign_${campaignId}`).emit('baseHpUpdated', {
+            campaignId,
+            characterId,
+            newBaseHp,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('Error handling base HP update:', error);
         }
       });
 

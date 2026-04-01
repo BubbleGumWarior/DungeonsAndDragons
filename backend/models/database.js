@@ -525,7 +525,26 @@ const runMigrations = async () => {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_kingdoms_campaign ON kingdoms(campaign_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_kingdoms_player ON kingdoms(player_id);`);
     console.log('✅ kingdoms table created successfully');
-    
+
+    // Migration — add hit_points_max to characters (tracks max HP separately from current)
+    await pool.query(`ALTER TABLE characters ADD COLUMN IF NOT EXISTS hit_points_max INTEGER DEFAULT NULL`);
+
+    // Migration — add limb_health to characters (tracks per-limb current HP in combat)
+    await pool.query(`ALTER TABLE characters ADD COLUMN IF NOT EXISTS limb_health JSONB DEFAULT NULL`);
+
+    // Migration — add hit_dice_remaining to characters (NULL = full pool = level)
+    await pool.query(`ALTER TABLE characters ADD COLUMN IF NOT EXISTS hit_dice_remaining INTEGER DEFAULT NULL`);
+
+    // Migration — add spell slot and ki point tracking to characters
+    await pool.query(`ALTER TABLE characters ADD COLUMN IF NOT EXISTS spell_slots_used JSONB DEFAULT '{}'::jsonb`);
+    await pool.query(`ALTER TABLE characters ADD COLUMN IF NOT EXISTS ki_points_remaining INTEGER DEFAULT NULL`);
+
+    // Migration — fix default skill usage_frequency values
+    try {
+      const fixUsageFreq = require('../migrations/fix_default_skill_usage_frequency');
+      await fixUsageFreq();
+    } catch (e) { /* skills table may not exist yet on first run */ }
+
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running database migrations:', error);
@@ -757,8 +776,8 @@ const seedInventory = async () => {
         category: 'Armor',
         subcategory: 'Shield',
         description: 'A shield is made from wood or metal and is carried in one hand.',
-        armor_class: 2,
-        limb_armor_class: JSON.stringify({ hands: 2 }),
+        armor_class: 6,
+        limb_armor_class: JSON.stringify({ hands: 6 }),
         weight: 6.0,
         cost_cp: 1000,
         properties: JSON.stringify([])
