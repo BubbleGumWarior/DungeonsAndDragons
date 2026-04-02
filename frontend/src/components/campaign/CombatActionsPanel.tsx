@@ -29,20 +29,7 @@ interface Props {
   onRemoveDotCondition?: (dotType: string) => void;
 }
 
-const _Slot: React.FC<{ used: boolean; label: string; onClick?: () => void }> = ({ used, label, onClick }) => (
-  <button onClick={onClick}
-    title={`${label}: ${used ? 'Used' : 'Available'}`}
-    style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '0.35rem 0.6rem', borderRadius: '0.4rem', cursor: onClick ? 'pointer' : 'default',
-      background: used ? 'rgba(239,68,68,0.15)' : 'rgba(74,222,128,0.12)',
-      border: `1px solid ${used ? 'rgba(239,68,68,0.4)' : 'rgba(74,222,128,0.4)'}`,
-      minWidth: '60px',
-    }}>
-    <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{used ? '●' : '○'}</span>
-    <span style={{ fontSize: '0.65rem', color: used ? '#f87171' : '#4ade80', marginTop: '0.2rem' }}>{label}</span>
-  </button>
-);
+
 
 const conditionColor = (c: string): { bg: string; border: string; color: string } => {
   if (['Stunned', 'Paralyzed', 'Unconscious', 'Incapacitated', 'Petrified'].includes(c))
