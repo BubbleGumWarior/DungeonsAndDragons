@@ -280,30 +280,21 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
   };
 
   return (
-    <div className="container fade-in" style={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      padding: 'var(--spacing-md)' 
-    }}>
-      <div className="dashboard-container" style={{ maxWidth: '500px', margin: '2rem auto' }}>
+    <div className="auth-page fade-in">
+      <div className="glass-panel elevated auth-card">
         {/* Header */}
-        <div className="app-header">
-          <h1 className="app-title">Dungeon Lair</h1>
-          <p className="app-subtitle">Your D&D Adventure Awaits</p>
+        <div style={{ textAlign: 'center', marginBottom: 'var(--spacing-lg)' }}>
+          <div className="auth-title">Dungeon Lair</div>
+          <div className="auth-subtitle">Your D&amp;D Adventure Awaits</div>
         </div>
 
-        {/* Mode Toggle using glass panel */}
-        <div className="glass-panel primary" style={{ 
-          display: 'flex', 
-          padding: '4px', 
-          marginBottom: 'var(--spacing-lg)' 
-        }}>
+        <hr className="auth-divider" />
+
+        {/* Mode Toggle */}
+        <div className="auth-mode-toggle">
           <button
             type="button"
-            className={`btn ${mode === 'login' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1, margin: '0 2px', fontSize: '0.9rem' }}
+            className={`auth-mode-btn${mode === 'login' ? ' active' : ''}`}
             onClick={() => handleModeSwitch('login')}
             disabled={isTransitioning || isLoading}
           >
@@ -311,8 +302,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
           </button>
           <button
             type="button"
-            className={`btn ${mode === 'register' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1, margin: '0 2px', fontSize: '0.9rem' }}
+            className={`auth-mode-btn${mode === 'register' ? ' active' : ''}`}
             onClick={() => handleModeSwitch('register')}
             disabled={isTransitioning || isLoading}
           >
@@ -320,17 +310,16 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
           </button>
         </div>
 
-        {/* Form in glass panel */}
-        <div className="glass-panel">
-          <form 
-            ref={formRef}
-            onSubmit={handleSubmit} 
-            style={{ 
-              transition: 'all 0.3s ease',
-              opacity: isTransitioning ? 0.5 : 1,
-              transform: isTransitioning ? 'translateY(10px)' : 'translateY(0)'
-            }}
-          >
+        {/* Form */}
+        <form 
+          ref={formRef}
+          onSubmit={handleSubmit} 
+          style={{ 
+            transition: 'all 0.3s ease',
+            opacity: isTransitioning ? 0.5 : 1,
+            transform: isTransitioning ? 'translateY(10px)' : 'translateY(0)'
+          }}
+        >
             {/* Username field - only visible in register mode */}
             {mode === 'register' && (
               <div className="form-group" style={{
@@ -358,7 +347,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
               </div>
             )}
 
-            {/* Email field - shared between both modes */}
+            {/* Email field */}
             <div className="form-group">
               <label htmlFor="email" className="form-label">
                 Email Address
@@ -381,7 +370,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
               )}
             </div>
 
-            {/* Password field - shared between both modes */}
+            {/* Password field */}
             <div className="form-group">
               <label htmlFor="password" className="form-label">
                 Password
@@ -401,7 +390,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
               />
               {mode === 'register' && !getFieldError('password') && (
                 <div className="text-muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                  Password must be at least 8 characters with uppercase, lowercase, and number
+                  At least 8 characters with uppercase, lowercase, and number
                 </div>
               )}
               {getFieldError('password') && (
@@ -409,7 +398,7 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
               )}
             </div>
 
-            {/* Confirm Password field - only visible in register mode */}
+            {/* Confirm Password - only in register mode */}
             {mode === 'register' && (
               <div className="form-group" style={{
                 animation: !isTransitioning ? 'fadeIn 0.4s ease forwards' : undefined
@@ -438,51 +427,16 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
 
             {/* Error Display */}
             {authError && (
-              <div style={{
-                padding: '1rem',
-                marginBottom: '1rem',
-                backgroundColor: 'rgba(244, 67, 54, 0.1)',
-                border: '2px solid #f44336',
-                borderRadius: '8px',
-                color: '#f44336',
-                fontSize: '0.95rem',
-                fontWeight: '500',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '0.75rem',
-                animation: 'slideDown 0.3s ease',
-                position: 'relative'
-              }}>
-                <span style={{ fontSize: '1.2rem', marginTop: '0.1rem' }}>⚠️</span>
-                <div style={{ flex: 1 }}>
+              <div className="auth-error">
+                <span className="auth-error-icon">⚠️</span>
+                <div className="auth-error-text">
                   <strong>{getDisplayErrorMessage(authError).title}:</strong>{' '}
                   {getDisplayErrorMessage(authError).message}
                 </div>
                 <button
                   type="button"
+                  className="auth-error-close"
                   onClick={() => setAuthError(null)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#f44336',
-                    cursor: 'pointer',
-                    fontSize: '1.2rem',
-                    padding: '0',
-                    marginTop: '-0.25rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '24px',
-                    height: '24px',
-                    transition: 'transform 0.2s ease',
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                  }}
                 >
                   ×
                 </button>
@@ -499,11 +453,10 @@ const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
               {mode === 'login' ? 'Enter the Lair' : 'Join the Adventure'}
             </button>
           </form>
-        </div>
 
         {/* Footer */}
         <div className="mt-lg text-center">
-          <p className="text-muted">
+          <p className="text-muted" style={{ fontSize: '0.8rem' }}>
             <em>"The dice await your first roll..."</em>
           </p>
         </div>

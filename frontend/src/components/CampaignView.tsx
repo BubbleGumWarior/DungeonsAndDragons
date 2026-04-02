@@ -4057,19 +4057,9 @@ const CampaignView: React.FC = () => {
       <div>
         <div className="glass-panel">
           <h6>⚔️ Equipment</h6>
-          <div className="equipment-tab-layout" style={{ 
-            display: 'flex', 
-            gap: '0.75rem', 
-            alignItems: 'flex-start',
-            minHeight: '600px' 
-          }}>
+          <div className="equipment-tab-layout">
             {/* Character Figure with Equipment Slots */}
-            <div className="equipment-figure-wrapper" style={{ 
-              flex: '0 1 400px',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center'
-            }}>
+            <div className="equipment-figure-wrapper">
               <div className="character-figure-container">
                 <img 
                   src={character.race === 'Thri-kreen' ? Figure4ArmsImage : FigureImage} 
@@ -4133,10 +4123,7 @@ const CampaignView: React.FC = () => {
             </div>
 
             {/* Equipment List */}
-            <div className="equipment-list-wrapper" style={{ 
-              flex: '1',
-              minWidth: '0'
-            }}>
+            <div className="equipment-list-wrapper">
               <div style={{ marginBottom: '1rem' }}>
                 <h6 style={{ marginBottom: '0.5rem', color: 'rgba(212, 193, 156, 0.9)' }}>Equippable Items</h6>
                 
@@ -4909,177 +4896,97 @@ const CampaignView: React.FC = () => {
           </div>
         </div>
 
-        {/* Header */}
-        <div className="app-header campaign-desktop-header">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <div>
-              <h1 className="app-title">{campaign.name}</h1>
-            </div>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button 
-                onClick={() => setShowBackstoryModal(true)} 
-                className="btn btn-secondary"
-                style={{ 
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(212, 193, 156, 0.3)',
-                  color: 'var(--text-secondary)'
-                }}
-              >
-                📜 Backstory
-              </button>
-              <button 
-                onClick={handleBackToDashboard} 
-                className="btn btn-secondary"
-                style={{ 
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(212, 193, 156, 0.3)',
-                  color: 'var(--text-secondary)'
-                }}
-              >
-                ← Back to Dashboard
-              </button>
-            </div>
+        {/* ── Top Navigation Bar ───────────────────────────────────────────── */}
+        <nav className="campaign-topnav campaign-desktop-header">
+          {/* Brand / Back */}
+          <div className="campaign-topnav-brand">
+            <button onClick={handleBackToDashboard} className="campaign-topnav-back">← Dashboard</button>
+            <span className="campaign-topnav-name">{campaign.name}</span>
           </div>
-        </div>
 
-        {/* Main View Switcher */}
-        <div className="glass-panel campaign-view-switcher" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+          {/* View toggle */}
+          <div className="campaign-topnav-view-group">
             <button
               onClick={() => setMainView('campaign')}
-              style={{
-                padding: '0.625rem 1.5rem',
-                background: mainView === 'campaign' 
-                  ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)' 
-                  : 'rgba(255, 255, 255, 0.05)',
-                border: mainView === 'campaign' 
-                  ? '2px solid var(--primary-gold)' 
-                  : '1px solid rgba(212, 193, 156, 0.2)',
-                borderRadius: '0.75rem',
-                color: mainView === 'campaign' ? 'var(--text-gold)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-                fontWeight: 'bold',
-                transition: 'all 0.3s ease',
-                boxShadow: mainView === 'campaign' 
-                  ? '0 4px 12px rgba(212, 193, 156, 0.2)' 
-                  : 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-              onMouseEnter={(e) => {
-                if (mainView !== 'campaign') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (mainView !== 'campaign') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
-                }
-              }}
+              className={`campaign-topnav-view-btn${mainView === 'campaign' ? ' active' : ''}`}
             >
-              <span style={{ fontSize: '1.1rem' }}>🗺️</span>
-              Campaign View
+              🗺️ Campaign
             </button>
             <button
               onClick={() => setMainView('character')}
-              style={{
-                padding: '0.625rem 1.5rem',
-                background: mainView === 'character' 
-                  ? 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)' 
-                  : 'rgba(255, 255, 255, 0.05)',
-                border: mainView === 'character' 
-                  ? '2px solid var(--primary-gold)' 
-                  : '1px solid rgba(212, 193, 156, 0.2)',
-                borderRadius: '0.75rem',
-                color: mainView === 'character' ? 'var(--text-gold)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-                fontWeight: 'bold',
-                transition: 'all 0.3s ease',
-                boxShadow: mainView === 'character' 
-                  ? '0 4px 12px rgba(212, 193, 156, 0.2)' 
-                  : 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-              onMouseEnter={(e) => {
-                if (mainView !== 'character') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (mainView !== 'character') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
-                }
-              }}
+              className={`campaign-topnav-view-btn${mainView === 'character' ? ' active' : ''}`}
             >
-              <span style={{ fontSize: '1.1rem' }}>👤</span>
-              Character View
+              👤 Character
             </button>
           </div>
-        </div>
 
-        {/* Main Content Area with Character List */}
-        <div className={`campaign-layout ${characterListCollapsed ? 'layout-collapsed' : ''}`}>
-          {/* Character List - Collapsible */}
-          <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''} ${characterListCollapsed ? 'collapsed' : ''}`}>
-            <div className="glass-panel" style={{ position: 'sticky', top: '1rem', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-              {/* DM Controls */}
-              <div style={{ textAlign: 'center', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: '0.05em' }}>📅 Day {currentDay}</span>
-                {user?.role === 'Dungeon Master' && (
-                  <button onClick={() => setPendingConfirm({ msg: 'Reset the campaign day back to Day 1? This cannot be undone.', onYes: async () => {
+          {/* Sub-tabs — flex-wrap so overflowing tabs drop to next line */}
+          <div className="campaign-topnav-tab-group">
+            {mainView === 'campaign' && campaignTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setCampaignTab(tab.key as typeof campaignTab)}
+                className={`campaign-topnav-tab${campaignTab === tab.key ? ' active' : ''}`}
+              >
+                {tab.icon} {tab.label}
+                {tab.key === 'battlefield' && pendingInvitations.length > 0 && (
+                  <span className="campaign-topnav-tab-badge">{pendingInvitations.length}</span>
+                )}
+              </button>
+            ))}
+            {mainView === 'character' && availableCharacterTabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`campaign-topnav-tab${activeTab === tab ? ' active' : ''}`}
+              >
+                {characterTabConfig[tab].icon} {characterTabConfig[tab].label}
+              </button>
+            ))}
+          </div>
+
+          {/* Actions */}
+          <div className="campaign-topnav-actions">
+            <span className="campaign-topnav-day">
+              📅 Day {currentDay}
+              {user?.role === 'Dungeon Master' && (
+                <button
+                  onClick={() => setPendingConfirm({ msg: 'Reset the campaign day back to Day 1? This cannot be undone.', onYes: async () => {
                     try {
                       const d = await campaignAPI.resetDay(currentCampaign!.campaign.id);
                       setCurrentDay(d.current_day);
                     } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed to reset day'); setTimeout(() => setToastMessage(null), 3000); }
                   }})}
-                    style={{ padding: '1px 6px', fontSize: '0.65rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '3px', color: '#f87171', cursor: 'pointer' }}>↺ Reset</button>
-                )}
-              </div>
-              {user?.role === 'Dungeon Master' && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => setShowGrantExpModal(true)}
-                    className="btn btn-primary"
-                    style={{
-                      flex: 1,
-                      padding: '0.5rem',
-                      fontSize: '0.75rem',
-                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
-                      border: '2px solid rgba(168, 85, 247, 0.5)',
-                      color: '#c084fc'
-                    }}
-                  >
-                    ⭐ Add EXP
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    style={{
-                      flex: 1,
-                      padding: '0.5rem',
-                      fontSize: '0.75rem',
-                      background: 'rgba(56, 189, 248, 0.15)',
-                      border: '2px solid rgba(56, 189, 248, 0.5)',
-                      color: '#7dd3fc',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => setShowRestModal(true)}
-                  >
-                    💤 Rest
-                  </button>
-                  </div>
-                </div>
+                  style={{ marginLeft: '0.4rem', padding: '1px 4px', fontSize: '0.6rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '3px', color: '#f87171', cursor: 'pointer' }}
+                >↺</button>
               )}
+            </span>
+            {user?.role === 'Dungeon Master' && (
+              <>
+                <button onClick={() => setShowGrantExpModal(true)} className="campaign-topnav-action-btn exp-btn">⭐ EXP</button>
+                <button onClick={() => setShowRestModal(true)} className="campaign-topnav-action-btn rest-btn">💤 Rest</button>
+              </>
+            )}
+            <button onClick={() => setShowBackstoryModal(true)} className="campaign-topnav-action-btn">📜 Backstory</button>
+          </div>
+        </nav>
 
+        {/* Main Content Area with Character Sidebar */}
+        <div className={`campaign-body${characterListCollapsed ? ' sidebar-hidden' : ''}`}>
+          {/* Show-sidebar tab (only visible when sidebar is collapsed) */}
+          {characterListCollapsed && (
+            <button
+              className="sidebar-show-tab"
+              onClick={() => setCharacterListCollapsed(false)}
+              title="Show character list"
+            >
+              👥
+            </button>
+          )}
+
+          {/* Character List Sidebar */}
+          <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''}`}>
+            <div className="glass-panel" style={{ position: 'sticky', top: '1rem', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               {/* Collapse Button - Inside Panel */}
               <button
                 onClick={() => setCharacterListCollapsed(!characterListCollapsed)}
@@ -5534,40 +5441,6 @@ const CampaignView: React.FC = () => {
 
           {mainView === 'campaign' && (
             <div className="campaign-main">
-              <div className="campaign-tabs-row">
-            <div className="glass-panel campaign-tabs-desktop" style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                {campaignTabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setCampaignTab(tab.key as typeof campaignTab)}
-                    className={`tab-button ${campaignTab === tab.key ? 'active' : ''}`}
-                    style={{
-                      padding: '0.625rem 1.25rem',
-                      background: campaignTab === tab.key
-                        ? 'rgba(212, 193, 156, 0.3)'
-                        : 'rgba(255, 255, 255, 0.1)',
-                      border: campaignTab === tab.key
-                        ? '2px solid var(--primary-gold)'
-                        : '1px solid rgba(212, 193, 156, 0.2)',
-                      borderRadius: '1.5rem',
-                      color: campaignTab === tab.key ? 'var(--text-gold)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: campaignTab === tab.key ? 'bold' : 'normal',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem'
-                    }}
-                  >
-                    <span style={{ fontSize: '0.9rem' }}>{tab.icon}</span>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-              </div>
-
               <div className="campaign-main-content">
             {/* Campaign Tab Content */}
             {campaignTab === 'map' && (
@@ -11282,752 +11155,271 @@ const CampaignView: React.FC = () => {
           {/* Character Details Panel */}
             {selectedCharacterData ? (
               <div className="campaign-content-shell">
-                {/* Character Tab Navigation */}
-                <div className="campaign-tabs-row">
-                <div className="glass-panel campaign-tabs-desktop" style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                    {/* Show only overview tab for other players' characters, all tabs for own character or if DM */}
-                    {availableCharacterTabs.map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`tab-button ${activeTab === tab ? 'active' : ''}`}
-                        style={{
-                          padding: '0.625rem 1.25rem',
-                          background: activeTab === tab 
-                            ? 'rgba(212, 193, 156, 0.3)' 
-                            : 'rgba(255, 255, 255, 0.1)',
-                          border: activeTab === tab 
-                            ? '2px solid var(--primary-gold)' 
-                            : '1px solid rgba(212, 193, 156, 0.2)',
-                          borderRadius: '1.5rem',
-                          color: activeTab === tab ? 'var(--text-gold)' : 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem',
-                          fontWeight: 'bold',
-                          transition: 'all var(--transition-normal)',
-                          textTransform: 'capitalize'
-                        }}
-                      >
-                        {characterTabConfig[tab].icon} {characterTabConfig[tab].label}
-                      </button>
-                    ))}
-                    
-                    {/* Show a lock icon and message for restricted characters */}
-                    {!canViewAllTabs(selectedCharacterData.id) && (
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.5rem',
-                        fontSize: '0.75rem',
-                        color: 'var(--text-muted)',
-                        fontStyle: 'italic',
-                        padding: '0.625rem 1rem'
-                      }}>
-                        🔒 Limited view - overview only
-                      </div>
-                    )}
+                {/* Limited view warning for restricted characters */}
+                {!canViewAllTabs(selectedCharacterData.id) && (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-muted)',
+                    fontStyle: 'italic',
+                    padding: '0.5rem 0.75rem',
+                    marginBottom: '0.5rem'
+                  }}>
+                    🔒 Limited view - overview only
                   </div>
-                </div>
-                </div>
+                )}
 
                 <div className="campaign-main-content">
                 {/* Tab Content */}
                 {activeTab === 'board' && (
                   <div className="glass-panel character-overview">
-                    <h6>📋 Character Overview</h6>
-                    
-                    {/* Character Name Header */}
-                    <div className="character-overview-header" style={{
-                      textAlign: 'center',
-                      marginBottom: '2rem',
-                      padding: '1.5rem',
-                      background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                      borderRadius: '12px',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-                      position: 'relative'
-                    }}>
-                      {user?.role === 'Dungeon Master' && (
-                        <button
-                          onClick={() => {
-                            setDeleteModal({
-                              isOpen: true,
-                              characterId: selectedCharacterData.id,
-                              characterName: selectedCharacterData.name
-                            });
-                          }}
-                          style={{
-                            position: 'absolute',
-                            top: '1rem',
-                            right: '1rem',
-                            padding: '0.5rem 1rem',
-                            backgroundColor: 'rgba(200, 50, 50, 0.7)',
-                            color: 'white',
-                            border: '1px solid #c83232',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '0.8rem',
-                            fontWeight: 'bold',
-                            transition: 'all 0.2s ease'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.9)';
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.7)';
-                            e.currentTarget.style.transform = 'scale(1)';
-                          }}
-                        >
-                          🗑️ Delete Character
-                        </button>
-                      )}
-                      <div style={{
-                        fontSize: '2rem',
-                        fontWeight: 'bold',
-                        color: 'var(--primary-gold)',
-                        textShadow: '0 2px 4px rgba(0, 0, 0, 0.5), 0 0 20px rgba(212, 193, 156, 0.3)',
-                        letterSpacing: '2px',
-                        marginBottom: '0.5rem'
-                      }}>
-                        {selectedCharacterData.name}
+
+                    {/* ── HERO BANNER ── */}
+                    <div className="char-hero">
+                      {/* Portrait */}
+                      <div className="char-hero-portrait">
+                        {selectedCharacterData.image_url && !imageLoadError[selectedCharacterData.id] ? (
+                          <div className="char-portrait-img-wrap">
+                            <img
+                              src={getImageUrl(selectedCharacterData.image_url)}
+                              alt={selectedCharacterData.name}
+                              className="char-portrait-img"
+                              onError={() => setImageLoadError(prev => ({ ...prev, [selectedCharacterData.id]: true }))}
+                            />
+                            {(user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
+                              <div className="char-portrait-actions">
+                                <button
+                                  className="char-portrait-btn"
+                                  onClick={() => {
+                                    const input = document.createElement('input');
+                                    input.type = 'file';
+                                    input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
+                                    input.onchange = async (e) => {
+                                      const file = (e.target as HTMLInputElement).files?.[0];
+                                      if (file) {
+                                        const url = URL.createObjectURL(file);
+                                        setImageToCrop({ file, url, characterId: selectedCharacterData.id });
+                                        setShowImageCropModal(true);
+                                        setImagePosition({ x: 50, y: 50 });
+                                        setImageScale(100);
+                                      }
+                                    };
+                                    input.click();
+                                  }}
+                                >✏️ Change</button>
+                                {user?.role === 'Dungeon Master' && (
+                                  <button
+                                    className="char-portrait-btn danger"
+                                    onClick={() => setDeleteImageModal({ isOpen: true, characterId: selectedCharacterData.id })}
+                                  >🗑️ Remove</button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) ? (
+                            <button
+                              className="char-portrait-upload"
+                              onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
+                                input.onchange = async (e) => {
+                                  const file = (e.target as HTMLInputElement).files?.[0];
+                                  if (file) {
+                                    const url = URL.createObjectURL(file);
+                                    setImageToCrop({ file, url, characterId: selectedCharacterData.id });
+                                    setShowImageCropModal(true);
+                                    setImagePosition({ x: 50, y: 50 });
+                                    setImageScale(100);
+                                  }
+                                };
+                                input.click();
+                              }}
+                            >
+                              <span className="char-portrait-upload-icon">📷</span>
+                              <span>Upload Portrait</span>
+                            </button>
+                          ) : (
+                            <div className="char-portrait-empty">No image</div>
+                          )
+                        )}
                       </div>
-                      <div style={{
-                        fontSize: '0.9rem',
-                        color: 'var(--text-muted)',
-                        fontStyle: 'italic'
-                      }}>
+
+                      {/* Identity */}
+                      <div className="char-hero-identity">
+                        <h2 className="char-name">{selectedCharacterData.name}</h2>
+                        <div className="char-pills">
+                          <span className="char-pill">🏰 {selectedCharacterData.race}</span>
+                          <span className="char-pill">⚔️ {selectedCharacterData.class}</span>
+                          <span className="char-pill char-pill-level">Lvl {selectedCharacterData.level}</span>
+                        </div>
+                        <div className="char-title-row">
+                          <span className="char-field-label-sm">Title</span>
+                          <span className="char-title-value">{selectedCharacterData.background || '—'}</span>
+                          {user?.role === 'Dungeon Master' && (
+                            <button
+                              className="char-edit-inline-btn"
+                              onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'background', fieldLabel: 'Background', value: selectedCharacterData.background || '' })}
+                            >✏️</button>
+                          )}
+                        </div>
+                        {user?.role === 'Dungeon Master' && (
+                          <button
+                            className="char-delete-btn"
+                            onClick={() => setDeleteModal({ isOpen: true, characterId: selectedCharacterData.id, characterName: selectedCharacterData.name })}
+                          >🗑️ Delete Character</button>
+                        )}
                       </div>
                     </div>
 
-                    <div className="character-overview-grid">
-                      <div className="character-overview-left">
-                        {/* Character Image */}
-                        <div className="character-overview-image">
-                          {selectedCharacterData.image_url && !imageLoadError[selectedCharacterData.id] ? (
-                            <div style={{ position: 'relative' }}>
-                              <img 
-                                src={getImageUrl(selectedCharacterData.image_url)}
-                                alt={selectedCharacterData.name}
-                                className="character-overview-image-asset"
-                                onError={(e) => {
-                                  // Silently handle image load errors (likely old filesystem paths)
-                                  setImageLoadError(prev => ({ ...prev, [selectedCharacterData.id]: true }));
-                                }}
-                              />
-                              {(user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
-                                <div style={{
-                                  position: 'absolute',
-                                  bottom: '10px',
-                                  right: '10px',
-                                  display: 'flex',
-                                  gap: '0.5rem',
-                                  opacity: 0,
-                                  transition: 'opacity 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                  (e.currentTarget as HTMLElement).style.opacity = '1';
-                                }}
-                                onMouseLeave={(e) => {
-                                  (e.currentTarget as HTMLElement).style.opacity = '0';
-                                }}>
-                                  <button
-                                    onClick={() => {
-                                      const input = document.createElement('input');
-                                      input.type = 'file';
-                                      input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
-                                      input.onchange = async (e) => {
-                                        const file = (e.target as HTMLInputElement).files?.[0];
-                                        if (file) {
-                                          const url = URL.createObjectURL(file);
-                                          setImageToCrop({ file, url, characterId: selectedCharacterData.id });
-                                          setShowImageCropModal(true);
-                                          setImagePosition({ x: 50, y: 50 });
-                                          setImageScale(100);
-                                        }
-                                      };
-                                      input.click();
-                                    }}
-                                    style={{
-                                      padding: '0.5rem 1rem',
-                                      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                                      color: 'var(--text-gold)',
-                                      border: '1px solid var(--primary-gold)',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                      fontWeight: 'bold',
-                                      transition: 'all 0.2s ease'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
-                                      e.currentTarget.style.transform = 'scale(1.05)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-                                      e.currentTarget.style.transform = 'scale(1)';
-                                    }}
-                                  >
-                                    ✏️ Change Image
-                                  </button>
-                                  {user?.role === 'Dungeon Master' && (
-                                    <button
-                                      onClick={() => {
-                                        setDeleteImageModal({ isOpen: true, characterId: selectedCharacterData.id });
-                                      }}
-                                      style={{
-                                        padding: '0.5rem 1rem',
-                                        backgroundColor: 'rgba(200, 50, 50, 0.7)',
-                                        color: 'white',
-                                        border: '1px solid #c83232',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: 'bold',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.9)';
-                                        e.currentTarget.style.transform = 'scale(1.05)';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.backgroundColor = 'rgba(200, 50, 50, 0.7)';
-                                        e.currentTarget.style.transform = 'scale(1)';
-                                      }}
-                                    >
-                                      🗑️ Delete
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (
-                              <button
-                                onClick={() => {
-                                  const input = document.createElement('input');
-                                  input.type = 'file';
-                                  input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
-                                  input.onchange = async (e) => {
-                                    const file = (e.target as HTMLInputElement).files?.[0];
-                                    if (file) {
-                                      // Create URL for preview
-                                      const url = URL.createObjectURL(file);
-                                      setImageToCrop({ file, url, characterId: selectedCharacterData.id });
-                                      setShowImageCropModal(true);
-                                      setImagePosition({ x: 50, y: 50 });
-                                      setImageScale(100);
-                                    }
-                                  };
-                                  input.click();
-                                }}
-                                className="character-overview-image-upload"
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
-                                }}
-                              >
-                                <div style={{ fontSize: '3rem', opacity: 0.5 }}>📷</div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Upload Character Image</div>
-                                <div style={{ fontSize: '0.7rem' }}>Click to select an image</div>
-                              </button>
-                            )
-                          )}
-                        </div>
+                    {/* ── BODY: backstory + personality ── */}
+                    <div className="char-body">
 
-                        {/* Basic Info Section - Styled Cards */}
-                        <div style={{ 
-                          display: 'grid', 
-                          gridTemplateColumns: 'repeat(2, 1fr)', 
-                          gap: '1rem',
-                          marginBottom: '2rem'
-                        }}>
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(212, 193, 156, 0.2)',
-                        textAlign: 'center',
-                        transition: 'all 0.3s ease',
-                        cursor: 'default'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
-                      }}>
-                        <div style={{ 
-                          fontSize: '0.75rem', 
-                          color: 'var(--text-muted)', 
-                          marginBottom: '0.5rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px'
-                        }}>Race</div>
-                        <div style={{ 
-                          fontSize: '1.1rem', 
-                          color: 'var(--text-gold)', 
-                          fontWeight: 'bold'
-                        }}>{selectedCharacterData.race}</div>
-                      </div>
-
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(212, 193, 156, 0.2)',
-                        textAlign: 'center',
-                        transition: 'all 0.3s ease',
-                        cursor: 'default'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
-                      }}>
-                        <div style={{ 
-                          fontSize: '0.75rem', 
-                          color: 'var(--text-muted)', 
-                          marginBottom: '0.5rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px'
-                        }}>Class</div>
-                        <div style={{ 
-                          fontSize: '1.1rem', 
-                          color: 'var(--text-gold)', 
-                          fontWeight: 'bold'
-                        }}>{selectedCharacterData.class}</div>
-                      </div>
-
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(212, 193, 156, 0.2)',
-                        textAlign: 'center',
-                        transition: 'all 0.3s ease',
-                        cursor: 'default'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
-                      }}>
-                        <div style={{ 
-                          fontSize: '0.75rem', 
-                          color: 'var(--text-muted)', 
-                          marginBottom: '0.5rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px'
-                        }}>Level</div>
-                        <div style={{ 
-                          fontSize: '1.1rem', 
-                          color: 'var(--text-gold)', 
-                          fontWeight: 'bold'
-                        }}>{selectedCharacterData.level}</div>
-                      </div>
-
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(212, 193, 156, 0.2)',
-                        textAlign: 'center',
-                        transition: 'all 0.3s ease',
-                        cursor: 'default'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
-                      }}>
-                        <div style={{ 
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.4rem',
-                          marginBottom: '0.5rem'
-                        }}>
-                          <div style={{ 
-                            fontSize: '0.75rem', 
-                            color: 'var(--text-muted)', 
-                            textTransform: 'uppercase',
-                            letterSpacing: '1px'
-                          }}>Title</div>
-                          {user?.role === 'Dungeon Master' && (
-                            <button
-                              onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'background', fieldLabel: 'Background', value: selectedCharacterData.background || '' })}
-                              style={{ padding: '0.1rem 0.35rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold', lineHeight: 1 }}
-                            >
-                              ✏️
-                            </button>
-                          )}
-                        </div>
-                        <div style={{ 
-                          fontSize: '1.1rem', 
-                          color: 'var(--text-gold)', 
-                          fontWeight: 'bold'
-                        }}>{selectedCharacterData.background || 'None'}</div>
-                      </div>
-                        </div>
-                      </div>
-                      <div className="character-overview-right">
+                      {/* Left — Backstory */}
+                      <div className="char-backstory-col">
                         {(selectedCharacterData.backstory || canViewAllTabs(selectedCharacterData.id)) && (
-                          <div style={{ marginTop: '2rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                              <h6 className="text-gold" style={{ margin: 0 }}>Backstory</h6>
-                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <>
+                            <div className="char-section-header">
+                              <h6 className="text-gold" style={{ margin: 0 }}>📖 Backstory</h6>
+                              <div style={{ display: 'flex', gap: '0.4rem' }}>
                                 {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.backstory && (
-                                  <button
-                                    onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory', value: '' })}
-                                    style={{ padding: '0.2rem 0.55rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                                  >
-                                    + Add
-                                  </button>
+                                  <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory', value: '' })}>+ Add</button>
                                 )}
                                 {user?.role === 'Dungeon Master' && selectedCharacterData.backstory && (
-                                  <button
-                                    onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory' })}
-                                    style={{ padding: '0.2rem 0.55rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                                  >
-                                    🗑️ Delete
-                                  </button>
+                                  <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory' })}>🗑️</button>
                                 )}
                               </div>
                             </div>
                             {selectedCharacterData.backstory ? (() => {
                               const pages = paginateBackstory(selectedCharacterData.backstory);
                               const currentPage = Math.min(backstoryPage, pages.length - 1);
-                          
-                          return (
-                            <div className="character-backstory-panel" style={{ 
-                              padding: '1.5rem',
-                              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                              borderRadius: '12px',
-                              border: '2px solid rgba(212, 193, 156, 0.2)',
-                              position: 'relative',
-                              minHeight: '200px',
-                              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-                              perspective: '2000px',
-                              perspectiveOrigin: 'center center'
-                            }}>
-                              {/* Book-style header */}
-                              <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'center', 
-                                marginBottom: '1rem',
-                                paddingBottom: '0.5rem',
-                                borderBottom: '1px solid rgba(212, 193, 156, 0.2)'
-                              }}>
-                                <div style={{ 
-                                  fontSize: '0.85rem', 
-                                  color: 'var(--text-gold)', 
-                                  fontWeight: 'bold',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.5rem'
-                                }}>
-                                  📖 {selectedCharacterData.name}'s Chronicle
-                                </div>
-                                <div style={{ 
-                                  fontSize: '0.8rem', 
-                                  color: 'var(--text-muted)',
-                                  fontStyle: 'italic'
-                                }}>
-                                  Page {currentPage + 1} of {pages.length}
-                                </div>
-                              </div>
-
-                              {/* Page content */}
-                              <div className="character-backstory-content" style={{
-                                minHeight: '200px',
-                                position: 'relative'
-                              }}>
-                                {pageDirection ? (
-                                  <div 
-                                    key={`page-${currentPage}-${pageDirection}-${Date.now()}`}
-                                    className={pageDirection === 'forward' ? 'page-flip-forward' : 'page-flip-backward'}
-                                    style={{ 
-                                      lineHeight: '1.8', 
-                                      whiteSpace: 'pre-wrap',
-                                      fontSize: '0.95rem',
-                                      color: 'var(--text-primary)',
-                                      textAlign: 'justify',
-                                      paddingBottom: '1rem',
-                                      wordWrap: 'break-word',
-                                      overflowWrap: 'break-word'
-                                    }}>
-                                    {pages[currentPage] || 'No content available.'}
+                              return (
+                                <div className="character-backstory-panel">
+                                  <div className="char-backstory-header">
+                                    <span>📖 {selectedCharacterData.name}'s Chronicle</span>
+                                    <span className="char-page-label">Page {currentPage + 1} / {pages.length}</span>
                                   </div>
-                                ) : (
-                                  <div 
-                                    style={{ 
-                                      lineHeight: '1.8', 
-                                      whiteSpace: 'pre-wrap',
-                                      fontSize: '0.95rem',
-                                      color: 'var(--text-primary)',
-                                      textAlign: 'justify',
-                                      paddingBottom: '1rem',
-                                      wordWrap: 'break-word',
-                                      overflowWrap: 'break-word'
-                                    }}>
-                                    {pages[currentPage] || 'No content available.'}
+                                  <div className="character-backstory-content">
+                                    {pageDirection ? (
+                                      <div key={`page-${currentPage}-${pageDirection}-${Date.now()}`} className={pageDirection === 'forward' ? 'page-flip-forward' : 'page-flip-backward'} style={{ lineHeight: '1.8', whiteSpace: 'pre-wrap', fontSize: '0.95rem', color: 'var(--text-primary)', textAlign: 'justify', wordWrap: 'break-word' }}>
+                                        {pages[currentPage] || 'No content available.'}
+                                      </div>
+                                    ) : (
+                                      <div style={{ lineHeight: '1.8', whiteSpace: 'pre-wrap', fontSize: '0.95rem', color: 'var(--text-primary)', textAlign: 'justify', wordWrap: 'break-word' }}>
+                                        {pages[currentPage] || 'No content available.'}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-
-                              {/* Navigation controls */}
-                              {pages.length > 1 && (
-                                <div style={{ 
-                                  display: 'flex', 
-                                  justifyContent: 'space-between', 
-                                  alignItems: 'center',
-                                  marginTop: '1rem',
-                                  paddingTop: '1rem',
-                                  borderTop: '1px solid rgba(212, 193, 156, 0.2)'
-                                }}>
-                                  <button
-                                    onClick={() => {
-                                      if (backstoryPage > 0) {
-                                        setPageDirection('backward');
-                                        setTimeout(() => {
-                                          setBackstoryPage(backstoryPage - 1);
-                                          setTimeout(() => setPageDirection(null), 600);
-                                        }, 50);
-                                      }
-                                    }}
-                                    disabled={backstoryPage === 0}
-                                    className="btn btn-secondary"
-                                    style={{ 
-                                      padding: '0.5rem 1rem',
-                                      fontSize: '0.85rem',
-                                      minHeight: 'auto',
-                                      opacity: backstoryPage === 0 ? 0.3 : 1,
-                                      cursor: backstoryPage === 0 ? 'not-allowed' : 'pointer'
-                                    }}
-                                  >
-                                    ← Previous
-                                  </button>
-
-                                  {/* Page dots indicator */}
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                      {pages.map((_, index) => (
-                                        <button
-                                          key={index}
-                                          onClick={() => {
-                                            if (index !== currentPage) {
-                                              const direction = index > currentPage ? 'forward' : 'backward';
-                                              setPageDirection(direction);
-                                              setTimeout(() => {
-                                                setBackstoryPage(index);
-                                                setTimeout(() => setPageDirection(null), 600);
-                                              }, 50);
-                                            }
-                                          }}
-                                          style={{
-                                            width: '8px',
-                                            height: '8px',
-                                            borderRadius: '50%',
-                                            border: 'none',
-                                            backgroundColor: index === currentPage 
-                                              ? 'var(--primary-gold)' 
-                                              : 'rgba(212, 193, 156, 0.3)',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            padding: 0
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            if (index !== currentPage) {
-                                              e.currentTarget.style.backgroundColor = 'rgba(212, 193, 156, 0.6)';
-                                            }
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            if (index !== currentPage) {
-                                              e.currentTarget.style.backgroundColor = 'rgba(212, 193, 156, 0.3)';
-                                            }
-                                          }}
-                                        />
-                                      ))}
+                                  {pages.length > 1 && (
+                                    <div className="char-backstory-nav">
+                                      <button disabled={backstoryPage === 0} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === 0 ? 0.3 : 1 }} onClick={() => { if (backstoryPage > 0) { setPageDirection('backward'); setTimeout(() => { setBackstoryPage(backstoryPage - 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>← Prev</button>
+                                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                        {pages.map((_, i) => (
+                                          <button key={i} onClick={() => { if (i !== currentPage) { setPageDirection(i > currentPage ? 'forward' : 'backward'); setTimeout(() => { setBackstoryPage(i); setTimeout(() => setPageDirection(null), 600); }, 50); } }} style={{ width: 8, height: 8, borderRadius: '50%', border: 'none', background: i === currentPage ? 'var(--primary-gold)' : 'rgba(212,193,156,0.3)', cursor: 'pointer', padding: 0 }} />
+                                        ))}
+                                      </div>
+                                      <button disabled={backstoryPage === pages.length - 1} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === pages.length - 1 ? 0.3 : 1 }} onClick={() => { if (backstoryPage < pages.length - 1) { setPageDirection('forward'); setTimeout(() => { setBackstoryPage(backstoryPage + 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>Next →</button>
                                     </div>
-                                    <div style={{ 
-                                      fontSize: '0.65rem', 
-                                      color: 'var(--text-muted)', 
-                                      fontStyle: 'italic',
-                                      textAlign: 'center'
-                                    }}>
-                                      ← → pages • ↑ ↓ characters
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => {
-                                      if (backstoryPage < pages.length - 1) {
-                                        setPageDirection('forward');
-                                        setTimeout(() => {
-                                          setBackstoryPage(backstoryPage + 1);
-                                          setTimeout(() => setPageDirection(null), 600);
-                                        }, 50);
-                                      }
-                                    }}
-                                    disabled={backstoryPage === pages.length - 1}
-                                    className="btn btn-secondary"
-                                    style={{ 
-                                      padding: '0.5rem 1rem',
-                                      fontSize: '0.85rem',
-                                      minHeight: 'auto',
-                                      opacity: backstoryPage === pages.length - 1 ? 0.3 : 1,
-                                      cursor: backstoryPage === pages.length - 1 ? 'not-allowed' : 'pointer'
-                                    }}
-                                  >
-                                    Next →
-                                  </button>
+                                  )}
+                                  <div className="character-backstory-wordcount">~{selectedCharacterData.backstory.split(/\s+/).length} words · Pages split by paragraphs</div>
                                 </div>
-                              )}
-
-                              {/* Word count info */}
-                              <div className="character-backstory-wordcount" style={{ 
-                                position: 'absolute',
-                                bottom: '0.5rem',
-                                right: '1rem',
-                                fontSize: '0.7rem',
-                                color: 'var(--text-muted)',
-                                fontStyle: 'italic'
-                              }}>
-                                ~{selectedCharacterData.backstory.split(/\s+/).length} words total • Pages split by paragraphs
-                              </div>
-                            </div>
-                          );
+                              );
                             })() : (
-                              <div style={{ padding: '1.5rem', backgroundColor: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px dashed rgba(212, 193, 156, 0.25)', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                No backstory written yet.
-                              </div>
+                              <div className="char-empty-box">No backstory written yet.</div>
                             )}
-                          </div>
-                        )}
-
-                        {/* Personality Traits, Ideals, Bonds, and Flaws */}
-                        {(selectedCharacterData.personality_traits || selectedCharacterData.ideals || selectedCharacterData.bonds || selectedCharacterData.flaws || canViewAllTabs(selectedCharacterData.id)) && (
-                          <div style={{ marginTop: '2rem' }}>
-                            <h6 className="text-gold">Personality</h6>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-                              {(selectedCharacterData.personality_traits || canViewAllTabs(selectedCharacterData.id)) && (
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                    <strong style={{ color: 'var(--text-gold)' }}>Personality Traits</strong>
-                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.personality_traits && (
-                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                                          +
-                                        </button>
-                                      )}
-                                      {user?.role === 'Dungeon Master' && selectedCharacterData.personality_traits && (
-                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {selectedCharacterData.personality_traits ? (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(212, 193, 156, 0.1)', borderRadius: '6px', border: '1px solid rgba(212, 193, 156, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
-                                      {selectedCharacterData.personality_traits}
-                                    </div>
-                                  ) : (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(212, 193, 156, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
-                                  )}
-                                </div>
-                              )}
-                              {(selectedCharacterData.ideals || canViewAllTabs(selectedCharacterData.id)) && (
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                    <strong style={{ color: 'var(--text-gold)' }}>Ideals</strong>
-                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.ideals && (
-                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                                          +
-                                        </button>
-                                      )}
-                                      {user?.role === 'Dungeon Master' && selectedCharacterData.ideals && (
-                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {selectedCharacterData.ideals ? (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(212, 193, 156, 0.1)', borderRadius: '6px', border: '1px solid rgba(212, 193, 156, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
-                                      {selectedCharacterData.ideals}
-                                    </div>
-                                  ) : (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(212, 193, 156, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
-                                  )}
-                                </div>
-                              )}
-                              {(selectedCharacterData.bonds || canViewAllTabs(selectedCharacterData.id)) && (
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                    <strong style={{ color: 'var(--text-gold)' }}>Bonds</strong>
-                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.bonds && (
-                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                                          +
-                                        </button>
-                                      )}
-                                      {user?.role === 'Dungeon Master' && selectedCharacterData.bonds && (
-                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {selectedCharacterData.bonds ? (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(212, 193, 156, 0.1)', borderRadius: '6px', border: '1px solid rgba(212, 193, 156, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
-                                      {selectedCharacterData.bonds}
-                                    </div>
-                                  ) : (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(212, 193, 156, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
-                                  )}
-                                </div>
-                              )}
-                              {(selectedCharacterData.flaws || canViewAllTabs(selectedCharacterData.id)) && (
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                    <strong style={{ color: '#ff6b6b' }}>Flaws</strong>
-                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                      {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.flaws && (
-                                        <button onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws', value: '' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(212, 193, 156, 0.15)', color: 'var(--text-gold)', border: '1px solid rgba(212, 193, 156, 0.35)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                                          +
-                                        </button>
-                                      )}
-                                      {user?.role === 'Dungeon Master' && selectedCharacterData.flaws && (
-                                        <button onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws' })} style={{ padding: '0.15rem 0.45rem', backgroundColor: 'rgba(200, 50, 50, 0.25)', color: '#ff9999', border: '1px solid rgba(200, 50, 50, 0.45)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>🗑️</button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {selectedCharacterData.flaws ? (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(220, 53, 69, 0.1)', borderRadius: '6px', border: '1px solid rgba(220, 53, 69, 0.2)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
-                                      {selectedCharacterData.flaws}
-                                    </div>
-                                  ) : (
-                                    <div style={{ padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px dashed rgba(220, 53, 69, 0.2)', fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>Not set</div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                          </>
                         )}
                       </div>
+
+                      {/* Right — Personality */}
+                      {(selectedCharacterData.personality_traits || selectedCharacterData.ideals || selectedCharacterData.bonds || selectedCharacterData.flaws || canViewAllTabs(selectedCharacterData.id)) && (
+                        <div className="char-personality-col">
+                          <h6 className="text-gold" style={{ marginBottom: '1rem' }}>🎭 Personality</h6>
+
+                          {/* Personality Traits */}
+                          {(selectedCharacterData.personality_traits || canViewAllTabs(selectedCharacterData.id)) && (
+                            <div className="char-personality-field">
+                              <div className="char-section-header">
+                                <strong className="char-field-label-sm">Personality Traits</strong>
+                                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                  {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.personality_traits && (
+                                    <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits', value: '' })}>+</button>
+                                  )}
+                                  {user?.role === 'Dungeon Master' && selectedCharacterData.personality_traits && (
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits' })}>🗑️</button>
+                                  )}
+                                </div>
+                              </div>
+                              {selectedCharacterData.personality_traits
+                                ? <div className="char-field-content">{selectedCharacterData.personality_traits}</div>
+                                : <div className="char-field-empty">Not set</div>}
+                            </div>
+                          )}
+
+                          {/* Ideals */}
+                          {(selectedCharacterData.ideals || canViewAllTabs(selectedCharacterData.id)) && (
+                            <div className="char-personality-field">
+                              <div className="char-section-header">
+                                <strong className="char-field-label-sm">Ideals</strong>
+                                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                  {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.ideals && (
+                                    <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals', value: '' })}>+</button>
+                                  )}
+                                  {user?.role === 'Dungeon Master' && selectedCharacterData.ideals && (
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals' })}>🗑️</button>
+                                  )}
+                                </div>
+                              </div>
+                              {selectedCharacterData.ideals
+                                ? <div className="char-field-content">{selectedCharacterData.ideals}</div>
+                                : <div className="char-field-empty">Not set</div>}
+                            </div>
+                          )}
+
+                          {/* Bonds */}
+                          {(selectedCharacterData.bonds || canViewAllTabs(selectedCharacterData.id)) && (
+                            <div className="char-personality-field">
+                              <div className="char-section-header">
+                                <strong className="char-field-label-sm">Bonds</strong>
+                                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                  {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.bonds && (
+                                    <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds', value: '' })}>+</button>
+                                  )}
+                                  {user?.role === 'Dungeon Master' && selectedCharacterData.bonds && (
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds' })}>🗑️</button>
+                                  )}
+                                </div>
+                              </div>
+                              {selectedCharacterData.bonds
+                                ? <div className="char-field-content">{selectedCharacterData.bonds}</div>
+                                : <div className="char-field-empty">Not set</div>}
+                            </div>
+                          )}
+
+                          {/* Flaws */}
+                          {(selectedCharacterData.flaws || canViewAllTabs(selectedCharacterData.id)) && (
+                            <div className="char-personality-field">
+                              <div className="char-section-header">
+                                <strong className="char-field-label-sm" style={{ color: '#ff8080' }}>Flaws</strong>
+                                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                  {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.flaws && (
+                                    <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws', value: '' })}>+</button>
+                                  )}
+                                  {user?.role === 'Dungeon Master' && selectedCharacterData.flaws && (
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws' })}>🗑️</button>
+                                  )}
+                                </div>
+                              </div>
+                              {selectedCharacterData.flaws
+                                ? <div className="char-field-content flaw">{selectedCharacterData.flaws}</div>
+                                : <div className="char-field-empty">Not set</div>}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

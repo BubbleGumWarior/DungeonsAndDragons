@@ -140,7 +140,7 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="container fade-in">
+    <div className="dashboard-page fade-in">
       <div className="dashboard-container">
         <div className="app-header">
           <h1 className="app-title">Welcome to Dungeon Lair</h1>
@@ -251,7 +251,7 @@ const Dashboard: React.FC = () => {
                       const isExpanded = !!expandedDescriptions[campaign.id];
                       return (
                     <div className="campaign-card-inner">
-                      {/* Left Half - Description */}
+                      {/* Left - Details */}
                       <div className="campaign-card-details">
                         <h5 className="text-gold campaign-card-title">{campaign.name}</h5>
                         {campaign.description && (
@@ -275,46 +275,39 @@ const Dashboard: React.FC = () => {
                         </p>
                       </div>
 
-                      {/* Right Half - Characters */}
+                      {/* Center - Party Members */}
                       <div className="campaign-card-characters">
-                        <h6 className="text-gold" style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>Party Members</h6>
+                        <h6 className="text-gold" style={{ marginBottom: '0.5rem', fontSize: '0.8rem', opacity: 0.8 }}>Party Members</h6>
                         <div className="campaign-card-members">
                           {campaignCharacters[campaign.id]?.map((character) => (
-                            <div 
-                              key={character.id}
-                              className="campaign-member"
-                            >
+                            <div key={character.id} className="campaign-member">
                               <img 
                                 src={character.image_url || FigureImage} 
                                 alt={character.name}
                                 className="campaign-member-avatar"
                               />
                               <div className="campaign-member-text">
-                                <div className="campaign-member-name">
-                                  {character.name}
-                                </div>
-                                <div className="campaign-member-subtitle">
-                                  Level {character.level} {character.class}
-                                </div>
+                                <div className="campaign-member-name">{character.name}</div>
+                                <div className="campaign-member-subtitle">Lvl {character.level} {character.class}</div>
                               </div>
                             </div>
                           ))}
                           {(!campaignCharacters[campaign.id] || campaignCharacters[campaign.id].length === 0) && (
-                            <p className="text-muted campaign-empty">
-                              No characters yet
-                            </p>
+                            <p className="text-muted campaign-empty">No characters yet</p>
                           )}
                         </div>
                       </div>
 
-                      {/* Delete Button */}
-                      <button
-                        className="delete-btn btn btn-danger campaign-delete-btn"
-                        onClick={(e) => handleDeleteCampaign(campaign, e)}
-                        title="Delete Campaign"
-                      >
-                        🗑️
-                      </button>
+                      {/* Right - Actions */}
+                      <div className="campaign-card-actions">
+                        <button
+                          className="delete-btn btn btn-danger campaign-delete-btn"
+                          onClick={(e) => handleDeleteCampaign(campaign, e)}
+                          title="Delete Campaign"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                       );
                     })()}
@@ -356,7 +349,7 @@ const Dashboard: React.FC = () => {
                       const isExpanded = !!expandedDescriptions[campaign.id];
                       return (
                     <div className="campaign-card-inner">
-                      {/* Left Half - Description */}
+                      {/* Left - Details */}
                       <div className="campaign-card-details">
                         <h5 className="text-gold campaign-card-title">{campaign.name}</h5>
                         {campaign.description && (
@@ -376,43 +369,30 @@ const Dashboard: React.FC = () => {
                           </button>
                         )}
                         <div className="campaign-card-footer">
-                          <p className="text-muted campaign-card-meta">
-                            DM: {campaign.dm_username}
-                          </p>
-                          <span className="text-gold campaign-cta">
-                            Click to join →
-                          </span>
+                          <p className="text-muted campaign-card-meta">DM: {campaign.dm_username}</p>
+                          <span className="text-gold campaign-cta">Click to join →</span>
                         </div>
                       </div>
 
-                      {/* Right Half - Characters */}
+                      {/* Center - Party Members */}
                       <div className="campaign-card-characters">
-                        <h6 className="text-gold" style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>Party Members</h6>
+                        <h6 className="text-gold" style={{ marginBottom: '0.5rem', fontSize: '0.8rem', opacity: 0.8 }}>Party Members</h6>
                         <div className="campaign-card-members">
                           {campaignCharacters[campaign.id]?.map((character) => (
-                            <div 
-                              key={character.id}
-                              className="campaign-member"
-                            >
+                            <div key={character.id} className="campaign-member">
                               <img 
                                 src={character.image_url || FigureImage} 
                                 alt={character.name}
                                 className="campaign-member-avatar"
                               />
                               <div className="campaign-member-text">
-                                <div className="campaign-member-name">
-                                  {character.name}
-                                </div>
-                                <div className="campaign-member-subtitle">
-                                  Level {character.level} {character.class}
-                                </div>
+                                <div className="campaign-member-name">{character.name}</div>
+                                <div className="campaign-member-subtitle">Lvl {character.level} {character.class}</div>
                               </div>
                             </div>
                           ))}
                           {(!campaignCharacters[campaign.id] || campaignCharacters[campaign.id].length === 0) && (
-                            <p className="text-muted campaign-empty">
-                              No characters yet
-                            </p>
+                            <p className="text-muted campaign-empty">No characters yet</p>
                           )}
                         </div>
                       </div>
