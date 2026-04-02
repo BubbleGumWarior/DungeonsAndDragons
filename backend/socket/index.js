@@ -95,6 +95,9 @@ const initializeSocketHandlers = (io, battleMovementState, battleCombatState, us
     
     // Battle (mass combat) handlers
     require('./handlers/battleHandlers')(socket, io);
+
+    // Chat handlers
+    require('./handlers/chatHandlers')(socket, io, userSocketMap);
     
     // Kingdom handlers
     socket.on('createKingdom', async ({ campaignId, targetPlayerId }) => {

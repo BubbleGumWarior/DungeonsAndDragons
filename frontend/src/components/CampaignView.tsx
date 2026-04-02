@@ -18,7 +18,8 @@ import { AttackModal } from './campaign/AttackModal';
 import { DiceRollModal } from './campaign/DiceRollModal';
 import { CombatLog } from './campaign/CombatLog';
 import { CombatActionsPanel } from './campaign/CombatActionsPanel';
-import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig } from '../types/campaignTypes';
+import ChatPanel from './campaign/ChatPanel';
+import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig, ChatMessage, OutOfCombatRollRequest } from '../types/campaignTypes';
 
 // Journal Entry Interface
 interface JournalEntry {
@@ -451,6 +452,11 @@ const CampaignView: React.FC = () => {
   // Reroll request/approve flow
   const [pendingRerollRequest, setPendingRerollRequest] = useState<{ requestId: number; rollerName: string; diceType: string } | null>(null);
   const [rerollApproved, setRerollApproved] = useState(false);
+  // Chat & OOC roll state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [pendingOOCRoll, setPendingOOCRoll] = useState<OutOfCombatRollRequest | null>(null);
   // DM attack config picker state
   const [dmAttackHitDie, setDmAttackHitDie] = useState('d20');
   const [dmAttackDamageDie, setDmAttackDamageDie] = useState('d6');
@@ -1038,6 +1044,16 @@ const CampaignView: React.FC = () => {
       });
     }
   }, [campaignName, loadCampaign]);
+
+  // Fetch chat history when campaign loads
+  useEffect(() => {
+    if (currentCampaign?.campaign.id) {
+      campaignAPI.getChatHistory(currentCampaign.campaign.id)
+        .then(data => setChatMessages(data.messages))
+        .catch(err => console.error('Failed to load chat history:', err));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCampaign?.campaign.id]);
 
   // Refresh campaign data when switching to map or battle tabs to ensure fresh positions
   useEffect(() => {
@@ -2136,8 +2152,7 @@ const CampaignView: React.FC = () => {
   useEffect(() => {
     if (!selectedCharacter) return;
     const charData = currentCampaign?.characters.find((c: any) => c.id === selectedCharacter);
-    if (!charData || !isSpellcaster(charData.class) && charData.class !== 'Monk') return;
-    const token = localStorage.getItem('token');
+    if (!charData || (!isSpellcaster(charData.class) && charData.class !== 'Monk')) return;
     characterAPI.getSpellSlots(selectedCharacter).then(data => {
       if (!data) return;
       setCharacterSpellSlotsUsed(prev => ({ ...prev, [selectedCharacter]: data.spell_slots_used || {} }));
@@ -3250,6 +3265,19 @@ const CampaignView: React.FC = () => {
       newSocket.on('battleInvitationDeclined', (data: { battleId: number; playerId: number; timestamp: string }) => {
       });
       
+      // Chat listeners
+      newSocket.on('chatMessageReceived', (msg: ChatMessage) => {
+        setChatMessages(prev => [...prev, msg]);
+        setChatOpen(prev => {
+          if (!prev) setUnreadCount(c => c + 1);
+          return prev;
+        });
+      });
+
+      newSocket.on('outOfCombatRollRequested', (req: OutOfCombatRollRequest) => {
+        setPendingOOCRoll(req);
+      });
+
       // Listen for experience granted
       newSocket.on('campaignUsersOnline', (data: { campaignId: number; onlineUserIds: number[] }) => {
         setOnlineUserIds(new Set(data.onlineUserIds));
@@ -5275,7 +5303,6 @@ const CampaignView: React.FC = () => {
                               if (!slotInfo) return null;
                               const isDMView = user?.role === 'Dungeon Master';
                               const slotsUsed: Record<string, number> = characterSpellSlotsUsed[character.id] || {};
-                              const token = localStorage.getItem('token');
 
                               const handleMiniUseSlot = (e: React.MouseEvent, level: number) => {
                                 e.stopPropagation();
@@ -12167,7 +12194,6 @@ const CampaignView: React.FC = () => {
                       const isDM = user?.role === 'Dungeon Master';
                       const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
                       const canInteract = isDM || isOwner;
-                      const token = localStorage.getItem('token');
                       return (
                         <div style={{ background: 'rgba(250,204,21,0.06)', border: '2px solid rgba(250,204,21,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem' }}>
                           <h6 style={{ color: '#fbbf24', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -15808,7 +15834,7 @@ const CampaignView: React.FC = () => {
 
                   {/* Damage mode */}
                   <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.6rem' }}>
-                    {[['fixed', 'Fixed Amount'], ['dice', 'DM Rolls Dice'], ['roll', 'Player Rolls']] .map(([mode, label]) => (
+                    {[['fixed', 'Fixed Amount'], ['dice', 'DM Rolls Dice'], ['roll', 'Player Rolls']].map(([mode, label]) => (
                       <button key={mode} onClick={() => setDotDmgMode(mode as any)}
                         style={{ flex: 1, padding: '0.25rem', borderRadius: '0.3rem', fontSize: '0.72rem', cursor: 'pointer',
                           background: dotDmgMode === mode ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.04)',
@@ -20543,6 +20569,90 @@ const CampaignView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Campaign Chat Panel ── */}
+      {currentCampaign && (
+        <>
+          <ChatPanel
+            isOpen={chatOpen}
+            onClose={() => { setChatOpen(false); }}
+            messages={chatMessages}
+            socket={socket}
+            campaignId={currentCampaign.campaign.id}
+            currentUserId={user?.id ?? 0}
+            currentUserName={user?.username ?? 'Unknown'}
+            isDM={user?.role === 'Dungeon Master'}
+            onlinePlayers={currentCampaign.characters
+              .filter(c => c.player_id && onlineUserIds.has(c.player_id))
+              .map(c => ({ userId: c.player_id as number, characterName: c.name }))}
+          />
+          {/* Floating chat toggle button */}
+          <button
+            onClick={() => { setChatOpen(prev => !prev); if (!chatOpen) setUnreadCount(0); }}
+            style={{
+              position: 'fixed',
+              bottom: '1.5rem',
+              right: chatOpen ? '356px' : '1.5rem',
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+              border: 'none',
+              color: 'white',
+              fontSize: '1.3rem',
+              cursor: 'pointer',
+              zIndex: 1201,
+              boxShadow: '0 4px 16px rgba(124,58,237,0.5)',
+              transition: 'right 0.25s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            title="Toggle campaign chat"
+          >
+            {unreadCount > 0 && !chatOpen ? (
+              <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', borderRadius: '50%', minWidth: '18px', height: '18px', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            ) : null}
+            💬
+          </button>
+
+          {/* OOC Dice Roll Modal — shown to players when DM requests an out-of-combat roll */}
+          {pendingOOCRoll && socket && (
+            <DiceRollModal
+              request={{
+                requestId: pendingOOCRoll.requestId,
+                requesterName: pendingOOCRoll.requesterName,
+                targetCharacterName: pendingOOCRoll.targetCharacterName,
+                diceType: pendingOOCRoll.diceType,
+                rollPurpose: pendingOOCRoll.rollPurpose as CombatDiceRequest['rollPurpose'],
+                purposeDetail: pendingOOCRoll.purposeDetail,
+                campaignId: pendingOOCRoll.campaignId,
+                modifier: pendingOOCRoll.precomputedModifier ?? 'none',
+              }}
+              rollerName={currentCampaign.userCharacter?.name ?? 'You'}
+              character={currentCampaign.userCharacter}
+              onConfirm={(rawRoll, total, modifierValue, modifier) => {
+                socket.emit('submitOutOfCombatRoll', {
+                  campaignId: currentCampaign.campaign.id,
+                  requestId: pendingOOCRoll.requestId,
+                  rollerName: currentCampaign.userCharacter?.name ?? 'Player',
+                  diceType: pendingOOCRoll.diceType,
+                  rollPurpose: pendingOOCRoll.rollPurpose,
+                  purposeDetail: pendingOOCRoll.purposeDetail,
+                  rawRoll,
+                  modifierValue,
+                  modifier,
+                  total,
+                });
+                setPendingOOCRoll(null);
+              }}
+              onClose={() => setPendingOOCRoll(null)}
+            />
+          )}
+        </>
       )}
     </>
   );

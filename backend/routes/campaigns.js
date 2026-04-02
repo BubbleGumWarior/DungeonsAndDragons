@@ -3,6 +3,7 @@ const router = express.Router();
 const Campaign = require('../models/Campaign');
 const Character = require('../models/Character');
 const { authenticateToken } = require('../middleware/auth');
+const { pool } = require('../models/database');
 
 // Get all campaigns
 router.get('/', authenticateToken, async (req, res) => {
@@ -263,6 +264,38 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error advancing days:', error);
     res.status(500).json({ error: 'Failed to advance days' });
+  }
+});
+
+// Get campaign chat history
+router.get('/:id/chat', authenticateToken, async (req, res) => {
+  try {
+    const campaignId = parseInt(req.params.id, 10);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+
+    // Verify membership: DM or has a character in this campaign
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const isDM = campaign.dungeon_master_id === req.user.id;
+    if (!isDM) {
+      const character = await Character.findByPlayerAndCampaign(req.user.id, campaignId);
+      if (!character) return res.status(403).json({ error: 'Not a member of this campaign' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, campaign_id, sender_id, sender_name, message_type, content, roll_data, created_at
+       FROM campaign_chat_messages
+       WHERE campaign_id = $1
+       ORDER BY created_at ASC
+       LIMIT $2`,
+      [campaignId, limit]
+    );
+
+    res.json({ messages: result.rows });
+  } catch (error) {
+    console.error('Error fetching chat history:', error);
+    res.status(500).json({ error: 'Failed to fetch chat history' });
   }
 });
 

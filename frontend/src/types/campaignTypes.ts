@@ -219,3 +219,38 @@ export interface DotCondition {
   turnsRemaining: number | null;    // null = indefinite; Burning auto-expires at 0
 }
 
+export type ChatMessageType = 'player' | 'dm' | 'server' | 'roll_result';
+
+export interface ChatMessage {
+  id: number;
+  campaign_id: number;
+  sender_id: number | null;
+  sender_name: string;
+  message_type: ChatMessageType;
+  content: string;
+  roll_data: {
+    requestId: number;
+    diceType: string;
+    rollPurpose: string;
+    purposeDetail?: string;
+    modifier: number;
+    rolls: number[];
+    total: number;
+    characterName?: string;
+  } | null;
+  created_at: string;
+}
+
+export interface OutOfCombatRollRequest {
+  requestId: number;
+  campaignId: number;
+  targetPlayerId: number;
+  targetCharacterName: string;
+  diceType: string;
+  rollPurpose: string;
+  purposeDetail: string;
+  modifier: number;
+  precomputedModifier?: string;
+  requesterName: string;
+}
+

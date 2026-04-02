@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import { ActionEconomy, CombatCondition, DotCondition } from '../../types/campaignTypes';
-
-const D5E_CONDITIONS: CombatCondition[] = [
-  'Blinded', 'Charmed', 'Deafened', 'Exhaustion', 'Frightened',
-  'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified',
-  'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious',
-];
+import { ActionEconomy, DotCondition } from '../../types/campaignTypes';
 
 interface Combatant {
   characterId: string | number;
@@ -35,7 +29,7 @@ interface Props {
   onRemoveDotCondition?: (dotType: string) => void;
 }
 
-const Slot: React.FC<{ used: boolean; label: string; onClick?: () => void }> = ({ used, label, onClick }) => (
+const _Slot: React.FC<{ used: boolean; label: string; onClick?: () => void }> = ({ used, label, onClick }) => (
   <button onClick={onClick}
     title={`${label}: ${used ? 'Used' : 'Available'}`}
     style={{

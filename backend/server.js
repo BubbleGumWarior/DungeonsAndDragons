@@ -316,6 +316,7 @@ const startServer = async () => {
         { name: 'addBuildQueue', fn: require('./migrations/add_build_queue') },
         { name: 'addActiveDisasters', fn: require('./migrations/add_active_disasters') },
         { name: 'addCombatSystem', fn: addCombatSystem },
+        { name: 'addCampaignChat', fn: require('./migrations/add_campaign_chat') },
       ];
       
       for (const migration of migrations) {
@@ -2752,6 +2753,9 @@ const startServer = async () => {
           console.error('[nameKingdom] Error:', error);
         }
       });
+
+      // Chat handlers
+      require('./socket/handlers/chatHandlers')(socket, io, userSocketMap);
 
       socket.on('disconnect', (reason) => {
         console.log(`👋 User disconnected: ${socket.id}, reason: ${reason}`);

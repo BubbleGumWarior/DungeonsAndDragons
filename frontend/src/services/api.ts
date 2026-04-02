@@ -419,6 +419,11 @@ export const campaignAPI = {
   advanceDays: async (campaignId: number, days: number, restType: 'short' | 'long' | 'custom'): Promise<AdvanceDaysSummary> => {
     const response = await api.patch(`/campaigns/${campaignId}/advance-days`, { days, restType });
     return response.data;
+  },
+
+  getChatHistory: async (campaignId: number, limit = 50): Promise<{ messages: import('../types/campaignTypes').ChatMessage[] }> => {
+    const response = await api.get(`/campaigns/${campaignId}/chat?limit=${limit}`);
+    return response.data;
   }
 };
 
