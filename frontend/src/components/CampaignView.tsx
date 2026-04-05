@@ -424,7 +424,8 @@ const CampaignView: React.FC = () => {
     deleteCharacter,
     isLoading, 
     error, 
-    clearError 
+    clearError,
+    patchCampaignCharacters
   } = useCampaign();
 
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; characterId: number | null; characterName: string }>({
@@ -3601,12 +3602,8 @@ const CampaignView: React.FC = () => {
             }));
           });
 
-          // Reload full campaign data so character cards/lists reflect new EXP for all users
-          if (campaignName) {
-            loadCampaign(campaignName).catch(err =>
-              console.error('Failed to reload campaign after EXP grant:', err)
-            );
-          }
+          // Patch character EXP in-place so no loading screen is triggered
+          patchCampaignCharacters(data.characters.map(c => ({ id: c.id, experience_points: c.experience_points })));
 
           // Show toast notification for all connected users
           if (data.characters.length === 1) {
@@ -3620,7 +3617,7 @@ const CampaignView: React.FC = () => {
       });
       
       // Listen for character leveled up
-      newSocket.on('characterLeveledUp', (data: { characterId: number; newLevel: number; newHP: number; experiencePoints: number; skillGained: any; timestamp: string }) => {
+      newSocket.on('characterLeveledUp', (data: { characterId: number; newLevel: number; newHP: number; experiencePoints: number; skillGained: any; updatedAbilities?: any; timestamp: string }) => {
         console.log('Character leveled up:', data);
         if (currentCampaign) {
           // Immediately update overrides for instant visual feedback
@@ -3641,12 +3638,14 @@ const CampaignView: React.FC = () => {
             return { ...prev, [data.characterId]: { current: existing.current, max: data.newHP } };
           });
 
-          // Reload full campaign data so character cards reflect new level for all users (including DM)
-          if (campaignName) {
-            loadCampaign(campaignName).catch(err =>
-              console.error('Failed to reload campaign after level up:', err)
-            );
-          }
+          // Patch character data in-place so no loading screen is triggered
+          patchCampaignCharacters([{
+            id: data.characterId,
+            level: data.newLevel,
+            hit_points: data.newHP,
+            experience_points: data.experiencePoints,
+            ...(data.updatedAbilities ? { abilities: data.updatedAbilities } : {})
+          }]);
 
           // Reload skills if this is the selected character
           if (selectedCharacter === data.characterId) {

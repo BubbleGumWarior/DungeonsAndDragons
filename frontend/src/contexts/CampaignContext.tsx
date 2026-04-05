@@ -28,6 +28,7 @@ interface CampaignContextType {
   clearError: () => void;
   clearCurrentCampaign: () => void;
   clearCurrentCharacter: () => void;
+  patchCampaignCharacters: (updates: Array<{ id: number } & Partial<Character>>) => void;
 }
 
 const CampaignContext = createContext<CampaignContextType | undefined>(undefined);
@@ -293,6 +294,23 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
     }
   }, []);
 
+  const patchCampaignCharacters = useCallback((updates: Array<{ id: number } & Partial<Character>>) => {
+    setCurrentCampaign(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        characters: prev.characters.map(c => {
+          const patch = updates.find(u => u.id === c.id);
+          return patch ? { ...c, ...patch } : c;
+        }),
+        userCharacter: prev.userCharacter ? (() => {
+          const patch = updates.find(u => u.id === prev.userCharacter!.id);
+          return patch ? { ...prev.userCharacter!, ...patch } : prev.userCharacter;
+        })() : null
+      };
+    });
+  }, []);
+
   // Utility functions
   const generateCampaignUrl = useCallback((campaignName: string) => {
     return campaignName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
@@ -319,6 +337,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
     clearError,
     clearCurrentCampaign,
     clearCurrentCharacter,
+    patchCampaignCharacters,
   };
 
   return (
