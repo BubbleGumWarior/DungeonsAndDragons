@@ -13423,17 +13423,12 @@ const CampaignView: React.FC = () => {
                 {/* Shadows Tab */}
                 {activeTab === 'shadows' && canViewAllTabs(selectedCharacterData.id) && shouldShowShadowsTab(selectedCharacterData) && (() => {
                   const isDM = user?.role === 'Dungeon Master';
-                  const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
                   const shadows = characterShadows[selectedCharacterData.id] ?? [];
                   const conMod = Math.max(0, Math.floor(((selectedCharacterData.abilities?.con ?? 10) - 10) / 2));
                   const maxActive = conMod;
                   const maxStored = conMod * 4;
                   const activeCount = shadows.filter(s => s.is_active).length;
                   const storedCount = shadows.filter(s => !s.is_active).length;
-
-                  // Local state helpers via refs — we use window-attached state keyed by character id
-                  const editKey = `shadowEdit_${selectedCharacterData.id}`;
-                  const formKey = `shadowForm_${selectedCharacterData.id}`;
 
                   return (
                     <div className="glass-panel">
@@ -14468,7 +14463,6 @@ const CampaignView: React.FC = () => {
                                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.3rem' }}>
                                     {LIMB_LABELS.map(({ key, label }) => {
                                       const maxVal = limbMax[key as keyof typeof limbMax] || 1;
-                                      const curVal = maxVal; // Pets show max (combat-tracked separately)
                                       return (
                                         <div key={key} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', padding: '0.25rem 0.3rem', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
                                           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.58rem', fontWeight: 700 }}>{label}</div>
