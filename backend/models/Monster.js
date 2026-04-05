@@ -11,15 +11,16 @@ class Monster {
       limb_ac = { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
       abilities = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
       cr = 0,
-      visible_to_players = false
+      visible_to_players = false,
+      resistances = { resistances: [], immunities: [], vulnerabilities: [] }
     } = monsterData;
 
     const result = await pool.query(
       `INSERT INTO monsters (
-        campaign_id, name, description, image_url, limb_health, limb_ac, abilities, cr, visible_to_players
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        campaign_id, name, description, image_url, limb_health, limb_ac, abilities, cr, visible_to_players, resistances
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
-      [campaign_id, name, description, image_url, JSON.stringify(limb_health), JSON.stringify(limb_ac), JSON.stringify(abilities), cr, visible_to_players]
+      [campaign_id, name, description, image_url, JSON.stringify(limb_health), JSON.stringify(limb_ac), JSON.stringify(abilities), cr, visible_to_players, JSON.stringify(resistances)]
     );
 
     return Monster.convertImageToDataUrl(result.rows[0]);
@@ -46,7 +47,7 @@ class Monster {
   }
 
   static async update(id, updates) {
-    const allowedFields = ['name', 'description', 'image_url', 'limb_health', 'limb_ac', 'abilities', 'cr', 'visible_to_players'];
+    const allowedFields = ['name', 'description', 'image_url', 'limb_health', 'limb_ac', 'abilities', 'cr', 'visible_to_players', 'resistances'];
     const setClause = [];
     const values = [];
     let paramIndex = 1;
@@ -54,7 +55,7 @@ class Monster {
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key) && value !== undefined) {
         setClause.push(`${key} = $${paramIndex}`);
-        if (key === 'limb_health' || key === 'limb_ac' || key === 'abilities') {
+        if (key === 'limb_health' || key === 'limb_ac' || key === 'abilities' || key === 'resistances') {
           values.push(JSON.stringify(value));
         } else {
           values.push(value);

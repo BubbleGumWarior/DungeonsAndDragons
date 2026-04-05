@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { ChatMessage, OutOfCombatRollRequest } from '../../types/campaignTypes';
+import { ChatMessage, OutOfCombatRollRequest, DiceGroup } from '../../types/campaignTypes';
 
 interface OnlinePlayer {
   userId: number;
@@ -99,7 +99,7 @@ const ChatPanel: React.FC<Props> = ({
   const [pickerTab, setPickerTab] = useState<PickerTab>('skills');
   const [rollTargetId, setRollTargetId] = useState<number | ''>('');
   const [selectedOption, setSelectedOption] = useState<RollOption | null>(null);
-  const [rollDice, setRollDice] = useState('d20');
+  const [rollDiceGroups, setRollDiceGroups] = useState<DiceGroup[]>([{ count: 1, diceType: 'd20' }]);
 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -116,7 +116,7 @@ const ChatPanel: React.FC<Props> = ({
 
   const selectRollOption = (opt: RollOption) => {
     setSelectedOption(opt);
-    setRollDice(opt.defaultDice);
+    setRollDiceGroups([{ count: 1, diceType: opt.defaultDice }]);
   };
 
   const sendMessage = () => {
@@ -138,18 +138,19 @@ const ChatPanel: React.FC<Props> = ({
       campaignId,
       targetPlayerId: rollTargetId as number,
       targetCharacterName: target.characterName,
-      diceType: rollDice,
+      diceType: rollDiceGroups[0].diceType,
       rollPurpose: selectedOption.purpose,
       purposeDetail: selectedOption.purposeDetail,
       modifier: 0,
       precomputedModifier: selectedOption.modifier !== 'none' ? selectedOption.modifier : undefined,
+      diceGroups: rollDiceGroups,
       requesterName: currentUserName,
     };
     socket.emit('requestOutOfCombatRoll', req);
     setShowRollPicker(false);
     setRollTargetId('');
     setSelectedOption(null);
-    setRollDice('d20');
+    setRollDiceGroups([{ count: 1, diceType: 'd20' }]);
   };
 
   const tabOptions = pickerTab === 'skills' ? SKILLS : pickerTab === 'saves' ? SAVING_THROWS : OTHER_ROLLS;
@@ -193,16 +194,44 @@ const ChatPanel: React.FC<Props> = ({
             {msg.message_type === 'roll_result' && msg.roll_data ? (
               <div>
                 <div style={{ color: '#d1d5db', fontSize: '0.85rem', marginBottom: '4px' }}>{msg.content}</div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '4px', padding: '2px 8px', color: '#4ade80', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                    {msg.roll_data.diceType}: {msg.roll_data.total}
-                  </span>
-                  {msg.roll_data.modifier !== 0 && (
-                    <span style={{ color: '#9ca3af', fontSize: '0.78rem', alignSelf: 'center' }}>
-                      (rolls: [{msg.roll_data.rolls.join(', ')}] {msg.roll_data.modifier >= 0 ? '+' : ''}{msg.roll_data.modifier})
+                {msg.roll_data.diceGroups && msg.roll_data.diceGroups.length > 0 ? (
+                  /* Per-group breakdown for multi-dice rolls */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {msg.roll_data.diceGroups.map((grp, gi) => {
+                      const groupSum = grp.rolls.reduce((a, b) => a + b, 0);
+                      return (
+                        <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '4px', padding: '1px 7px', color: '#4ade80', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                            {grp.rolls.length}{grp.diceType}
+                          </span>
+                          <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>
+                            [{grp.rolls.join(', ')}] = {groupSum}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {msg.roll_data.modifier !== 0 && (
+                      <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>
+                        modifier: {msg.roll_data.modifier >= 0 ? '+' : ''}{msg.roll_data.modifier}
+                      </span>
+                    )}
+                    <span style={{ background: 'rgba(74,222,128,0.2)', border: '1px solid #4ade80', borderRadius: '4px', padding: '2px 8px', color: '#4ade80', fontWeight: 'bold', fontSize: '0.9rem', alignSelf: 'flex-start' }}>
+                      Total: {msg.roll_data.total}
                     </span>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  /* Legacy single-die display */
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '4px', padding: '2px 8px', color: '#4ade80', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                      {msg.roll_data.diceType}: {msg.roll_data.total}
+                    </span>
+                    {msg.roll_data.modifier !== 0 && (
+                      <span style={{ color: '#9ca3af', fontSize: '0.78rem', alignSelf: 'center' }}>
+                        (rolls: [{msg.roll_data.rolls.join(', ')}] {msg.roll_data.modifier >= 0 ? '+' : ''}{msg.roll_data.modifier})
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ color: '#d1d5db', fontSize: '0.85rem', wordBreak: 'break-word' }}>{msg.content}</div>
@@ -254,17 +283,50 @@ const ChatPanel: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Selected option summary + dice + send */}
+          {/* Selected option summary + DiceGroupBuilder + send */}
           <div style={{ padding: '6px 0.75rem 0.75rem', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             {selectedOption ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', padding: '4px 8px', background: 'rgba(124,58,237,0.15)', borderRadius: '4px', border: '1px solid rgba(124,58,237,0.3)' }}>
-                <span style={{ color: ABILITY_BADGE[selectedOption.modifier] ?? '#6b7280', fontWeight: 'bold', fontSize: '0.75rem', minWidth: '28px' }}>
-                  {selectedOption.modifier === 'none' ? '—' : selectedOption.modifier.toUpperCase()}
-                </span>
-                <span style={{ color: '#e9d5ff', fontSize: '0.82rem', flex: 1 }}>{selectedOption.purposeDetail}</span>
-                <select style={{ ...selectStyle, flex: 'unset', width: '60px' }} value={rollDice} onChange={e => setRollDice(e.target.value)}>
-                  {DICE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
+              <div style={{ marginBottom: '6px' }}>
+                {/* Roll type label */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', padding: '4px 8px', background: 'rgba(124,58,237,0.15)', borderRadius: '4px', border: '1px solid rgba(124,58,237,0.3)' }}>
+                  <span style={{ color: ABILITY_BADGE[selectedOption.modifier] ?? '#6b7280', fontWeight: 'bold', fontSize: '0.75rem', minWidth: '28px' }}>
+                    {selectedOption.modifier === 'none' ? '—' : selectedOption.modifier.toUpperCase()}
+                  </span>
+                  <span style={{ color: '#e9d5ff', fontSize: '0.82rem', flex: 1 }}>{selectedOption.purposeDetail}</span>
+                </div>
+                {/* Dice group builder */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {rollDiceGroups.map((grp, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <input
+                        type="number" min={1} max={10} value={grp.count}
+                        onChange={e => {
+                          const v = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+                          setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: v } : g));
+                        }}
+                        style={{ ...selectStyle, width: '42px', flex: 'unset', textAlign: 'center', padding: '3px 4px' }}
+                      />
+                      <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>×</span>
+                      <select value={grp.diceType}
+                        onChange={e => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: e.target.value } : g))}
+                        style={{ ...selectStyle, width: '62px', flex: 'unset' }}>
+                        {DICE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                      {rollDiceGroups.length > 1 && (
+                        <button onClick={() => setRollDiceGroups(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '3px', color: '#f87171', cursor: 'pointer', fontSize: '0.7rem', padding: '2px 6px', lineHeight: 1 }}>
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {rollDiceGroups.length < 6 && (
+                    <button onClick={() => setRollDiceGroups(prev => [...prev, { count: 1, diceType: 'd6' }])}
+                      style={{ alignSelf: 'flex-start', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '3px', color: '#4ade80', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 8px', marginTop: '2px' }}>
+                      + Add Die
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div style={{ color: '#6b7280', fontSize: '0.78rem', marginBottom: '6px', fontStyle: 'italic' }}>Select a roll type above</div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActionEconomy, DotCondition } from '../../types/campaignTypes';
+import { ActionEconomy, DotCondition, DiceGroup } from '../../types/campaignTypes';
 
 interface Combatant {
   characterId: string | number;
@@ -23,7 +23,7 @@ interface Props {
   onAddCondition: (condition: string) => void;
   onRemoveCondition: (condition: string) => void;
   onRemoveCombatant: () => void;
-  onRequestDiceRoll: (params: { diceType: string; modifier: string; rollPurpose: string; purposeDetail: string }) => void;
+  onRequestDiceRoll: (params: { diceType: string; modifier: string; rollPurpose: string; purposeDetail: string; diceGroups: DiceGroup[] }) => void;
   onQuickRequestRoll: () => void;
   dotConditions?: DotCondition[];
   onRemoveDotCondition?: (dotType: string) => void;
@@ -64,7 +64,7 @@ export const CombatActionsPanel: React.FC<Props> = ({
 
   // Roll request local state
   const [showRollPanel, setShowRollPanel] = useState(false);
-  const [rollDice, setRollDice] = useState('d20');
+  const [rollDiceGroups, setRollDiceGroups] = useState<DiceGroup[]>([{ count: 1, diceType: 'd20' }]);
   const [rollModifier, setRollModifier] = useState('none');
   const [rollPurpose, setRollPurpose] = useState('ability_check');
   const [rollDetail, setRollDetail] = useState('');
@@ -176,22 +176,50 @@ export const CombatActionsPanel: React.FC<Props> = ({
               background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.3)',
               display: 'flex', flexDirection: 'column', gap: '0.5rem',
             }}>
-              {/* Dice type */}
+              {/* Dice group builder */}
               <div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: '0 0 0.3rem' }}>Dice</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map(d => (
-                    <button key={d} onClick={() => setRollDice(d)}
-                      style={{
-                        padding: '0.2rem 0.45rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer',
-                        background: rollDice === d ? 'rgba(167,139,250,0.4)' : 'rgba(255,255,255,0.04)',
-                        border: `1px solid ${rollDice === d ? '#a78bfa' : 'rgba(255,255,255,0.15)'}`,
-                        color: rollDice === d ? '#c4b5fd' : 'rgba(255,255,255,0.5)',
-                        fontWeight: rollDice === d ? 'bold' : 'normal',
-                      }}>
-                      {d}
-                    </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {rollDiceGroups.map((grp, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                      {/* Count stepper */}
+                      <button onClick={() => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: Math.max(1, g.count - 1) } : g))}
+                        style={{ padding: '0.1rem 0.4rem', borderRadius: '0.25rem', fontSize: '0.75rem', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0' }}>
+                        −
+                      </button>
+                      <span style={{ color: '#c4b5fd', fontWeight: 'bold', fontSize: '0.8rem', minWidth: '16px', textAlign: 'center' }}>{grp.count}</span>
+                      <button onClick={() => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: Math.min(10, g.count + 1) } : g))}
+                        style={{ padding: '0.1rem 0.4rem', borderRadius: '0.25rem', fontSize: '0.75rem', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0' }}>
+                        +
+                      </button>
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem' }}>×</span>
+                      {/* Die type selector */}
+                      {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map(d => (
+                        <button key={d} onClick={() => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: d } : g))}
+                          style={{
+                            padding: '0.2rem 0.45rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer',
+                            background: grp.diceType === d ? 'rgba(167,139,250,0.4)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${grp.diceType === d ? '#a78bfa' : 'rgba(255,255,255,0.15)'}`,
+                            color: grp.diceType === d ? '#c4b5fd' : 'rgba(255,255,255,0.5)',
+                            fontWeight: grp.diceType === d ? 'bold' : 'normal',
+                          }}>
+                          {d}
+                        </button>
+                      ))}
+                      {rollDiceGroups.length > 1 && (
+                        <button onClick={() => setRollDiceGroups(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ padding: '0.15rem 0.45rem', borderRadius: '0.25rem', fontSize: '0.7rem', cursor: 'pointer', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171' }}>
+                          ×
+                        </button>
+                      )}
+                    </div>
                   ))}
+                  {rollDiceGroups.length < 6 && (
+                    <button onClick={() => setRollDiceGroups(prev => [...prev, { count: 1, diceType: 'd6' }])}
+                      style={{ alignSelf: 'flex-start', padding: '0.2rem 0.6rem', borderRadius: '0.3rem', fontSize: '0.72rem', cursor: 'pointer', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80', marginTop: '2px' }}>
+                      + Add Die
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -256,16 +284,17 @@ export const CombatActionsPanel: React.FC<Props> = ({
               {/* Send button */}
               <button
                 onClick={() => {
-                  onRequestDiceRoll({ diceType: rollDice, modifier: rollModifier, rollPurpose, purposeDetail: rollDetail || rollPurpose });
+                  onRequestDiceRoll({ diceType: rollDiceGroups[0].diceType, modifier: rollModifier, rollPurpose, purposeDetail: rollDetail || rollPurpose, diceGroups: rollDiceGroups });
                   setShowRollPanel(false);
                   setRollDetail('');
+                  setRollDiceGroups([{ count: 1, diceType: 'd20' }]);
                 }}
                 style={{
                   padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer',
                   background: 'linear-gradient(135deg, rgba(167,139,250,0.4), rgba(139,92,246,0.4))',
                   border: '1px solid #a78bfa', color: '#c4b5fd', fontWeight: 'bold', fontSize: '0.8rem',
                 }}>
-                📤 Send Roll Request ({rollDice}{rollModifier !== 'none' ? ` + ${rollModifier.toUpperCase()}` : ''})
+                📤 Send Roll Request ({rollDiceGroups.map(g => `${g.count}${g.diceType}`).join(' + ')}{rollModifier !== 'none' ? ` + ${rollModifier.toUpperCase()}` : ''})
               </button>
             </div>
           )}

@@ -545,6 +545,18 @@ const runMigrations = async () => {
       await fixUsageFreq();
     } catch (e) { /* skills table may not exist yet on first run */ }
 
+    // Migration — create character_pets table
+    try {
+      const addPetsTable = require('../migrations/add_pets_table');
+      await addPetsTable();
+    } catch (e) { console.warn('add_pets_table migration warning:', e.message); }
+
+    // Migration — add pet columns to combat_combatants
+    try {
+      const addPetCombatColumns = require('../migrations/add_pet_combat_columns');
+      await addPetCombatColumns();
+    } catch (e) { console.warn('add_pet_combat_columns migration warning:', e.message); }
+
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running database migrations:', error);

@@ -18,7 +18,9 @@ const armyRoutes = require('./routes/armies');
 const skillRoutes = require('./routes/skills');
 const journalsRoutes = require('./routes/journals');
 const beastRoutes = require('./routes/beasts');
+const shadowRoutes = require('./routes/shadows');
 const mountRoutes = require('./routes/mounts');
+const petRoutes = require('./routes/pets');
 const kingdomRoutes = require('./routes/kingdoms');
 const fiefRoutes = require('./routes/fiefs');
 const kingdomEventRoutes = require('./routes/kingdom-events');
@@ -153,7 +155,9 @@ app.use('/api/armies', armyRoutes);
 app.use('/api/monster-instances', monsterInstanceRoutes);
 app.use('/api/skills', skillRoutes);
 app.use('/api/beasts', beastRoutes);
+app.use('/api/shadows', shadowRoutes);
 app.use('/api/mounts', mountRoutes);
+app.use('/api/pets', petRoutes);
 app.use('/api/kingdoms', kingdomRoutes);
 app.use('/api', fiefRoutes);
 app.use('/api/kingdoms', kingdomEventRoutes);
@@ -317,6 +321,11 @@ const startServer = async () => {
         { name: 'addActiveDisasters', fn: require('./migrations/add_active_disasters') },
         { name: 'addCombatSystem', fn: addCombatSystem },
         { name: 'addCampaignChat', fn: require('./migrations/add_campaign_chat') },
+        { name: 'addResistancesToCharacters', fn: require('./migrations/add_resistances_to_characters') },
+        { name: 'addResistancesToMonsters', fn: require('./migrations/add_resistances_to_monsters') },
+        { name: 'seedMonsterResistances', fn: require('./migrations/seed_monster_resistances') },
+        { name: 'addClassResources', fn: require('./migrations/add_class_resources') },
+        { name: 'addShadowSovereignShadows', fn: require('./migrations/add_shadow_sovereign_shadows') },
       ];
       
       for (const migration of migrations) {
@@ -418,6 +427,8 @@ const startServer = async () => {
                   'remaining_movement', cc.remaining_movement,
                   'is_monster',         cc.is_monster,
                   'is_beast',           cc.is_beast,
+                  'is_pet',             cc.is_pet,
+                  'pet_id',             cc.pet_id,
                   'owner_character_id', cc.owner_character_id,
                   'position_x',         cc.position_x,
                   'position_y',         cc.position_y
@@ -443,6 +454,8 @@ const startServer = async () => {
         movement_speed: c.movement_speed,
         isMonster: c.is_monster,
         isBeast: c.is_beast,
+        isPet: c.is_pet,
+        petId: c.pet_id,
         ownerId: c.owner_character_id,
       }));
       const validKeys = (session.initiative_order || []).filter(Boolean);
@@ -633,6 +646,8 @@ const startServer = async () => {
                     image_url: template.image_url,
                     limb_health: template.limb_health,
                     limb_ac: template.limb_ac,
+                    cr: template.cr,
+                    resistances: template.resistances,
                   };
                 }
               }
@@ -1026,14 +1041,29 @@ const startServer = async () => {
             });
             console.log(`🐉 Monster ${combatantName} added to combat in campaign ${campaignId} (initiative: ${roll})`);
           } else {
-            // Regular player character invite
+            // Regular player character invite — also fetch battle pets
+            let battlePets = [];
+            try {
+              const petResult = await pool.query(
+                'SELECT id, name, species, hit_points, hit_points_current, armor_class, speed, abilities FROM character_pets WHERE character_id = $1 AND is_battle_pet = TRUE',
+                [characterId]
+              );
+              battlePets = petResult.rows.map(p => ({
+                ...p,
+                abilities: typeof p.abilities === 'string' ? JSON.parse(p.abilities) : (p.abilities || {}),
+              }));
+            } catch (petErr) {
+              console.warn('Could not fetch battle pets for invite:', petErr.message);
+            }
+
             io.to(`campaign_${campaignId}`).emit('combatInvite', {
               campaignId,
               characterId,
               targetPlayerId,
+              battlePets,
               timestamp: new Date().toISOString(),
             });
-            console.log(`📣 Combat invite sent for character ${characterId} in campaign ${campaignId}`);
+            console.log(`📣 Combat invite sent for character ${characterId} in campaign ${campaignId} (${battlePets.length} battle pet(s) included)`);
           }
         } catch (error) {
           console.error('Error sending combat invite:', error);
@@ -1044,7 +1074,7 @@ const startServer = async () => {
       socket.on('acceptCombatInvite', async (data) => {
         console.log('🚀 acceptCombatInvite called:', JSON.stringify(data));
         try {
-          const { campaignId, characterId, playerId } = data;
+          const { campaignId, characterId, playerId, selectedPetIds = [] } = data;
 
           // Get or create a combat session
           let session = battleCombatState[campaignId];
@@ -1139,6 +1169,55 @@ const startServer = async () => {
               }
             } catch (beastErr) {
               console.error('Error adding beast companion:', beastErr);
+            }
+          }
+
+          // Battle pets — add each selected pet as its own combatant (DM-controlled)
+          if (selectedPetIds && selectedPetIds.length > 0) {
+            try {
+              for (const petId of selectedPetIds) {
+                const petResult = await pool.query(
+                  'SELECT * FROM character_pets WHERE id = $1 AND character_id = $2 AND is_battle_pet = TRUE',
+                  [petId, characterId]
+                );
+                if (petResult.rows.length === 0) continue;
+                const pet = petResult.rows[0];
+                const petAbilities = typeof pet.abilities === 'string' ? JSON.parse(pet.abilities) : (pet.abilities || {});
+                const petDex = petAbilities.dex ?? 10;
+                const petDexMod = Math.floor((petDex - 10) / 2);
+                const petInitiative = Math.floor(Math.random() * 20) + 1 + petDexMod;
+                const petSpeed = pet.speed || 30;
+                const petKey = `pet_${pet.id}`;
+
+                await CombatSession.addCombatant({
+                  session_id: session.sessionId,
+                  combatant_key: petKey,
+                  name: `${pet.name} (Pet)`,
+                  player_id: null,
+                  initiative: petInitiative,
+                  movement_speed: petSpeed,
+                  is_pet: true,
+                  pet_id: pet.id,
+                  owner_character_id: character.id,
+                });
+
+                if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
+                battleMovementState[campaignId][petKey] = petSpeed;
+
+                session.combatants.push({
+                  characterId: petKey,
+                  playerId: null,
+                  name: `${pet.name} (Pet)`,
+                  initiative: petInitiative,
+                  movement_speed: petSpeed,
+                  isPet: true,
+                  petId: pet.id,
+                  ownerId: character.id,
+                });
+                console.log(`🐾 Battle pet "${pet.name}" added to combat (initiative: ${petInitiative})`);
+              }
+            } catch (petErr) {
+              console.error('Error adding battle pets to combat:', petErr);
             }
           }
 
@@ -1358,7 +1437,7 @@ const startServer = async () => {
       // DM confirms attack dice — sends hit die + damage die back to the attacking player
       socket.on('confirmAttackDice', (data) => {
         try {
-          const { campaignId, requestId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, dmName, targetPlayerId } = data;
+          const { campaignId, requestId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, damageDiceGroups, dmName, targetPlayerId } = data;
           const session = battleCombatState[campaignId];
           if (!session) return;
           // Find the attacking combatant's player socket and send only to them
@@ -1370,7 +1449,7 @@ const startServer = async () => {
             type: 'attackDiceConfig',
             status: 'pending',
             targetPlayerId: attackerPlayerId,
-            config: { requestId, campaignId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, dmName, attackerPlayerId },
+            config: { requestId, campaignId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, damageDiceGroups: damageDiceGroups ?? null, dmName, attackerPlayerId },
           };
           // Emit to whole room — frontend filters by attackerKey
           io.to(`campaign_${campaignId}`).emit('attackDiceConfig', {
@@ -1382,10 +1461,11 @@ const startServer = async () => {
             targetName,
             hitDie,
             damageDie,
+            damageDiceGroups: damageDiceGroups ?? null,
             dmName,
             attackerPlayerId,
           });
-          console.log(`⚔️ DM configured attack: ${hitDie} hit / ${damageDie} damage for ${attackerName} vs ${targetName}`);
+          console.log(`⚔️ DM configured attack: ${hitDie} hit / ${damageDiceGroups ? damageDiceGroups.map(g => `${g.count}${g.diceType}`).join('+') : damageDie} damage for ${attackerName} vs ${targetName}`);
         } catch (error) {
           console.error('Error handling confirm attack dice:', error);
         }
@@ -1825,16 +1905,48 @@ const startServer = async () => {
 
           io.to(`campaign_${campaignId}`).emit('shortRestStarted', { campaignId, characters });
 
-          // Immediately restore short-rest resources: Warlock pact magic, Monk ki points
+          // Immediately restore short-rest resources and notify all clients
           if (charIds.length > 0) {
-            // Clear used pact magic slots for Warlocks (pact magic recharges on short rest)
-            await pool.query(
+            // Warlock pact magic & Monk ki recharge on short rest
+            const warlockMonkResult = await pool.query(
               `UPDATE characters
                SET spell_slots_used = '{}'::jsonb,
                    ki_points_remaining = CASE WHEN class = 'Monk' THEN level ELSE ki_points_remaining END
-               WHERE id = ANY($1::int[]) AND class IN ('Warlock', 'Monk')`,
+               WHERE id = ANY($1::int[]) AND class IN ('Warlock', 'Monk')
+               RETURNING id, class, ki_points_remaining`,
               [charIds]
             );
+            for (const ch of warlockMonkResult.rows) {
+              if (ch.class === 'Warlock') {
+                io.to(`campaign_${campaignId}`).emit('spellSlotUpdated', { characterId: ch.id, spell_slots_used: {} });
+              } else if (ch.class === 'Monk') {
+                io.to(`campaign_${campaignId}`).emit('kiPointUpdated', { characterId: ch.id, ki_points_remaining: ch.ki_points_remaining });
+              }
+            }
+            // Charlatan Tricks recharge on short rest
+            const charlatanResult = await pool.query(
+              `UPDATE characters SET tricks_used = 0
+               WHERE id = ANY($1::int[]) AND class = 'Charlatan'
+               RETURNING id`,
+              [charIds]
+            );
+            for (const ch of charlatanResult.rows) {
+              io.to(`campaign_${campaignId}`).emit('trickUpdated', { characterId: ch.id, tricks_used: 0 });
+            }
+            // Shadow Step recharges on short rest for Shadow Sovereign
+            const shadowStepResult = await pool.query(
+              `UPDATE characters SET shadow_step_used = 0
+               WHERE id = ANY($1::int[]) AND class = 'Shadow Sovereign'
+               RETURNING id, COALESCE(shadow_reap_used, 0) as shadow_reap_used`,
+              [charIds]
+            );
+            for (const ch of shadowStepResult.rows) {
+              io.to(`campaign_${campaignId}`).emit('shadowResourceUpdated', {
+                characterId: ch.id,
+                shadow_reap_used: ch.shadow_reap_used,
+                shadow_step_used: 0,
+              });
+            }
           }
           console.log(`💤 Short rest initiated for campaign ${campaignId} (${characters.length} characters)`);
         } catch (error) { console.error('Error initiating short rest:', error); }
@@ -1996,13 +2108,16 @@ const startServer = async () => {
             const recovered = Math.max(1, Math.floor(ch.level / 2));
             const newRemaining = Math.min(ch.level, ch.hdr + recovered);
             const kiRestored = ch.class === 'Monk' ? ch.level : null;
-            // Long rest: full HP, clear limb damage, reset all spell slots, restore ki to full
+            // Long rest: full HP, clear limb damage, reset all spell slots, restore ki to full, reset class resources
             await pool.query(
               `UPDATE characters
                SET hit_points = $1, hit_dice_remaining = $2, limb_health = NULL,
                    hit_points_max = CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN $1 ELSE hit_points_max END,
                    spell_slots_used = '{}'::jsonb,
-                   ki_points_remaining = CASE WHEN class = 'Monk' THEN level ELSE ki_points_remaining END
+                   ki_points_remaining = CASE WHEN class = 'Monk' THEN level ELSE ki_points_remaining END,
+                   tricks_used = CASE WHEN class = 'Charlatan' THEN 0 ELSE tricks_used END,
+                   shadow_reap_used = CASE WHEN class = 'Shadow Sovereign' THEN 0 ELSE shadow_reap_used END,
+                   shadow_step_used = CASE WHEN class = 'Shadow Sovereign' THEN 0 ELSE shadow_step_used END
                WHERE id = $3`,
               [ch.max_hp, newRemaining, ch.id]
             );
@@ -2022,6 +2137,12 @@ const startServer = async () => {
             io.to(`campaign_${campaignId}`).emit('spellSlotUpdated', { characterId: ch.id, spell_slots_used: {} });
             if (kiRestored != null) {
               io.to(`campaign_${campaignId}`).emit('kiPointUpdated', { characterId: ch.id, ki_points_remaining: kiRestored });
+            }
+            if (ch.class === 'Charlatan') {
+              io.to(`campaign_${campaignId}`).emit('trickUpdated', { characterId: ch.id, tricks_used: 0 });
+            }
+            if (ch.class === 'Shadow Sovereign') {
+              io.to(`campaign_${campaignId}`).emit('shadowResourceUpdated', { characterId: ch.id, shadow_reap_used: 0, shadow_step_used: 0 });
             }
           }
 
@@ -2121,6 +2242,90 @@ const startServer = async () => {
             });
           }
         } catch (error) { console.error('Error restoring ki point:', error); }
+      });
+
+      // ─── Charlatan Tricks ───
+      socket.on('useTrick', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters SET tricks_used = COALESCE(tricks_used, 0) + 1 WHERE id = $1 RETURNING tricks_used`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('trickUpdated', { characterId, tricks_used: result.rows[0].tricks_used });
+          }
+        } catch (error) { console.error('Error using trick:', error); }
+      });
+
+      socket.on('restoreTrick', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters SET tricks_used = GREATEST(0, COALESCE(tricks_used, 0) - 1) WHERE id = $1 RETURNING tricks_used`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('trickUpdated', { characterId, tricks_used: result.rows[0].tricks_used });
+          }
+        } catch (error) { console.error('Error restoring trick:', error); }
+      });
+
+      // ─── Shadow Sovereign Resources ───
+      socket.on('useShadowReap', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters SET shadow_reap_used = COALESCE(shadow_reap_used, 0) + 1 WHERE id = $1
+             RETURNING shadow_reap_used, COALESCE(shadow_step_used, 0) as shadow_step_used`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('shadowResourceUpdated', { characterId, shadow_reap_used: result.rows[0].shadow_reap_used, shadow_step_used: result.rows[0].shadow_step_used });
+          }
+        } catch (error) { console.error('Error using shadow reap:', error); }
+      });
+
+      socket.on('restoreShadowReap', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters SET shadow_reap_used = GREATEST(0, COALESCE(shadow_reap_used, 0) - 1) WHERE id = $1
+             RETURNING shadow_reap_used, COALESCE(shadow_step_used, 0) as shadow_step_used`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('shadowResourceUpdated', { characterId, shadow_reap_used: result.rows[0].shadow_reap_used, shadow_step_used: result.rows[0].shadow_step_used });
+          }
+        } catch (error) { console.error('Error restoring shadow reap:', error); }
+      });
+
+      socket.on('useShadowStep', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters SET shadow_step_used = COALESCE(shadow_step_used, 0) + 1 WHERE id = $1
+             RETURNING COALESCE(shadow_reap_used, 0) as shadow_reap_used, shadow_step_used`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('shadowResourceUpdated', { characterId, shadow_reap_used: result.rows[0].shadow_reap_used, shadow_step_used: result.rows[0].shadow_step_used });
+          }
+        } catch (error) { console.error('Error using shadow step:', error); }
+      });
+
+      socket.on('restoreShadowStep', async (data) => {
+        try {
+          const { campaignId, characterId } = data;
+          const result = await pool.query(
+            `UPDATE characters SET shadow_step_used = GREATEST(0, COALESCE(shadow_step_used, 0) - 1) WHERE id = $1
+             RETURNING COALESCE(shadow_reap_used, 0) as shadow_reap_used, shadow_step_used`,
+            [characterId]
+          );
+          if (result.rows.length > 0) {
+            io.to(`campaign_${campaignId}`).emit('shadowResourceUpdated', { characterId, shadow_reap_used: result.rows[0].shadow_reap_used, shadow_step_used: result.rows[0].shadow_step_used });
+          }
+        } catch (error) { console.error('Error restoring shadow step:', error); }
       });
 
       // Roll death saves for a downed character
@@ -2353,6 +2558,7 @@ const startServer = async () => {
               requesterName: request.requester_name,
               targetCharacterName,
               diceType,
+              diceGroups: data.diceGroups ?? null,
               rollPurpose,
               purposeDetail,
               campaignId,
@@ -2368,6 +2574,7 @@ const startServer = async () => {
               requesterName: request.requester_name,
               targetCharacterName,
               diceType,
+              diceGroups: data.diceGroups ?? null,
               rollPurpose,
               purposeDetail,
               campaignId,
@@ -2384,7 +2591,8 @@ const startServer = async () => {
         try {
           const { campaignId, requestId, result, rawRoll, total, modifierValue, modifier, rollerName,
                   attackerKey, targetKey, targetName: attackTargetName, hitRoll, damageRoll,
-                  purposeDetail, diceType: submittedDiceType, rollPurpose: submittedRollPurpose } = data;
+                  purposeDetail, diceType: submittedDiceType, rollPurpose: submittedRollPurpose,
+                  allRolls } = data;
           const session = battleCombatState[campaignId];
 
           let resolvedPurposeDetail = purposeDetail || null;
@@ -2462,6 +2670,7 @@ const startServer = async () => {
             diceType: resolvedDiceType,
             rollPurpose: resolvedRollPurpose,
             purposeDetail: resolvedPurposeDetail,
+            allRolls: allRolls ?? null,
             timestamp: new Date().toISOString(),
           });
         } catch (error) { console.error('Error submitting dice result:', error); }
@@ -2715,6 +2924,20 @@ const startServer = async () => {
           console.log(`✨ Skill expertise toggled: ${skillName} (${isAdding ? 'added' : 'removed'})`);
         } catch (error) {
           console.error('Error handling skill expertise toggle:', error);
+        }
+      });
+
+      // Handle resistance updates (DM adds/removes resistance tags on a character)
+      socket.on('updateResistances', (data) => {
+        try {
+          const { campaignId, characterId, resistances } = data;
+          io.to(`campaign_${campaignId}`).emit('resistancesUpdated', {
+            campaignId,
+            characterId,
+            resistances,
+          });
+        } catch (error) {
+          console.error('Error handling resistance update:', error);
         }
       });
 

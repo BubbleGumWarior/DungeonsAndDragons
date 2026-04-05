@@ -152,6 +152,11 @@ export interface ActionEconomy {
   reaction_used: boolean;
 }
 
+export interface DiceGroup {
+  count: number;
+  diceType: string; // e.g. 'd6', 'd20'
+}
+
 export interface CombatDiceRequest {
   requestId: number;
   requesterName: string;
@@ -162,6 +167,7 @@ export interface CombatDiceRequest {
   campaignId: number;
   modifier?: string; // 'none' | 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha' | 'prof'
   precomputedModifier?: number | null; // pre-calculated modifier (e.g. from Quick Roll skill lookup)
+  diceGroups?: DiceGroup[]; // multi-dice request (e.g. 2d6 + 1d8)
 }
 
 // Outcome panel shown to DM after a player submits a dice roll
@@ -205,7 +211,8 @@ export interface AttackDiceConfig {
   targetKey: string;
   targetName: string;
   hitDie: string;   // e.g. 'd20'
-  damageDie: string; // e.g. 'd6'
+  damageDie: string; // e.g. 'd6' (legacy / first group fallback)
+  damageDiceGroups?: DiceGroup[]; // multi-damage e.g. 2d6 + 1d8
   dmName: string;
 }
 
@@ -237,6 +244,7 @@ export interface ChatMessage {
     rolls: number[];
     total: number;
     characterName?: string;
+    diceGroups?: { diceType: string; rolls: number[] }[];
   } | null;
   created_at: string;
 }
@@ -252,5 +260,6 @@ export interface OutOfCombatRollRequest {
   modifier: number;
   precomputedModifier?: string;
   requesterName: string;
+  diceGroups?: DiceGroup[]; // multi-dice request (e.g. 2d6 + 1d8)
 }
 

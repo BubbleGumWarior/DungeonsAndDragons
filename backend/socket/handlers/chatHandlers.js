@@ -46,7 +46,7 @@ module.exports = (socket, io, userSocketMap) => {
   // DM requests a player to make a roll outside combat
   socket.on('requestOutOfCombatRoll', async ({
     campaignId, targetPlayerId, targetCharacterName,
-    diceType, rollPurpose, purposeDetail, modifier, precomputedModifier
+    diceType, rollPurpose, purposeDetail, modifier, precomputedModifier, diceGroups
   }) => {
     try {
       const userId = socket.userId;
@@ -76,6 +76,7 @@ module.exports = (socket, io, userSocketMap) => {
           modifier: modifier || 'none',
           precomputedModifier: precomputedModifier ?? null,
           requesterName: dmName,
+          diceGroups: diceGroups ?? null,
         });
       }
 
@@ -97,7 +98,7 @@ module.exports = (socket, io, userSocketMap) => {
   // Player submits a completed out-of-combat roll
   socket.on('submitOutOfCombatRoll', async ({
     campaignId, requestId, rawRoll, total, modifierValue, modifier,
-    rollerName, diceType, purposeDetail
+    rollerName, diceType, purposeDetail, allRolls
   }) => {
     try {
       if (!campaignId || !rollerName) return;
@@ -108,10 +109,11 @@ module.exports = (socket, io, userSocketMap) => {
 
       const rollData = {
         diceType: diceType || 'd20',
-        rolls: [safeRaw],
+        rolls: allRolls ? allRolls.flatMap(g => g.rolls) : [safeRaw],
         modifier: safeMod,
         total: safeTotal,
         purpose: purposeDetail || 'roll',
+        diceGroups: allRolls && allRolls.length > 0 ? allRolls : null,
       };
 
       const modLabel = safeMod !== 0 ? ` ${safeMod >= 0 ? '+' : ''}${safeMod} (${modifier || '?'})` : '';

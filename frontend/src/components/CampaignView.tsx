@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, Character, mountAPI, Mount, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS, isTemplateUnlocked } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -218,6 +218,202 @@ const DISASTER_CATALOGUE = [
 
 const TIER_NAMES = ['', 'Camp', 'Hamlet', 'Small Village', 'Village', 'Large Village', 'Small Town', 'Town', 'Large Town', 'City', 'Citadel'];
 
+// ─── Shadow helper components (need local useState, so defined outside CampaignView) ───
+
+interface ShadowAddFormProps { characterId: number; onCreated: () => void; storedCount: number; maxStored: number; }
+const ShadowAddForm: React.FC<ShadowAddFormProps> = ({ characterId, onCreated, storedCount, maxStored }) => {
+  const [open, setOpen] = React.useState(false);
+  const blank = { shadow_name: '', origin_name: '', hit_points_max: 10, armor_class: 12, speed: 30, attack_bonus: 3, damage_dice: '1d6', damage_type: 'necrotic', special_abilities: '', abilities: { str: 10, dex: 14, con: 10, int: 6, wis: 10, cha: 6 } };
+  const [form, setForm] = React.useState(blank);
+  const [saving, setSaving] = React.useState(false);
+  const atCap = storedCount >= maxStored;
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    try { await shadowAPI.createShadow(characterId, form); setForm(blank); setOpen(false); onCreated(); }
+    catch (e: any) { console.error('Create shadow error', e); }
+    finally { setSaving(false); }
+  };
+
+  if (!open) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+      <button
+        onClick={() => !atCap && setOpen(true)}
+        disabled={atCap}
+        title={atCap ? `Stored cap reached (${maxStored}). Activate or delete a shadow first.` : undefined}
+        style={{ padding: '8px 18px', background: atCap ? 'rgba(75,85,99,0.2)' : 'rgba(139,92,246,0.25)', border: `1px solid ${atCap ? 'rgba(107,114,128,0.3)' : 'rgba(139,92,246,0.5)'}`, borderRadius: '8px', color: atCap ? 'var(--text-muted)' : '#c4b5fd', cursor: atCap ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: atCap ? 0.5 : 1 }}>
+        + Add Shadow
+      </button>
+      {atCap && <span style={{ fontSize: '0.72rem', color: '#f87171' }}>Stored cap reached ({storedCount}/{maxStored})</span>}
+    </div>
+  );
+
+  const inp = (label: string, key: keyof typeof form, type = 'text') => (
+    <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{label}</label>
+      <input type={type} value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+        style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(139,92,246,0.35)', borderRadius: '5px', padding: '4px 8px', color: '#fff', fontSize: '0.85rem', width: '100%' }} />
+    </div>
+  );
+  const abInp = (stat: string) => (
+    <div key={stat} style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'center' }}>
+      <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{stat}</label>
+      <input type="number" min={1} max={30} value={(form.abilities as any)[stat]}
+        onChange={e => setForm(f => ({ ...f, abilities: { ...f.abilities, [stat]: Number(e.target.value) } }))}
+        style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: '4px', padding: '3px 4px', color: '#fff', fontSize: '0.8rem', width: '100%', textAlign: 'center' }} />
+    </div>
+  );
+
+  return (
+    <div style={{ background: 'rgba(139,92,246,0.08)', border: '2px solid rgba(139,92,246,0.4)', borderRadius: '12px', padding: '1.25rem', textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
+      <h6 style={{ color: '#c4b5fd', marginBottom: '1rem' }}>🌑 New Shadow</h6>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
+        {inp('Shadow Name', 'shadow_name')} {inp('Origin Name', 'origin_name')}
+        {inp('Max HP', 'hit_points_max', 'number')} {inp('Armor Class', 'armor_class', 'number')}
+        {inp('Speed (ft)', 'speed', 'number')} {inp('Attack Bonus', 'attack_bonus', 'number')}
+        {inp('Damage Dice', 'damage_dice')} {inp('Damage Type', 'damage_type')}
+      </div>
+      <div style={{ marginBottom: '0.6rem' }}>
+        <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Special Abilities</label>
+        <textarea value={form.special_abilities} onChange={e => setForm(f => ({ ...f, special_abilities: e.target.value }))}
+          rows={2} style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#fff', fontSize: '0.8rem', resize: 'vertical' }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: '0.4rem', marginBottom: '1rem' }}>
+        {['str','dex','con','int','wis','cha'].map(s => abInp(s))}
+      </div>
+      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+        <button onClick={() => setOpen(false)} style={{ padding: '6px 14px', background: 'rgba(107,114,128,0.25)', border: '1px solid rgba(107,114,128,0.4)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}>Cancel</button>
+        <button onClick={handleSubmit} disabled={saving} style={{ padding: '6px 14px', background: 'rgba(139,92,246,0.4)', border: '1px solid rgba(139,92,246,0.6)', borderRadius: '6px', color: '#e9d5ff', cursor: 'pointer', fontWeight: 'bold' }}>
+          {saving ? 'Creating...' : 'Create Shadow'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+interface ShadowDMControlsProps { shadow: Shadow; characterId: number; onUpdated: () => void; activeCount: number; maxActive: number; }
+const ShadowDMControls: React.FC<ShadowDMControlsProps> = ({ shadow, characterId, onUpdated, activeCount, maxActive }) => {
+  const [editing, setEditing] = React.useState(false);
+  const [hpInput, setHpInput] = React.useState(String(shadow.hit_points_current));
+  const [editData, setEditData] = React.useState({ shadow_name: shadow.shadow_name || '', origin_name: shadow.origin_name || '', hit_points_max: shadow.hit_points_max, armor_class: shadow.armor_class, speed: shadow.speed, attack_bonus: shadow.attack_bonus, damage_dice: shadow.damage_dice || '1d6', damage_type: shadow.damage_type || 'necrotic', special_abilities: shadow.special_abilities || '', abilities: { ...(shadow.abilities || { str:10,dex:14,con:10,int:6,wis:10,cha:6 }) } });
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => { setHpInput(String(shadow.hit_points_current)); }, [shadow.hit_points_current]);
+
+  const saveHP = async () => {
+    const hp = Math.max(0, Math.min(shadow.hit_points_max, Number(hpInput)));
+    try { await shadowAPI.updateShadowHP(characterId, shadow.id, hp); onUpdated(); }
+    catch (e) { console.error('HP update error', e); }
+  };
+  const [activeError, setActiveError] = React.useState('');
+  const toggleActive = async () => {
+    if (!shadow.is_active && activeCount >= maxActive) {
+      setActiveError(`Cap reached (${maxActive} active). Store another shadow first.`);
+      setTimeout(() => setActiveError(''), 3000);
+      return;
+    }
+    setActiveError('');
+    try { await shadowAPI.toggleShadowActive(characterId, shadow.id, !shadow.is_active); onUpdated(); }
+    catch (e: any) {
+      const msg = e?.response?.data?.error || 'Failed to toggle shadow';
+      setActiveError(msg);
+      setTimeout(() => setActiveError(''), 3000);
+    }
+  };
+  const saveEdit = async () => {
+    setSaving(true);
+    try { await shadowAPI.updateShadow(characterId, shadow.id, editData); setEditing(false); onUpdated(); }
+    catch (e) { console.error('Update shadow error', e); }
+    finally { setSaving(false); }
+  };
+  const deleteShadow = async () => {
+    try { await shadowAPI.deleteShadow(characterId, shadow.id); onUpdated(); }
+    catch (e) { console.error('Delete shadow error', e); }
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+      {/* HP inline edit */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Set HP:</span>
+        <input type="number" min={0} max={shadow.hit_points_max} value={hpInput} onChange={e => setHpInput(e.target.value)}
+          onBlur={saveHP} onKeyDown={e => e.key === 'Enter' && saveHP()}
+          style={{ width: '56px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', padding: '2px 6px', color: '#fff', fontSize: '0.8rem', textAlign: 'center' }} />
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/ {shadow.hit_points_max}</span>
+      </div>
+      {/* Controls row */}
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <button
+          onClick={toggleActive}
+          disabled={!shadow.is_active && activeCount >= maxActive}
+          title={!shadow.is_active && activeCount >= maxActive ? `Cap reached (${maxActive} active)` : undefined}
+          style={{ fontSize: '0.72rem', padding: '3px 10px', background: shadow.is_active ? 'rgba(139,92,246,0.2)' : 'rgba(239,68,68,0.18)', border: `1px solid ${shadow.is_active ? 'rgba(139,92,246,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius: '5px', color: shadow.is_active ? '#c4b5fd' : '#fca5a5', cursor: (!shadow.is_active && activeCount >= maxActive) ? 'not-allowed' : 'pointer', opacity: (!shadow.is_active && activeCount >= maxActive) ? 0.45 : 1 }}>
+          {shadow.is_active ? '→ Store' : '→ Activate'}
+        </button>
+        {activeError && <span style={{ fontSize: '0.7rem', color: '#f87171', width: '100%', marginTop: '2px' }}>{activeError}</span>}
+        <button onClick={() => setEditing(e => !e)} style={{ fontSize: '0.72rem', padding: '3px 10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '5px', color: '#93c5fd', cursor: 'pointer' }}>
+          {editing ? 'Close' : 'Edit'}
+        </button>
+        {!confirmDelete ? (
+          <button onClick={() => setConfirmDelete(true)} style={{ fontSize: '0.72rem', padding: '3px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', color: '#fca5a5', cursor: 'pointer' }}>Delete</button>
+        ) : (
+          <>
+            <button onClick={deleteShadow} style={{ fontSize: '0.72rem', padding: '3px 10px', background: 'rgba(239,68,68,0.35)', border: '1px solid rgba(239,68,68,0.6)', borderRadius: '5px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>Confirm</button>
+            <button onClick={() => setConfirmDelete(false)} style={{ fontSize: '0.72rem', padding: '3px 8px', background: 'rgba(75,85,99,0.3)', border: '1px solid rgba(107,114,128,0.4)', borderRadius: '5px', color: 'var(--text-muted)', cursor: 'pointer' }}>×</button>
+          </>
+        )}
+      </div>
+      {/* Inline edit form */}
+      {editing && (
+        <div style={{ marginTop: '0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            {(['shadow_name','origin_name'] as const).map(k => (
+              <div key={k}><label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{k.replace('_',' ')}</label>
+                <input value={(editData as any)[k]} onChange={e => setEditData(d => ({ ...d, [k]: e.target.value }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '3px 6px', color: '#fff', fontSize: '0.8rem' }} />
+              </div>
+            ))}
+            {(['hit_points_max','armor_class','speed','attack_bonus'] as const).map(k => (
+              <div key={k}><label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{k.replace(/_/g,' ')}</label>
+                <input type="number" value={(editData as any)[k]} onChange={e => setEditData(d => ({ ...d, [k]: Number(e.target.value) }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '3px 6px', color: '#fff', fontSize: '0.8rem' }} />
+              </div>
+            ))}
+            {(['damage_dice','damage_type'] as const).map(k => (
+              <div key={k}><label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{k.replace('_',' ')}</label>
+                <input value={(editData as any)[k]} onChange={e => setEditData(d => ({ ...d, [k]: e.target.value }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '3px 6px', color: '#fff', fontSize: '0.8rem' }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Special Abilities</label>
+            <textarea value={editData.special_abilities} onChange={e => setEditData(d => ({ ...d, special_abilities: e.target.value }))}
+              rows={2} style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '3px 6px', color: '#fff', fontSize: '0.8rem', resize: 'vertical' }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: '0.3rem', marginBottom: '0.5rem' }}>
+            {(['str','dex','con','int','wis','cha'] as const).map(s => (
+              <div key={s} style={{ textAlign: 'center' }}>
+                <label style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{s}</label>
+                <input type="number" min={1} max={30} value={editData.abilities[s]}
+                  onChange={e => setEditData(d => ({ ...d, abilities: { ...d.abilities, [s]: Number(e.target.value) } }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px 0', color: '#fff', fontSize: '0.75rem', textAlign: 'center' }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <button onClick={() => setEditing(false)} style={{ fontSize: '0.75rem', padding: '4px 12px', background: 'rgba(75,85,99,0.25)', border: '1px solid rgba(107,114,128,0.4)', borderRadius: '5px', color: 'var(--text-muted)', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={saveEdit} disabled={saving} style={{ fontSize: '0.75rem', padding: '4px 12px', background: 'rgba(59,130,246,0.3)', border: '1px solid rgba(59,130,246,0.5)', borderRadius: '5px', color: '#93c5fd', cursor: 'pointer', fontWeight: 'bold' }}>
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const CampaignView: React.FC = () => {
   const { campaignName } = useParams<{ campaignName: string }>();
   const navigate = useNavigate();
@@ -244,7 +440,7 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts' | 'pets' | 'npcs'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs'>('board');
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
   const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom'>('map');
@@ -392,7 +588,7 @@ const CampaignView: React.FC = () => {
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
   const [showResetCombatModal, setShowResetCombatModal] = useState(false);
   const [showCombatInviteModal, setShowCombatInviteModal] = useState(false);
-  const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string } | null>(null);
+  const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string; battlePets: Pet[] } | null>(null);
   const [combatantDetailModal, setCombatantDetailModal] = useState<{ combatantId: number | string } | null>(null);
   const [combatants, setCombatants] = useState<Array<{ 
     characterId: number | string; 
@@ -404,6 +600,8 @@ const CampaignView: React.FC = () => {
     monsterId?: number;
     instanceNumber?: number;
     isBeast?: boolean;
+    isPet?: boolean;
+    petId?: number;
     ownerId?: number;
   }>>([]);
   const [initiativeOrder, setInitiativeOrder] = useState<(number | string)[]>([]);
@@ -425,6 +623,9 @@ const CampaignView: React.FC = () => {
   const [hitDiceRemaining, setHitDiceRemaining] = useState<Record<number, number>>({});
   const [characterSpellSlotsUsed, setCharacterSpellSlotsUsed] = useState<Record<number, Record<string, number>>>({});
   const [characterKiPoints, setCharacterKiPoints] = useState<Record<number, number>>({});
+  const [characterTricksUsed, setCharacterTricksUsed] = useState<Record<number, number>>({});
+  const [characterShadowResources, setCharacterShadowResources] = useState<Record<number, { shadow_reap_used: number; shadow_step_used: number }>>({});
+  const [characterShadows, setCharacterShadows] = useState<Record<number, Shadow[]>>({});
   const [shortRestPrompt, setShortRestPrompt] = useState<{
     characterId: number; name: string; die: number;
     hitDiceRemaining: number; currentHp: number; maxHp: number; conMod: number;
@@ -459,7 +660,7 @@ const CampaignView: React.FC = () => {
   const [pendingOOCRoll, setPendingOOCRoll] = useState<OutOfCombatRollRequest | null>(null);
   // DM attack config picker state
   const [dmAttackHitDie, setDmAttackHitDie] = useState('d20');
-  const [dmAttackDamageDie, setDmAttackDamageDie] = useState('d6');
+  const [dmAttackDamageGroups, setDmAttackDamageGroups] = useState<import('../types/campaignTypes').DiceGroup[]>([{ count: 1, diceType: 'd6' }]);
   const [turnNotification, setTurnNotification] = useState<string | null>(null);
   const [selectedCombatant, setSelectedCombatant] = useState<string | number | null>(null);
 
@@ -474,7 +675,8 @@ const CampaignView: React.FC = () => {
     limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
     limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
     abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-    cr: 0
+    cr: 0,
+    resistances: { resistances: [], immunities: [], vulnerabilities: [] }
   });
   const [monsterImageFile, setMonsterImageFile] = useState<File | null>(null);
   const [viewImageModal, setViewImageModal] = useState<{ imageUrl: string; name: string; description?: string } | null>(null);
@@ -513,6 +715,22 @@ const CampaignView: React.FC = () => {
   });
   const [mountImageFile, setMountImageFile] = useState<File | null>(null);
   const [mountImagePreviewUrl, setMountImagePreviewUrl] = useState<string | null>(null);
+
+  // Pets state
+  const [campaignPets, setCampaignPets] = useState<Pet[]>([]);
+  const [showAddPetModal, setShowAddPetModal] = useState(false);
+  const [editingPet, setEditingPet] = useState<Pet | null>(null);
+  const defaultPetForm = (): Partial<Pet> => ({
+    name: '', species: '', description: '',
+    hit_points: 10, hit_points_current: 10,
+    armor_class: 10, speed: 30,
+    abilities: { str: 10, dex: 10, con: 10, int: 2, wis: 10, cha: 6 },
+    is_battle_pet: false, image_url: undefined,
+  });
+  const [petFormData, setPetFormData] = useState<Partial<Pet>>(defaultPetForm());
+  const [petImageFile, setPetImageFile] = useState<File | null>(null);
+  const [petImagePreviewUrl, setPetImagePreviewUrl] = useState<string | null>(null);
+  const [combatPetSelections, setCombatPetSelections] = useState<number[]>([]);
 
   // Army and Battlefield state
   const [armies, setArmies] = useState<Army[]>([]);
@@ -692,6 +910,28 @@ const CampaignView: React.FC = () => {
     setCombatCharacterHp(prev => ({ ...hpMap, ...prev }));
     if (Object.keys(limbMap).length > 0) {
       setCharacterLimbHealth(prev => ({ ...limbMap, ...prev }));
+    }
+
+    // Seed resistances from DB so players see them immediately without needing a socket event.
+    const resistanceMap: Record<number, { resistances: string[]; immunities: string[]; vulnerabilities: string[] }> = {};
+    currentCampaign.characters.forEach((character: any) => {
+      const res = character.resistances;
+      if (res && (res.resistances?.length > 0 || res.immunities?.length > 0 || res.vulnerabilities?.length > 0)) {
+        resistanceMap[Number(character.id)] = res;
+      }
+    });
+    if (Object.keys(resistanceMap).length > 0) {
+      setCharacterDataOverrides(prev => {
+        const merged: Record<number, Partial<any>> = { ...prev };
+        Object.entries(resistanceMap).forEach(([id, res]) => {
+          const numId = Number(id);
+          // Only set if not already overridden by a more recent socket event
+          if (!merged[numId]?.resistances) {
+            merged[numId] = { ...merged[numId], resistances: res };
+          }
+        });
+        return merged;
+      });
     }
   }, [currentCampaign]);
 
@@ -1193,6 +1433,21 @@ const CampaignView: React.FC = () => {
     loadMounts();
   }, [currentCampaign]);
 
+  // Load pets when campaign changes
+  useEffect(() => {
+    const loadPets = async () => {
+      if (currentCampaign) {
+        try {
+          const fetchedPets = await petAPI.getCampaignPets(currentCampaign.campaign.id);
+          setCampaignPets(fetchedPets);
+        } catch (error) {
+          console.error('Error loading pets:', error);
+        }
+      }
+    };
+    loadPets();
+  }, [currentCampaign]);
+
   // Re-fetch mounts from DB whenever the mounts tab is opened (ensures fresh data)
   useEffect(() => {
     if (activeTab === 'mounts' && currentCampaign) {
@@ -1667,6 +1922,16 @@ const CampaignView: React.FC = () => {
     }
   }, []);
 
+  const loadShadows = useCallback(async (characterId: number) => {
+    try {
+      const shadows = await shadowAPI.getShadows(characterId);
+      setCharacterShadows(prev => ({ ...prev, [characterId]: shadows }));
+    } catch (error) {
+      console.error('Error loading shadows:', error);
+      setCharacterShadows(prev => ({ ...prev, [characterId]: [] }));
+    }
+  }, []);
+
   const handleAddSkillToCharacter = async (characterId: number, skillId: number) => {
     try {
       await skillAPI.addSkillToCharacter(characterId, skillId);
@@ -1893,6 +2158,26 @@ const CampaignView: React.FC = () => {
   };
 
   // Skill Proficiency Toggle (for dungeonmaster to add/remove proficiency)
+  const handleUpdateResistances = async (characterId: number, newResistances: { resistances: string[]; immunities: string[]; vulnerabilities: string[] }) => {
+    try {
+      if (!socket || !currentCampaign) return;
+      await characterAPI.update(characterId, { resistances: newResistances });
+      const numCharId = Number(characterId);
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [numCharId]: { ...prev[numCharId], resistances: newResistances }
+      }));
+      socket.emit('updateResistances', {
+        campaignId: currentCampaign.campaign.id,
+        characterId,
+        resistances: newResistances,
+      });
+    } catch (error) {
+      console.error('Error updating resistances:', error);
+      toast('Failed to update resistances');
+    }
+  };
+
   const handleToggleSkillProficiency = async (characterId: number, skillName: string) => {
     try {
       const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
@@ -2140,6 +2425,10 @@ const CampaignView: React.FC = () => {
     
     return false;
   }, [characterBeasts]);
+
+  const shouldShowShadowsTab = useCallback((character: any): boolean => {
+    return character.class === 'Shadow Sovereign';
+  }, []);
 
   // Reset to overview tab when viewing another player's character
   useEffect(() => {
@@ -2759,13 +3048,17 @@ const CampaignView: React.FC = () => {
         campaignId: number;
         characterId: number;
         targetPlayerId: number;
+        battlePets?: Pet[];
         timestamp: string;
       }) => {
         // Check if this invite is for the current user
         if (user && data.targetPlayerId === user.id) {
           const character = currentCampaign.characters.find((c: any) => c.id === data.characterId);
           if (character) {
-            setCombatInvite({ characterId: data.characterId, characterName: character.name });
+            const pets = data.battlePets || [];
+            setCombatInvite({ characterId: data.characterId, characterName: character.name, battlePets: pets });
+            // Pre-select all battle pets
+            setCombatPetSelections(pets.map(p => p.id));
             setShowCombatInviteModal(true);
           }
         }
@@ -2783,6 +3076,8 @@ const CampaignView: React.FC = () => {
           monsterId?: number;
           instanceNumber?: number;
           isBeast?: boolean;
+          isPet?: boolean;
+          petId?: number;
           ownerId?: number;
         }>;
         initiativeOrder: (number | string)[];
@@ -2988,6 +3283,15 @@ const CampaignView: React.FC = () => {
       newSocket.on('kiPointUpdated', (data: { characterId: number; ki_points_remaining: number }) => {
         setCharacterKiPoints(prev => ({ ...prev, [data.characterId]: data.ki_points_remaining }));
       });
+      newSocket.on('trickUpdated', (data: { characterId: number; tricks_used: number }) => {
+        setCharacterTricksUsed(prev => ({ ...prev, [data.characterId]: data.tricks_used }));
+      });
+      newSocket.on('shadowResourceUpdated', (data: { characterId: number; shadow_reap_used: number; shadow_step_used: number }) => {
+        setCharacterShadowResources(prev => ({ ...prev, [data.characterId]: { shadow_reap_used: data.shadow_reap_used, shadow_step_used: data.shadow_step_used } }));
+      });
+      newSocket.on('shadowsUpdated', (data: { characterId: number; shadows: Shadow[] }) => {
+        setCharacterShadows(prev => ({ ...prev, [data.characterId]: data.shadows }));
+      });
 
       // Listen for action economy updates
       newSocket.on('actionEconomyUpdated', (data: { combatantKey?: string; economy?: ActionEconomy; combatants?: any[]; campaignId?: number }) => {
@@ -3032,7 +3336,7 @@ const CampaignView: React.FC = () => {
         if (user?.role === 'Dungeon Master') {
           setPendingAttackRequest(data);
           setDmAttackHitDie('d20');
-          setDmAttackDamageDie('d6');
+          setDmAttackDamageGroups([{ count: 1, diceType: 'd6' }]);
         }
       });
 
@@ -3390,6 +3694,19 @@ const CampaignView: React.FC = () => {
         setCampaignMounts(prev => prev.filter(m => m.id !== data.mountId));
       });
 
+      // ─── Pet socket events ──────────────────────────────────────────────
+      newSocket.on('petAdded', (data: { pet: Pet; timestamp: string }) => {
+        setCampaignPets(prev => [...prev, data.pet]);
+      });
+
+      newSocket.on('petUpdated', (data: { pet: Pet; timestamp: string }) => {
+        setCampaignPets(prev => prev.map(p => p.id === data.pet.id ? data.pet : p));
+      });
+
+      newSocket.on('petDeleted', (data: { petId: number; characterId: number; timestamp: string }) => {
+        setCampaignPets(prev => prev.filter(p => p.id !== data.petId));
+      });
+
       // Listen for battle round advanced (emit to all users when DM advances round)
       newSocket.on('battleRoundAdvanced', (data: { battleId: number; round: number; timestamp: string }) => {
         const currentBattle = activeBattleRef.current;
@@ -3560,6 +3877,22 @@ const CampaignView: React.FC = () => {
             setToastMessage(`${character.name}'s Armor Class updated to ${data.newArmorClass}`);
             setTimeout(() => setToastMessage(null), 3000);
           }
+        }
+      });
+
+      // Listen for resistance updates (DM added/removed resistance tags)
+      newSocket.on('resistancesUpdated', (data: {
+        campaignId: number;
+        characterId: number;
+        resistances: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
+      }) => {
+        const campaign = currentCampaignRef.current;
+        if (campaign && Number(campaign.campaign.id) === Number(data.campaignId)) {
+          const charId = Number(data.characterId);
+          setCharacterDataOverrides(prev => ({
+            ...prev,
+            [charId]: { ...prev[charId], resistances: data.resistances }
+          }));
         }
       });
 
@@ -3773,8 +4106,12 @@ const CampaignView: React.FC = () => {
         // Clear beast data for non-Primal Bond or low level characters
         setCharacterBeasts(prev => ({ ...prev, [selectedCharacter]: null }));
       }
+      // Load shadows for Shadow Sovereign characters
+      if (character && character.class === 'Shadow Sovereign') {
+        loadShadows(selectedCharacter);
+      }
     }
-  }, [selectedCharacter, currentCampaign, loadEquippedItems, loadEquipmentDetails, loadBeastCompanion]);
+  }, [selectedCharacter, currentCampaign, loadEquippedItems, loadEquipmentDetails, loadBeastCompanion, loadShadows]);
 
   // Load all skills when component mounts
   useEffect(() => {
@@ -4737,7 +5074,7 @@ const CampaignView: React.FC = () => {
   ] as const;
 
   const characterTabConfig: Record<
-    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'levelup' | 'mounts' | 'pets' | 'npcs',
+    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs',
     { label: string; icon: string }
   > = {
     board: { label: 'Overview', icon: '📋' },
@@ -4747,6 +5084,7 @@ const CampaignView: React.FC = () => {
     equip: { label: 'Equipment', icon: '🛡️' },
     armies: { label: 'Armies', icon: '⚔️' },
     companion: { label: 'Companion', icon: '🐾' },
+    shadows: { label: 'Shadows', icon: '🌑' },
     levelup: { label: 'Level Up', icon: '⬆️' },
     mounts: { label: 'Mounts', icon: '🐴' },
     pets: { label: 'Pets', icon: '🐾' },
@@ -4761,6 +5099,7 @@ const CampaignView: React.FC = () => {
     ? (isOwnCharacter
         ? (['board', 'sheet', 'npcs', 'inventory', 'skills', 'equip', 'armies', 'mounts', 'pets' as const,
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
+            ...(shouldShowShadowsTab(selectedCharacterData) ? ['shadows' as const] : []),
             ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])
           ] as const)
         : (['board'] as const))
@@ -5339,6 +5678,80 @@ const CampaignView: React.FC = () => {
                                 <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>✨</span>
                                   {slotInfo.slots.map((count, i) => count > 0 ? <MiniSlotRow key={i} slotLevel={i + 1} totalCount={count} /> : null)}
+                                </div>
+                              );
+                            })()}
+
+                            {/* Charlatan Tricks indicator */}
+                            {character.class === 'Charlatan' && (() => {
+                              const lvl = character.level;
+                              const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
+                              const used = characterTricksUsed[character.id] ?? 0;
+                              const isDMView = user?.role === 'Dungeon Master';
+                              return (
+                                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '0.55rem', color: '#fb923c' }}>🃏</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                    <span style={{ fontSize: '0.5rem', color: '#fb923c', minWidth: '10px' }}>T</span>
+                                    {Array.from({ length: maxTricks }).map((_, idx) => {
+                                      const isUsed = idx < used;
+                                      return (
+                                        <div key={idx}
+                                          onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreTrick' : 'useTrick', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }}
+                                          title={isUsed ? 'Used' : (isDMView ? 'Click to use' : 'Available')}
+                                          style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(251,146,60,0.7)', border: '1px solid rgba(251,146,60,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Shadow Sovereign resource indicators */}
+                            {character.class === 'Shadow Sovereign' && (() => {
+                              const isDMView = user?.role === 'Dungeon Master';
+                              const res = characterShadowResources[character.id] ?? { shadow_reap_used: 0, shadow_step_used: 0 };
+                              // Merge ability overrides so stat changes emit and reflect immediately
+                              const abilityOverrides = characterDataOverrides[character.id]?.abilities as Record<string, number> | undefined;
+                              const abilities = { ...(character.abilities || {}), ...(abilityOverrides || {}) };
+                              const dex = abilities.dex ?? 10;
+                              const dexMod = Math.max(0, Math.floor((dex - 10) / 2));
+                              const con = abilities.con ?? 10;
+                              const conMod = Math.max(0, Math.floor((con - 10) / 2));
+                              const lvl = character.level;
+                              const maxReap = lvl >= 12 ? 2 : 1;
+                              const maxStep = dexMod + (lvl >= 11 ? 4 : lvl >= 7 ? 2 : 0);
+                              const shadows = characterShadows[character.id] ?? [];
+                              const activeCount = shadows.filter(s => s.is_active).length;
+                              return (
+                                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  {lvl >= 6 && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                      <span style={{ fontSize: '0.5rem', color: '#a78bfa', minWidth: '12px' }}>☽</span>
+                                      {Array.from({ length: maxReap }).map((_, idx) => {
+                                        const isUsed = idx < res.shadow_reap_used;
+                                        return <div key={idx} onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreShadowReap' : 'useShadowReap', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }} title={isUsed ? 'Shadow Reap used' : 'Shadow Reap available'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(139,92,246,0.7)', border: '1px solid rgba(139,92,246,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />;
+                                      })}
+                                    </div>
+                                  )}
+                                  {maxStep > 0 && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                      <span style={{ fontSize: '0.5rem', color: '#818cf8', minWidth: '12px' }}>👣</span>
+                                      {Array.from({ length: maxStep }).map((_, idx) => {
+                                        const isUsed = idx < res.shadow_step_used;
+                                        return <div key={idx} onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreShadowStep' : 'useShadowStep', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }} title={isUsed ? 'Shadow Step used' : 'Shadow Step available'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(99,102,241,0.7)', border: '1px solid rgba(99,102,241,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />;
+                                      })}
+                                    </div>
+                                  )}
+                                  {conMod > 0 && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                      <span style={{ fontSize: '0.5rem', color: '#f87171', minWidth: '12px' }}>◈</span>
+                                      {Array.from({ length: conMod }).map((_, idx) => {
+                                        const isActive = idx < activeCount;
+                                        return <div key={idx} title={isActive ? 'Shadow active' : 'Shadow slot empty'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isActive ? 'rgba(239,68,68,0.7)' : 'rgba(0,0,0,0.2)', border: '1px solid rgba(239,68,68,0.6)', opacity: isActive ? 1 : 0.4 }} />;
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })()}
@@ -6334,6 +6747,20 @@ const CampaignView: React.FC = () => {
                               <div style={{ fontSize: '0.7rem', color: '#999' }}>
                                 Move: {(remainingMovement[combatant.characterId] ?? combatant.movement_speed).toFixed(1)}/{combatant.movement_speed}ft
                               </div>
+                              {/* Resistance chips */}
+                              {!initiativeHidden && (() => {
+                                const combatRes = combatant.isMonster
+                                  ? initMonsterTemplate?.resistances as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined
+                                  : (characterDataOverrides[Number(combatant.characterId)]?.resistances ?? initCharacter?.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined;
+                                if (!combatRes || (combatRes.resistances.length === 0 && combatRes.immunities.length === 0 && combatRes.vulnerabilities.length === 0)) return null;
+                                return (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem', marginTop: '0.2rem' }}>
+                                    {combatRes.resistances.map((r: string) => <span key={`r-${r}`} style={{ fontSize: '0.6rem', background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '3px', padding: '0 0.25rem' }}>{r}</span>)}
+                                    {combatRes.immunities.map((r: string) => <span key={`i-${r}`} style={{ fontSize: '0.6rem', background: 'rgba(74,222,128,0.15)', color: '#86efac', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '3px', padding: '0 0.25rem' }}>{r}</span>)}
+                                    {combatRes.vulnerabilities.map((r: string) => <span key={`v-${r}`} style={{ fontSize: '0.6rem', background: 'rgba(248,113,113,0.15)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '3px', padding: '0 0.25rem' }}>{r}</span>)}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             {/* AC badge */}
                             <div style={{
@@ -6474,6 +6901,7 @@ const CampaignView: React.FC = () => {
                               rollPurpose: params.rollPurpose,
                               purposeDetail: params.purposeDetail || params.rollPurpose,
                               modifier: params.modifier,
+                              diceGroups: params.diceGroups,
                             });
                           }}
                           onQuickRequestRoll={() => {
@@ -6807,7 +7235,8 @@ const CampaignView: React.FC = () => {
                       ? (monsterInstanceHp[String(combatant.characterId)]?.totalHP ?? 1) <= 0
                       : (deathSaves[Number(combatant.characterId)]?.is_dead ?? false);
                     
-                    const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url);
+                    const petTemplate = combatant.isPet ? campaignPets.find(p => p.id === combatant.petId) : null;
+                    const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url || petTemplate?.image_url);
                     
                     const name = combatant.name;
                     const displayName = character ? `${name} (${character.player_name})` : name;
@@ -9304,6 +9733,13 @@ const CampaignView: React.FC = () => {
                             )}
                             {(monster as any).is_global && (
                               <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginTop: '0.25rem' }}>📖 Default Template</div>
+                            )}
+                            {monster.resistances && (monster.resistances.resistances.length > 0 || monster.resistances.immunities.length > 0 || monster.resistances.vulnerabilities.length > 0) && (
+                              <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                {monster.resistances.resistances.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem', alignItems: 'center' }}><span style={{ fontSize: '0.65rem', color: '#93c5fd', fontWeight: 'bold', minWidth: 'fit-content' }}>RES:</span>{monster.resistances.resistances.map(r => <span key={r} style={{ fontSize: '0.65rem', background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '3px', padding: '0 0.3rem' }}>{r}</span>)}</div>}
+                                {monster.resistances.immunities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem', alignItems: 'center' }}><span style={{ fontSize: '0.65rem', color: '#86efac', fontWeight: 'bold', minWidth: 'fit-content' }}>IMM:</span>{monster.resistances.immunities.map(r => <span key={r} style={{ fontSize: '0.65rem', background: 'rgba(74,222,128,0.15)', color: '#86efac', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '3px', padding: '0 0.3rem' }}>{r}</span>)}</div>}
+                                {monster.resistances.vulnerabilities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem', alignItems: 'center' }}><span style={{ fontSize: '0.65rem', color: '#fca5a5', fontWeight: 'bold', minWidth: 'fit-content' }}>VULN:</span>{monster.resistances.vulnerabilities.map(r => <span key={r} style={{ fontSize: '0.65rem', background: 'rgba(248,113,113,0.15)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '3px', padding: '0 0.3rem' }}>{r}</span>)}</div>}
+                              </div>
                             )}
                           </div>
                           {user?.role === 'Dungeon Master' && (
@@ -12098,6 +12534,45 @@ const CampaignView: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Resistances / Immunities / Vulnerabilities */}
+                    {(() => {
+                      const charResistances = (characterDataOverrides[selectedCharacterData.id]?.resistances ?? selectedCharacterData.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined;
+                      const resData = charResistances ?? { resistances: [], immunities: [], vulnerabilities: [] };
+                      const isDM = user?.role === 'Dungeon Master';
+                      const categories = [
+                        { key: 'resistances' as const, label: 'Resistances', color: '#93c5fd', bg: 'rgba(96,165,250,0.15)', border: 'rgba(96,165,250,0.4)', sectionBg: 'rgba(96,165,250,0.05)' },
+                        { key: 'immunities' as const, label: 'Immunities', color: '#86efac', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)', sectionBg: 'rgba(74,222,128,0.05)' },
+                        { key: 'vulnerabilities' as const, label: 'Vulnerabilities', color: '#fca5a5', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.4)', sectionBg: 'rgba(248,113,113,0.05)' },
+                      ];
+                      const hasAny = resData.resistances.length > 0 || resData.immunities.length > 0 || resData.vulnerabilities.length > 0;
+                      if (!hasAny && !isDM) return null;
+                      return (
+                        <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1rem' }}>
+                          <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>⚔️ Damage Affinities</div>
+                          {categories.map(cat => (
+                            <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
+                              <div style={{ fontSize: '0.75rem', color: cat.color, fontWeight: 'bold', marginBottom: '0.3rem' }}>{cat.label}</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
+                                {resData[cat.key].map((tag: string) => (
+                                  <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: cat.bg, color: cat.color, border: `1px solid ${cat.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
+                                    {tag}
+                                    {isDM && <span onClick={() => { const updated = { ...resData, [cat.key]: resData[cat.key].filter((t: string) => t !== tag) }; handleUpdateResistances(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>×</span>}
+                                  </span>
+                                ))}
+                                {resData[cat.key].length === 0 && !isDM && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>}
+                                {isDM && (
+                                  <select onChange={e => { if (!e.target.value) return; const val = e.target.value; if (!resData[cat.key].includes(val)) { const updated = { ...resData, [cat.key]: [...resData[cat.key], val] }; handleUpdateResistances(selectedCharacterData.id, updated); } e.target.value = ''; }} style={{ padding: '0.2rem 0.3rem', borderRadius: '0.25rem', background: 'rgba(0,0,0,0.5)', border: `1px solid ${cat.border}`, color: cat.color, fontSize: '0.7rem', cursor: 'pointer' }}>
+                                    <option value="">+ Add...</option>
+                                    {['Acid','Bludgeoning','Cold','Fire','Force','Lightning','Necrotic','Piercing','Poison','Psychic','Radiant','Slashing','Thunder','Nonmagical Bludgeoning','Nonmagical Piercing','Nonmagical Slashing'].map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Spell Slots Panel (spellcasting classes only) */}
                     {isSpellcaster(selectedCharacterData.class) && (() => {
                       const slotInfo = getSpellSlots(selectedCharacterData.class, selectedCharacterData.level);
@@ -12225,6 +12700,117 @@ const CampaignView: React.FC = () => {
                           </div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{remaining}/{maxKi} remaining</div>
                         </div>
+                      );
+                    })()}
+
+                    {/* Charlatan Tricks Panel */}
+                    {selectedCharacterData.class === 'Charlatan' && (() => {
+                      const lvl = selectedCharacterData.level;
+                      const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
+                      const used = characterTricksUsed[selectedCharacterData.id] ?? 0;
+                      const remaining = maxTricks - used;
+                      const isDM = user?.role === 'Dungeon Master';
+                      const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
+                      const canInteract = isDM || isOwner;
+                      return (
+                        <div style={{ background: 'rgba(251,146,60,0.06)', border: '2px solid rgba(251,146,60,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem' }}>
+                          <h6 style={{ color: '#fb923c', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            🃏 Tricks
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on short rest{canInteract ? ' · click to use/restore' : ''})</span>
+                          </h6>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {Array.from({ length: maxTricks }).map((_, idx) => {
+                              const isUsed = idx >= remaining;
+                              return (
+                                <div key={idx}
+                                  title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                  onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreTrick' : 'useTrick', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
+                                  style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(251,146,60,0.7)', border: '2px solid rgba(251,146,60,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.35 : 1, transition: 'opacity 0.2s' }} />
+                              );
+                            })}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{remaining}/{maxTricks} remaining</div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Shadow Sovereign Resource Panels */}
+                    {selectedCharacterData.class === 'Shadow Sovereign' && (() => {
+                      const lvl = selectedCharacterData.level;
+                      const abilities = selectedCharacterData.abilities || {};
+                      const dex = abilities.dex ?? 10;
+                      const dexMod = Math.max(0, Math.floor((dex - 10) / 2));
+                      const con = abilities.con ?? 10;
+                      const conMod = Math.max(0, Math.floor((con - 10) / 2));
+                      const res = characterShadowResources[selectedCharacterData.id] ?? { shadow_reap_used: 0, shadow_step_used: 0 };
+                      const isDM = user?.role === 'Dungeon Master';
+                      const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
+                      const canInteract = isDM || isOwner;
+                      const shadows = characterShadows[selectedCharacterData.id] ?? [];
+                      const activeCount = shadows.filter(s => s.is_active).length;
+                      const maxReap = lvl >= 12 ? 2 : 1;
+                      const maxStep = dexMod + (lvl >= 11 ? 4 : lvl >= 7 ? 2 : 0);
+                      return (
+                        <>
+                          {/* Shadow Reap — long rest */}
+                          {lvl >= 6 && (
+                            <div style={{ background: 'rgba(139,92,246,0.06)', border: '2px solid rgba(139,92,246,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem' }}>
+                              <h6 style={{ color: '#a78bfa', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                ☽ Shadow Reap
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on long rest{canInteract ? ' · click to use/restore' : ''})</span>
+                              </h6>
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                {Array.from({ length: maxReap }).map((_, idx) => {
+                                  const isUsed = idx < res.shadow_reap_used;
+                                  return (
+                                    <div key={idx}
+                                      title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                      onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreShadowReap' : 'useShadowReap', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
+                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(139,92,246,0.7)', border: '2px solid rgba(139,92,246,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.4 : 1, transition: 'opacity 0.2s' }} />
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{maxReap - res.shadow_reap_used}/{maxReap} remaining</div>
+                            </div>
+                          )}
+                          {/* Shadow Step — short rest */}
+                          {maxStep > 0 && (
+                            <div style={{ background: 'rgba(99,102,241,0.06)', border: '2px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem' }}>
+                              <h6 style={{ color: '#818cf8', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                👣 Shadow Step
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on short rest{canInteract ? ' · click to use/restore' : ''})</span>
+                              </h6>
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                {Array.from({ length: maxStep }).map((_, idx) => {
+                                  const isUsed = idx < res.shadow_step_used;
+                                  return (
+                                    <div key={idx}
+                                      title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                      onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreShadowStep' : 'useShadowStep', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
+                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(99,102,241,0.7)', border: '2px solid rgba(99,102,241,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.4 : 1, transition: 'opacity 0.2s' }} />
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{maxStep - res.shadow_step_used}/{maxStep} remaining</div>
+                            </div>
+                          )}
+                          {/* Active Shadows — read-only counter derived from shadows tab */}
+                          {conMod > 0 && (
+                            <div style={{ background: 'rgba(239,68,68,0.06)', border: '2px solid rgba(239,68,68,0.3)', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem' }}>
+                              <h6 style={{ color: '#f87171', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                ◈ Active Shadows
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(max {conMod} · manage in Shadows tab)</span>
+                              </h6>
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                {Array.from({ length: conMod }).map((_, idx) => {
+                                  const isActive = idx < activeCount;
+                                  return <div key={idx} title={isActive ? 'Shadow active' : 'Slot empty'} style={{ width: '22px', height: '22px', borderRadius: '50%', background: isActive ? 'rgba(239,68,68,0.7)' : 'rgba(0,0,0,0.2)', border: '2px solid rgba(239,68,68,0.6)', opacity: isActive ? 1 : 0.35 }} />;
+                                })}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{activeCount}/{conMod} active · {shadows.length - activeCount} stored</div>
+                            </div>
+                          )}
+                        </>
                       );
                     })()}
 
@@ -12833,6 +13419,147 @@ const CampaignView: React.FC = () => {
                     })()}
                   </div>
                 )}
+
+                {/* Shadows Tab */}
+                {activeTab === 'shadows' && canViewAllTabs(selectedCharacterData.id) && shouldShowShadowsTab(selectedCharacterData) && (() => {
+                  const isDM = user?.role === 'Dungeon Master';
+                  const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
+                  const shadows = characterShadows[selectedCharacterData.id] ?? [];
+                  const conMod = Math.max(0, Math.floor(((selectedCharacterData.abilities?.con ?? 10) - 10) / 2));
+                  const maxActive = conMod;
+                  const maxStored = conMod * 4;
+                  const activeCount = shadows.filter(s => s.is_active).length;
+                  const storedCount = shadows.filter(s => !s.is_active).length;
+
+                  // Local state helpers via refs — we use window-attached state keyed by character id
+                  const editKey = `shadowEdit_${selectedCharacterData.id}`;
+                  const formKey = `shadowForm_${selectedCharacterData.id}`;
+
+                  return (
+                    <div className="glass-panel">
+                      <h6 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#c084fc' }}>🌑 Shadows</h6>
+
+                      {/* Summary bar */}
+                      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', color: '#fca5a5' }}>
+                          ◈ Active: {activeCount} / {maxActive}
+                        </span>
+                        <span style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.35)', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', color: '#c4b5fd' }}>
+                          ☾ Stored: {storedCount} / {maxStored}
+                        </span>
+                        <span style={{ background: 'rgba(75,85,99,0.2)', border: '1px solid rgba(107,114,128,0.3)', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          Total: {shadows.length}
+                        </span>
+                      </div>
+
+                      {/* DM-only: Add Shadow button */}
+                      {isDM && (
+                        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                          <ShadowAddForm
+                            characterId={selectedCharacterData.id}
+                            onCreated={() => loadShadows(selectedCharacterData.id)}
+                            storedCount={storedCount}
+                            maxStored={maxStored}
+                          />
+                        </div>
+                      )}
+
+                      {/* Shadow cards grid */}
+                      {shadows.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem', fontSize: '0.9rem' }}>
+                          No shadows yet.{isDM ? ' Use the form above to create one.' : ''}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
+                          {shadows.map(shadow => {
+                            const hpPct = shadow.hit_points_max > 0 ? (shadow.hit_points_current / shadow.hit_points_max) * 100 : 0;
+                            const hpColor = hpPct > 60 ? '#22c55e' : hpPct > 25 ? '#f59e0b' : '#ef4444';
+                            const ab = shadow.abilities || { str: 10, dex: 14, con: 10, int: 6, wis: 10, cha: 6 };
+                            const abilityMod = (v: number) => { const m = Math.floor((v - 10) / 2); return m >= 0 ? `+${m}` : `${m}`; };
+                            return (
+                              <div key={shadow.id} style={{
+                                background: shadow.is_active ? 'rgba(239,68,68,0.06)' : 'rgba(139,92,246,0.06)',
+                                border: `2px solid ${shadow.is_active ? 'rgba(239,68,68,0.4)' : 'rgba(139,92,246,0.3)'}`,
+                                borderRadius: '12px', padding: '1rem', position: 'relative'
+                              }}>
+                                {/* Active/Stored badge */}
+                                <span style={{
+                                  position: 'absolute', top: '0.75rem', right: '0.75rem',
+                                  fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 8px', borderRadius: '10px',
+                                  background: shadow.is_active ? 'rgba(239,68,68,0.25)' : 'rgba(139,92,246,0.2)',
+                                  color: shadow.is_active ? '#fca5a5' : '#c4b5fd',
+                                  border: `1px solid ${shadow.is_active ? 'rgba(239,68,68,0.4)' : 'rgba(139,92,246,0.3)'}`
+                                }}>
+                                  {shadow.is_active ? '◈ ACTIVE' : '☾ STORED'}
+                                </span>
+
+                                {/* Name + origin */}
+                                <div style={{ marginBottom: '0.75rem', paddingRight: '5rem' }}>
+                                  <div style={{ fontWeight: 'bold', color: shadow.is_active ? '#fca5a5' : '#c4b5fd', fontSize: '1rem' }}>
+                                    {shadow.shadow_name || 'Unnamed Shadow'}
+                                  </div>
+                                  {shadow.origin_name && (
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Origin: {shadow.origin_name}</div>
+                                  )}
+                                </div>
+
+                                {/* HP bar */}
+                                <div style={{ marginBottom: '0.75rem' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '3px' }}>
+                                    <span style={{ color: hpColor }}>HP</span>
+                                    <span style={{ color: hpColor }}>{shadow.hit_points_current}/{shadow.hit_points_max}</span>
+                                  </div>
+                                  <div style={{ height: '6px', background: 'rgba(0,0,0,0.35)', borderRadius: '3px', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${hpPct}%`, background: hpColor, borderRadius: '3px', transition: 'width 0.3s' }} />
+                                  </div>
+                                </div>
+
+                                {/* Stat row */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                                  {[ ['AC', shadow.armor_class], ['Spd', `${shadow.speed}ft`], ['Atk', `+${shadow.attack_bonus}`], ['Dmg', `${shadow.damage_dice} ${shadow.damage_type}`] ].map(([label, val]) => (
+                                    <div key={label as string} style={{ textAlign: 'center', background: 'rgba(0,0,0,0.25)', borderRadius: '6px', padding: '3px 2px' }}>
+                                      <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{label}</div>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>{val}</div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Ability scores */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', marginBottom: '0.75rem' }}>
+                                  {(['str','dex','con','int','wis','cha'] as const).map(stat => (
+                                    <div key={stat} style={{ textAlign: 'center', background: 'rgba(0,0,0,0.15)', borderRadius: '4px', padding: '2px' }}>
+                                      <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{stat}</div>
+                                      <div style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>{abilityMod(ab[stat])}</div>
+                                      <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>{ab[stat]}</div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Special abilities */}
+                                {shadow.special_abilities && (
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.5rem', marginBottom: isDM ? '0.75rem' : 0 }}>
+                                    {shadow.special_abilities}
+                                  </div>
+                                )}
+
+                                {/* DM controls */}
+                                {isDM && (
+                                  <ShadowDMControls
+                                    shadow={shadow}
+                                    characterId={selectedCharacterData.id}
+                                    onUpdated={() => loadShadows(selectedCharacterData.id)}
+                                    activeCount={activeCount}
+                                    maxActive={maxActive}
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Level Up Tab */}
                 {activeTab === 'levelup' && canViewAllTabs(selectedCharacterData.id) && canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) && (
@@ -13532,15 +14259,233 @@ const CampaignView: React.FC = () => {
                 })()}
 
                 {/* Pets Tab */}
-                {activeTab === 'pets' && canViewAllTabs(selectedCharacterData.id) && (
-                  <div className="glass-panel">
-                    <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>🐾 Pets</h5>
-                    <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
-                      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🐾</div>
-                      <p style={{ color: 'var(--text-secondary)' }}>No pets yet. This section will track {selectedCharacterData.name}'s animal companions and pets.</p>
+                {activeTab === 'pets' && canViewAllTabs(selectedCharacterData.id) && (() => {
+                  const isDM = user?.role === 'Dungeon Master';
+                  const charPets = campaignPets.filter(p => p.character_id === selectedCharacterData.id);
+                  const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
+
+                  const hpColor = (cur: number, max: number) => {
+                    const pct = max > 0 ? (cur / max) * 100 : 0;
+                    if (pct > 66) return '#4ade80';
+                    if (pct > 33) return '#fbbf24';
+                    return '#ef4444';
+                  };
+
+                  const abilityMod = (score: number) => {
+                    const mod = Math.floor((score - 10) / 2);
+                    return mod >= 0 ? `+${mod}` : String(mod);
+                  };
+
+                  const ABILITY_LABELS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const;
+                  const ABILITY_KEYS: (keyof Pet['abilities'])[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+
+                  return (
+                    <div className="glass-panel">
+                      {/* Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          🐾 Pets
+                          {charPets.length > 0 && (
+                            <span style={{ background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '1rem', padding: '0.1rem 0.55rem', fontSize: '0.78rem', color: 'var(--text-gold)' }}>
+                              {charPets.length}
+                            </span>
+                          )}
+                        </h5>
+                        {isDM && (
+                          <button
+                            onClick={() => {
+                              setPetFormData({ ...defaultPetForm(), character_id: selectedCharacterData.id, campaign_id: currentCampaign?.campaign.id });
+                              setPetImageFile(null);
+                              setPetImagePreviewUrl(null);
+                              setEditingPet(null);
+                              setShowAddPetModal(true);
+                            }}
+                            style={{ padding: '0.45rem 1rem', background: 'linear-gradient(135deg, rgba(212,193,156,0.18), rgba(212,193,156,0.08))', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.5rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                          >
+                            + Add Pet
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Empty state */}
+                      {charPets.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '3rem 1rem', border: '2px dashed rgba(212,193,156,0.2)', borderRadius: '0.75rem' }}>
+                          <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>🐾</div>
+                          <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                            {selectedCharacterData.name} has no pets yet.
+                          </p>
+                          {isDM && <p style={{ color: 'rgba(212,193,156,0.5)', fontSize: '0.85rem' }}>Use "+ Add Pet" to assign a pet to this character.</p>}
+                        </div>
+                      )}
+
+                      {/* Pet cards */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        {charPets.map(pet => {
+                          const hpPct = pet.hit_points > 0 ? (pet.hit_points_current / pet.hit_points) * 100 : 0;
+                          const limbMax = calcCharacterLimbHealthMax(pet.hit_points, pet.abilities?.con ?? 10);
+                          const LIMB_LABELS = [
+                            { key: 'head', label: 'Head' },
+                            { key: 'chest', label: 'Body' },
+                            { key: 'left_arm', label: 'L.Arm' },
+                            { key: 'right_arm', label: 'R.Arm' },
+                            { key: 'left_leg', label: 'L.Leg' },
+                            { key: 'right_leg', label: 'R.Leg' },
+                          ];
+
+                          return (
+                            <div key={pet.id} style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(212,193,156,0.18)', borderRadius: '0.85rem', overflow: 'hidden' }}>
+                              {/* Card top: image + core info */}
+                              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 0 }}>
+                                {/* Image column */}
+                                <div style={{ width: 130, minHeight: 130, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                  {pet.image_url ? (
+                                    <img
+                                      src={`${API_BASE}${pet.image_url}`}
+                                      alt={pet.name}
+                                      style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block', cursor: 'pointer' }}
+                                      onClick={() => setViewImageModal({ imageUrl: `${API_BASE}${pet.image_url}`, name: pet.name })}
+                                    />
+                                  ) : (
+                                    <span style={{ fontSize: '3rem' }}>🐾</span>
+                                  )}
+                                  {/* Battle pet badge overlay */}
+                                  {pet.is_battle_pet && (
+                                    <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(239,68,68,0.85)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.65rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                      ⚔️ Battle Pet
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Info column */}
+                                <div style={{ padding: '0.85rem 1rem' }}>
+                                  {/* Name + badges row */}
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                                    <div>
+                                      <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.2rem' }}>{pet.name}</div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                        <span style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '0.9rem', padding: '0.1rem 0.55rem', fontSize: '0.72rem', color: '#c4b5fd' }}>
+                                          {pet.species}
+                                        </span>
+                                        {pet.is_battle_pet && (
+                                          <span style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.9rem', padding: '0.1rem 0.55rem', fontSize: '0.72rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                            ⚔️ Battle Pet
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {/* DM controls */}
+                                    {isDM && (
+                                      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                                        <button
+                                          onClick={() => {
+                                            setEditingPet(pet);
+                                            setPetFormData({ name: pet.name, species: pet.species, description: pet.description || '', hit_points: pet.hit_points, hit_points_current: pet.hit_points_current, armor_class: pet.armor_class, speed: pet.speed, abilities: { ...pet.abilities }, is_battle_pet: pet.is_battle_pet, image_url: pet.image_url });
+                                            setPetImageFile(null);
+                                            setPetImagePreviewUrl(null);
+                                            setShowAddPetModal(true);
+                                          }}
+                                          style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.35)', background: 'rgba(212,193,156,0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
+                                        >✏️ Edit</button>
+                                        <button
+                                          onClick={() => setPendingConfirm({ msg: `Delete "${pet.name}"?`, onYes: async () => { try { await petAPI.deletePet(pet.id); setCampaignPets(prev => prev.filter(p => p.id !== pet.id)); } catch (err) { console.error(err); } }})}
+                                          style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
+                                        >🗑️</button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Description */}
+                                  {pet.description && (
+                                    <p style={{ color: '#bbb', fontSize: '0.82rem', marginBottom: '0.65rem', lineHeight: 1.5, margin: '0 0 0.65rem' }}>{pet.description}</p>
+                                  )}
+
+                                  {/* Stats row */}
+                                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.7rem' }}>
+                                    <span style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '0.4rem', padding: '0.2rem 0.6rem', fontSize: '0.75rem', color: '#86efac', fontWeight: 600 }}>
+                                      🛡️ AC {pet.armor_class}
+                                    </span>
+                                    <span style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.4rem', padding: '0.2rem 0.6rem', fontSize: '0.75rem', color: '#93c5fd', fontWeight: 600 }}>
+                                      💨 {pet.speed} ft
+                                    </span>
+                                  </div>
+
+                                  {/* HP bar */}
+                                  <div style={{ marginBottom: '0.75rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                                      <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.73rem' }}>Hit Points</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        {isDM ? (
+                                          <input
+                                            type="number"
+                                            value={pet.hit_points_current}
+                                            min={0}
+                                            max={pet.hit_points}
+                                            onChange={async (e) => {
+                                              const val = Math.max(0, Math.min(pet.hit_points, parseInt(e.target.value) || 0));
+                                              try {
+                                                const updated = await petAPI.updatePetHP(pet.id, val);
+                                                setCampaignPets(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                              } catch (err) { console.error(err); }
+                                            }}
+                                            style={{ width: 50, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: hpColor(pet.hit_points_current, pet.hit_points), fontSize: '0.82rem', padding: '0.1rem 0.3rem', textAlign: 'center' }}
+                                          />
+                                        ) : (
+                                          <span style={{ color: hpColor(pet.hit_points_current, pet.hit_points), fontWeight: 700, fontSize: '0.85rem' }}>{pet.hit_points_current}</span>
+                                        )}
+                                        <span style={{ color: '#777', fontSize: '0.75rem' }}>/ {pet.hit_points}</span>
+                                      </div>
+                                    </div>
+                                    <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, hpPct))}%`, background: hpColor(pet.hit_points_current, pet.hit_points), borderRadius: 3, transition: 'width 0.3s ease' }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Bottom strip: ability scores + limb health */}
+                              <div style={{ borderTop: '1px solid rgba(212,193,156,0.12)', padding: '0.75rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                {/* Ability scores */}
+                                <div>
+                                  <div style={{ color: 'rgba(212,193,156,0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Abilities</div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem' }}>
+                                    {ABILITY_KEYS.map((key, i) => {
+                                      const score = pet.abilities?.[key] ?? 10;
+                                      const mod = Math.floor((score - 10) / 2);
+                                      return (
+                                        <div key={key} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.2rem', textAlign: 'center', border: '1px solid rgba(255,255,255,0.07)' }}>
+                                          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.58rem', fontWeight: 700, marginBottom: '0.15rem' }}>{ABILITY_LABELS[i]}</div>
+                                          <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1 }}>{score}</div>
+                                          <div style={{ fontSize: '0.62rem', color: mod >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{abilityMod(score)}</div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                {/* Limb health grid */}
+                                <div>
+                                  <div style={{ color: 'rgba(212,193,156,0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Limb Vitality</div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.3rem' }}>
+                                    {LIMB_LABELS.map(({ key, label }) => {
+                                      const maxVal = limbMax[key as keyof typeof limbMax] || 1;
+                                      const curVal = maxVal; // Pets show max (combat-tracked separately)
+                                      return (
+                                        <div key={key} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', padding: '0.25rem 0.3rem', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+                                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.58rem', fontWeight: 700 }}>{label}</div>
+                                          <div style={{ color: '#4ade80', fontSize: '0.75rem', fontWeight: 600 }}>{maxVal}</div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Characters (NPCs) Tab */}
                 {activeTab === 'npcs' && canViewAllTabs(selectedCharacterData.id) && (
@@ -15107,6 +16052,9 @@ const CampaignView: React.FC = () => {
           const targetMonsterTemplate = (target.isMonster && target.monsterId)
             ? (monsters.find((m: any) => m.id === target.monsterId) ?? combatMonsterTemplates[String(target.monsterId)])
             : null;
+          const targetResistances = target.isMonster
+            ? targetMonsterTemplate?.resistances
+            : ((characterDataOverrides[Number(target.characterId)]?.resistances ?? targetCharacter?.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined);
           const limbAC = targetMonsterTemplate?.limb_ac ?? {
             head: targetCharacter?.armor_class ?? 10,
             chest: targetCharacter?.armor_class ?? 10,
@@ -15140,6 +16088,7 @@ const CampaignView: React.FC = () => {
               targetLimbHealth={targetLimbHealth}
               targetLimbHealthMax={targetLimbHealthMax}
               prefillDamage={showAttackModal.prefillDamage}
+              targetResistances={targetResistances}
               onConfirm={(params) => {
                 socket.emit('applyDamage', {
                   campaignId: currentCampaign.campaign.id,
@@ -15182,7 +16131,7 @@ const CampaignView: React.FC = () => {
                 diceType,
               });
             }}
-            onConfirm={(rawRoll, total, modifierValue, modifier) => {
+            onConfirm={(rawRoll, total, modifierValue, modifier, allRolls) => {
               socket.emit('submitDiceResult', {
                 campaignId: currentCampaign.campaign.id,
                 requestId: pendingDiceRequest.requestId,
@@ -15193,6 +16142,7 @@ const CampaignView: React.FC = () => {
                 modifier,
                 purposeDetail: pendingDiceRequest.purposeDetail,
                 rollerName: currentCampaign.userCharacter?.name ?? 'Player',
+                allRolls,
               });
               setPendingDiceRequest(null);
             }}
@@ -15239,22 +16189,32 @@ const CampaignView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Damage die picker */}
+              {/* Damage die picker — supports multi-group (e.g. 2d6 + 1d8) */}
               <div style={{ marginBottom: '1.5rem' }}>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Damage Die</p>
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  {['d4','d6','d8','d10','d12','d20'].map(d => (
-                    <button key={d} onClick={() => setDmAttackDamageDie(d)}
-                      style={{
-                        padding: '0.3rem 0.7rem', borderRadius: '0.4rem', fontSize: '0.85rem', cursor: 'pointer',
-                        background: dmAttackDamageDie === d ? 'rgba(248,113,113,0.3)' : 'rgba(255,255,255,0.05)',
-                        border: `1px solid ${dmAttackDamageDie === d ? '#f87171' : 'rgba(255,255,255,0.15)'}`,
-                        color: dmAttackDamageDie === d ? '#fca5a5' : 'rgba(255,255,255,0.5)',
-                        fontWeight: dmAttackDamageDie === d ? 'bold' : 'normal',
-                      }}>
-                      {d}
-                    </button>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Damage Dice</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {dmAttackDamageGroups.map((grp, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                      <button onClick={() => setDmAttackDamageGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: Math.max(1, g.count - 1) } : g))}
+                        style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0' }}>−</button>
+                      <span style={{ color: '#fca5a5', fontWeight: 'bold', fontSize: '0.9rem', minWidth: '16px', textAlign: 'center' }}>{grp.count}</span>
+                      <button onClick={() => setDmAttackDamageGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: Math.min(10, g.count + 1) } : g))}
+                        style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0' }}>+</button>
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>×</span>
+                      {['d4','d6','d8','d10','d12','d20'].map(d => (
+                        <button key={d} onClick={() => setDmAttackDamageGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: d } : g))}
+                          style={{ padding: '0.3rem 0.7rem', borderRadius: '0.4rem', fontSize: '0.85rem', cursor: 'pointer', background: grp.diceType === d ? 'rgba(248,113,113,0.3)' : 'rgba(255,255,255,0.05)', border: `1px solid ${grp.diceType === d ? '#f87171' : 'rgba(255,255,255,0.15)'}`, color: grp.diceType === d ? '#fca5a5' : 'rgba(255,255,255,0.5)', fontWeight: grp.diceType === d ? 'bold' : 'normal' }}>{d}</button>
+                      ))}
+                      {dmAttackDamageGroups.length > 1 && (
+                        <button onClick={() => setDmAttackDamageGroups(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ padding: '0.2rem 0.55rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171' }}>×</button>
+                      )}
+                    </div>
                   ))}
+                  {dmAttackDamageGroups.length < 5 && (
+                    <button onClick={() => setDmAttackDamageGroups(prev => [...prev, { count: 1, diceType: 'd6' }])}
+                      style={{ alignSelf: 'flex-start', padding: '0.2rem 0.7rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80' }}>+ Add Die</button>
+                  )}
                 </div>
               </div>
 
@@ -15272,13 +16232,15 @@ const CampaignView: React.FC = () => {
                     targetKey: pendingAttackRequest.targetKey,
                     targetName: pendingAttackRequest.targetName,
                     hitDie: dmAttackHitDie,
-                    damageDie: dmAttackDamageDie,
+                    damageDie: dmAttackDamageGroups[0]?.diceType ?? 'd6',
+                    damageDiceGroups: dmAttackDamageGroups,
                     dmName: user?.username ?? 'DM',
                   });
+                  setDmAttackDamageGroups([{ count: 1, diceType: 'd6' }]);
                   setPendingAttackRequest(null);
                 }}
                   style={{ flex: 2, padding: '0.6rem', borderRadius: '0.5rem', background: 'linear-gradient(135deg,#f87171cc,#ef4444)', border: '2px solid #ef4444', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.95rem' }}>
-                  ⚔️ Send Roll Request ({dmAttackHitDie} hit / {dmAttackDamageDie} dmg)
+                  ⚔️ Send Roll Request ({dmAttackHitDie} hit / {dmAttackDamageGroups.map(g => `${g.count}${g.diceType}`).join('+')} dmg)
                 </button>
               </div>
             </div>
@@ -15293,7 +16255,8 @@ const CampaignView: React.FC = () => {
             requestId: cfg.requestId,
             requesterName: cfg.dmName,
             targetCharacterName: cfg.attackerName,
-            diceType: isHitPhase ? cfg.hitDie : cfg.damageDie,
+            diceType: isHitPhase ? cfg.hitDie : (cfg.damageDiceGroups?.[0]?.diceType ?? cfg.damageDie),
+            diceGroups: isHitPhase ? undefined : (cfg.damageDiceGroups ?? undefined),
             rollPurpose: isHitPhase ? 'attack' : 'damage',
             purposeDetail: isHitPhase
               ? `Attack roll vs ${cfg.targetName}`
@@ -16094,7 +17057,7 @@ const CampaignView: React.FC = () => {
                       .sort((a: Monster, b: Monster) => {
                         let aVal: any, bVal: any;
                         if (combatMonsterSortBy === 'name') { aVal = a.name.toLowerCase(); bVal = b.name.toLowerCase(); }
-                        else if (combatMonsterSortBy === 'cr') { aVal = (a as any).challenge_rating ?? 0; bVal = (b as any).challenge_rating ?? 0; }
+                        else if (combatMonsterSortBy === 'cr') { aVal = Number((a as any).cr ?? (a as any).challenge_rating ?? 0); bVal = Number((b as any).cr ?? (b as any).challenge_rating ?? 0); }
                         else if (combatMonsterSortBy === 'hp') { aVal = Object.values((a.limb_health || {}) as Record<string,number>).reduce((s,v)=>s+v,0); bVal = Object.values((b.limb_health || {}) as Record<string,number>).reduce((s,v)=>s+v,0); }
                         else { aVal = (a as any).limb_ac?.chest ?? 10; bVal = (b as any).limb_ac?.chest ?? 10; }
                         if (aVal < bVal) return combatMonsterSortDir === 'asc' ? -1 : 1;
@@ -16218,15 +17181,57 @@ const CampaignView: React.FC = () => {
               borderRadius: '1rem',
               padding: '2rem',
               maxWidth: '500px',
-              width: '90%'
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
             }}>
               <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⚔️ Combat Invitation</h3>
-              <p style={{ color: '#ccc', marginBottom: '1.5rem', fontSize: '1.1rem' }}>
+              <p style={{ color: '#ccc', marginBottom: '0.75rem', fontSize: '1.1rem' }}>
                 You've been invited to join combat with <strong style={{ color: 'var(--text-gold)' }}>{combatInvite.characterName}</strong>!
               </p>
-              <p style={{ color: '#999', marginBottom: '2rem', fontSize: '0.9rem' }}>
+              <p style={{ color: '#999', marginBottom: combatInvite.battlePets.length > 0 ? '1.25rem' : '2rem', fontSize: '0.9rem' }}>
                 Accepting will roll your initiative and add you to the battle.
               </p>
+
+              {/* Battle pets selection */}
+              {combatInvite.battlePets.length > 0 && (
+                <div style={{ marginBottom: '1.75rem', padding: '1rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.65rem' }}>
+                  <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    ⚔️ Battle Pets — choose which to bring
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {combatInvite.battlePets.map(pet => {
+                      const isSelected = combatPetSelections.includes(pet.id);
+                      const hpPct = pet.hit_points > 0 ? (pet.hit_points_current / pet.hit_points) * 100 : 0;
+                      const hpCol = hpPct > 66 ? '#4ade80' : hpPct > 33 ? '#fbbf24' : '#ef4444';
+                      const dexMod = Math.floor(((pet.abilities?.dex ?? 10) - 10) / 2);
+                      return (
+                        <label key={pet.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: isSelected ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.25)', border: `1px solid ${isSelected ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '0.5rem', cursor: 'pointer', transition: 'all 0.15s' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => setCombatPetSelections(prev => isSelected ? prev.filter(id => id !== pet.id) : [...prev, pet.id])}
+                            style={{ width: 16, height: 16, accentColor: '#ef4444', cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{pet.name}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>{pet.species}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0 }}>
+                            <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.7rem', color: '#86efac' }}>AC {pet.armor_class}</span>
+                            <span style={{ fontSize: '0.7rem', color: hpCol, fontWeight: 600 }}>{pet.hit_points_current}/{pet.hit_points} HP</span>
+                            <span style={{ fontSize: '0.7rem', color: '#93c5fd' }}>DEX {dexMod >= 0 ? `+${dexMod}` : dexMod}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', marginTop: '0.5rem' }}>
+                    Selected pets roll their own initiative and are DM-controlled in combat.
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button
                   onClick={() => {
@@ -16234,10 +17239,12 @@ const CampaignView: React.FC = () => {
                       socket.emit('acceptCombatInvite', {
                         campaignId: currentCampaign.campaign.id,
                         characterId: combatInvite.characterId,
-                        playerId: user.id
+                        playerId: user.id,
+                        selectedPetIds: combatPetSelections,
                       });
                       setShowCombatInviteModal(false);
                       setCombatInvite(null);
+                      setCombatPetSelections([]);
                       // Navigate to campaign view and combat tab
                       setMainView('campaign');
                       setCampaignTab('combat');
@@ -16261,6 +17268,7 @@ const CampaignView: React.FC = () => {
                   onClick={() => {
                     setShowCombatInviteModal(false);
                     setCombatInvite(null);
+                    setCombatPetSelections([]);
                   }}
                   style={{
                     flex: 1,
@@ -16315,6 +17323,11 @@ const CampaignView: React.FC = () => {
                       </div>
                     )}
                     {detailMonster && <div style={{ color: '#f87171', fontSize: '0.85rem', marginTop: '0.25rem' }}>Monster</div>}
+                    {detailCombatant.isPet && (
+                      <div style={{ color: '#a78bfa', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                        🐾 {campaignPets.find(p => p.id === detailCombatant.petId)?.species || 'Battle Pet'}
+                      </div>
+                    )}
                   </div>
                   <button onClick={() => setCombatantDetailModal(null)} style={{ background: 'none', border: '1px solid #555', borderRadius: '0.4rem', color: '#aaa', cursor: 'pointer', padding: '0.4rem 0.75rem', fontSize: '1rem' }}>✕</button>
                 </div>
@@ -16437,6 +17450,17 @@ const CampaignView: React.FC = () => {
                             );
                           })}
                         </div>
+                        {(() => {
+                          const charRes = (characterDataOverrides[Number(detailCharacter.id)]?.resistances ?? detailCharacter.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined;
+                          if (!charRes || (charRes.resistances.length === 0 && charRes.immunities.length === 0 && charRes.vulnerabilities.length === 0)) return null;
+                          return (
+                            <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
+                              {charRes.resistances.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#93c5fd', fontWeight: 'bold' }}>RESIST:</span>{charRes.resistances.map(r => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
+                              {charRes.immunities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#86efac', fontWeight: 'bold' }}>IMMUNE:</span>{charRes.immunities.map(r => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', color: '#86efac', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
+                              {charRes.vulnerabilities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}><span style={{ fontSize: '0.7rem', color: '#fca5a5', fontWeight: 'bold' }}>VULN:</span>{charRes.vulnerabilities.map(r => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(248,113,113,0.15)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -16511,6 +17535,91 @@ const CampaignView: React.FC = () => {
                         {detailMonster.description && (
                           <div style={{ marginTop: '1rem', color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
                             {detailMonster.description}
+                          </div>
+                        )}
+                        {detailMonster.resistances && (detailMonster.resistances.resistances.length > 0 || detailMonster.resistances.immunities.length > 0 || detailMonster.resistances.vulnerabilities.length > 0) && (
+                          <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
+                            {detailMonster.resistances.resistances.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#93c5fd', fontWeight: 'bold' }}>RESIST:</span>{detailMonster.resistances.resistances.map((r: string) => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
+                            {detailMonster.resistances.immunities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#86efac', fontWeight: 'bold' }}>IMMUNE:</span>{detailMonster.resistances.immunities.map((r: string) => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', color: '#86efac', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
+                            {detailMonster.resistances.vulnerabilities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}><span style={{ fontSize: '0.7rem', color: '#fca5a5', fontWeight: 'bold' }}>VULN:</span>{detailMonster.resistances.vulnerabilities.map((r: string) => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(248,113,113,0.15)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* PET layout */}
+                {!detailCharacter && !detailMonster && detailCombatant.isPet && (() => {
+                  const petData = campaignPets.find(p => p.id === detailCombatant.petId);
+                  if (!petData) return <div style={{ color: '#999', textAlign: 'center', padding: '2rem' }}>Pet data not found</div>;
+                  const limbMaxValues = calcCharacterLimbHealthMax(petData.hit_points, petData.abilities?.con ?? 10);
+                  const hpPct = petData.hit_points > 0 ? Math.min(100, (petData.hit_points_current / petData.hit_points) * 100) : 0;
+                  const petHealthColor = (pct: number) => pct > 66 ? '#4ade80' : pct > 33 ? '#fbbf24' : '#ef4444';
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
+                      {/* Portrait */}
+                      <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(167,139,250,0.4)', background: 'rgba(0,0,0,0.4)', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {petData.image_url ? (
+                          <img src={getImageUrl(petData.image_url)} alt={petData.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ fontSize: '4rem', color: 'rgba(167,139,250,0.4)' }}>🐾</div>
+                        )}
+                      </div>
+                      {/* Stats */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                        {/* HP */}
+                        <div style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#a78bfa', marginBottom: '0.4rem', fontWeight: 'bold' }}>HP</div>
+                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '0.3rem' }}>
+                            <div style={{ width: `${hpPct}%`, height: '100%', background: petHealthColor(hpPct), borderRadius: '5px' }} />
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: petHealthColor(hpPct) }}>{petData.hit_points_current}/{petData.hit_points}</div>
+                        </div>
+                        {/* AC + Speed */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                          <div style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginBottom: '0.2rem' }}>AC</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#93c5fd' }}>{petData.armor_class}</div>
+                          </div>
+                          <div style={{ background: 'rgba(212,193,156,0.05)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#999', marginBottom: '0.2rem' }}>Speed</div>
+                            <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>{petData.speed}<span style={{ fontSize: '0.7rem', color: '#999' }}>ft</span></div>
+                          </div>
+                        </div>
+                        {/* Ability scores */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+                          {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(ab => {
+                            const score = petData.abilities?.[ab] ?? 10;
+                            const mod = Math.floor((score - 10) / 2);
+                            return (
+                              <div key={ab} style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: '0.4rem', padding: '0.5rem 0.25rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.6rem', color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.2rem' }}>{ab.toUpperCase()}</div>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#fff', lineHeight: 1 }}>{score}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '0.15rem' }}>{mod >= 0 ? '+' : ''}{mod}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Limb vitality */}
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold', marginBottom: '0.4rem' }}>Limb Vitality</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                            {(['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'] as const).map(limb => {
+                              const max = (limbMaxValues as any)[limb] ?? 0;
+                              const limbLabel = limb.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                              return (
+                                <div key={limb} style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '0.4rem', padding: '0.4rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.75rem', color: '#a78bfa' }}>{limbLabel}</span>
+                                  <span style={{ fontSize: '0.75rem', color: '#c4b5fd' }}>{max} HP</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {petData.description && (
+                          <div style={{ color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(167,139,250,0.15)', paddingTop: '0.75rem' }}>
+                            {petData.description}
                           </div>
                         )}
                       </div>
@@ -16720,6 +17829,27 @@ const CampaignView: React.FC = () => {
                 />
               </div>
 
+              {/* Resistances */}
+              {(['resistances', 'immunities', 'vulnerabilities'] as const).map(category => (
+                <div key={category} style={{ marginBottom: '1rem' }}>
+                  <label style={{ color: category === 'resistances' ? '#93c5fd' : category === 'immunities' ? '#86efac' : '#fca5a5', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.4rem', display: 'block', textTransform: 'capitalize' }}>
+                    {category}
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginBottom: '0.4rem' }}>
+                    {(monsterFormData.resistances[category] as string[]).map((tag: string) => (
+                      <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: category === 'resistances' ? 'rgba(96,165,250,0.2)' : category === 'immunities' ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)', color: category === 'resistances' ? '#93c5fd' : category === 'immunities' ? '#86efac' : '#fca5a5', border: `1px solid ${category === 'resistances' ? 'rgba(96,165,250,0.5)' : category === 'immunities' ? 'rgba(74,222,128,0.5)' : 'rgba(248,113,113,0.5)'}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
+                        {tag}
+                        <span onClick={() => setMonsterFormData({ ...monsterFormData, resistances: { ...monsterFormData.resistances, [category]: (monsterFormData.resistances[category] as string[]).filter((t: string) => t !== tag) } })} style={{ cursor: 'pointer', marginLeft: '0.15rem', fontWeight: 'bold', opacity: 0.7 }}>×</span>
+                      </span>
+                    ))}
+                  </div>
+                  <select onChange={e => { if (!e.target.value) return; const val = e.target.value; if (!(monsterFormData.resistances[category] as string[]).includes(val)) setMonsterFormData({ ...monsterFormData, resistances: { ...monsterFormData.resistances, [category]: [...(monsterFormData.resistances[category] as string[]), val] } }); e.target.value = ''; }} style={{ padding: '0.4rem', borderRadius: '0.3rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,193,156,0.3)', color: '#ccc', fontSize: '0.8rem', width: '100%' }}>
+                    <option value="">+ Add {category.slice(0, -1)}...</option>
+                    {['Acid','Bludgeoning','Cold','Fire','Force','Lightning','Necrotic','Piercing','Poison','Psychic','Radiant','Slashing','Thunder','Nonmagical Bludgeoning','Nonmagical Piercing','Nonmagical Slashing'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              ))}
+
               {/* Image Upload */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
@@ -16774,7 +17904,8 @@ const CampaignView: React.FC = () => {
                         limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
                         limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
                         abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-                        cr: 0
+                        cr: 0,
+                        resistances: { resistances: [], immunities: [], vulnerabilities: [] }
                       });
                       setMonsterImageFile(null);
                       setShowAddMonsterModal(false);
@@ -17223,6 +18354,176 @@ const CampaignView: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Add / Edit Pet Modal ──────────────────────────────────────── */}
+        {showAddPetModal && (() => {
+          const isEdit = editingPet !== null;
+          const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
+          const ABILITY_KEYS: (keyof Pet['abilities'])[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+          const ABILITY_LABELS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
+
+          const handleSave = async () => {
+            try {
+              if (isEdit && editingPet) {
+                await petAPI.updatePet(editingPet.id, petFormData);
+                if (petImageFile) await petAPI.uploadPetImage(editingPet.id, petImageFile);
+              } else {
+                const created = await petAPI.createPet(currentCampaign!.campaign.id, petFormData);
+                if (petImageFile) await petAPI.uploadPetImage(created.id, petImageFile);
+              }
+              const fresh = await petAPI.getCampaignPets(currentCampaign!.campaign.id);
+              setCampaignPets(fresh);
+              setShowAddPetModal(false);
+              setEditingPet(null);
+              setPetFormData(defaultPetForm());
+              setPetImageFile(null);
+              setPetImagePreviewUrl(null);
+            } catch (err) {
+              console.error('Error saving pet:', err);
+            }
+          };
+
+          const inputStyle: React.CSSProperties = { width: '100%', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.4rem', color: '#fff', padding: '0.5rem 0.65rem', fontSize: '0.88rem', boxSizing: 'border-box' };
+          const labelStyle: React.CSSProperties = { color: 'rgba(212,193,156,0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' };
+
+          return (
+            <div
+              onClick={(e) => { if (e.target === e.currentTarget) { setShowAddPetModal(false); setEditingPet(null); } }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+            >
+              <div style={{ background: 'linear-gradient(135deg, rgba(15,15,20,0.97), rgba(25,20,30,0.97))', border: '2px solid var(--text-gold)', borderRadius: '1rem', padding: '2rem', maxWidth: 640, width: '95%', maxHeight: '92vh', overflowY: 'auto' }}>
+                {/* Modal header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                  <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>{isEdit ? '✏️ Edit Pet' : '🐾 Add Pet'}</h3>
+                  <button onClick={() => { setShowAddPetModal(false); setEditingPet(null); }} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>✕</button>
+                </div>
+
+                {/* Image upload */}
+                <div style={{ marginBottom: '1.25rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                  <div style={{ width: 90, height: 90, borderRadius: '0.5rem', overflow: 'hidden', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,193,156,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {petImagePreviewUrl ? (
+                      <img src={petImagePreviewUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (editingPet?.image_url ? (
+                      <img src={`${API_BASE}${editingPet.image_url}`} alt={editingPet.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <span style={{ fontSize: '2.5rem' }}>🐾</span>
+                    ))}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Pet Image</label>
+                    <input type="file" accept="image/*" onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setPetImageFile(f);
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setPetImagePreviewUrl(ev.target?.result as string);
+                        reader.readAsDataURL(f);
+                      }
+                    }} style={{ ...inputStyle, padding: '0.4rem' }} />
+                    <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', margin: '0.3rem 0 0' }}>JPG, PNG, GIF, WebP — max 5 MB</p>
+                  </div>
+                </div>
+
+                {/* Name + Species */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={labelStyle}>Name *</label>
+                    <input value={petFormData.name || ''} onChange={e => setPetFormData(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Biscuit" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Species *</label>
+                    <input value={petFormData.species || ''} onChange={e => setPetFormData(p => ({ ...p, species: e.target.value }))} placeholder="e.g. Wolf, Cat, Raven" style={inputStyle} />
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={labelStyle}>Description</label>
+                  <textarea value={petFormData.description || ''} onChange={e => setPetFormData(p => ({ ...p, description: e.target.value }))} rows={2} placeholder="A short description of the pet..." style={{ ...inputStyle, resize: 'vertical', minHeight: 56 }} />
+                </div>
+
+                {/* HP / Current HP / AC / Speed */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={labelStyle}>Max HP *</label>
+                    <input type="number" min={1} value={petFormData.hit_points ?? 10} onChange={e => { const v = parseInt(e.target.value) || 1; setPetFormData(p => ({ ...p, hit_points: v, hit_points_current: Math.min(p.hit_points_current ?? v, v) })); }} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Current HP</label>
+                    <input type="number" min={0} max={petFormData.hit_points} value={petFormData.hit_points_current ?? petFormData.hit_points ?? 10} onChange={e => setPetFormData(p => ({ ...p, hit_points_current: parseInt(e.target.value) || 0 }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>AC *</label>
+                    <input type="number" min={1} value={petFormData.armor_class ?? 10} onChange={e => setPetFormData(p => ({ ...p, armor_class: parseInt(e.target.value) || 10 }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Speed (ft)</label>
+                    <input type="number" min={0} step={5} value={petFormData.speed ?? 30} onChange={e => setPetFormData(p => ({ ...p, speed: parseInt(e.target.value) || 30 }))} style={inputStyle} />
+                  </div>
+                </div>
+
+                {/* Ability scores */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={labelStyle}>Ability Scores</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.5rem' }}>
+                    {ABILITY_KEYS.map((key, i) => (
+                      <div key={key} style={{ textAlign: 'center' }}>
+                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.65rem', fontWeight: 700, marginBottom: '0.2rem' }}>{ABILITY_LABELS[i]}</div>
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={petFormData.abilities?.[key] ?? 10}
+                          onChange={e => setPetFormData(p => ({ ...p, abilities: { ...(p.abilities || { str: 10, dex: 10, con: 10, int: 2, wis: 10, cha: 6 }), [key]: parseInt(e.target.value) || 10 } }))}
+                          style={{ ...inputStyle, textAlign: 'center', padding: '0.4rem 0.2rem' }}
+                        />
+                        <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.15rem' }}>
+                          {(() => { const mod = Math.floor(((petFormData.abilities?.[key] ?? 10) - 10) / 2); return mod >= 0 ? `+${mod}` : String(mod); })()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Is Battle Pet toggle */}
+                <div style={{ marginBottom: '1.5rem', padding: '0.85rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.15rem' }}>⚔️ Battle Pet</div>
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem' }}>When enabled, this pet can join combat alongside the character.</div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flexShrink: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={petFormData.is_battle_pet ?? false}
+                      onChange={e => setPetFormData(p => ({ ...p, is_battle_pet: e.target.checked }))}
+                      style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#ef4444' }}
+                    />
+                    <span style={{ color: petFormData.is_battle_pet ? '#fca5a5' : '#666', fontSize: '0.85rem', fontWeight: 600 }}>
+                      {petFormData.is_battle_pet ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    onClick={handleSave}
+                    disabled={!petFormData.name?.trim() || !petFormData.species?.trim()}
+                    style={{ flex: 1, padding: '0.7rem 1.25rem', background: 'linear-gradient(135deg, rgba(212,193,156,0.25), rgba(212,193,156,0.12))', border: '1px solid var(--text-gold)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem', opacity: (!petFormData.name?.trim() || !petFormData.species?.trim()) ? 0.5 : 1 }}
+                  >
+                    {isEdit ? '💾 Save Changes' : '🐾 Add Pet'}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddPetModal(false); setEditingPet(null); setPetFormData(defaultPetForm()); setPetImageFile(null); setPetImagePreviewUrl(null); }}
+                    style={{ padding: '0.7rem 1.25rem', background: 'rgba(100,100,100,0.2)', border: '1px solid #555', borderRadius: '0.5rem', color: '#bbb', cursor: 'pointer', fontSize: '0.9rem' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -20631,10 +21932,11 @@ const CampaignView: React.FC = () => {
                 purposeDetail: pendingOOCRoll.purposeDetail,
                 campaignId: pendingOOCRoll.campaignId,
                 modifier: pendingOOCRoll.precomputedModifier ?? 'none',
+                diceGroups: pendingOOCRoll.diceGroups,
               }}
               rollerName={currentCampaign.userCharacter?.name ?? 'You'}
               character={currentCampaign.userCharacter}
-              onConfirm={(rawRoll, total, modifierValue, modifier) => {
+              onConfirm={(rawRoll, total, modifierValue, modifier, allRolls) => {
                 socket.emit('submitOutOfCombatRoll', {
                   campaignId: currentCampaign.campaign.id,
                   requestId: pendingOOCRoll.requestId,
@@ -20646,6 +21948,7 @@ const CampaignView: React.FC = () => {
                   modifierValue,
                   modifier,
                   total,
+                  allRolls,
                 });
                 setPendingOOCRoll(null);
               }}

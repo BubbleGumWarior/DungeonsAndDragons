@@ -52,6 +52,8 @@ class CombatSession {
       movement_speed,
       is_monster = false,
       is_beast = false,
+      is_pet = false,
+      pet_id = null,
       owner_character_id = null,
       position_x = 50,
       position_y = 50,
@@ -60,13 +62,13 @@ class CombatSession {
     const result = await pool.query(
       `INSERT INTO combat_combatants
          (session_id, character_id, monster_instance_id, combatant_key, name, player_id,
-          initiative, movement_speed, remaining_movement, is_monster, is_beast,
+          initiative, movement_speed, remaining_movement, is_monster, is_beast, is_pet, pet_id,
           owner_character_id, position_x, position_y)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [
         session_id, character_id, monster_instance_id, combatant_key, name, player_id,
-        initiative, movement_speed, movement_speed, is_monster, is_beast,
+        initiative, movement_speed, movement_speed, is_monster, is_beast, is_pet, pet_id,
         owner_character_id, position_x, position_y,
       ]
     );

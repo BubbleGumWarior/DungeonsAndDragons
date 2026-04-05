@@ -111,6 +111,7 @@ export interface Character {
   created_at: string;
   updated_at: string;
   race_traits?: string[];
+  resistances?: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
 }
 
 export interface EquippedItems {
@@ -187,6 +188,7 @@ export interface Monster {
   visible_to_players: boolean;
   created_at: string;
   updated_at: string;
+  resistances?: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
 }
 
 export interface Skill {
@@ -1007,6 +1009,68 @@ export const beastAPI = {
   }
 };
 
+export interface Shadow {
+  id: number;
+  character_id: number;
+  shadow_name: string;
+  origin_name: string;
+  hit_points_max: number;
+  hit_points_current: number;
+  armor_class: number;
+  abilities: {
+    str: number;
+    dex: number;
+    con: number;
+    int: number;
+    wis: number;
+    cha: number;
+  };
+  speed: number;
+  attack_bonus: number;
+  damage_dice: string;
+  damage_type: string;
+  special_abilities: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const shadowAPI = {
+  getShadows: async (characterId: number): Promise<Shadow[]> => {
+    try {
+      const response = await api.get(`/shadows/${characterId}`);
+      return response.data.shadows;
+    } catch (error: any) {
+      if (error?.response?.status === 404) return [];
+      throw error;
+    }
+  },
+
+  createShadow: async (characterId: number, shadowData: Partial<Shadow>): Promise<Shadow> => {
+    const response = await api.post(`/shadows/${characterId}`, shadowData);
+    return response.data.shadow;
+  },
+
+  updateShadow: async (characterId: number, shadowId: number, shadowData: Partial<Shadow>): Promise<Shadow> => {
+    const response = await api.patch(`/shadows/${characterId}/${shadowId}`, shadowData);
+    return response.data.shadow;
+  },
+
+  updateShadowHP: async (characterId: number, shadowId: number, hit_points_current: number): Promise<Shadow> => {
+    const response = await api.patch(`/shadows/${characterId}/${shadowId}/hp`, { hit_points_current });
+    return response.data.shadow;
+  },
+
+  toggleShadowActive: async (characterId: number, shadowId: number, is_active: boolean): Promise<Shadow> => {
+    const response = await api.patch(`/shadows/${characterId}/${shadowId}/active`, { is_active });
+    return response.data.shadow;
+  },
+
+  deleteShadow: async (characterId: number, shadowId: number): Promise<void> => {
+    await api.delete(`/shadows/${characterId}/${shadowId}`);
+  },
+};
+
 // ─── Mounts ──────────────────────────────────────────────────────────────────
 
 export interface Mount {
@@ -1206,6 +1270,69 @@ export interface AdvanceDaysSummary {
   resourcesGained: Record<number, KingdomResources>;
   populationGained: Record<number, number>;
 }
+
+// ─── Pets ─────────────────────────────────────────────────────────────────
+
+export interface Pet {
+  id: number;
+  character_id: number;
+  campaign_id: number;
+  name: string;
+  species: string;
+  description?: string;
+  hit_points: number;
+  hit_points_current: number;
+  armor_class: number;
+  speed: number;
+  abilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  is_battle_pet: boolean;
+  image_url?: string | null;
+  character_name?: string;
+  character_player_id?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const petAPI = {
+  getCampaignPets: async (campaignId: number): Promise<Pet[]> => {
+    const response = await api.get(`/pets/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  getCharacterPets: async (characterId: number): Promise<Pet[]> => {
+    const response = await api.get(`/pets/character/${characterId}`);
+    return response.data;
+  },
+
+  createPet: async (campaignId: number, petData: Partial<Pet>): Promise<Pet> => {
+    const response = await api.post(`/pets/campaign/${campaignId}`, petData);
+    return response.data;
+  },
+
+  updatePet: async (petId: number, updates: Partial<Pet>): Promise<Pet> => {
+    const response = await api.put(`/pets/${petId}`, updates);
+    return response.data;
+  },
+
+  updatePetHP: async (petId: number, hit_points_current: number): Promise<Pet> => {
+    const response = await api.patch(`/pets/${petId}/hp`, { hit_points_current });
+    return response.data;
+  },
+
+  uploadPetImage: async (petId: number, imageFile: File): Promise<Pet> => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    const response = await api.post(`/pets/${petId}/image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  deletePet: async (petId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/pets/${petId}`);
+    return response.data;
+  },
+};
 
 export const kingdomAPI = {
   getCampaignKingdoms: async (campaignId: number): Promise<Kingdom[]> => {

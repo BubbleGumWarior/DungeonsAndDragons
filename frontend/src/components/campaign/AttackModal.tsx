@@ -25,6 +25,7 @@ interface Props {
   targetLimbHealthMax?: Record<string, number>;
   mode?: 'damage' | 'heal';
   prefillDamage?: number;
+  targetResistances?: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
   onConfirm: (params: {
     targetKey: string;
     targetType: 'character' | 'monster';
@@ -47,7 +48,7 @@ const LIMBS: { key: keyof LimbAC; label: string; color: string }[] = [
   { key: 'right_leg', label: 'Right Leg', color: '#a78bfa' },
 ];
 
-export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, targetLimbHealth, targetLimbHealthMax, mode = 'damage', prefillDamage, onConfirm, onClose }) => {
+export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, targetLimbHealth, targetLimbHealthMax, mode = 'damage', prefillDamage, targetResistances, onConfirm, onClose }) => {
   const [selectedLimb, setSelectedLimb] = useState<keyof LimbAC | null>(null);
   const [damage, setDamage] = useState<string>(prefillDamage !== undefined ? String(prefillDamage) : '');
 
@@ -90,6 +91,38 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
           </h4>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
         </div>
+
+        {/* Resistances display */}
+        {targetResistances && (
+          (targetResistances.resistances.length > 0 || targetResistances.immunities.length > 0 || targetResistances.vulnerabilities.length > 0) && (
+            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', border: '1px solid rgba(212,193,156,0.15)' }}>
+              {targetResistances.resistances.length > 0 && (
+                <div style={{ marginBottom: '0.4rem' }}>
+                  <span style={{ color: '#93c5fd', fontSize: '0.75rem', fontWeight: 'bold', marginRight: '0.4rem' }}>RESIST:</span>
+                  {targetResistances.resistances.map(r => (
+                    <span key={r} style={{ display: 'inline-block', background: 'rgba(96,165,250,0.2)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.5)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.7rem', marginRight: '0.25rem', marginBottom: '0.2rem' }}>{r}</span>
+                  ))}
+                </div>
+              )}
+              {targetResistances.immunities.length > 0 && (
+                <div style={{ marginBottom: '0.4rem' }}>
+                  <span style={{ color: '#86efac', fontSize: '0.75rem', fontWeight: 'bold', marginRight: '0.4rem' }}>IMMUNE:</span>
+                  {targetResistances.immunities.map(r => (
+                    <span key={r} style={{ display: 'inline-block', background: 'rgba(74,222,128,0.2)', color: '#86efac', border: '1px solid rgba(74,222,128,0.5)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.7rem', marginRight: '0.25rem', marginBottom: '0.2rem' }}>{r}</span>
+                  ))}
+                </div>
+              )}
+              {targetResistances.vulnerabilities.length > 0 && (
+                <div>
+                  <span style={{ color: '#fca5a5', fontSize: '0.75rem', fontWeight: 'bold', marginRight: '0.4rem' }}>VULN:</span>
+                  {targetResistances.vulnerabilities.map(r => (
+                    <span key={r} style={{ display: 'inline-block', background: 'rgba(248,113,113,0.2)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.5)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.7rem', marginRight: '0.25rem', marginBottom: '0.2rem' }}>{r}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', alignItems: 'start' }}>
           {/* Body silhouette / limb selector */}
