@@ -13166,7 +13166,7 @@ const CampaignView: React.FC = () => {
                     </div>
 
                     {characterSkills[selectedCharacterData.id]?.length > 0 ? (
-                      <div style={{ display: 'grid', gap: '1rem' }}>
+                      <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))' }}>
                         {characterSkills[selectedCharacterData.id].map((skill) => (
                           <div
                             key={skill.id}
@@ -13233,9 +13233,11 @@ const CampaignView: React.FC = () => {
                                 )}
                               </div>
                             </div>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                              {skill.description}
-                            </p>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                              {skill.description.split('\n').map((line, i) => (
+                                <p key={i} style={{ margin: i === 0 ? 0 : '0.4rem 0 0 0' }}>{line}</p>
+                              ))}
+                            </div>
                             {(skill.damage_dice || skill.range_size || skill.usage_frequency) && (
                               <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
                                 {skill.damage_dice && (
