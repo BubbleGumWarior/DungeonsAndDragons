@@ -326,6 +326,8 @@ const startServer = async () => {
         { name: 'seedMonsterResistances', fn: require('./migrations/seed_monster_resistances') },
         { name: 'addClassResources', fn: require('./migrations/add_class_resources') },
         { name: 'addShadowSovereignShadows', fn: require('./migrations/add_shadow_sovereign_shadows') },
+        { name: 'addOrderClericDomain', fn: require('./migrations/add_order_cleric_domain') },
+        { name: 'addConcealedClass', fn: require('./migrations/add_concealed_class') },
       ];
       
       for (const migration of migrations) {

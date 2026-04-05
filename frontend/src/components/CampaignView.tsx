@@ -434,6 +434,9 @@ const CampaignView: React.FC = () => {
     characterName: ''
   });
 
+  const [concealPickerOpen, setConcealPickerOpen] = useState<number | null>(null);
+  const [revealConfirmId, setRevealConfirmId] = useState<number | null>(null);
+
   const [deleteImageModal, setDeleteImageModal] = useState<{ isOpen: boolean; characterId: number | null }>({
     isOpen: false,
     characterId: null
@@ -3225,6 +3228,15 @@ const CampaignView: React.FC = () => {
         setCombatConcentration(prev => ({ ...prev, [data.combatantKey]: data.spell }));
       });
 
+      // Listen for character concealment changes
+      newSocket.on('characterConcealmentChanged', (data: { characterId: number; concealedClass: string | null }) => {
+        if (currentCampaignRef.current) {
+          currentCampaignRef.current.characters = currentCampaignRef.current.characters.map((c: any) =>
+            c.id === data.characterId ? { ...c, concealed_class: data.concealedClass } : c
+          );
+        }
+      });
+
       // Short rest — player is prompted to spend hit dice
       newSocket.on('shortRestStarted', (data: any) => {
         const myChar = data.characters?.find((c: any) => c.playerId === user?.id);
@@ -5468,7 +5480,7 @@ const CampaignView: React.FC = () => {
                       </div>
                     )}
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Lvl {character.level} {character.race} {character.class}
+                      Lvl {character.level} {character.race} {user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class}
                     </div>
                     
                     {/* Health Bar and Status */}
@@ -5636,8 +5648,8 @@ const CampaignView: React.FC = () => {
                             </div>
 
                             {/* Spell Slot Indicator */}
-                            {isSpellcaster(character.class) && (() => {
-                              const slotInfo = getSpellSlots(character.class, character.level);
+                            {isSpellcaster(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class) && (() => {
+                              const slotInfo = getSpellSlots(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class, character.level);
                               if (!slotInfo) return null;
                               const isDMView = user?.role === 'Dungeon Master';
                               const slotsUsed: Record<string, number> = characterSpellSlotsUsed[character.id] || {};
@@ -5682,7 +5694,7 @@ const CampaignView: React.FC = () => {
                             })()}
 
                             {/* Charlatan Tricks indicator */}
-                            {character.class === 'Charlatan' && (() => {
+                            {(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class) === 'Charlatan' && (() => {
                               const lvl = character.level;
                               const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
                               const used = characterTricksUsed[character.id] ?? 0;
@@ -5707,7 +5719,7 @@ const CampaignView: React.FC = () => {
                             })()}
 
                             {/* Shadow Sovereign resource indicators */}
-                            {character.class === 'Shadow Sovereign' && (() => {
+                            {(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class) === 'Shadow Sovereign' && (() => {
                               const isDMView = user?.role === 'Dungeon Master';
                               const res = characterShadowResources[character.id] ?? { shadow_reap_used: 0, shadow_step_used: 0 };
                               // Merge ability overrides so stat changes emit and reflect immediately
@@ -11715,7 +11727,11 @@ const CampaignView: React.FC = () => {
                         <h2 className="char-name">{selectedCharacterData.name}</h2>
                         <div className="char-pills">
                           <span className="char-pill">🏰 {selectedCharacterData.race}</span>
-                          <span className="char-pill">⚔️ {selectedCharacterData.class}</span>
+                          <span className="char-pill">⚔️ {
+                            user?.role !== 'Dungeon Master' && selectedCharacterData.concealed_class
+                              ? selectedCharacterData.concealed_class
+                              : selectedCharacterData.class
+                          }{user?.role === 'Dungeon Master' && selectedCharacterData.concealed_class ? ` 🎭` : ''}</span>
                           <span className="char-pill char-pill-level">Lvl {selectedCharacterData.level}</span>
                         </div>
                         <div className="char-title-row">
@@ -11733,6 +11749,96 @@ const CampaignView: React.FC = () => {
                             className="char-delete-btn"
                             onClick={() => setDeleteModal({ isOpen: true, characterId: selectedCharacterData.id, characterName: selectedCharacterData.name })}
                           >🗑️ Delete Character</button>
+                        )}
+                        {/* TEMP: remove this button and its handler after use */}
+                        {user?.role === 'Dungeon Master' && (
+                          <button
+                            className="char-delete-btn"
+                            style={{ marginTop: '0.4rem', background: '#5a3a7e' }}
+                            onClick={async () => {
+                              try {
+                                await characterAPI.tempResetClericOrder(selectedCharacterData.id);
+                                toast('Reset to Level 1 Cleric (Order Domain)');
+                                if (campaignName) await loadCampaign(campaignName);
+                              } catch (e: any) {
+                                toast('Failed: ' + (e?.response?.data?.error || e.message));
+                              }
+                            }}
+                          >🧪 [TEMP] Reset as Cleric (Order)</button>
+                        )}
+                        {/* Conceal / Reveal */}
+                        {user?.role === 'Dungeon Master' && !selectedCharacterData.concealed_class && revealConfirmId !== selectedCharacterData.id && (
+                          concealPickerOpen === selectedCharacterData.id ? (
+                            <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                              <select
+                                autoFocus
+                                defaultValue=""
+                                style={{ background: '#1a1a2e', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: '2px 6px', fontSize: '0.8rem' }}
+                                onChange={async (e) => {
+                                  const cls = e.target.value;
+                                  if (!cls) return;
+                                  try {
+                                    await characterAPI.setConcealedClass(selectedCharacterData.id, cls);
+                                    if (currentCampaign) {
+                                      currentCampaign.characters = currentCampaign.characters.map((c: any) =>
+                                        c.id === selectedCharacterData.id ? { ...c, concealed_class: cls } : c
+                                      );
+                                    }
+                                  } catch (e: any) {
+                                    toast('Failed: ' + (e?.response?.data?.error || e.message));
+                                  } finally {
+                                    setConcealPickerOpen(null);
+                                  }
+                                }}
+                              >
+                                <option value="">— pick class —</option>
+                                {['Barbarian','Bard','Charlatan','Cleric','Druid','Fighter','Monk','Oathknight','Paladin','Primal Bond','Ranger','Reaver','Rogue','Shadow Sovereign','Sorcerer','Warlock','Wizard'].map(c => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                              <button style={{ background: 'transparent', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '0.9rem' }} onClick={() => setConcealPickerOpen(null)}>✕</button>
+                            </div>
+                          ) : (
+                            <button
+                              className="char-delete-btn"
+                              style={{ marginTop: '0.4rem', background: '#2a4a6e' }}
+                              onClick={() => setConcealPickerOpen(selectedCharacterData.id)}
+                            >🎭 Conceal</button>
+                          )
+                        )}
+                        {user?.role === 'Dungeon Master' && selectedCharacterData.concealed_class && (
+                          revealConfirmId === selectedCharacterData.id ? (
+                            <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.75rem', color: '#ccc' }}>Reveal real class?</span>
+                              <button
+                                style={{ background: '#2d6a2d', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                onClick={async () => {
+                                  try {
+                                    await characterAPI.setConcealedClass(selectedCharacterData.id, null);
+                                    if (currentCampaign) {
+                                      currentCampaign.characters = currentCampaign.characters.map((c: any) =>
+                                        c.id === selectedCharacterData.id ? { ...c, concealed_class: null } : c
+                                      );
+                                    }
+                                  } catch (e: any) {
+                                    toast('Failed: ' + (e?.response?.data?.error || e.message));
+                                  } finally {
+                                    setRevealConfirmId(null);
+                                  }
+                                }}
+                              >✓ OK</button>
+                              <button
+                                style={{ background: '#6a2d2d', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                onClick={() => setRevealConfirmId(null)}
+                              >✕</button>
+                            </div>
+                          ) : (
+                            <button
+                              className="char-delete-btn"
+                              style={{ marginTop: '0.4rem', background: '#4a3a1e' }}
+                              onClick={() => setRevealConfirmId(selectedCharacterData.id)}
+                            >👁️ Reveal ({selectedCharacterData.concealed_class})</button>
+                          )
                         )}
                       </div>
                     </div>
@@ -16987,7 +17093,7 @@ const CampaignView: React.FC = () => {
                       >
                         <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{character.name}</div>
                         <div style={{ fontSize: '0.85rem', color: '#999' }}>
-                          Level {character.level} {character.race} {character.class}
+                          Level {character.level} {character.race} {user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class}
                         </div>
                       </button>
                     ))}
@@ -17311,7 +17417,7 @@ const CampaignView: React.FC = () => {
                     <h3 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.4rem' }}>{detailCombatant.name}</h3>
                     {detailCharacter && (
                       <div style={{ color: '#999', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                        Level {detailCharacter.level} {detailCharacter.race} {detailCharacter.class}
+                        Level {detailCharacter.level} {detailCharacter.race} {user?.role !== 'Dungeon Master' && (detailCharacter as any).concealed_class ? (detailCharacter as any).concealed_class : detailCharacter.class}
                         {(detailCharacter as any).subclass ? ` · ${(detailCharacter as any).subclass}` : ''}
                       </div>
                     )}
@@ -19558,7 +19664,7 @@ const CampaignView: React.FC = () => {
                               {character.name}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              Level {character.level} {character.race} {character.class}
+                              Level {character.level} {character.race} {user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class}
                             </div>
                           </div>
                         </label>

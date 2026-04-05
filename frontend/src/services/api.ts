@@ -112,6 +112,7 @@ export interface Character {
   updated_at: string;
   race_traits?: string[];
   resistances?: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
+  concealed_class?: string | null;
 }
 
 export interface EquippedItems {
@@ -548,6 +549,17 @@ export const characterAPI = {
 
   restoreKiPoint: async (characterId: number): Promise<{ ki_points_remaining: number }> => {
     const response = await api.post(`/characters/${characterId}/restore-ki-point`);
+    return response.data;
+  },
+
+  // TEMP: remove after use
+  tempResetClericOrder: async (characterId: number): Promise<{ message: string; character: Character }> => {
+    const response = await api.post(`/characters/${characterId}/temp-reset-cleric-order`);
+    return response.data;
+  },
+
+  setConcealedClass: async (characterId: number, concealedClass: string | null): Promise<{ message: string; concealedClass: string | null }> => {
+    const response = await api.put(`/characters/${characterId}/concealed-class`, { concealedClass });
     return response.data;
   }
 };

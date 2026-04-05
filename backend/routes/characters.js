@@ -1379,4 +1379,119 @@ router.post('/:id/restore-ki-point', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── TEMP: Reset character to Level 1 Cleric (Order Domain) ───
+// DM only. Temporary debug helper — will be removed after use.
+router.post('/:id/temp-reset-cleric-order', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only Dungeon Masters can use this action' });
+    }
+
+    const { id } = req.params;
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    await pool.query('BEGIN');
+
+    // Set level 1 Cleric
+    await pool.query(
+      `UPDATE characters SET level = 1, class = 'Cleric', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+      [id]
+    );
+
+    // Clear skills, subclass, and feature choices
+    await pool.query(`DELETE FROM character_skills WHERE character_id = $1`, [id]);
+    await pool.query(`DELETE FROM character_subclasses WHERE character_id = $1`, [id]);
+    await pool.query(`DELETE FROM character_feature_choices WHERE character_id = $1`, [id]);
+
+    // Assign Order Domain subclass
+    const orderResult = await pool.query(
+      `SELECT id FROM subclasses WHERE class = 'Cleric' AND name = 'Order Domain'`
+    );
+    if (orderResult.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(500).json({ error: 'Order Domain subclass not found — run migrations first' });
+    }
+    const orderDomainId = orderResult.rows[0].id;
+    await pool.query(
+      `INSERT INTO character_subclasses (character_id, subclass_id)
+       VALUES ($1, $2)
+       ON CONFLICT (character_id) DO UPDATE SET subclass_id = $2`,
+      [id, orderDomainId]
+    );
+
+    // Assign base Cleric level 1 skills (excluding subclass-specific ones)
+    const baseSkills = await pool.query(
+      `SELECT id FROM skills
+       WHERE class_restriction = 'Cleric' AND level_requirement = 1 AND name NOT LIKE '%(%)%'`
+    );
+    for (const skill of baseSkills.rows) {
+      await pool.query(
+        `INSERT INTO character_skills (character_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [id, skill.id]
+      );
+    }
+
+    // Assign Order Domain level 1 skills
+    const orderSkills = await pool.query(
+      `SELECT id FROM skills
+       WHERE class_restriction = 'Cleric' AND level_requirement = 1 AND name ILIKE '%(Order Domain)%'`
+    );
+    for (const skill of orderSkills.rows) {
+      await pool.query(
+        `INSERT INTO character_skills (character_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [id, skill.id]
+      );
+    }
+
+    await pool.query('COMMIT');
+
+    const updated = await Character.findById(id);
+    res.json({ message: 'Character reset to Level 1 Cleric (Order Domain)', character: updated });
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    console.error('Error in temp-reset-cleric-order:', error);
+    res.status(500).json({ error: 'Failed to reset character' });
+  }
+});
+
+// ─── Conceal / Reveal character class (DM only) ───
+// Sets or clears concealed_class — what non-DM players see instead of the real class.
+router.put('/:id/concealed-class', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only Dungeon Masters can conceal a character class' });
+    }
+
+    const { id } = req.params;
+    const { concealedClass } = req.body; // null or undefined = reveal
+
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    const value = concealedClass || null;
+    await pool.query(
+      `UPDATE characters SET concealed_class = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [value, id]
+    );
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${character.campaign_id}`).emit('characterConcealmentChanged', {
+        characterId: character.id,
+        concealedClass: value,
+      });
+    }
+
+    res.json({ message: value ? `Character concealed as ${value}` : 'Character revealed', concealedClass: value });
+  } catch (error) {
+    console.error('Error setting concealed class:', error);
+    res.status(500).json({ error: 'Failed to update concealed class' });
+  }
+});
+
 module.exports = router;

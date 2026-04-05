@@ -23,9 +23,9 @@ async function populateAllRemainingSubclasses() {
       ON CONFLICT (class, name) DO UPDATE SET description = EXCLUDED.description
       RETURNING id
     `);
-    const trickeryResult = await client.query(`
+    const orderResult = await client.query(`
       INSERT INTO subclasses (class, name, description)
-      VALUES ('Cleric', 'Trickery Domain', 'Agent of deception and misdirection who values cunning over might.')
+      VALUES ('Cleric', 'Order Domain', 'Champion of law and civilization who compels obedience and protects the social order.')
       ON CONFLICT (class, name) DO UPDATE SET description = EXCLUDED.description
       RETURNING id
     `);
@@ -35,9 +35,9 @@ async function populateAllRemainingSubclasses() {
       VALUES 
         ('Cleric', $1, 1, 'Disciple of Life', 'Whenever you use a spell of 1st level or higher to restore hit points to a creature, the creature regains additional hit points equal to 2 + the spell level.', false, 0, NULL),
         ('Cleric', $2, 1, 'War Priest', 'When you use the Attack action, you can make one weapon attack as a bonus action. Use this feature WIS modifier times per long rest (minimum 1).', false, 0, NULL),
-        ('Cleric', $3, 1, 'Blessing of the Trickster', 'Use your action to touch a willing creature and give it advantage on Stealth checks. Lasts 1 hour or until you use this feature again.', false, 0, NULL)
+        ('Cleric', $3, 1, 'Voice of Authority', 'When you cast a spell of 1st level or higher targeting at least one creature, one of those creatures can use its reaction to make one weapon attack against a target of your choice that you can see.', false, 0, NULL)
       ON CONFLICT DO NOTHING
-    `, [lifeResult.rows[0].id, warResult.rows[0].id, trickeryResult.rows[0].id]);
+    `, [lifeResult.rows[0].id, warResult.rows[0].id, orderResult.rows[0].id]);
     console.log('✅ Cleric subclasses added\n');
     
     // ========== SORCERER (LEVEL 1) ==========

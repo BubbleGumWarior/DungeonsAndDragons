@@ -6,6 +6,7 @@ const createSkillsTable = require('../migrations/create_skills_table');
 const addPrimalBondSkills = require('../migrations/add_primal_bond_skills');
 const addShadowSovereignSkills = require('../migrations/add_shadow_sovereign_skills');
 const addCharlatanSkills = require('../migrations/add_charlatan_skills');
+const addOrderClericDomain = require('../migrations/add_order_cleric_domain');
 
 // Get all available skills
 router.get('/', authenticateToken, async (req, res) => {
@@ -836,6 +837,7 @@ router.delete('/reset', authenticateToken, async (req, res) => {
     await addPrimalBondSkills();
     await addShadowSovereignSkills();
     await addCharlatanSkills();
+    await addOrderClericDomain();
     console.log('✅ Default skills re-seeded successfully');
 
     res.json({
