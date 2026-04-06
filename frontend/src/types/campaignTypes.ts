@@ -226,7 +226,18 @@ export interface DotCondition {
   turnsRemaining: number | null;    // null = indefinite; Burning auto-expires at 0
 }
 
-export type ChatMessageType = 'player' | 'dm' | 'server' | 'roll_result';
+export type ChatMessageType = 'player' | 'dm' | 'server' | 'roll_result' | 'npc_reveal';
+
+export interface CampaignNPC {
+  id: number;
+  campaign_id: number;
+  name: string;
+  age: string;
+  description: string;
+  image_url: string | null;
+  created_by: number;
+  created_at: string;
+}
 
 export interface ChatMessage {
   id: number;

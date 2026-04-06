@@ -56,12 +56,12 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
   const damageNum = parseInt(damage, 10);
 
   const handleConfirm = () => {
-    if (!selectedLimb || isNaN(damageNum)) return;
+    if (isHeal ? isNaN(damageNum) : (!selectedLimb || isNaN(damageNum))) return;
     onConfirm({
       targetKey: String(target.characterId),
       targetType: target.isMonster ? 'monster' : 'character',
       targetName: target.name,
-      limbName: selectedLimb,
+      limbName: selectedLimb || '',
       attackRoll: 0,
       damage: damageNum,
       hit: true,
@@ -124,9 +124,9 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
           )
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', alignItems: 'start' }}>
-          {/* Body silhouette / limb selector */}
-          <div>
+        <div style={{ display: 'grid', gridTemplateColumns: isHeal ? '1fr' : '1fr 1fr', gap: '2rem', alignItems: 'start' }}>
+          {/* Body silhouette / limb selector — hidden in heal mode */}
+          {!isHeal && <div>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem', fontSize: '0.9rem' }}>Select target limb:</p>
             <div style={{ position: 'relative', width: '160px', margin: '0 auto' }}>
               {/* SVG body silhouette */}
@@ -224,7 +224,7 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
                 );
               })}
             </div>
-          </div>
+          </div>}
 
           {/* Roll + Damage inputs */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -235,7 +235,7 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
                   {isHeal ? 'Heal Amount' : 'Damage'}
                 </label>
                 <input
-                  type="number" min={0} value={damage}
+                  type="number" min={1} value={damage}
                   onChange={e => setDamage(e.target.value)}
                   placeholder="e.g. 8"
                   style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${isHeal ? 'rgba(74,222,128,0.4)' : 'rgba(212,193,156,0.3)'}`, color: '#fff', fontSize: '1rem' }} />
@@ -249,21 +249,21 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
                 Cancel
               </button>
               <button onClick={handleConfirm}
-                disabled={!selectedLimb || isNaN(damageNum)}
+                disabled={isHeal ? isNaN(damageNum) : (!selectedLimb || isNaN(damageNum))}
                 style={{
                   flex: 2, padding: '0.6rem',
                   background: isHeal
-                    ? ((!selectedLimb || isNaN(damageNum)) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#4ade80,#22c55e)')
+                    ? (isNaN(damageNum) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#4ade80,#22c55e)')
                     : ((!selectedLimb || isNaN(damageNum)) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#f87171,#ef4444)'),
                   border: isHeal
-                    ? ((!selectedLimb || isNaN(damageNum)) ? '1px solid rgba(255,255,255,0.1)' : '2px solid #22c55e')
+                    ? (isNaN(damageNum) ? '1px solid rgba(255,255,255,0.1)' : '2px solid #22c55e')
                     : ((!selectedLimb || isNaN(damageNum)) ? '1px solid rgba(255,255,255,0.1)' : '2px solid #ef4444'),
                   borderRadius: '0.5rem', color: isHeal ? '#000' : '#fff',
-                  cursor: (!selectedLimb || isNaN(damageNum)) ? 'not-allowed' : 'pointer',
+                  cursor: (isHeal ? isNaN(damageNum) : (!selectedLimb || isNaN(damageNum))) ? 'not-allowed' : 'pointer',
                   fontWeight: 'bold', fontSize: '0.95rem',
                 }}>
                 {isHeal
-                  ? ((!selectedLimb || isNaN(damageNum)) ? 'Select Limb & Amount' : `💚 Heal ${damage || 0} HP`)
+                  ? (isNaN(damageNum) ? 'Enter Amount' : `💚 Heal ${damage || 0} HP`)
                   : ((!selectedLimb || isNaN(damageNum)) ? 'Select Limb & Amount' : `⚔️ Deal ${damage || 0} Damage`)}
               </button>
             </div>

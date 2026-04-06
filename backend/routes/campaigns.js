@@ -299,4 +299,63 @@ router.get('/:id/chat', authenticateToken, async (req, res) => {
   }
 });
 
+// Get scores for all players in a campaign
+router.get('/:id/scores', authenticateToken, async (req, res) => {
+  try {
+    const campaignId = parseInt(req.params.id);
+    if (isNaN(campaignId)) return res.status(400).json({ error: 'Invalid campaign ID' });
+
+    const result = await pool.query(
+      `SELECT cs.player_id, cs.inspiration, cs.discouragement, cs.wishes, cs.anti_wishes
+       FROM campaign_scores cs
+       WHERE cs.campaign_id = $1`,
+      [campaignId]
+    );
+
+    res.json({ scores: result.rows });
+  } catch (error) {
+    console.error('Error fetching campaign scores:', error);
+    res.status(500).json({ error: 'Failed to fetch campaign scores' });
+  }
+});
+
+// Update a player's score in a campaign (DM only)
+router.put('/:id/scores/:playerId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Dungeon Master access required' });
+    }
+
+    const campaignId = parseInt(req.params.id);
+    const playerId = parseInt(req.params.playerId);
+    if (isNaN(campaignId) || isNaN(playerId)) {
+      return res.status(400).json({ error: 'Invalid campaign or player ID' });
+    }
+
+    const { field, delta } = req.body;
+    const allowedFields = ['inspiration', 'discouragement', 'wishes', 'anti_wishes'];
+    if (!allowedFields.includes(field)) {
+      return res.status(400).json({ error: 'Invalid field name' });
+    }
+    if (delta !== 1 && delta !== -1) {
+      return res.status(400).json({ error: 'Delta must be 1 or -1' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO campaign_scores (campaign_id, player_id, ${field}, updated_at)
+       VALUES ($1, $2, GREATEST(0, $3), NOW())
+       ON CONFLICT (campaign_id, player_id) DO UPDATE
+         SET ${field} = GREATEST(0, campaign_scores.${field} + $3),
+             updated_at = NOW()
+       RETURNING inspiration, discouragement, wishes, anti_wishes`,
+      [campaignId, playerId, delta]
+    );
+
+    res.json({ score: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating campaign score:', error);
+    res.status(500).json({ error: 'Failed to update campaign score' });
+  }
+});
+
 module.exports = router;

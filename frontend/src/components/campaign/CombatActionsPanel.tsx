@@ -18,9 +18,12 @@ interface Props {
   onAttack: () => void;
   onDealDamage: () => void;
   onHealHealth: () => void;
+  onAddTempHealth: () => void;
   onOpenStatusEffects: () => void;
   onSpendAction: (type: 'action' | 'bonus_action' | 'reaction', spent: boolean) => void;
   onDash?: () => void;
+  onHide: () => void;
+  onDisengage: () => void;
   onAddCondition: (condition: string) => void;
   onRemoveCondition: (condition: string) => void;
   onRemoveCombatant: () => void;
@@ -56,7 +59,7 @@ const dotConditionStyle: Record<string, { bg: string; border: string; color: str
 
 export const CombatActionsPanel: React.FC<Props> = ({
   activeCombatant, isMyTurn, isDM, actionEconomy,
-  onAttack, onDealDamage, onHealHealth, onOpenStatusEffects, onSpendAction, onDash, onAddCondition, onRemoveCondition,
+  onAttack, onDealDamage, onHealHealth, onAddTempHealth, onOpenStatusEffects, onSpendAction, onDash, onHide, onDisengage, onAddCondition, onRemoveCondition,
   onRemoveCombatant, onRequestDiceRoll, onQuickRequestRoll,
   dotConditions = [], onRemoveDotCondition,
 }) => {
@@ -99,6 +102,7 @@ export const CombatActionsPanel: React.FC<Props> = ({
             <>
               <button onClick={onDealDamage} disabled={!canAct} style={btnStyle('#f87171', !canAct)}>🗡️ Deal Damage</button>
               <button onClick={onHealHealth} disabled={!canAct} style={btnStyle('#4ade80', !canAct)}>💚 Heal Health</button>
+              <button onClick={onAddTempHealth} disabled={!canAct} style={btnStyle('#3b82f6', !canAct)}>💙 Temp HP</button>
               <button onClick={onOpenStatusEffects} disabled={!canAct} style={btnStyle('#fb923c', !canAct)}>🔥 Status Effects</button>
               <button onClick={onQuickRequestRoll} disabled={!canAct} style={btnStyle('#a78bfa', !canAct)}>🎲 Quick Roll</button>
             </>
@@ -109,13 +113,10 @@ export const CombatActionsPanel: React.FC<Props> = ({
                 onClick={() => { onDash ? onDash() : onSpendAction('action', true); }}
                 style={btnStyle('#a78bfa', !canAct)}>💨 Dash</button>
               <button disabled={!canAct}
-                onClick={() => { onSpendAction('action', true); }}
+                onClick={() => onDisengage()}
                 style={btnStyle('#fbbf24', !canAct)}>🚶 Disengage</button>
               <button disabled={!canAct}
-                onClick={() => { onSpendAction('action', true); }}
-                style={btnStyle('#4ade80', !canAct)}>🤝 Help</button>
-              <button disabled={!canAct}
-                onClick={() => { onSpendAction('action', true); }}
+                onClick={() => onHide()}
                 style={btnStyle('#94a3b8', !canAct)}>🌑 Hide</button>
             </>
           )}

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary, battleMapsAPI, BattleMap } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, CampaignNPCData } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS, isTemplateUnlocked } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -19,7 +19,8 @@ import { DiceRollModal } from './campaign/DiceRollModal';
 import { CombatLog } from './campaign/CombatLog';
 import { CombatActionsPanel } from './campaign/CombatActionsPanel';
 import ChatPanel from './campaign/ChatPanel';
-import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig, ChatMessage, OutOfCombatRollRequest } from '../types/campaignTypes';
+import ScoresTab from './campaign/ScoresTab';
+import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig, ChatMessage, OutOfCombatRollRequest, CampaignNPC } from '../types/campaignTypes';
 
 // Journal Entry Interface
 interface JournalEntry {
@@ -447,7 +448,7 @@ const CampaignView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs'>('board');
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
-  const [campaignTab, setCampaignTab] = useState<'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom'>('map');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom'>('map');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
   const [showMobileCharacters, setShowMobileCharacters] = useState(false);
@@ -480,6 +481,7 @@ const CampaignView: React.FC = () => {
   const [touchDragElement, setTouchDragElement] = useState<HTMLElement | null>(null);
   const [showUnequipZone, setShowUnequipZone] = useState(false);
   const [inventoryFilter, setInventoryFilter] = useState<'all' | 'weapon' | 'armor' | 'tool'>('all');
+  const [inventoryTabFilter, setInventoryTabFilter] = useState<string>('all');
   
   // Inventory management state (DM only)
   const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -512,6 +514,10 @@ const CampaignView: React.FC = () => {
   const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
   const [imageScale, setImageScale] = useState(100);
   const [imageLoadError, setImageLoadError] = useState<Record<number, boolean>>({});
+
+  // NPC state
+  const [campaignNPCs, setCampaignNPCs] = useState<CampaignNPC[]>([]);
+  const [savedNPCsForCharacter, setSavedNPCsForCharacter] = useState<CampaignNPC[]>([]);
 
   // Character data overrides for real-time updates (to avoid reloading and resetting tabs)
   const [characterDataOverrides, setCharacterDataOverrides] = useState<Record<number, Partial<Character>>>({});
@@ -626,6 +632,9 @@ const CampaignView: React.FC = () => {
   const [pendingRollOutcome, setPendingRollOutcome] = useState<CombatRollOutcome | null>(null);
   const [showHealModal, setShowHealModal] = useState<{ attackerKey: string; targetKey: string } | null>(null);
   const [showStatusModal, setShowStatusModal] = useState<{ targetKey: string } | null>(null);
+  const [showTempHpModal, setShowTempHpModal] = useState<{ targetKey: string } | null>(null);
+  const [tempHpInputAmount, setTempHpInputAmount] = useState('');
+  const [combatTempHealth, setCombatTempHealth] = useState<Record<string, Record<string, number> | null>>({});
   const [hitDiceRemaining, setHitDiceRemaining] = useState<Record<number, number>>({});
   const [characterSpellSlotsUsed, setCharacterSpellSlotsUsed] = useState<Record<number, Record<string, number>>>({});
   const [characterKiPoints, setCharacterKiPoints] = useState<Record<number, number>>({});
@@ -1316,6 +1325,9 @@ const CampaignView: React.FC = () => {
       campaignAPI.getChatHistory(currentCampaign.campaign.id)
         .then(data => setChatMessages(data.messages))
         .catch(err => console.error('Failed to load chat history:', err));
+      npcAPI.getCampaignNPCs(currentCampaign.campaign.id)
+        .then(data => setCampaignNPCs(data.npcs))
+        .catch(err => console.error('Failed to load campaign NPCs:', err));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCampaign?.campaign.id]);
@@ -1480,8 +1492,13 @@ const CampaignView: React.FC = () => {
         .then(setCampaignMounts)
         .catch(err => console.error('Error refreshing mounts:', err));
     }
+    if (activeTab === 'npcs' && selectedCharacter) {
+      npcAPI.getSavedNPCs(selectedCharacter)
+        .then(data => setSavedNPCsForCharacter(data.npcs))
+        .catch(err => console.error('Error loading saved NPCs:', err));
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, selectedCharacter]);
 
   // Load armies when selected character changes
   useEffect(() => {
@@ -3058,6 +3075,27 @@ const CampaignView: React.FC = () => {
         if ((data as any).dotConditions) {
           setDotConditions((data as any).dotConditions);
         }
+        // Seed temp limb health from server state
+        {
+          const tempMap: Record<string, Record<string, number> | null> = {};
+          const charHpSync = (data as any).characterHpData as Record<string, any> | undefined;
+          if (charHpSync) {
+            Object.entries(charHpSync).forEach(([id, hp]) => {
+              if (Object.prototype.hasOwnProperty.call(hp, 'tempLimbHealth')) {
+                tempMap[id] = hp.tempLimbHealth;
+              }
+            });
+          }
+          const monsterHpSync = (data as any).monsterHpData as Record<string, any> | undefined;
+          if (monsterHpSync) {
+            Object.entries(monsterHpSync).forEach(([id, hp]) => {
+              if (Object.prototype.hasOwnProperty.call(hp, 'tempLimbHealth')) {
+                tempMap[id] = (hp as any).tempLimbHealth;
+              }
+            });
+          }
+          if (Object.keys(tempMap).length > 0) setCombatTempHealth(prev => ({ ...prev, ...tempMap }));
+        }
         // Seed active map from server state
         if ((data as any).activeMapId !== undefined) {
           setActiveMapId((data as any).activeMapId ?? null);
@@ -3187,6 +3225,8 @@ const CampaignView: React.FC = () => {
         setShowHealModal(null);
         setDarknessLevel(0);
         setShowStatusModal(null);
+        setCombatTempHealth({});
+        setShowTempHpModal(null);
       });
 
       // Listen for real-time HP updates
@@ -3214,6 +3254,9 @@ const CampaignView: React.FC = () => {
               return next;
             });
           }
+          if (Object.prototype.hasOwnProperty.call(data, 'tempLimbHealth')) {
+            setCombatTempHealth(prev => ({ ...prev, [String(charId)]: data.tempLimbHealth }));
+          }
           setHitDiceRemaining(prev => {
             if (data.hitDiceRemaining == null) return prev;
             return { ...prev, [charId]: data.hitDiceRemaining };
@@ -3238,12 +3281,20 @@ const CampaignView: React.FC = () => {
             ...prev,
             [String(data.instanceId)]: { limbHealth: data.limbHealth, totalHP: data.totalHP },
           }));
+          if (Object.prototype.hasOwnProperty.call(data, 'tempLimbHealth')) {
+            setCombatTempHealth(prev => ({ ...prev, [String(data.instanceId)]: data.tempLimbHealth }));
+          }
         }
       });
 
       // Listen for conditions changes
       newSocket.on('conditionsUpdated', (data: { combatantKey: string; conditions: string[] }) => {
         setCombatConditions(prev => ({ ...prev, [data.combatantKey]: data.conditions }));
+      });
+
+      // Bulk conditions sync on join/reconnect (server sends all conditions fresh from DB)
+      newSocket.on('conditionsBulkSync', (data: { conditionsData: Record<string, string[]> }) => {
+        setCombatConditions(prev => ({ ...prev, ...data.conditionsData }));
       });
 
       // Listen for death saves updates
@@ -4132,6 +4183,11 @@ const CampaignView: React.FC = () => {
         }
       });
 
+      // Listen for NPC reveals
+      newSocket.on('npcRevealed', (npc: CampaignNPC) => {
+        setCampaignNPCs(prev => prev.find(n => n.id === npc.id) ? prev : [...prev, npc]);
+      });
+
       // Register user/campaign only after listeners are bound to avoid missing initial sync events
       if (user) {
         newSocket.emit('registerUser', user.id);
@@ -4732,6 +4788,24 @@ const CampaignView: React.FC = () => {
     const characterEquipmentDetails = equipmentDetails[character.id] || [];
     const hasDetailedData = characterEquipmentDetails.length > 0;
 
+    // Determine which categories are present in this character's inventory
+    const presentCategories = Array.from(
+      new Set(
+        (character.equipment || []).map((itemName: string) => {
+          const detail = characterEquipmentDetails.find((d: any) => d.item_name === itemName);
+          return detail?.category as string | undefined;
+        }).filter(Boolean)
+      )
+    ) as string[];
+
+    // Filter inventory items by the selected category
+    const filteredInventory: string[] = (character.equipment || []).filter((itemName: string) => {
+      if (inventoryTabFilter === 'all') return true;
+      const detail = characterEquipmentDetails.find((d: any) => d.item_name === itemName);
+      if (!detail) return inventoryTabFilter === 'all';
+      return detail.category === inventoryTabFilter;
+    });
+
     return (
       <div>
         <div className="glass-panel">
@@ -4772,7 +4846,38 @@ const CampaignView: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Category Filter Buttons */}
+          {character.equipment && character.equipment.length > 0 && (
+            <div className="inventory-filter" style={{ marginBottom: '1rem' }}>
+              <button
+                className={`filter-button ${inventoryTabFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setInventoryTabFilter('all')}
+              >
+                All ({(character.equipment || []).length})
+              </button>
+              {(['Weapon', 'Armor', 'Tool', 'General', 'Magic Item', 'Consumable'] as const)
+                .filter(cat => presentCategories.includes(cat))
+                .map(cat => {
+                  const count = (character.equipment || []).filter((itemName: string) => {
+                    const detail = characterEquipmentDetails.find((d: any) => d.item_name === itemName);
+                    return detail?.category === cat;
+                  }).length;
+                  return (
+                    <button
+                      key={cat}
+                      className={`filter-button ${inventoryTabFilter === cat ? 'active' : ''}`}
+                      onClick={() => setInventoryTabFilter(cat)}
+                    >
+                      {cat}s ({count})
+                    </button>
+                  );
+                })}
+            </div>
+          )}
+
           {character.equipment && character.equipment.length > 0 ? (
+            filteredInventory.length > 0 ? (
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))',
@@ -4781,7 +4886,7 @@ const CampaignView: React.FC = () => {
               overflowY: 'auto',
               paddingRight: '0.5rem'
             }}>
-              {character.equipment.map((itemName: string, index: number) => {
+              {filteredInventory.map((itemName: string, index: number) => {
                 // Find detailed information for this item
                 const itemDetails = characterEquipmentDetails.find(detail => detail.item_name === itemName);
                 
@@ -5014,6 +5119,26 @@ const CampaignView: React.FC = () => {
                 );
               })}
             </div>
+            ) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '3rem',
+              border: '2px dashed rgba(212, 193, 156, 0.3)',
+              borderRadius: '1rem',
+              background: 'rgba(255, 255, 255, 0.02)'
+            }}>
+              <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.5 }}>🔍</div>
+              <p className="text-muted" style={{ fontSize: '1rem', textAlign: 'center', margin: 0 }}>
+                No items match this filter
+              </p>
+              <p className="text-muted" style={{ fontSize: '0.8rem', textAlign: 'center', marginTop: '0.5rem', margin: 0 }}>
+                Try selecting a different category or "All"
+              </p>
+            </div>
+            )
           ) : (
             <div style={{
               display: 'flex',
@@ -5124,6 +5249,7 @@ const CampaignView: React.FC = () => {
 
   const campaignTabs = [
     { key: 'map', label: 'Map', icon: '🗺️' },
+    { key: 'scores', label: 'Scores', icon: '🏆' },
     { key: 'combat', label: 'Combat', icon: '⚔️' },
     { key: 'battlefield', label: 'Battlefield', icon: '🏹' },
     { key: 'news', label: 'News', icon: '📰' },
@@ -6436,6 +6562,18 @@ const CampaignView: React.FC = () => {
               </div>
             )}
 
+            {campaignTab === 'scores' && currentCampaign && (
+              <ScoresTab
+                campaignId={currentCampaign.campaign.id}
+                players={currentCampaign.players.filter(
+                  p => Number(p.id) !== Number(currentCampaign.campaign.dungeon_master_id)
+                )}
+                characters={currentCampaign.characters}
+                isDungeonMaster={user?.role === 'Dungeon Master'}
+                socket={socket}
+              />
+            )}
+
             {campaignTab === 'combat' && (
               <div className="glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -6627,8 +6765,10 @@ const CampaignView: React.FC = () => {
                           const limbCurrent = trackedLimbs
                             ? Object.values(trackedLimbs).reduce((s: number, v: any) => s + Number(v || 0), 0)
                             : limbMax;
+                          const tempData = combatTempHealth[String(charId)];
+                          const tempHpTotal = tempData ? Object.values(tempData).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
                           healthPct = limbMax > 0 ? (limbCurrent / limbMax) * 100 : 0;
-                          healthLabel = `${limbCurrent}/${limbMax}`;
+                          healthLabel = tempHpTotal > 0 ? `${limbCurrent}+${tempHpTotal}/${limbMax}` : `${limbCurrent}/${limbMax}`;
                           displayAC = initCharacter.armor_class || 10;
                         } else if (combatant.isMonster) {
                           const instanceHp = monsterInstanceHp[String(combatant.characterId)];
@@ -6636,11 +6776,35 @@ const CampaignView: React.FC = () => {
                             const maxHp = initMonsterTemplate
                               ? Object.values(initMonsterTemplate.limb_health as Record<string,number>).reduce((s,v)=>s+v,0)
                               : instanceHp.totalHP;
+                            const tempData = combatTempHealth[String(combatant.characterId)];
+                            const tempHpTotal = tempData ? Object.values(tempData).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
                             healthPct = maxHp > 0 ? (instanceHp.totalHP / maxHp) * 100 : 0;
-                            healthLabel = `${instanceHp.totalHP}`;
+                            healthLabel = tempHpTotal > 0 ? `${instanceHp.totalHP}+${tempHpTotal}` : `${instanceHp.totalHP}`;
                           }
                           displayAC = initMonsterTemplate?.limb_ac?.chest || 10;
                         }
+
+                        const tempHpTotalForBar = (() => {
+                          const tempData = combatTempHealth[String(combatant.characterId)];
+                          return tempData ? Object.values(tempData).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
+                        })();
+                        const limbMaxForBar = (() => {
+                          if (initCharacter) {
+                            const charId = Number(combatant.characterId);
+                            const hpTracked = combatCharacterHp[charId];
+                            const baseHP = Math.max(1, hpTracked?.max || (initCharacter as any).hit_points_max || initCharacter.hit_points);
+                            const limbMaxValues = calcCharacterLimbHealthMax(baseHP, initCharacter.abilities?.con ?? 10);
+                            return Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
+                          } else if (combatant.isMonster) {
+                            const instanceHp = monsterInstanceHp[String(combatant.characterId)];
+                            if (!instanceHp) return 1;
+                            return initMonsterTemplate
+                              ? Object.values(initMonsterTemplate.limb_health as Record<string,number>).reduce((s,v)=>s+v,0)
+                              : instanceHp.totalHP;
+                          }
+                          return 1;
+                        })();
+                        const tempPct = limbMaxForBar > 0 ? Math.min(100, (tempHpTotalForBar / limbMaxForBar) * 100) : 0;
 
                         const hpBarColor = healthPct > 66 ? '#4ade80' : healthPct > 33 ? '#fbbf24' : '#ef4444';
                         const conditions = combatConditions[combatantKey] ?? [];
@@ -6763,10 +6927,11 @@ const CampaignView: React.FC = () => {
                               </div>
                               {/* Health bar */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                                <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                                  {!initiativeHidden && <div style={{ width: `${healthPct}%`, height: '100%', background: hpBarColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />}
+                                <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', display: 'flex', overflow: 'hidden' }}>
+                                  {!initiativeHidden && <div style={{ width: `${healthPct}%`, height: '100%', background: hpBarColor, transition: 'width 0.3s ease', flexShrink: 0 }} />}
+                                  {!initiativeHidden && tempHpTotalForBar > 0 && <div style={{ width: `${tempPct}%`, height: '100%', background: '#3b82f6', borderRadius: '0 3px 3px 0', transition: 'width 0.3s ease', flexShrink: 0 }} />}
                                 </div>
-                                <span style={{ fontSize: '0.7rem', color: initiativeHidden ? '#64748b' : hpBarColor, minWidth: '40px', textAlign: 'right' }}>
+                                <span style={{ fontSize: '0.7rem', color: initiativeHidden ? '#64748b' : (tempHpTotalForBar > 0 ? '#3b82f6' : hpBarColor), minWidth: '40px', textAlign: 'right' }}>
                                   {initiativeHidden ? '???' : (healthLabel || `${Math.round(healthPct)}%`)}
                                 </span>
                               </div>
@@ -6934,6 +7099,11 @@ const CampaignView: React.FC = () => {
                             if (!activeCombatantData || !currentCampaign) return;
                             setShowHealModal({ attackerKey: '', targetKey: String(activeCombatantData.characterId) });
                           }}
+                          onAddTempHealth={() => {
+                            if (!activeCombatantData || !currentCampaign) return;
+                            setShowTempHpModal({ targetKey: String(activeCombatantData.characterId) });
+                            setTempHpInputAmount('');
+                          }}
                           onOpenStatusEffects={() => {
                             if (!activeCombatantData) return;
                             setShowStatusModal({ targetKey: String(activeCombatantData.characterId) });
@@ -6974,6 +7144,67 @@ const CampaignView: React.FC = () => {
                               campaignId: currentCampaign.campaign.id,
                               combatantKey: ownKey,
                               additionalMovement: ownCombatant.movement_speed ?? 30,
+                            });
+                          }}
+                          onDisengage={() => {
+                            if (!socket || !currentCampaign) return;
+                            const ownCombatant = isDM
+                              ? activeCombatantData
+                              : combatants.find(c => !c.isMonster && Number(c.playerId) === Number(user?.id)) ?? activeCombatantData;
+                            if (!ownCombatant) return;
+                            const ownKey = String(ownCombatant.characterId);
+                            socket.emit('spendActionEconomy', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: ownKey,
+                              actionType: 'action',
+                              spent: true,
+                            });
+                            socket.emit('applyCondition', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: ownKey,
+                              condition: 'Disengage',
+                            });
+                          }}
+                          onHide={() => {
+                            if (!socket || !currentCampaign) return;
+                            const ownCombatant = isDM
+                              ? activeCombatantData
+                              : combatants.find(c => !c.isMonster && Number(c.playerId) === Number(user?.id)) ?? activeCombatantData;
+                            if (!ownCombatant) return;
+                            const ownKey = String(ownCombatant.characterId);
+                            // Spend the action
+                            socket.emit('spendActionEconomy', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: ownKey,
+                              actionType: 'action',
+                              spent: true,
+                            });
+                            // Compute stealth modifier from character data
+                            const ownChar = currentCampaign.characters.find((c: any) => Number(c.id) === Number(ownCombatant.characterId));
+                            let stealthMod = 0;
+                            if (ownChar) {
+                              const level: number = ownChar.level ?? 1;
+                              const profBonus = Math.floor((level - 1) / 4) + 2;
+                              const abs = ownChar.abilities ?? { dex: 10 };
+                              const dex = abs.dex ?? 10;
+                              const dexMod = Math.floor((dex - 10) / 2);
+                              const profSkills: string[] = ownChar.skills ?? [];
+                              const expertiseSkills: string[] = (ownChar as any).expertise ?? [];
+                              const isExpert = expertiseSkills.some((s: string) => s.toLowerCase() === 'stealth');
+                              const isProf = isExpert || profSkills.some((s: string) => s.toLowerCase() === 'stealth');
+                              stealthMod = dexMod + (isExpert ? profBonus * 2 : isProf ? profBonus : 0);
+                            }
+                            // Request a stealth ability check roll — sent to this player's own modal
+                            socket.emit('requestDiceRoll', {
+                              campaignId: currentCampaign.campaign.id,
+                              targetPlayerId: ownCombatant.playerId,
+                              targetCharacterName: ownCombatant.name,
+                              diceType: 'd20',
+                              rollPurpose: 'ability_check',
+                              purposeDetail: 'Stealth (Hide)',
+                              modifier: 'none',
+                              precomputedModifier: stealthMod,
+                              diceGroups: [{ count: 1, diceType: 'd20' }],
                             });
                           }}
                           onAddCondition={(condition) => {
@@ -14810,10 +15041,29 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'npcs' && canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>👥 Characters</h5>
-                    <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
-                      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👥</div>
-                      <p style={{ color: 'var(--text-secondary)' }}>No characters recorded yet. This section will track the people {selectedCharacterData.name} has encountered in the world.</p>
-                    </div>
+                    {savedNPCsForCharacter.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👥</div>
+                        <p style={{ color: 'var(--text-secondary)' }}>No characters recorded yet. This section will track the people {selectedCharacterData.name} has encountered in the world.</p>
+                      </div>
+                    ) : (
+                      <div className="npc-characters-grid">
+                        {savedNPCsForCharacter.map(npc => (
+                          <div key={npc.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            {npc.image_url ? (
+                              <img src={npc.image_url} alt={npc.name} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: '100%', aspectRatio: '1', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem' }}>👤</div>
+                            )}
+                            <div style={{ padding: '0.75rem' }}>
+                              <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '0.25rem' }}>{npc.name}</div>
+                              {npc.age && <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.4rem' }}>Age: {npc.age}</div>}
+                              {npc.description && <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: 0, lineHeight: 1.45 }}>{npc.description}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -16855,6 +17105,30 @@ const CampaignView: React.FC = () => {
 
             {/* Action buttons */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {/* Hide stealth check outcome — dedicated approve/deny */}
+              {pendingRollOutcome.purposeDetail === 'Stealth (Hide)' && (() => {
+                const rollerCombatant = combatants.find(c => c.name === pendingRollOutcome.rollerName);
+                const rollerKey = rollerCombatant ? String(rollerCombatant.characterId) : null;
+                return (
+                  <>
+                    <button
+                      onClick={() => {
+                        if (!rollerKey) return;
+                        socket.emit('applyCondition', { campaignId: currentCampaign.campaign.id, combatantKey: rollerKey, condition: 'Invisible' });
+                        setPendingRollOutcome(null);
+                      }}
+                      disabled={!rollerKey}
+                      style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: rollerKey ? 'pointer' : 'not-allowed', background: 'rgba(103,232,249,0.15)', border: '1px solid rgba(103,232,249,0.5)', color: '#67e8f9', fontWeight: '600', fontSize: '0.82rem' }}>
+                      👁️ Hide Succeeded — Apply Invisible
+                    </button>
+                    <button
+                      onClick={() => setPendingRollOutcome(null)}
+                      style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.3)', color: '#94a3b8', fontWeight: '600', fontSize: '0.82rem' }}>
+                      ✗ Hide Failed
+                    </button>
+                  </>
+                );
+              })()}
               <button
                 onClick={() => {
                   const ak = pendingRollOutcome.attackerKey ?? '';
@@ -17012,6 +17286,87 @@ const CampaignView: React.FC = () => {
               }}
               onClose={() => setShowHealModal(null)}
             />
+          );
+        })()}
+
+        {/* Temp HP Modal — DM assigns temporary HP to a combatant, distributed across limbs */}
+        {showTempHpModal && user?.role === 'Dungeon Master' && socket && currentCampaign && (() => {
+          const tempTarget = combatants.find(c => String(c.characterId) === showTempHpModal.targetKey);
+
+          // Step A: no target yet — show target picker
+          if (!tempTarget) {
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                <div style={{ background: 'linear-gradient(135deg,#0a1020,#0f1a30)', border: '2px solid rgba(59,130,246,0.5)', borderRadius: '1rem', padding: '1.5rem', width: '360px', maxWidth: '95vw' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4 style={{ color: '#60a5fa', margin: 0 }}>💙 Choose Temp HP Target</h4>
+                    <button onClick={() => setShowTempHpModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {combatants.map(t => (
+                      <button key={t.characterId}
+                        onClick={() => setShowTempHpModal({ targetKey: String(t.characterId) })}
+                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster ? 'rgba(248,113,113,0.4)' : 'rgba(59,130,246,0.45)'}`, color: t.isMonster ? '#f87171' : '#60a5fa', cursor: 'pointer', textAlign: 'left' }}>
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // Step B: target selected — show amount input
+          const existingTemp = combatTempHealth[String(tempTarget.characterId)];
+          const existingTotal = existingTemp ? Object.values(existingTemp).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
+
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+              <div style={{ background: 'linear-gradient(135deg,#0a1020,#0f1a30)', border: '2px solid rgba(59,130,246,0.5)', borderRadius: '1rem', padding: '1.5rem', width: '380px', maxWidth: '95vw' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h4 style={{ color: '#60a5fa', margin: 0 }}>💙 Add Temporary HP</h4>
+                  <button onClick={() => setShowTempHpModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                </div>
+                <p style={{ color: '#93c5fd', fontSize: '0.9rem', margin: '0 0 0.25rem' }}>Target: <strong>{tempTarget.name}</strong></p>
+                {existingTotal > 0 && (
+                  <p style={{ color: '#60a5fa', fontSize: '0.8rem', margin: '0 0 0.75rem' }}>Current temp HP: {existingTotal} (will stack)</p>
+                )}
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0.5rem 0 0.35rem' }}>
+                  HP is distributed evenly across all limbs, prioritising head → chest → arms → legs.
+                </p>
+                <input
+                  type="number" min="1" placeholder="Amount"
+                  value={tempHpInputAmount}
+                  onChange={e => setTempHpInputAmount(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.4rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(59,130,246,0.5)', color: '#e2e8f0', fontSize: '1rem', boxSizing: 'border-box', marginBottom: '1rem' }}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setShowTempHpModal(null)}
+                    style={{ padding: '0.45rem 1rem', borderRadius: '0.4rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: '#94a3b8', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    Cancel
+                  </button>
+                  <button
+                    disabled={!tempHpInputAmount || Number(tempHpInputAmount) <= 0}
+                    onClick={() => {
+                      const amount = Number(tempHpInputAmount);
+                      if (!amount || amount <= 0) return;
+                      socket.emit('applyTempHealth', {
+                        campaignId: currentCampaign.campaign.id,
+                        targetKey: String(tempTarget.characterId),
+                        targetType: tempTarget.isMonster ? 'monster' : 'character',
+                        targetName: tempTarget.name,
+                        amount,
+                      });
+                      setShowTempHpModal(null);
+                      setTempHpInputAmount('');
+                    }}
+                    style={{ padding: '0.45rem 1.25rem', borderRadius: '0.4rem', background: 'rgba(59,130,246,0.25)', border: '1px solid #3b82f6', color: '#93c5fd', cursor: !tempHpInputAmount || Number(tempHpInputAmount) <= 0 ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: '600', opacity: !tempHpInputAmount || Number(tempHpInputAmount) <= 0 ? 0.5 : 1 }}>
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
           );
         })()}
 
@@ -17666,6 +18021,9 @@ const CampaignView: React.FC = () => {
                   // Derive totalCurrent from actual limb state so it aligns with the non-normalized totalMax
                   const totalCurrent = Object.values(curLimbs).reduce((s: number, v: number) => s + v, 0);
                   const totalPct = totalMax > 0 ? Math.min(100, (totalCurrent / totalMax) * 100) : 0;
+                  const tempLimbs = combatTempHealth[String(charIdNum)] ?? null;
+                  const totalTemp = tempLimbs ? Object.values(tempLimbs).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
+                  const tempPctBar = totalMax > 0 ? Math.min(100, (totalTemp / totalMax) * 100) : 0;
 
                   const baseAC = detailCharacter.armor_class || 10;
                   const rawLimbAC = limbAC[detailCharacter.id];
@@ -17698,33 +18056,33 @@ const CampaignView: React.FC = () => {
                         <div style={{ position: 'relative', width: '180px', flexShrink: 0 }}>
                           <img src={detailCharacter?.race === 'Thri-kreen' ? Figure4ArmsImage : FigureImage} alt="Figure" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '0.5rem', border: '1px solid rgba(212,193,156,0.2)' }} />
                           {/* Head */}
-                          <div style={{ position: 'absolute', top: '6%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.head > 0 ? (curLimbs.head / limbMaxValues.head) * 100 : 100) }}>{curLimbs.head}/{limbMaxValues.head}</div>
+                          <div style={{ position: 'absolute', top: '6%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: `1px solid ${tempLimbs?.head ? '#3b82f6' : 'var(--primary-gold)'}`, borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.head > 0 ? (curLimbs.head / limbMaxValues.head) * 100 : 100) }}>{curLimbs.head}/{limbMaxValues.head}{tempLimbs?.head ? <span style={{ color: '#60a5fa' }}>+{tempLimbs.head}</span> : null}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.head}</div>
                           </div>
                           {/* Torso */}
-                          <div style={{ position: 'absolute', top: '33%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.chest > 0 ? (curLimbs.chest / limbMaxValues.chest) * 100 : 100) }}>{curLimbs.chest}/{limbMaxValues.chest}</div>
+                          <div style={{ position: 'absolute', top: '33%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: `1px solid ${tempLimbs?.chest ? '#3b82f6' : 'var(--primary-gold)'}`, borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.chest > 0 ? (curLimbs.chest / limbMaxValues.chest) * 100 : 100) }}>{curLimbs.chest}/{limbMaxValues.chest}{tempLimbs?.chest ? <span style={{ color: '#60a5fa' }}>+{tempLimbs.chest}</span> : null}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.chest}</div>
                           </div>
                           {/* Left hand */}
-                          <div style={{ position: 'absolute', top: '30%', left: '2%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.left_arm > 0 ? (curLimbs.left_arm / limbMaxValues.left_arm) * 100 : 100) }}>{curLimbs.left_arm}/{limbMaxValues.left_arm}</div>
+                          <div style={{ position: 'absolute', top: '30%', left: '2%', background: 'rgba(0,0,0,0.85)', border: `1px solid ${tempLimbs?.left_arm ? '#3b82f6' : 'var(--primary-gold)'}`, borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.left_arm > 0 ? (curLimbs.left_arm / limbMaxValues.left_arm) * 100 : 100) }}>{curLimbs.left_arm}/{limbMaxValues.left_arm}{tempLimbs?.left_arm ? <span style={{ color: '#60a5fa' }}>+{tempLimbs.left_arm}</span> : null}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.main_hand}</div>
                           </div>
                           {/* Right hand */}
-                          <div style={{ position: 'absolute', top: '30%', right: '2%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.right_arm > 0 ? (curLimbs.right_arm / limbMaxValues.right_arm) * 100 : 100) }}>{curLimbs.right_arm}/{limbMaxValues.right_arm}</div>
+                          <div style={{ position: 'absolute', top: '30%', right: '2%', background: 'rgba(0,0,0,0.85)', border: `1px solid ${tempLimbs?.right_arm ? '#3b82f6' : 'var(--primary-gold)'}`, borderRadius: '4px', padding: '2px 4px', textAlign: 'center', minWidth: '40px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.right_arm > 0 ? (curLimbs.right_arm / limbMaxValues.right_arm) * 100 : 100) }}>{curLimbs.right_arm}/{limbMaxValues.right_arm}{tempLimbs?.right_arm ? <span style={{ color: '#60a5fa' }}>+{tempLimbs.right_arm}</span> : null}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.off_hand}</div>
                           </div>
                           {/* Left leg */}
-                          <div style={{ position: 'absolute', bottom: '12%', left: '14%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.left_leg > 0 ? (curLimbs.left_leg / limbMaxValues.left_leg) * 100 : 100) }}>{curLimbs.left_leg}/{limbMaxValues.left_leg}</div>
+                          <div style={{ position: 'absolute', bottom: '12%', left: '14%', background: 'rgba(0,0,0,0.85)', border: `1px solid ${tempLimbs?.left_leg ? '#3b82f6' : 'var(--primary-gold)'}`, borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.left_leg > 0 ? (curLimbs.left_leg / limbMaxValues.left_leg) * 100 : 100) }}>{curLimbs.left_leg}/{limbMaxValues.left_leg}{tempLimbs?.left_leg ? <span style={{ color: '#60a5fa' }}>+{tempLimbs.left_leg}</span> : null}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.feet}</div>
                           </div>
                           {/* Right leg */}
-                          <div style={{ position: 'absolute', bottom: '12%', right: '14%', background: 'rgba(0,0,0,0.85)', border: '1px solid var(--primary-gold)', borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
-                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.right_leg > 0 ? (curLimbs.right_leg / limbMaxValues.right_leg) * 100 : 100) }}>{curLimbs.right_leg}/{limbMaxValues.right_leg}</div>
+                          <div style={{ position: 'absolute', bottom: '12%', right: '14%', background: 'rgba(0,0,0,0.85)', border: `1px solid ${tempLimbs?.right_leg ? '#3b82f6' : 'var(--primary-gold)'}`, borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '44px' }}>
+                            <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.right_leg > 0 ? (curLimbs.right_leg / limbMaxValues.right_leg) * 100 : 100) }}>{curLimbs.right_leg}/{limbMaxValues.right_leg}{tempLimbs?.right_leg ? <span style={{ color: '#60a5fa' }}>+{tempLimbs.right_leg}</span> : null}</div>
                             <div style={{ fontSize: '0.55rem', color: '#60a5fa' }}>AC {cLimbAC.feet}</div>
                           </div>
                         </div>
@@ -17735,10 +18093,13 @@ const CampaignView: React.FC = () => {
                         {/* Total HP */}
                         <div style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', marginBottom: '0.4rem', fontWeight: 'bold' }}>Total HP</div>
-                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '0.3rem' }}>
-                            <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: '5px' }} />
+                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '0.3rem', display: 'flex' }}>
+                            <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: totalTemp > 0 ? '5px 0 0 5px' : '5px', flexShrink: 0 }} />
+                            {totalTemp > 0 && <div style={{ width: `${tempPctBar}%`, height: '100%', background: '#3b82f6', borderRadius: '0 5px 5px 0', flexShrink: 0 }} />}
                           </div>
-                          <div style={{ fontSize: '0.85rem', color: getHealthColor(totalPct) }}>{totalCurrent}/{totalMax}</div>
+                          <div style={{ fontSize: '0.85rem', color: totalTemp > 0 ? '#60a5fa' : getHealthColor(totalPct) }}>
+                            {totalCurrent}{totalTemp > 0 ? `+${totalTemp}` : ''}/{totalMax}
+                          </div>
                         </div>
 
                         {/* Base AC + Movement side by side */}
@@ -17797,6 +18158,9 @@ const CampaignView: React.FC = () => {
                   const totalMax = detailMonster.hit_points || limbMaxTotal || 0;
                   const totalCur = instHp?.totalHP ?? totalMax;
                   const totalPct = totalMax > 0 ? Math.min(100, (totalCur / totalMax) * 100) : 100;
+                  const monsterTempLimbs = combatTempHealth[String(detailCombatant.characterId)] ?? null;
+                  const monsterTotalTemp = monsterTempLimbs ? Object.values(monsterTempLimbs).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
+                  const monsterTempPctBar = totalMax > 0 ? Math.min(100, (monsterTotalTemp / totalMax) * 100) : 0;
                   const limbDefs = [
                     { key: 'head',      label: 'Head',      ac: lac.head || 10 },
                     { key: 'chest',     label: 'Chest',     ac: lac.chest || 10 },
@@ -17824,10 +18188,11 @@ const CampaignView: React.FC = () => {
                           <div style={{ fontSize: '0.75rem', color: '#f87171', marginBottom: '0.4rem', fontWeight: 'bold' }}>
                             {isPlayerViewing
                               ? `Total HP — ${Math.round(totalPct)}%`
-                              : `Total HP — ${totalCur}/${totalMax}`}
+                              : `Total HP — ${totalCur}${monsterTotalTemp > 0 ? `+${monsterTotalTemp}` : ''}/${totalMax}`}
                           </div>
-                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden' }}>
-                            <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: '5px' }} />
+                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', display: 'flex' }}>
+                            <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: monsterTotalTemp > 0 ? '5px 0 0 5px' : '5px', flexShrink: 0 }} />
+                            {monsterTotalTemp > 0 && <div style={{ width: `${monsterTempPctBar}%`, height: '100%', background: '#3b82f6', borderRadius: '0 5px 5px 0', flexShrink: 0 }} />}
                           </div>
                         </div>
                         {/* Limb table */}
@@ -17836,12 +18201,13 @@ const CampaignView: React.FC = () => {
                             const cur = lhCur[l.key] ?? 0;
                             const max = lhMax[l.key] ?? 0;
                             const pct = max > 0 ? Math.min(100, (cur / max) * 100) : 100;
+                            const tempForLimb = monsterTempLimbs ? (monsterTempLimbs[l.key] ?? 0) : 0;
                             return (
-                            <div key={l.key} style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '0.4rem', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: '0.8rem', color: '#f87171' }}>{l.label}</span>
+                            <div key={l.key} style={{ background: tempForLimb > 0 ? 'rgba(59,130,246,0.08)' : 'rgba(248,113,113,0.06)', border: `1px solid ${tempForLimb > 0 ? 'rgba(59,130,246,0.4)' : 'rgba(248,113,113,0.2)'}`, borderRadius: '0.4rem', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.8rem', color: tempForLimb > 0 ? '#60a5fa' : '#f87171' }}>{l.label}</span>
                               <div style={{ textAlign: 'right' }}>
                                 <div style={{ fontSize: '0.8rem', color: getHealthColor(pct) }}>
-                                  {isPlayerViewing ? `${Math.round(pct)}%` : `${cur}/${max} HP`}
+                                  {isPlayerViewing ? `${Math.round(pct)}%` : `${cur}/${max} HP`}{!isPlayerViewing && tempForLimb > 0 ? <span style={{ color: '#60a5fa' }}> +{tempForLimb}</span> : null}
                                 </div>
                                 {!isPlayerViewing && (
                                   <div style={{ fontSize: '0.7rem', color: '#60a5fa' }}>AC {l.ac}</div>
@@ -22250,6 +22616,10 @@ const CampaignView: React.FC = () => {
             onlinePlayers={currentCampaign.characters
               .filter(c => c.player_id && onlineUserIds.has(c.player_id))
               .map(c => ({ userId: c.player_id as number, characterName: c.name }))}
+            campaignNPCs={campaignNPCs}
+            userCharacterId={currentCampaign.userCharacter?.id ?? null}
+            onNPCRevealed={(npc) => setCampaignNPCs(prev => prev.find(n => n.id === npc.id) ? prev : [...prev, npc])}
+            onNPCSaved={(npc) => setSavedNPCsForCharacter(prev => prev.find(n => n.id === npc.id) ? prev : [...prev, npc])}
           />
           {/* Floating chat toggle button */}
           <button

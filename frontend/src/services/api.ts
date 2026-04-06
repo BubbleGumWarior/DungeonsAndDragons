@@ -1564,4 +1564,39 @@ export const kingdomActionAPI = {
   },
 };
 
+export interface CampaignNPCData {
+  id: number;
+  campaign_id: number;
+  name: string;
+  age: string;
+  description: string;
+  image_url: string | null;
+  created_by: number;
+  created_at: string;
+}
+
+export const npcAPI = {
+  createNPC: async (campaignId: number, formData: FormData): Promise<{ npc: CampaignNPCData }> => {
+    const response = await api.post(`/campaigns/${campaignId}/npcs`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  getCampaignNPCs: async (campaignId: number): Promise<{ npcs: CampaignNPCData[] }> => {
+    const response = await api.get(`/campaigns/${campaignId}/npcs`);
+    return response.data;
+  },
+
+  saveNPCToCharacter: async (characterId: number, npcId: number): Promise<{ message: string }> => {
+    const response = await api.post(`/characters/${characterId}/saved-npcs`, { npcId });
+    return response.data;
+  },
+
+  getSavedNPCs: async (characterId: number): Promise<{ npcs: CampaignNPCData[] }> => {
+    const response = await api.get(`/characters/${characterId}/saved-npcs`);
+    return response.data;
+  },
+};
+
 export default api;

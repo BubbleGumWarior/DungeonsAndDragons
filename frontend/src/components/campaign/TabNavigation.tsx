@@ -1,6 +1,6 @@
 import React from 'react';
 
-type CampaignTab = 'map' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia';
+type CampaignTab = 'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia';
 
 interface TabNavigationProps {
   activeTab: CampaignTab;
@@ -15,6 +15,7 @@ const TabNavigation: React.FC<TabNavigationProps> = ({
 }) => {
   const tabs: { id: CampaignTab; label: string; icon: string }[] = [
     { id: 'map', label: 'World Map', icon: '🗺️' },
+    { id: 'scores', label: 'Scores', icon: '🏆' },
     { id: 'combat', label: 'Combat', icon: '⚔️' },
     { id: 'battlefield', label: 'Battlefield', icon: '🏰' },
     { id: 'news', label: 'News', icon: '📰' },

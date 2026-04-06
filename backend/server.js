@@ -26,6 +26,7 @@ const kingdomRoutes = require('./routes/kingdoms');
 const fiefRoutes = require('./routes/fiefs');
 const kingdomEventRoutes = require('./routes/kingdom-events');
 const kingdomActionRoutes = require('./routes/kingdom-actions');
+const npcRoutes = require('./routes/npcs');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 const CombatSession = require('./models/CombatSession');
@@ -164,6 +165,7 @@ app.use('/api/kingdoms', kingdomRoutes);
 app.use('/api', fiefRoutes);
 app.use('/api/kingdoms', kingdomEventRoutes);
 app.use('/api/kingdoms', kingdomActionRoutes);
+app.use('/api', npcRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -334,6 +336,9 @@ const startServer = async () => {
         { name: 'addCampaignBattleMaps', fn: require('./migrations/add_campaign_battle_maps') },
         { name: 'addMountedCombat', fn: require('./migrations/add_mounted_combat') },
         { name: 'addCampaignActiveMap', fn: require('./migrations/add_campaign_active_map') },
+        { name: 'addCampaignScores', fn: require('./migrations/add_campaign_scores') },
+        { name: 'addTempLimbHealth', fn: require('./migrations/add_temp_limb_health') },
+        { name: 'addCampaignNpcs', fn: require('./migrations/add_campaign_npcs') },
       ];
       
       for (const migration of migrations) {
@@ -589,7 +594,7 @@ const startServer = async () => {
                   if (inst) {
                     const limbHealth = inst.current_limb_health;
                     const totalHP = Object.values(limbHealth).reduce((s, v) => s + v, 0);
-                    monsterHpData[String(instanceId)] = { limbHealth, totalHP };
+                    monsterHpData[String(instanceId)] = { limbHealth, totalHP, tempLimbHealth: inst.temp_limb_health ?? null };
                   }
                 }
               }
@@ -603,7 +608,7 @@ const startServer = async () => {
                 const hpRes = await pool.query(
                   `SELECT id, hit_points,
                           CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN GREATEST(hit_points, 1) ELSE hit_points_max END AS max_hp,
-                          limb_health, abilities, COALESCE(hit_dice_remaining, level) AS hit_dice_remaining
+                          limb_health, temp_limb_health, abilities, COALESCE(hit_dice_remaining, level) AS hit_dice_remaining
                    FROM characters WHERE id = ANY($1::int[])`,
                   [charIds]
                 );
@@ -638,6 +643,7 @@ const startServer = async () => {
                     current: row.hit_points,
                     max: row.max_hp,
                     limbHealth,
+                    tempLimbHealth: row.temp_limb_health ?? null,
                     hitDiceRemaining: row.hit_dice_remaining,
                   };
                 }
@@ -679,6 +685,19 @@ const startServer = async () => {
               activeMapId: activeBattleMapState[campaignId] ?? null,
               activeBattlefieldMapId: activeBattlefieldMapState[campaignId] ?? null,
             });
+            // Send fresh action economy and conditions from DB so they survive page refreshes
+            try {
+              const dbCombatants = await CombatSession.getCombatants(battleCombatState[campaignId].sessionId);
+              const conditionsData = {};
+              dbCombatants.forEach(c => {
+                const rawConds = c.conditions;
+                conditionsData[String(c.combatant_key)] = Array.isArray(rawConds)
+                  ? rawConds
+                  : (typeof rawConds === 'string' ? JSON.parse(rawConds) : []);
+              });
+              socket.emit('actionEconomyUpdated', { combatants: dbCombatants, campaignId });
+              socket.emit('conditionsBulkSync', { conditionsData, campaignId });
+            } catch (syncErr) { console.warn('Could not sync economy/conditions on join:', syncErr.message); }
             console.log(`⚔️ Sent combat state to user ${socket.id} for campaign ${campaignId}`);
           }
 
@@ -967,6 +986,21 @@ const startServer = async () => {
           console.log(`👥 Party token moved in campaign ${campaignId} to (${x.toFixed(2)}, ${y.toFixed(2)})`);
         } catch (error) {
           console.error('Error handling party group movement:', error);
+        }
+      });
+
+      // Handle campaign score updates (DM adjusts a player score)
+      socket.on('campaignScoreUpdate', (data) => {
+        try {
+          const { campaignId, playerId, scores } = data;
+          io.to(`campaign_${campaignId}`).emit('campaignScoreUpdated', {
+            playerId,
+            scores,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🏆 Score updated for player ${playerId} in campaign ${campaignId}`);
+        } catch (error) {
+          console.error('Error broadcasting campaign score update:', error);
         }
       });
 
@@ -1456,13 +1490,36 @@ const startServer = async () => {
             } catch (e) { console.warn('Error removing expired DOT conditions:', e.message); }
           }
 
+          // Auto-remove 'Disengage' condition at the start of this combatant's turn
+          try {
+            if (session.sessionId) {
+              const disengageRow = await CombatSession.getCombatantByKey(session.sessionId, currentCombatantKey);
+              if (disengageRow) {
+                // Safe parse: JSONB returns array, but guard against string in case of pg config variance
+                const rawConds = disengageRow.conditions;
+                const parsedConds = Array.isArray(rawConds)
+                  ? rawConds
+                  : (typeof rawConds === 'string' ? JSON.parse(rawConds) : []);
+                console.log(`🔍 Disengage check for ${currentCombatantKey}: conditions=${JSON.stringify(parsedConds)}`);
+                if (parsedConds.some(c => c.toLowerCase() === 'disengage')) {
+                  const newConditions = parsedConds.filter(c => c.toLowerCase() !== 'disengage');
+                  await CombatSession.updateCombatant(disengageRow.id, { conditions: newConditions });
+                  const cached = session.combatants.find(c => String(c.characterId) === String(currentCombatantKey));
+                  if (cached) cached.conditions = newConditions;
+                  io.to(`campaign_${campaignId}`).emit('conditionsUpdated', { combatantKey: String(currentCombatantKey), conditions: newConditions, campaignId });
+                  console.log(`✅ Disengage removed from ${currentCombatantKey}`);
+                }
+              } else {
+                console.warn(`⚠️  Disengage check: no DB row found for key=${currentCombatantKey} session=${session.sessionId}`);
+              }
+            }
+          } catch (e) { console.warn('Error removing Disengage condition:', e.message); }
+
           console.log(`➡️ Advanced turn in campaign ${campaignId} to ${currentCombatantKey} (index: ${session.currentTurnIndex})`);
         } catch (error) {
           console.error('Error advancing turn:', error);
         }
       });
-
-      // Reset combat - clear all combatants and initiative (DM action)
       socket.on('resetCombat', async (data) => {
         try {
           const { campaignId } = data;
@@ -1480,8 +1537,8 @@ const startServer = async () => {
           if (battleDarknessState[campaignId]) delete battleDarknessState[campaignId];
           if (activeBattleMapState[campaignId] !== undefined) delete activeBattleMapState[campaignId];
 
-          // Reset characters in DB
-          await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0 WHERE campaign_id = $1', [campaignId]);
+          // Reset characters in DB — also clear temp HP
+          await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0, temp_limb_health = NULL WHERE campaign_id = $1', [campaignId]);
 
           // Remove monster instances
           const MonsterInstance = require('./models/MonsterInstance');
@@ -1569,19 +1626,33 @@ const startServer = async () => {
 
             const limbHealth = { ...instance.current_limb_health };
             const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
-            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - damage);
 
-            // Vital hit: head or chest reduced to 0 = instant death — zero all limbs
+            // Consume temp HP for this limb first before real HP
+            const tempLimbHealth = instance.temp_limb_health ? { ...instance.temp_limb_health } : {};
+            const tempAvailable = tempLimbHealth[validLimb] ?? 0;
+            const tempAbsorbed = Math.min(tempAvailable, damage);
+            tempLimbHealth[validLimb] = tempAvailable - tempAbsorbed;
+            if (tempLimbHealth[validLimb] <= 0) delete tempLimbHealth[validLimb];
+            const remainingDamage = damage - tempAbsorbed;
+
+            // Apply remaining damage to real limb HP
+            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - remainingDamage);
+
+            // Vital hit: head or chest real HP reduced to 0 = instant death — zero all limbs
             const vitalKeys = ['head', 'chest'];
             const vitalKilled = vitalKeys.some(k => limbHealth[k] !== undefined && limbHealth[k] === 0);
             if (vitalKilled) {
               Object.keys(limbHealth).forEach(k => { limbHealth[k] = 0; });
             }
 
-            await MonsterInstance.updateHealth(instanceId, limbHealth);
+            const tempToStore = Object.keys(tempLimbHealth).length > 0 ? tempLimbHealth : null;
+            await pool.query(
+              'UPDATE monster_instances SET current_limb_health = $1, temp_limb_health = $2 WHERE id = $3',
+              [JSON.stringify(limbHealth), tempToStore ? JSON.stringify(tempToStore) : null, instanceId]
+            );
 
             const totalHP = Object.values(limbHealth).reduce((s, v) => s + v, 0);
-            updatedHealthData = { type: 'monster', instanceId, limbHealth, totalHP, isDead: totalHP <= 0 };
+            updatedHealthData = { type: 'monster', instanceId, limbHealth, tempLimbHealth: tempToStore, totalHP, isDead: totalHP <= 0 };
 
             if (totalHP <= 0) {
               await MonsterInstance.removeFromCombat(instanceId);
@@ -1601,33 +1672,42 @@ const startServer = async () => {
               limbHealth = initCharacterLimbHealth(character);
             }
 
-            // Apply damage to specific limb (fall back to chest if limb key not found)
+            // Consume temp HP for this limb first before real HP
             const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
-            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - damage);
+            const tempLimbHealth = character.temp_limb_health ? { ...character.temp_limb_health } : {};
+            const tempAvailable = tempLimbHealth[validLimb] ?? 0;
+            const tempAbsorbed = Math.min(tempAvailable, damage);
+            tempLimbHealth[validLimb] = tempAvailable - tempAbsorbed;
+            if (tempLimbHealth[validLimb] <= 0) delete tempLimbHealth[validLimb];
+            const remainingDamage = damage - tempAbsorbed;
 
-            // Vital hit: head or chest reduced to 0 = instant death — zero all limbs
+            // Apply remaining damage to real limb HP
+            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - remainingDamage);
+
+            // Vital hit: head or chest real HP reduced to 0 = instant death — zero all limbs
             const vitalKeys = ['head', 'chest'];
             const vitalKilled = vitalKeys.some(k => limbHealth[k] !== undefined && limbHealth[k] === 0);
             if (vitalKilled) {
               Object.keys(limbHealth).forEach(k => { limbHealth[k] = 0; });
             }
 
-            // Total HP = sum of limb HPs
+            // Total HP = sum of real limb HPs
             const newHP = Math.max(0, Object.values(limbHealth).reduce((s, v) => s + Number(v), 0));
+            const tempToStore = Object.keys(tempLimbHealth).length > 0 ? tempLimbHealth : null;
 
             if (isFirstInit) {
               // Preserve the base HP stat in hit_points_max so the UI can always compute limb maxes
               await pool.query(
-                'UPDATE characters SET hit_points = $1, limb_health = $2, hit_points_max = COALESCE(hit_points_max, $3) WHERE id = $4',
-                [newHP, JSON.stringify(limbHealth), character.hit_points, charId]
+                'UPDATE characters SET hit_points = $1, limb_health = $2, temp_limb_health = $3, hit_points_max = COALESCE(hit_points_max, $4) WHERE id = $5',
+                [newHP, JSON.stringify(limbHealth), tempToStore ? JSON.stringify(tempToStore) : null, character.hit_points, charId]
               );
             } else {
               await pool.query(
-                'UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3',
-                [newHP, JSON.stringify(limbHealth), charId]
+                'UPDATE characters SET hit_points = $1, limb_health = $2, temp_limb_health = $3 WHERE id = $4',
+                [newHP, JSON.stringify(limbHealth), tempToStore ? JSON.stringify(tempToStore) : null, charId]
               );
             }
-            updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth, isDead: newHP <= 0 };
+            updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth, tempLimbHealth: tempToStore, isDead: newHP <= 0 };
 
             if (newHP <= 0 && session.sessionId) {
               if (vitalKilled) {
@@ -1878,22 +1958,48 @@ const startServer = async () => {
             // maxHp = COALESCE(hit_points_max, hit_points) = base HP stat, used for per-limb caps
             const limbMaxValues = initCharacterLimbHealth({ ...character, hit_points: maxHp });
 
-            // Heal the specified limb (defaults to chest if none specified or not found)
-            const validLimb = limbName && limbHealth[limbName] !== undefined ? limbName : 'chest';
-            limbHealth[validLimb] = Math.min(limbMaxValues[validLimb] ?? (limbHealth[validLimb] || 0) + healAmount, (limbHealth[validLimb] || 0) + healAmount);
+            // Heal using priority order: head → chest → round-robin arms/legs (same as short rest)
+            // Ensure all limb keys exist (null means full — fill with max)
+            for (const limb of Object.keys(limbMaxValues)) {
+              if (limbHealth[limb] == null) limbHealth[limb] = limbMaxValues[limb];
+            }
+            let remaining = healAmount;
+            // Priority 1: vital limbs
+            for (const limb of ['head', 'chest']) {
+              if (remaining <= 0) break;
+              const needed = limbMaxValues[limb] - limbHealth[limb];
+              if (needed > 0) { const h = Math.min(needed, remaining); limbHealth[limb] += h; remaining -= h; }
+            }
+            // Priority 2: round-robin 1 HP at a time across arms/legs
+            if (remaining > 0) {
+              const others = ['left_arm', 'right_arm', 'left_leg', 'right_leg'];
+              let pass = 0;
+              while (remaining > 0 && pass < 1000) {
+                pass++;
+                let gave = 0;
+                for (const limb of others) {
+                  if (remaining <= 0) break;
+                  if (limbHealth[limb] < limbMaxValues[limb]) { limbHealth[limb]++; remaining--; gave++; }
+                }
+                if (gave === 0) break;
+              }
+            }
+            // If all limbs at max, use null (same convention as short rest / long rest)
+            const allFull = Object.keys(limbMaxValues).every(l => limbHealth[l] >= limbMaxValues[l]);
+            const limbHealthToStore = allFull ? null : limbHealth;
 
-            // Total HP = sum of current limb HPs
-            const newHP = Math.max(0, Object.values(limbHealth).reduce((s, v) => s + Number(v), 0));
+            // Total HP = sum of limb HPs (or maxHp if all full)
+            const newHP = allFull ? maxHp : Math.max(0, Object.values(limbHealth).reduce((s, v) => s + Number(v), 0));
 
             if (healIsFirstInit) {
               await pool.query(
                 'UPDATE characters SET hit_points = $1, limb_health = $2, hit_points_max = COALESCE(hit_points_max, $3) WHERE id = $4',
-                [newHP, JSON.stringify(limbHealth), character.hit_points, charId]
+                [newHP, limbHealthToStore ? JSON.stringify(limbHealthToStore) : null, character.hit_points, charId]
               );
             } else {
-              await pool.query('UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3', [newHP, JSON.stringify(limbHealth), charId]);
+              await pool.query('UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3', [newHP, limbHealthToStore ? JSON.stringify(limbHealthToStore) : null, charId]);
             }
-            updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth, isDead: false };
+            updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth: limbHealthToStore, isDead: false };
           } else if (targetType === 'monster') {
             const instanceId = parseInt(targetKey, 10);
             const MonsterInstance = require('./models/MonsterInstance');
@@ -1914,9 +2020,9 @@ const startServer = async () => {
               actor_name: healerName || 'Dungeon Master',
               action_type: 'heal',
               target_name: targetName,
-              limb_name: limbName || null,
+              limb_name: null,
               damage: -healAmount,
-              details: `Healed ${healAmount} HP${limbName ? ` (${limbName})` : ''}`,
+              details: `Healed ${healAmount} HP (distributed by priority)`,
             });
           }
           const log = session.sessionId ? await CombatSession.getLog(session.sessionId) : [];
@@ -1925,6 +2031,70 @@ const startServer = async () => {
           }
           io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log, timestamp: new Date().toISOString() });
         } catch (error) { console.error('Error applying heal:', error); }
+      });
+
+      // ─── Apply Temporary HP: DM assigns temp HP distributed across limbs ───
+      socket.on('applyTempHealth', async (data) => {
+        try {
+          const { campaignId, targetKey, targetType, targetName, amount } = data;
+          const session = battleCombatState[campaignId];
+          if (!session || !amount || amount <= 0) return;
+
+          // Distribute evenly across 6 limbs, remainder goes to head first, then chest, etc.
+          const LIMB_ORDER = ['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
+          const base = Math.floor(amount / 6);
+          const remainder = amount - base * 6;
+          const distribution = {};
+          LIMB_ORDER.forEach((limb, idx) => {
+            distribution[limb] = base + (idx < remainder ? 1 : 0);
+          });
+
+          let updatedHealthData = null;
+
+          if (targetType === 'character') {
+            const charId = parseInt(targetKey, 10);
+            const row = await pool.query('SELECT temp_limb_health FROM characters WHERE id = $1', [charId]);
+            if (!row.rows[0]) return;
+            const existing = row.rows[0].temp_limb_health || {};
+            const newTemp = { ...existing };
+            LIMB_ORDER.forEach(limb => {
+              newTemp[limb] = (newTemp[limb] || 0) + distribution[limb];
+            });
+            await pool.query('UPDATE characters SET temp_limb_health = $1 WHERE id = $2', [JSON.stringify(newTemp), charId]);
+            updatedHealthData = { type: 'character', characterId: charId, tempLimbHealth: newTemp };
+          } else if (targetType === 'monster') {
+            const instanceId = parseInt(targetKey, 10);
+            const MonsterInstance = require('./models/MonsterInstance');
+            const instance = await MonsterInstance.findById(instanceId);
+            if (!instance) return;
+            const existing = instance.temp_limb_health || {};
+            const newTemp = { ...existing };
+            LIMB_ORDER.forEach(limb => {
+              newTemp[limb] = (newTemp[limb] || 0) + distribution[limb];
+            });
+            await pool.query('UPDATE monster_instances SET temp_limb_health = $1 WHERE id = $2', [JSON.stringify(newTemp), instanceId]);
+            const currentLimbHealth = instance.current_limb_health;
+            const totalHP = Object.values(currentLimbHealth).reduce((s, v) => s + v, 0);
+            updatedHealthData = { type: 'monster', instanceId, tempLimbHealth: newTemp, limbHealth: currentLimbHealth, totalHP, isDead: false };
+          }
+
+          if (session.sessionId && updatedHealthData) {
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: 'Dungeon Master',
+              action_type: 'heal',
+              target_name: targetName,
+              limb_name: null,
+              damage: -amount,
+              details: `Assigned ${amount} temporary HP (distributed across limbs)`,
+            });
+          }
+          if (updatedHealthData) {
+            io.to(`campaign_${campaignId}`).emit('healthUpdated', { ...updatedHealthData, campaignId, timestamp: new Date().toISOString() });
+          }
+          const log = session.sessionId ? await CombatSession.getLog(session.sessionId) : [];
+          io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log, timestamp: new Date().toISOString() });
+        } catch (error) { console.error('Error applying temp health:', error); }
       });
 
       // ─── Short Rest: DM initiates, each player sees a hit-dice-spending prompt ───
