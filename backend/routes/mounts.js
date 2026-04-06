@@ -41,10 +41,20 @@ router.get('/campaign/:campaignId', auth, async (req, res) => {
     const { campaignId } = req.params;
     const result = await pool.query(
       `SELECT m.*,
-              c.name AS character_name,
-              c.player_id AS character_player_id
+              c.name  AS character_name,
+              c.player_id AS character_player_id,
+              ih.item_name AS armor_head_name,   ih.armor_class AS armor_head_ac,
+              ib.item_name AS armor_body_name,   ib.armor_class AS armor_body_ac,
+              ifl.item_name AS armor_front_legs_name, ifl.armor_class AS armor_front_legs_ac,
+              irl.item_name AS armor_rear_legs_name,  irl.armor_class AS armor_rear_legs_ac,
+              COALESCE(ih.armor_class,0) + COALESCE(ib.armor_class,0) +
+              COALESCE(ifl.armor_class,0) + COALESCE(irl.armor_class,0) AS armor_ac_bonus
          FROM campaign_mounts m
-         LEFT JOIN characters c ON c.id = m.assigned_to_character_id
+         LEFT JOIN characters   c   ON c.id   = m.assigned_to_character_id
+         LEFT JOIN inventory    ih  ON ih.item_name = m.armor_head
+         LEFT JOIN inventory    ib  ON ib.item_name = m.armor_body
+         LEFT JOIN inventory    ifl ON ifl.item_name = m.armor_front_legs
+         LEFT JOIN inventory    irl ON irl.item_name = m.armor_rear_legs
         WHERE m.campaign_id = $1
         ORDER BY m.created_at ASC`,
       [campaignId]
@@ -59,6 +69,139 @@ router.get('/campaign/:campaignId', auth, async (req, res) => {
     res.json(mounts);
   } catch (error) {
     console.error('Error fetching mounts:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// POST /api/mounts/:id/equip-armor
+// Equip an armor item to a specific mount slot
+// Body: { slot: 'head'|'body'|'front_legs'|'rear_legs', itemName: string }
+// ──────────────────────────────────────────────
+router.post('/:id/equip-armor', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slot, itemName } = req.body;
+
+    const validSlots = ['head', 'body', 'front_legs', 'rear_legs'];
+    if (!validSlots.includes(slot)) {
+      return res.status(400).json({ message: 'Invalid slot. Use head, body, front_legs, or rear_legs' });
+    }
+    if (!itemName) {
+      return res.status(400).json({ message: 'itemName is required' });
+    }
+
+    // Validate item exists in inventory and is armor
+    const itemResult = await pool.query(
+      `SELECT item_name, armor_class FROM inventory WHERE item_name = $1 AND category = 'Armor'`,
+      [itemName]
+    );
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Armor item not found in inventory' });
+    }
+
+    // Check mount ownership
+    const mountResult = await pool.query(
+      `SELECT m.*, c.player_id AS owner_player_id
+         FROM campaign_mounts m
+         LEFT JOIN characters c ON c.id = m.assigned_to_character_id
+        WHERE m.id = $1`, [id]
+    );
+    if (mountResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Mount not found' });
+    }
+    const mount = mountResult.rows[0];
+    if (req.user.role !== 'Dungeon Master' && mount.owner_player_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const col = `armor_${slot}`;
+    await pool.query(
+      `UPDATE campaign_mounts SET ${col} = $1, updated_at = NOW() WHERE id = $2`,
+      [itemName, id]
+    );
+
+    // Re-fetch with joins for consistent shape
+    const updated = await pool.query(
+      `SELECT m.*,
+              c.name AS character_name, c.player_id AS character_player_id,
+              ih.armor_class AS armor_head_ac,   ib.armor_class AS armor_body_ac,
+              ifl.armor_class AS armor_front_legs_ac, irl.armor_class AS armor_rear_legs_ac,
+              COALESCE(ih.armor_class,0) + COALESCE(ib.armor_class,0) +
+              COALESCE(ifl.armor_class,0) + COALESCE(irl.armor_class,0) AS armor_ac_bonus
+         FROM campaign_mounts m
+         LEFT JOIN characters c   ON c.id = m.assigned_to_character_id
+         LEFT JOIN inventory ih   ON ih.item_name  = m.armor_head
+         LEFT JOIN inventory ib   ON ib.item_name  = m.armor_body
+         LEFT JOIN inventory ifl  ON ifl.item_name = m.armor_front_legs
+         LEFT JOIN inventory irl  ON irl.item_name = m.armor_rear_legs
+        WHERE m.id = $1`, [id]
+    );
+    const { image_data, ...mountOut } = updated.rows[0];
+
+    const io = req.app.get('io');
+    if (io) io.to(`campaign_${mount.campaign_id}`).emit('mountUpdated', { mount: mountOut, timestamp: new Date().toISOString() });
+
+    res.json(mountOut);
+  } catch (error) {
+    console.error('Error equipping mount armor:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// DELETE /api/mounts/:id/equip-armor
+// Remove armor from a specific mount slot
+// Body: { slot: 'head'|'body'|'front_legs'|'rear_legs' }
+// ──────────────────────────────────────────────
+router.delete('/:id/equip-armor', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slot } = req.body;
+
+    const validSlots = ['head', 'body', 'front_legs', 'rear_legs'];
+    if (!validSlots.includes(slot)) {
+      return res.status(400).json({ message: 'Invalid slot' });
+    }
+
+    const mountResult = await pool.query(
+      `SELECT m.*, c.player_id AS owner_player_id
+         FROM campaign_mounts m
+         LEFT JOIN characters c ON c.id = m.assigned_to_character_id
+        WHERE m.id = $1`, [id]
+    );
+    if (mountResult.rows.length === 0) return res.status(404).json({ message: 'Mount not found' });
+    const mount = mountResult.rows[0];
+    if (req.user.role !== 'Dungeon Master' && mount.owner_player_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const col = `armor_${slot}`;
+    await pool.query(`UPDATE campaign_mounts SET ${col} = NULL, updated_at = NOW() WHERE id = $1`, [id]);
+
+    const updated = await pool.query(
+      `SELECT m.*,
+              c.name AS character_name, c.player_id AS character_player_id,
+              ih.armor_class AS armor_head_ac,   ib.armor_class AS armor_body_ac,
+              ifl.armor_class AS armor_front_legs_ac, irl.armor_class AS armor_rear_legs_ac,
+              COALESCE(ih.armor_class,0) + COALESCE(ib.armor_class,0) +
+              COALESCE(ifl.armor_class,0) + COALESCE(irl.armor_class,0) AS armor_ac_bonus
+         FROM campaign_mounts m
+         LEFT JOIN characters c   ON c.id = m.assigned_to_character_id
+         LEFT JOIN inventory ih   ON ih.item_name  = m.armor_head
+         LEFT JOIN inventory ib   ON ib.item_name  = m.armor_body
+         LEFT JOIN inventory ifl  ON ifl.item_name = m.armor_front_legs
+         LEFT JOIN inventory irl  ON irl.item_name = m.armor_rear_legs
+        WHERE m.id = $1`, [id]
+    );
+    const { image_data, ...mountOut } = updated.rows[0];
+
+    const io = req.app.get('io');
+    if (io) io.to(`campaign_${mount.campaign_id}`).emit('mountUpdated', { mount: mountOut, timestamp: new Date().toISOString() });
+
+    res.json(mountOut);
+  } catch (error) {
+    console.error('Error removing mount armor:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

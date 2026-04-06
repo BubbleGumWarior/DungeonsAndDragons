@@ -552,12 +552,6 @@ export const characterAPI = {
     return response.data;
   },
 
-  // TEMP: remove after use
-  tempResetClericOrder: async (characterId: number): Promise<{ message: string; character: Character }> => {
-    const response = await api.post(`/characters/${characterId}/temp-reset-cleric-order`);
-    return response.data;
-  },
-
   setConcealedClass: async (characterId: number, concealedClass: string | null): Promise<{ message: string; concealedClass: string | null }> => {
     const response = await api.put(`/characters/${characterId}/concealed-class`, { concealedClass });
     return response.data;
@@ -1105,6 +1099,17 @@ export interface Mount {
   character_name?: string;
   character_player_id?: number;
   is_equipped: boolean;
+  // Armor slots
+  armor_head?: string | null;
+  armor_body?: string | null;
+  armor_front_legs?: string | null;
+  armor_rear_legs?: string | null;
+  // Armor AC values (from inventory JOINs)
+  armor_head_ac?: number;
+  armor_body_ac?: number;
+  armor_front_legs_ac?: number;
+  armor_rear_legs_ac?: number;
+  armor_ac_bonus?: number;
   created_at: string;
   updated_at: string;
 }
@@ -1152,7 +1157,49 @@ export const mountAPI = {
   deleteMount: async (mountId: number): Promise<{ message: string }> => {
     const response = await api.delete(`/mounts/${mountId}`);
     return response.data;
-  }
+  },
+
+  equipMountArmor: async (mountId: number, slot: 'head' | 'body' | 'front_legs' | 'rear_legs', itemName: string): Promise<Mount> => {
+    const response = await api.post(`/mounts/${mountId}/equip-armor`, { slot, itemName });
+    return response.data;
+  },
+
+  unequipMountArmor: async (mountId: number, slot: 'head' | 'body' | 'front_legs' | 'rear_legs'): Promise<Mount> => {
+    const response = await api.delete(`/mounts/${mountId}/equip-armor`, { data: { slot } });
+    return response.data;
+  },
+};
+
+export interface BattleMap {
+  id: number;
+  campaign_id: number;
+  display_name: string;
+  image_mime_type: string;
+  uploaded_at: string;
+}
+
+export const battleMapsAPI = {
+  getMaps: async (campaignId: number): Promise<BattleMap[]> => {
+    const response = await api.get(`/battle-maps/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  uploadMap: async (campaignId: number, formData: FormData): Promise<BattleMap> => {
+    const response = await api.post(`/battle-maps/campaign/${campaignId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  getMapImageUrl: (mapId: number): string => {
+    const base = api.defaults.baseURL ?? '';
+    return `${base}/battle-maps/${mapId}/image`;
+  },
+
+  deleteMap: async (mapId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/battle-maps/${mapId}`);
+    return response.data;
+  },
 };
 
 export interface KingdomResources {

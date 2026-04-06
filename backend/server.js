@@ -20,6 +20,7 @@ const journalsRoutes = require('./routes/journals');
 const beastRoutes = require('./routes/beasts');
 const shadowRoutes = require('./routes/shadows');
 const mountRoutes = require('./routes/mounts');
+const battleMapsRoutes = require('./routes/battleMaps');
 const petRoutes = require('./routes/pets');
 const kingdomRoutes = require('./routes/kingdoms');
 const fiefRoutes = require('./routes/fiefs');
@@ -157,6 +158,7 @@ app.use('/api/skills', skillRoutes);
 app.use('/api/beasts', beastRoutes);
 app.use('/api/shadows', shadowRoutes);
 app.use('/api/mounts', mountRoutes);
+app.use('/api/battle-maps', battleMapsRoutes);
 app.use('/api/pets', petRoutes);
 app.use('/api/kingdoms', kingdomRoutes);
 app.use('/api', fiefRoutes);
@@ -328,6 +330,10 @@ const startServer = async () => {
         { name: 'addShadowSovereignShadows', fn: require('./migrations/add_shadow_sovereign_shadows') },
         { name: 'addOrderClericDomain', fn: require('./migrations/add_order_cleric_domain') },
         { name: 'addConcealedClass', fn: require('./migrations/add_concealed_class') },
+        { name: 'addMountArmor', fn: require('./migrations/add_mount_armor') },
+        { name: 'addCampaignBattleMaps', fn: require('./migrations/add_campaign_battle_maps') },
+        { name: 'addMountedCombat', fn: require('./migrations/add_mounted_combat') },
+        { name: 'addCampaignActiveMap', fn: require('./migrations/add_campaign_active_map') },
       ];
       
       for (const migration of migrations) {
@@ -408,6 +414,12 @@ const startServer = async () => {
 
   // Darkness level per campaign: 0 = fully lit, 1 = pitch black
   const battleDarknessState = {};
+
+  // Active battle map per campaign: campaignId -> mapId (number | null)
+  const activeBattleMapState = {};
+
+  // Active battlefield (army combat) map per campaign: campaignId -> mapId (number | null)
+  const activeBattlefieldMapState = {};
 
   // Rebuild combat cache from any active DB sessions (handles server restarts)
   try {
@@ -664,6 +676,8 @@ const startServer = async () => {
               combatMonsterTemplates,
               darknessLevel: battleDarknessState[campaignId] ?? 0,
               dotConditions: battleDotState[campaignId] ?? {},
+              activeMapId: activeBattleMapState[campaignId] ?? null,
+              activeBattlefieldMapId: activeBattlefieldMapState[campaignId] ?? null,
             });
             console.log(`⚔️ Sent combat state to user ${socket.id} for campaign ${campaignId}`);
           }
@@ -694,6 +708,35 @@ const startServer = async () => {
                 console.log(`🔒 Restored damage_pending state for ${reqId} to user ${socket.userId}`);
               }
             }
+          }
+
+          // Restore active battle map from DB if not already in memory
+          if (activeBattleMapState[campaignId] === undefined || activeBattlefieldMapState[campaignId] === undefined) {
+            try {
+              const mapRes = await pool.query(
+                `SELECT active_map_id, active_battlefield_map_id FROM campaigns WHERE id = $1`,
+                [campaignId]
+              );
+              if (activeBattleMapState[campaignId] === undefined) {
+                activeBattleMapState[campaignId] = mapRes.rows[0]?.active_map_id ?? null;
+              }
+              if (activeBattlefieldMapState[campaignId] === undefined) {
+                activeBattlefieldMapState[campaignId] = mapRes.rows[0]?.active_battlefield_map_id ?? null;
+              }
+            } catch (mapErr) {
+              console.warn('Could not load active maps from DB:', mapErr.message);
+              if (activeBattleMapState[campaignId] === undefined) activeBattleMapState[campaignId] = null;
+              if (activeBattlefieldMapState[campaignId] === undefined) activeBattlefieldMapState[campaignId] = null;
+            }
+          }
+          // Send current maps to the joining socket when no combat state exists
+          if (!battleCombatState[campaignId]) {
+            if (activeBattleMapState[campaignId] != null) {
+              socket.emit('activeMapChanged', { campaignId, mapId: activeBattleMapState[campaignId], mapType: 'combat', timestamp: new Date().toISOString() });
+            }
+          }
+          if (activeBattlefieldMapState[campaignId] != null) {
+            socket.emit('activeMapChanged', { campaignId, mapId: activeBattlefieldMapState[campaignId], mapType: 'battlefield', timestamp: new Date().toISOString() });
           }
 
           // Restore party group from DB if not already in memory
@@ -1099,6 +1142,27 @@ const startServer = async () => {
           const movementSpeed = character.movement_speed || 30;
           const combatantKey = String(characterId);
 
+          // Check if character has an equipped mount (is_equipped = true)
+          let isMounted = false;
+          let mountId = null;
+          let mountCurrentHp = null;
+          let effectiveMovementSpeed = movementSpeed;
+          try {
+            const mountResult = await pool.query(
+              `SELECT * FROM campaign_mounts WHERE assigned_to_character_id = $1 AND is_equipped = true LIMIT 1`,
+              [characterId]
+            );
+            if (mountResult.rows.length > 0) {
+              const mount = mountResult.rows[0];
+              isMounted = true;
+              mountId = mount.id;
+              mountCurrentHp = mount.hp;
+              effectiveMovementSpeed = mount.speed || movementSpeed;
+            }
+          } catch (mountErr) {
+            console.error('Error checking equipped mount:', mountErr);
+          }
+
           // Persist combatant to DB
           await CombatSession.addCombatant({
             session_id: session.sessionId,
@@ -1107,9 +1171,12 @@ const startServer = async () => {
             name: character.name,
             player_id: playerId,
             initiative,
-            movement_speed: movementSpeed,
+            movement_speed: effectiveMovementSpeed,
             position_x: character.battle_position_x || 50,
             position_y: character.battle_position_y || 50,
+            is_mounted: isMounted,
+            mount_id: mountId,
+            mount_current_hp: mountCurrentHp,
           });
 
           // Mark as in combat in DB
@@ -1117,14 +1184,17 @@ const startServer = async () => {
 
           // Update movement state cache
           if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
-          battleMovementState[campaignId][combatantKey] = movementSpeed;
+          battleMovementState[campaignId][combatantKey] = effectiveMovementSpeed;
 
           const newCombatant = {
             characterId: combatantKey,
             playerId,
             name: character.name,
             initiative,
-            movement_speed: movementSpeed,
+            movement_speed: effectiveMovementSpeed,
+            isMounted,
+            mountId,
+            mountCurrentHp,
           };
           session.combatants.push(newCombatant);
 
@@ -1302,6 +1372,13 @@ const startServer = async () => {
           // Reset action economy + movement for the combatant now taking their turn
           if (session.sessionId) {
             await CombatSession.resetTurnEconomy(session.sessionId, currentCombatantKey);
+            // Broadcast the reset economy to all clients so A/BA/R buttons update
+            const allCombatantsForEconomy = await CombatSession.getCombatants(session.sessionId);
+            io.to(`campaign_${campaignId}`).emit('actionEconomyUpdated', {
+              combatants: allCombatantsForEconomy,
+              campaignId,
+              timestamp: new Date().toISOString(),
+            });
           }
 
           // Update movement cache
@@ -1401,6 +1478,7 @@ const startServer = async () => {
           if (battleMovementState[campaignId]) delete battleMovementState[campaignId];
           if (battleDotState[campaignId]) delete battleDotState[campaignId];
           if (battleDarknessState[campaignId]) delete battleDarknessState[campaignId];
+          if (activeBattleMapState[campaignId] !== undefined) delete activeBattleMapState[campaignId];
 
           // Reset characters in DB
           await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0 WHERE campaign_id = $1', [campaignId]);
@@ -2981,6 +3059,198 @@ const startServer = async () => {
 
       // Chat handlers
       require('./socket/handlers/chatHandlers')(socket, io, userSocketMap);
+
+      // ── Set active battle map (DM only) ─────────────────────────────────────
+      socket.on('setActiveMap', async (data) => {
+        try {
+          const { campaignId, mapId, mapType = 'combat' } = data; // mapType: 'combat' | 'battlefield'
+
+          if (mapType === 'battlefield') {
+            activeBattlefieldMapState[campaignId] = mapId ?? null;
+            await pool.query(
+              `UPDATE campaigns SET active_battlefield_map_id = $1 WHERE id = $2`,
+              [mapId || null, campaignId]
+            );
+          } else {
+            activeBattleMapState[campaignId] = mapId ?? null;
+            // Persist to campaigns table (survives server restarts & works without a combat session)
+            await pool.query(
+              `UPDATE campaigns SET active_map_id = $1 WHERE id = $2`,
+              [mapId || null, campaignId]
+            );
+            // Also persist to the current combat session if one exists
+            const session = battleCombatState[campaignId];
+            if (session?.sessionId) {
+              await pool.query(
+                `UPDATE combat_sessions SET active_map_id = $1 WHERE id = $2`,
+                [mapId || null, session.sessionId]
+              );
+            }
+          }
+
+          io.to(`campaign_${campaignId}`).emit('activeMapChanged', {
+            campaignId,
+            mapId: mapId ?? null,
+            mapType,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) {
+          console.error('Error setting active map:', error);
+        }
+      });
+
+      // ── Apply damage to a mount during combat ────────────────────────────────
+      socket.on('applyMountDamage', async (data) => {
+        try {
+          const { campaignId, combatantKey, damage } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+          if (!combatant || !combatant.is_mounted || !combatant.mount_id) return;
+
+          const newMountHp = Math.max(0, (combatant.mount_current_hp || 0) - damage);
+
+          if (newMountHp <= 0) {
+            // Mount is dead — fetch mount name
+            const mountRow = await pool.query(`SELECT name FROM campaign_mounts WHERE id = $1`, [combatant.mount_id]);
+            const mountName = mountRow.rows[0]?.name ?? 'Mount';
+
+            // Fetch character's base movement speed
+            let baseSpeed = 30;
+            if (combatant.character_id) {
+              const charRow = await pool.query(`SELECT movement_speed FROM characters WHERE id = $1`, [combatant.character_id]);
+              baseSpeed = charRow.rows[0]?.movement_speed || 30;
+            }
+
+            // Unmount: clear mount columns, restore movement
+            await CombatSession.updateCombatant(combatant.id, {
+              is_mounted: false,
+              mount_id: null,
+              mount_current_hp: null,
+              movement_speed: baseSpeed,
+            });
+            if (battleMovementState[campaignId]) {
+              battleMovementState[campaignId][combatantKey] = baseSpeed;
+            }
+
+            // ── Fall damage: 4 damage to a random limb ────────────────────────
+            const LIMBS = ['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
+            const fallLimb = LIMBS[Math.floor(Math.random() * LIMBS.length)];
+            const FALL_DAMAGE = 4;
+            const riderName = combatant.name;
+
+            if (combatant.character_id) {
+              try {
+                const charRow = await pool.query(`SELECT limb_health, hit_points FROM characters WHERE id = $1`, [combatant.character_id]);
+                if (charRow.rows.length > 0) {
+                  let limbHealth = charRow.rows[0].limb_health ?? {};
+                  const currentLimbHp = Number(limbHealth[fallLimb] ?? 0);
+                  const newLimbHp = Math.max(0, currentLimbHp - FALL_DAMAGE);
+                  limbHealth = { ...limbHealth, [fallLimb]: newLimbHp };
+
+                  // Recalculate total HP as sum of limbs
+                  const totalHp = Object.values(limbHealth).reduce((s, v) => s + Number(v || 0), 0);
+                  await pool.query(
+                    `UPDATE characters SET limb_health = $1, hit_points = $2 WHERE id = $3`,
+                    [JSON.stringify(limbHealth), totalHp, combatant.character_id]
+                  );
+
+                  io.to(`campaign_${campaignId}`).emit('healthUpdated', {
+                    type: 'character',
+                    characterId: combatant.character_id,
+                    limbHealth,
+                    totalHP: totalHp,
+                    campaignId,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+              } catch (fallErr) {
+                console.error('Error applying fall damage:', fallErr);
+              }
+            }
+
+            // Log the fall damage
+            await CombatSession.addLogEntry({
+              session_id: session.sessionId,
+              actor_name: riderName,
+              action_type: 'damage',
+              target_name: riderName,
+              limb_name: fallLimb,
+              damage: FALL_DAMAGE,
+              details: `${riderName} landed on their ${fallLimb.replace('_', ' ')} when their mount died and took ${FALL_DAMAGE} damage`,
+            });
+
+            const log = await CombatSession.getLog(session.sessionId);
+            io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log, campaignId, timestamp: new Date().toISOString() });
+
+            // Broadcast mount fell event
+            io.to(`campaign_${campaignId}`).emit('mountFell', {
+              combatantKey,
+              mountName,
+              riderName,
+              campaignId,
+              timestamp: new Date().toISOString(),
+            });
+          } else {
+            // Mount survived — just update HP
+            await CombatSession.updateCombatant(combatant.id, { mount_current_hp: newMountHp });
+          }
+
+          // Update in-memory session combatants with new mount HP
+          const inMem = session.combatants.find(c => String(c.characterId) === String(combatantKey));
+          if (inMem) {
+            if (newMountHp <= 0) {
+              inMem.isMounted = false;
+              inMem.mountId = null;
+              inMem.mountCurrentHp = null;
+              inMem.movement_speed = battleMovementState[campaignId]?.[String(combatantKey)] ?? inMem.movement_speed;
+            } else {
+              inMem.mountCurrentHp = newMountHp;
+            }
+          }
+
+          // Broadcast updated combatants using in-memory state (camelCase, consistent with rest of handlers)
+          io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
+            combatants: session.combatants,
+            initiativeOrder: session.initiativeOrder,
+            currentTurnIndex: session.currentTurnIndex,
+            campaignId,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) {
+          console.error('Error applying mount damage:', error);
+        }
+      });
+
+      // ── Add movement to a combatant (Dash action) ────────────────────────────
+      socket.on('addMovement', async (data) => {
+        try {
+          const { campaignId, combatantKey, additionalMovement } = data;
+          const session = battleCombatState[campaignId];
+          if (!session?.sessionId) return;
+
+          const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
+          if (!combatant) return;
+
+          const currentRemaining = Number(combatant.remaining_movement ?? combatant.movement_speed ?? 30);
+          const newRemaining = currentRemaining + Number(additionalMovement || 0);
+
+          await CombatSession.updateCombatant(combatant.id, { remaining_movement: newRemaining });
+          if (battleMovementState[campaignId]) {
+            battleMovementState[campaignId][combatantKey] = newRemaining;
+          }
+
+          io.to(`campaign_${campaignId}`).emit('movementUpdated', {
+            combatantKey,
+            remainingMovement: newRemaining,
+            campaignId,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) {
+          console.error('Error adding movement:', error);
+        }
+      });
 
       socket.on('disconnect', (reason) => {
         console.log(`👋 User disconnected: ${socket.id}, reason: ${reason}`);

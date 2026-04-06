@@ -20,6 +20,7 @@ interface Props {
   onHealHealth: () => void;
   onOpenStatusEffects: () => void;
   onSpendAction: (type: 'action' | 'bonus_action' | 'reaction', spent: boolean) => void;
+  onDash?: () => void;
   onAddCondition: (condition: string) => void;
   onRemoveCondition: (condition: string) => void;
   onRemoveCombatant: () => void;
@@ -55,7 +56,7 @@ const dotConditionStyle: Record<string, { bg: string; border: string; color: str
 
 export const CombatActionsPanel: React.FC<Props> = ({
   activeCombatant, isMyTurn, isDM, actionEconomy,
-  onAttack, onDealDamage, onHealHealth, onOpenStatusEffects, onSpendAction, onAddCondition, onRemoveCondition,
+  onAttack, onDealDamage, onHealHealth, onOpenStatusEffects, onSpendAction, onDash, onAddCondition, onRemoveCondition,
   onRemoveCombatant, onRequestDiceRoll, onQuickRequestRoll,
   dotConditions = [], onRemoveDotCondition,
 }) => {
@@ -105,7 +106,7 @@ export const CombatActionsPanel: React.FC<Props> = ({
             <>
               <button onClick={onAttack} disabled={!canAct} style={btnStyle('#f87171', !canAct)}>⚔️ Attack</button>
               <button disabled={!canAct}
-                onClick={() => { onSpendAction('action', true); }}
+                onClick={() => { onDash ? onDash() : onSpendAction('action', true); }}
                 style={btnStyle('#a78bfa', !canAct)}>💨 Dash</button>
               <button disabled={!canAct}
                 onClick={() => { onSpendAction('action', true); }}

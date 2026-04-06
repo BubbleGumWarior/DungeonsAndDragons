@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary, battleMapsAPI, BattleMap } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS, isTemplateUnlocked } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -12,7 +12,7 @@ import { classInfo } from '../data/classInfo';
 import FigureImage from '../assets/images/Board/Figure.png';
 import Figure4ArmsImage from '../assets/images/Board/Figure-4Arms.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
-import BattleMapImage from '../assets/images/Campaign/BattleMap.jpg';
+// BattleMapImage replaced by dynamic battle maps
 import io from 'socket.io-client';
 import { AttackModal } from './campaign/AttackModal';
 import { DiceRollModal } from './campaign/DiceRollModal';
@@ -523,6 +523,8 @@ const CampaignView: React.FC = () => {
   const [remainingArmyMovement, setRemainingArmyMovement] = useState<Record<number, number>>({});
   // Darkness: 0 = fully lit, 1 = pitch black. DM sees at half opacity, players see full black.
   const [darknessLevel, setDarknessLevel] = useState(0);
+  // Character skills — declared early because darkness useEffect depends on it
+  const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
   const darknessCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [draggedCharacter, setDraggedCharacter] = useState<number | string | null>(null);
   const [draggedArmyParticipant, setDraggedArmyParticipant] = useState<number | null>(null);
@@ -719,6 +721,18 @@ const CampaignView: React.FC = () => {
   });
   const [mountImageFile, setMountImageFile] = useState<File | null>(null);
   const [mountImagePreviewUrl, setMountImagePreviewUrl] = useState<string | null>(null);
+  const [mountArmorPicker, setMountArmorPicker] = useState<{ mountId: number; slot: 'head' | 'body' | 'front_legs' | 'rear_legs' } | null>(null);
+  const [mountDamageModal, setMountDamageModal] = useState<{ combatantKey: string; mountName: string } | null>(null);
+  const [mountDamageInput, setMountDamageInput] = useState<string>('');
+
+  // Battle maps state
+  const [campaignBattleMaps, setCampaignBattleMaps] = useState<BattleMap[]>([]);
+  const [activeMapId, setActiveMapId] = useState<number | null>(null);
+  const [activeBattlefieldMapId, setActiveBattlefieldMapId] = useState<number | null>(null);
+  const [showBattlefieldMapPickerModal, setShowBattlefieldMapPickerModal] = useState(false);
+  const [showMapPickerModal, setShowMapPickerModal] = useState(false);
+  const [mapUploadFile, setMapUploadFile] = useState<File | null>(null);
+  const [mapUploadName, setMapUploadName] = useState('');
 
   // Pets state
   const [campaignPets, setCampaignPets] = useState<Pet[]>([]);
@@ -983,7 +997,12 @@ const CampaignView: React.FC = () => {
       const charConditions = combatConditions[String(c.characterId)] ?? [];
       const isBlinded = charConditions.some(cond => cond.toLowerCase() === 'blinded');
       const blindMultiplier = isBlinded ? 0.25 : 1;
-      const visionRadius = BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier;
+      // Darkvision skill halves the effective darkness penalty
+      const hasDarkvision = !c.isMonster && (characterSkills[Number(c.characterId)] ?? []).some(s => s.name?.toLowerCase() === 'darkvision');
+      const effectiveDarknessMultiplier = hasDarkvision
+        ? Math.max(0.15, 1 - (darknessLevel * 0.5) * 0.85)
+        : darknessRadiusMultiplier;
+      const visionRadius = BASE_VISION_RADIUS_FT * effectiveDarknessMultiplier * blindMultiplier;
       ownCombatantPositions.push({ x: pos.x, y: pos.y, visionRadius });
     });
 
@@ -1033,7 +1052,7 @@ const CampaignView: React.FC = () => {
         ctx.globalCompositeOperation = 'source-over';
       }
     }
-  }, [darknessLevel, battlePositions, combatants, combatConditions, user]);
+  }, [darknessLevel, battlePositions, combatants, combatConditions, user, characterSkills]);
 
   const shouldUseSingleOverlayPanel = (() => {
     if (!overlayViewportWidth) return false;
@@ -1103,10 +1122,12 @@ const CampaignView: React.FC = () => {
 
 
   // Helper functions for category-specific options
+  const HORSE_ARMOR_SUBCATEGORIES = ['Horse Head', 'Horse Feet', 'Horse Body'];
+
   const getSubcategoryOptions = (category: string) => {
     switch (category) {
       case 'Armor':
-        return ['Light Armor', 'Medium Armor', 'Heavy Armor', 'Shield', 'Helmet', 'Boots'];
+        return ['Light Armor', 'Medium Armor', 'Heavy Armor', 'Shield', 'Helmet', 'Boots', 'Horse Head', 'Horse Feet', 'Horse Body'];
       case 'Weapon':
         return ['Simple Melee', 'Martial Melee', 'Simple Ranged', 'Martial Ranged'];
       case 'Tool':
@@ -1187,7 +1208,7 @@ const CampaignView: React.FC = () => {
 
   // Skills state
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
-  const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
+  // characterSkills declared earlier (before darkness useEffect)
   const [showAddSkillModal, setShowAddSkillModal] = useState(false);
   const [showSkillDbResetConfirm, setShowSkillDbResetConfirm] = useState(false);
   const [showClassProgressionModal, setShowClassProgressionModal] = useState(false);
@@ -3037,6 +3058,13 @@ const CampaignView: React.FC = () => {
         if ((data as any).dotConditions) {
           setDotConditions((data as any).dotConditions);
         }
+        // Seed active map from server state
+        if ((data as any).activeMapId !== undefined) {
+          setActiveMapId((data as any).activeMapId ?? null);
+        }
+        if ((data as any).activeBattlefieldMapId !== undefined) {
+          setActiveBattlefieldMapId((data as any).activeBattlefieldMapId ?? null);
+        }
       });
 
       // Listen for next turn event (DM resets all movement)
@@ -3333,7 +3361,7 @@ const CampaignView: React.FC = () => {
 
       // Listen for turn started — show notification if it's the current user's turn
       newSocket.on('turnStarted', (data: { campaignId: number; currentCharacterId: number | string; playerId: number; characterName: string }) => {
-        if (user && data.playerId === user.id) {
+        if (user && Number(data.playerId) === Number(user.id)) {
           setTurnNotification(`⚔️ It's your turn: ${data.characterName}`);
           setTimeout(() => setTurnNotification(null), 5000);
         }
@@ -3467,6 +3495,26 @@ const CampaignView: React.FC = () => {
       // Darkness level updated by DM
       newSocket.on('darknessUpdated', (data: { darknessLevel: number; campaignId: number }) => {
         setDarknessLevel(data.darknessLevel);
+      });
+
+      // Active battle map changed by DM
+      newSocket.on('activeMapChanged', (data: { campaignId: number; mapId: number | null; mapType?: string }) => {
+        if (data.mapType === 'battlefield') {
+          setActiveBattlefieldMapId(data.mapId);
+        } else {
+          setActiveMapId(data.mapId);
+        }
+      });
+
+      // Mount fell — rider was dismounted and took fall damage
+      newSocket.on('mountFell', (data: { combatantKey: string; mountName: string; riderName: string }) => {
+        // Toast-style notification is shown via combat log; just ensure combatants are up-to-date
+        // (combatantsUpdated will follow, so no extra state needed here)
+      });
+
+      // Extra movement granted (e.g. Dash)
+      newSocket.on('movementUpdated', (data: { combatantKey: string; remainingMovement: number }) => {
+        setRemainingMovement(prev => ({ ...prev, [data.combatantKey]: data.remainingMovement }));
       });
 
       // Listen for army created
@@ -4424,7 +4472,7 @@ const CampaignView: React.FC = () => {
       } else if (inventoryFilter === 'tool') {
         return expandedEquipment.filter(item => item.category === 'Tool');
       }
-      return expandedEquipment.filter(item => ['Weapon', 'Armor', 'Tool'].includes(item.category));
+      return expandedEquipment.filter(item => ['Weapon', 'Armor', 'Tool'].includes(item.category) && !HORSE_ARMOR_SUBCATEGORIES.includes(item.subcategory));
     };
 
     const filteredEquipment = getFilteredEquipment();
@@ -6523,7 +6571,12 @@ const CampaignView: React.FC = () => {
                           const charConditions = combatConditions[String(c.characterId)] ?? [];
                           return charConditions.some(cond => cond.toLowerCase() === 'blinded');
                         });
-                        if (!isDMView && (darknessLevel > 0 || hasBlindedOwnCombatant)) {
+                        // Invisible monster hidden from players
+                        const initCombatantConditions = combatConditions[combatantKey] ?? [];
+                        if (!isDMView && combatant.isMonster && initCombatantConditions.some(cond => cond.toLowerCase() === 'invisible')) {
+                          initiativeHidden = true;
+                        }
+                        if (!isDMView && !initiativeHidden && (darknessLevel > 0 || hasBlindedOwnCombatant)) {
                           const BASE_VISION_RADIUS_FT = 30;
                           const tokenPos = battlePositions[combatant.characterId];
                           const isOwnCharacter = !combatant.isMonster && Number(combatant.playerId) === Number(user?.id);
@@ -6534,7 +6587,10 @@ const CampaignView: React.FC = () => {
                                 const pos = battlePositions[c.characterId];
                                 if (!pos) return null;
                                 const isBlinded = (combatConditions[String(c.characterId)] ?? []).some(cond => cond.toLowerCase() === 'blinded');
-                                const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
+                                const hasDv = (characterSkills[Number(c.characterId)] ?? []).some(s => s.name?.toLowerCase() === 'darkvision');
+                                const darknessRadiusMultiplier = hasDv
+                                  ? Math.max(0.15, 1 - (darknessLevel * 0.5) * 0.85)
+                                  : Math.max(0.15, 1 - darknessLevel * 0.85);
                                 const blindMultiplier = isBlinded ? 0.25 : 1;
                                 return { x: pos.x, y: pos.y, radius: BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier };
                               })
@@ -6653,6 +6709,7 @@ const CampaignView: React.FC = () => {
                                   {initiativeHidden ? '??? (Unknown)' : combatant.name}
                                 </span>
                                 {!initiativeHidden && isCurrentTurn && <span style={{ fontSize: '0.75rem', color: '#4a4' }}>← Turn</span>}
+                                {!initiativeHidden && (combatant as any).isMounted && <span style={{ fontSize: '0.65rem', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#c4b5fd' }}>🐴 Mounted</span>}
                                 {!initiativeHidden && isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#ef4444' }}>💀 Dead</span>}
                                 {!initiativeHidden && isDead && user?.role === 'Dungeon Master' && (
                                   <button
@@ -6674,7 +6731,7 @@ const CampaignView: React.FC = () => {
                                 )}
                                 {!initiativeHidden && isStable && !isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#4ade80' }}>💚 Stable</span>}
                                 {!initiativeHidden && isDown && !isDead && !isStable && <span style={{ fontSize: '0.7rem', background: 'rgba(251,146,60,0.2)', border: '1px solid #fb923c', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#fb923c' }}>☠️ Down</span>}
-                                {!initiativeHidden && conditions.slice(0,3).map(c => {
+                                {!initiativeHidden && (isSelected ? conditions : conditions.slice(0,3)).map(c => {
                                   const condStyle: Record<string, {bg:string;border:string;color:string}> = {
                                     Stunned:      {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
                                     Paralyzed:    {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
@@ -6692,7 +6749,7 @@ const CampaignView: React.FC = () => {
                                   const s = condStyle[c] ?? {bg:'rgba(250,204,21,0.15)',border:'rgba(250,204,21,0.4)',color:'#fbbf24'};
                                   return <span key={c} style={{ fontSize: '0.65rem', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '0.25rem', padding: '0 0.25rem', color: s.color }}>{c}</span>;
                                 })}
-                                {!initiativeHidden && conditions.length > 3 && <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>+{conditions.length-3}</span>}
+                                {!initiativeHidden && !isSelected && conditions.length > 3 && <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>+{conditions.length-3}</span>}
                                 {!initiativeHidden && (dotConditions[combatantKey] ?? []).map(dot => {
                                   const dotStyle: Record<string, {bg:string;border:string;color:string;icon:string}> = {
                                     Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'🔥'},
@@ -6758,6 +6815,34 @@ const CampaignView: React.FC = () => {
                               <div style={{ fontSize: '0.7rem', color: '#999' }}>
                                 Move: {(remainingMovement[combatant.characterId] ?? combatant.movement_speed).toFixed(1)}/{combatant.movement_speed}ft
                               </div>
+                              {/* Mount HP bar + DM damage button */}
+                              {!initiativeHidden && (combatant as any).isMounted && (combatant as any).mountCurrentHp != null && (() => {
+                                const mountHpCur: number = (combatant as any).mountCurrentHp;
+                                const mount = campaignMounts.find(m => m.id === (combatant as any).mountId);
+                                const mountHpMax: number = mount?.hp ?? mountHpCur;
+                                const mountHpPct = mountHpMax > 0 ? Math.min(100, (mountHpCur / mountHpMax) * 100) : 0;
+                                const mountHpColor = mountHpPct > 66 ? '#4ade80' : mountHpPct > 33 ? '#fbbf24' : '#ef4444';
+                                return (
+                                  <div style={{ marginTop: '0.15rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.15rem' }}>
+                                      <span style={{ fontSize: '0.65rem', color: '#c4b5fd' }}>🐴 {mountHpCur}/{mountHpMax} HP</span>
+                                      <div style={{ flex: 1, height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                                        <div style={{ width: `${mountHpPct}%`, height: '100%', background: mountHpColor, borderRadius: '2px', transition: 'width 0.3s' }} />
+                                      </div>
+                                    </div>
+                                    {isDMView && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setMountDamageInput('');
+                                          setMountDamageModal({ combatantKey: String(combatant.characterId), mountName: mount?.name ?? 'Mount' });
+                                        }}
+                                        style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.25rem', color: '#f87171', cursor: 'pointer' }}
+                                      >⚔️ Damage Mount</button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               {/* Resistance chips */}
                               {!initiativeHidden && (() => {
                                 const combatRes = combatant.isMonster
@@ -6806,7 +6891,7 @@ const CampaignView: React.FC = () => {
 
                   const activeCombatantKey = activeCombatantData ? String(activeCombatantData.characterId) : null;
                   const isMyTurn = activeCombatantData
-                    ? (user?.id === activeCombatantData.playerId && currentTurnIndex >= 0 && initiativeOrder[currentTurnIndex] === activeCombatantData.characterId)
+                    ? (Number(user?.id) === Number(activeCombatantData.playerId) && currentTurnIndex >= 0 && String(initiativeOrder[currentTurnIndex]) === String(activeCombatantData.characterId))
                     : false;
                   const isDM = user?.role === 'Dungeon Master';
 
@@ -6861,11 +6946,34 @@ const CampaignView: React.FC = () => {
                           }}
                           onSpendAction={(type, spent) => {
                             if (!activeCombatantData || !socket || !currentCampaign) return;
+                            // Always spend actions on the current player's own combatant, not the inspected one
+                            const ownCombatant = isDM
+                              ? activeCombatantData
+                              : combatants.find(c => !c.isMonster && Number(c.playerId) === Number(user?.id)) ?? activeCombatantData;
                             socket.emit('spendActionEconomy', {
                               campaignId: currentCampaign.campaign.id,
-                              combatantKey: String(activeCombatantData.characterId),
+                              combatantKey: String(ownCombatant.characterId),
                               actionType: type,
                               spent,
+                            });
+                          }}
+                          onDash={() => {
+                            if (!socket || !currentCampaign) return;
+                            const ownCombatant = isDM
+                              ? activeCombatantData
+                              : combatants.find(c => !c.isMonster && Number(c.playerId) === Number(user?.id)) ?? activeCombatantData;
+                            if (!ownCombatant) return;
+                            const ownKey = String(ownCombatant.characterId);
+                            socket.emit('spendActionEconomy', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: ownKey,
+                              actionType: 'action',
+                              spent: true,
+                            });
+                            socket.emit('addMovement', {
+                              campaignId: currentCampaign.campaign.id,
+                              combatantKey: ownKey,
+                              additionalMovement: ownCombatant.movement_speed ?? 30,
                             });
                           }}
                           onAddCondition={(condition) => {
@@ -6927,6 +7035,32 @@ const CampaignView: React.FC = () => {
                     </div>
                   );
                 })()}
+
+                {/* DM battle map selector button */}
+                {user?.role === 'Dungeon Master' && (
+                  <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button
+                      onClick={async () => {
+                        if (!currentCampaign) return;
+                        try {
+                          const maps = await battleMapsAPI.getMaps(currentCampaign.campaign.id);
+                          setCampaignBattleMaps(maps);
+                        } catch (e) { console.error(e); }
+                        setShowMapPickerModal(true);
+                      }}
+                      style={{ padding: '0.4rem 0.9rem', background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.4rem', color: '#d4c19c', cursor: 'pointer', fontSize: '0.85rem' }}
+                    >🗺️ Select Map</button>
+                    {activeMapId && (
+                      <button
+                        onClick={() => {
+                          if (!socket || !currentCampaign) return;
+                          socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: null, mapType: 'combat' });
+                        }}
+                        style={{ padding: '0.4rem 0.9rem', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: '0.4rem', color: '#f87171', cursor: 'pointer', fontSize: '0.85rem' }}
+                      >✕ Clear Map</button>
+                    )}
+                  </div>
+                )}
 
                 <div style={{
                   position: 'relative',
@@ -7039,17 +7173,18 @@ const CampaignView: React.FC = () => {
                   }
                 }}
                 >
-                  <img 
-                    src={BattleMapImage} 
-                    alt="Battle Map" 
-                    style={{ 
-                      width: '100%', 
-                      height: 'auto',
-                      display: 'block',
-                      userSelect: 'none',
-                      pointerEvents: 'none'
-                    }} 
-                  />
+                  {/* Dynamic battle map image */}
+                  {activeMapId ? (
+                    <img
+                      src={battleMapsAPI.getMapImageUrl(activeMapId)}
+                      alt="Battle Map"
+                      style={{ width: '100%', height: 'auto', display: 'block', userSelect: 'none', pointerEvents: 'none' }}
+                    />
+                  ) : (
+                    <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(212,193,156,0.5)', fontSize: '1.1rem' }}>
+                      {user?.role === 'Dungeon Master' ? '🗺️ No map selected — use "Select Map" above' : '🗺️ Awaiting battle map...'}
+                    </div>
+                  )}
 
                   {/* Darkness overlay canvas — drawn by useEffect when darknessLevel > 0 */}
                   <canvas
@@ -7249,6 +7384,11 @@ const CampaignView: React.FC = () => {
                     const petTemplate = combatant.isPet ? campaignPets.find(p => p.id === combatant.petId) : null;
                     const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url || petTemplate?.image_url);
                     
+                    // Invisibility — monsters hide entirely from non-DMs; players show faded
+                    const tokenConditions = combatConditions[String(combatant.characterId)] ?? [];
+                    const isTokenInvisible = tokenConditions.some(cond => cond.toLowerCase() === 'invisible');
+                    if (combatant.isMonster && !isDM && isTokenInvisible) return null;
+                    
                     const name = combatant.name;
                     const displayName = character ? `${name} (${character.player_name})` : name;
                     
@@ -7266,7 +7406,7 @@ const CampaignView: React.FC = () => {
                           alignItems: 'center',
                           zIndex: draggedCharacter === combatant.characterId ? 1000 : 1,
                           cursor: 'pointer',
-                          opacity: mapIsDead ? 0.45 : 1,
+                          opacity: mapIsDead ? 0.45 : (isTokenInvisible ? 0.35 : 1),
                           filter: mapIsDead ? 'grayscale(0.85)' : 'none',
                           transition: 'opacity 0.4s ease, filter 0.4s ease',
                         }}
@@ -7425,6 +7565,27 @@ const CampaignView: React.FC = () => {
 
                       {user?.role === 'Dungeon Master' && (
                         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                          {/* Battlefield Map Selector */}
+                          <button
+                            onClick={async () => {
+                              if (!currentCampaign) return;
+                              try {
+                                const maps = await battleMapsAPI.getMaps(currentCampaign.campaign.id);
+                                setCampaignBattleMaps(maps);
+                              } catch (e) { console.error(e); }
+                              setShowBattlefieldMapPickerModal(true);
+                            }}
+                            style={{ padding: '0.5rem 1rem', background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.5rem', color: '#d4c19c', cursor: 'pointer', fontSize: '0.85rem' }}
+                          >🗺️ Select Battlefield Map</button>
+                          {activeBattlefieldMapId && (
+                            <button
+                              onClick={() => {
+                                if (!socket || !currentCampaign) return;
+                                socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: null, mapType: 'battlefield' });
+                              }}
+                              style={{ padding: '0.5rem 1rem', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: '0.5rem', color: '#f87171', cursor: 'pointer', fontSize: '0.85rem' }}
+                            >✕ Clear Map</button>
+                          )}
                           {/* End Battle Button - Always available for DM */}
                           <button
                             onClick={() => setPendingConfirm({ msg: '⚠️ Cancel this battle? All progress will be lost and participants will be removed.', onYes: () => {
@@ -7716,17 +7877,17 @@ const CampaignView: React.FC = () => {
                         }
                       }}
                       >
-                          <img 
-                            src={BattleMapImage} 
-                            alt="Battlefield Map" 
-                            style={{ 
-                              width: '100%', 
-                              height: 'auto',
-                              display: 'block',
-                              userSelect: 'none',
-                              pointerEvents: 'none'
-                            }} 
-                          />
+                          {activeBattlefieldMapId ? (
+                            <img
+                              src={battleMapsAPI.getMapImageUrl(activeBattlefieldMapId)}
+                              alt="Battlefield Map"
+                              style={{ width: '100%', height: 'auto', display: 'block', userSelect: 'none', pointerEvents: 'none' }}
+                            />
+                          ) : (
+                            <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(212,193,156,0.5)', fontSize: '1.1rem' }}>
+                              {user?.role === 'Dungeon Master' ? '🗺️ No map selected — use \'Select Battlefield Map\' above' : '🗺️ Awaiting battlefield map...'}
+                            </div>
+                          )}
                           
                           {/* Grid overlay */}
                           <div style={{
@@ -11750,22 +11911,6 @@ const CampaignView: React.FC = () => {
                             onClick={() => setDeleteModal({ isOpen: true, characterId: selectedCharacterData.id, characterName: selectedCharacterData.name })}
                           >🗑️ Delete Character</button>
                         )}
-                        {/* TEMP: remove this button and its handler after use */}
-                        {user?.role === 'Dungeon Master' && (
-                          <button
-                            className="char-delete-btn"
-                            style={{ marginTop: '0.4rem', background: '#5a3a7e' }}
-                            onClick={async () => {
-                              try {
-                                await characterAPI.tempResetClericOrder(selectedCharacterData.id);
-                                toast('Reset to Level 1 Cleric (Order Domain)');
-                                if (campaignName) await loadCampaign(campaignName);
-                              } catch (e: any) {
-                                toast('Failed: ' + (e?.response?.data?.error || e.message));
-                              }
-                            }}
-                          >🧪 [TEMP] Reset as Cleric (Order)</button>
-                        )}
                         {/* Conceal / Reveal */}
                         {user?.role === 'Dungeon Master' && !selectedCharacterData.concealed_class && revealConfirmId !== selectedCharacterData.id && (
                           concealPickerOpen === selectedCharacterData.id ? (
@@ -14249,6 +14394,44 @@ const CampaignView: React.FC = () => {
                                   ))}
                                 </div>
 
+                                {/* Mount Armor Slots */}
+                                {(() => {
+                                  const slots: { key: 'head'|'body'|'front_legs'|'rear_legs'; label: string; icon: string }[] = [
+                                    { key: 'head',       label: 'Head',       icon: '🪖' },
+                                    { key: 'body',       label: 'Body',       icon: '🛡️' },
+                                    { key: 'front_legs', label: 'Front Legs', icon: '🦵' },
+                                    { key: 'rear_legs',  label: 'Rear Legs',  icon: '🦶' },
+                                  ];
+                                  return (
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.4rem' }}>🛡️ Horse Armor Slots</div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
+                                        {slots.map(slot => {
+                                          const equippedName = equippedMount[`armor_${slot.key}` as keyof Mount] as string | null;
+                                          return (
+                                            <div key={slot.key} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3rem' }}>
+                                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{slot.icon} {slot.label}</span>
+                                              {equippedName ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                  <span style={{ fontSize: '0.7rem', color: '#c4b5fd' }}>{equippedName}</span>
+                                                  {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(equippedMount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.7rem', padding:0 }}>✕</button>}
+                                                </div>
+                                              ) : (
+                                                canEquip ? (
+                                                  <button
+                                                    onClick={() => setMountArmorPicker({ mountId: equippedMount.id, slot: slot.key })}
+                                                    style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '0.25rem', color: '#c4b5fd', cursor: 'pointer' }}
+                                                  >+ Equip</button>
+                                                ) : <span style={{ fontSize: '0.65rem', color: '#555' }}>Empty</span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
                                 {/* Assigned to */}
                                 <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 'auto' }}>
                                   👤 <strong style={{ color: 'var(--text-gold)' }}>{equippedMount.character_name ?? selectedCharacterData.name}</strong>
@@ -14338,6 +14521,41 @@ const CampaignView: React.FC = () => {
                                         </div>
                                       ))}
                                     </div>
+                                    {/* Armor slots for stable mounts */}
+                                    {(() => {
+                                      const stableSlots: { key: 'head'|'body'|'front_legs'|'rear_legs'; label: string; icon: string }[] = [
+                                        { key: 'head',       label: 'Head',       icon: '🪖' },
+                                        { key: 'body',       label: 'Body',       icon: '🛡️' },
+                                        { key: 'front_legs', label: 'Front Legs', icon: '🦵' },
+                                        { key: 'rear_legs',  label: 'Rear Legs',  icon: '🦶' },
+                                      ];
+                                      const anyArmor = stableSlots.some(s => mount[`armor_${s.key}` as keyof Mount]);
+                                      if (!anyArmor && !canEquip) return null;
+                                      return (
+                                        <div style={{ marginTop: '0.3rem' }}>
+                                          {anyArmor && <div style={{ fontSize: '0.65rem', color: '#c4b5fd', marginBottom: '0.2rem' }}>🛡️ Horse Armor</div>}
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.2rem' }}>
+                                            {stableSlots.map(slot => {
+                                              const equippedName = mount[`armor_${slot.key}` as keyof Mount] as string | null;
+                                              if (!equippedName && !canEquip) return null;
+                                              return (
+                                                <div key={slot.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.65rem', padding: '0.15rem 0.35rem', background: 'rgba(255,255,255,0.04)', borderRadius: '0.3rem', gap: '0.2rem' }}>
+                                                  <span style={{ color: 'var(--text-muted)' }}>{slot.icon}</span>
+                                                  {equippedName ? (
+                                                    <div style={{ display: 'flex', flex: 1, justifyContent: 'space-between', alignItems: 'center' }}>
+                                                      <span style={{ color: '#c4b5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>{equippedName}</span>
+                                                      {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(mount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.65rem', padding:0, flexShrink:0 }}>✕</button>}
+                                                    </div>
+                                                  ) : canEquip ? (
+                                                    <button onClick={() => setMountArmorPicker({ mountId: mount.id, slot: slot.key })} style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '0.2rem', color: '#c4b5fd', cursor: 'pointer' }}>+</button>
+                                                  ) : null}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
                                     <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
                                       {canEquip && (
                                         <button onClick={() => handleToggleEquip(mount)} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(34,197,94,0.5)', background: 'rgba(34,197,94,0.15)', color: '#4ade80', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}>▶ Mount</button>
@@ -17727,6 +17945,50 @@ const CampaignView: React.FC = () => {
                     </div>
                   );
                 })()}
+
+                {/* Active Effects — conditions and DOT states */}
+                {(() => {
+                  const detailKey = String(detailCombatant.characterId);
+                  const detailConditions = combatConditions[detailKey] ?? [];
+                  const detailDots = dotConditions[detailKey] ?? [];
+                  if (detailConditions.length === 0 && detailDots.length === 0) return null;
+                  const condStyle: Record<string, {bg:string;border:string;color:string}> = {
+                    Stunned:      {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                    Paralyzed:    {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                    Unconscious:  {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                    Incapacitated:{bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                    Petrified:    {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
+                    Grappled:     {bg:'rgba(249,115,22,0.2)',   border:'rgba(249,115,22,0.5)',   color:'#fb923c'},
+                    Restrained:   {bg:'rgba(249,115,22,0.2)',   border:'rgba(249,115,22,0.5)',   color:'#fb923c'},
+                    Blinded:      {bg:'rgba(148,163,184,0.2)',  border:'rgba(148,163,184,0.5)',  color:'#94a3b8'},
+                    Deafened:     {bg:'rgba(148,163,184,0.2)',  border:'rgba(148,163,184,0.5)',  color:'#94a3b8'},
+                    Frightened:   {bg:'rgba(167,139,250,0.2)',  border:'rgba(167,139,250,0.5)',  color:'#a78bfa'},
+                    Charmed:      {bg:'rgba(244,114,182,0.2)',  border:'rgba(244,114,182,0.5)',  color:'#f472b6'},
+                    Invisible:    {bg:'rgba(103,232,249,0.2)',  border:'rgba(103,232,249,0.5)',  color:'#67e8f9'},
+                  };
+                  const dotStyle: Record<string, {bg:string;border:string;color:string;icon:string}> = {
+                    Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'🔥'},
+                    Bleeding: {bg:'rgba(239,68,68,0.2)',   border:'rgba(239,68,68,0.6)',   color:'#f87171', icon:'🩸'},
+                    Poison:   {bg:'rgba(34,197,94,0.2)',   border:'rgba(34,197,94,0.6)',   color:'#4ade80', icon:'☠️'},
+                  };
+                  return (
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(212,193,156,0.2)', paddingTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#d4c19c', fontWeight: 'bold', marginBottom: '0.5rem' }}>⚡ Active Effects</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                        {detailConditions.map(c => {
+                          const s = condStyle[c] ?? {bg:'rgba(250,204,21,0.15)',border:'rgba(250,204,21,0.4)',color:'#fbbf24'};
+                          return <span key={c} style={{ fontSize: '0.8rem', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.5rem', color: s.color }}>{c}</span>;
+                        })}
+                        {detailDots.map(dot => {
+                          const s = dotStyle[dot.type] ?? dotStyle.Poison;
+                          const turns = dot.turnsRemaining !== null ? ` (${dot.turnsRemaining} turns)` : '';
+                          return <span key={`dot-${dot.type}`} style={{ fontSize: '0.8rem', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.5rem', color: s.color }}>{s.icon} {dot.type}{turns}</span>;
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
             </div>
           );
@@ -22057,6 +22319,263 @@ const CampaignView: React.FC = () => {
             />
           )}
         </>
+      )}
+
+      {/* Mount Armor Slot Picker Modal */}
+      {/* Damage Mount Modal */}
+      {mountDamageModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 12000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '360px', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h5 style={{ color: '#f87171', margin: 0 }}>⚔️ Damage {mountDamageModal.mountName}</h5>
+              <button onClick={() => setMountDamageModal(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+            </div>
+            <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Enter the amount of damage to deal to this mount.</p>
+            <input
+              type="number"
+              min="0"
+              value={mountDamageInput}
+              onChange={e => setMountDamageInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const dmg = Number(mountDamageInput);
+                  if (isNaN(dmg) || dmg <= 0) return;
+                  socket?.emit('applyMountDamage', { campaignId: currentCampaign?.campaign.id, combatantKey: mountDamageModal.combatantKey, damage: dmg });
+                  setMountDamageModal(null);
+                }
+              }}
+              autoFocus
+              placeholder="Damage amount..."
+              style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.4rem', color: '#f87171', fontSize: '1rem', boxSizing: 'border-box', marginBottom: '0.75rem' }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setMountDamageModal(null)} style={{ padding: '0.4rem 0.9rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.4rem', color: '#999', cursor: 'pointer', fontSize: '0.85rem' }}>Cancel</button>
+              <button
+                onClick={() => {
+                  const dmg = Number(mountDamageInput);
+                  if (isNaN(dmg) || dmg <= 0) return;
+                  socket?.emit('applyMountDamage', { campaignId: currentCampaign?.campaign.id, combatantKey: mountDamageModal.combatantKey, damage: dmg });
+                  setMountDamageModal(null);
+                }}
+                style={{ padding: '0.4rem 0.9rem', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '0.4rem', color: '#f87171', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
+              >Deal Damage</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mountArmorPicker && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 11000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '500px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h5 style={{ color: '#d4c19c', margin: 0 }}>🛡️ Equip Armor — {mountArmorPicker.slot.replace(/_/g, ' ')}</h5>
+              <button onClick={() => setMountArmorPicker(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+            </div>
+            <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Select an armor item from the character's inventory to equip to this mount slot.</p>
+            {(() => {
+              const charId = selectedCharacter;
+              const inventoryForChar = charId ? (equipmentDetails[charId] ?? []) : [];
+              const slotSubcategoryMap: Record<string, string> = { head: 'Horse Head', body: 'Horse Body', front_legs: 'Horse Feet', rear_legs: 'Horse Feet' };
+              const requiredSubcategory = slotSubcategoryMap[mountArmorPicker.slot];
+              const armorItems = inventoryForChar.filter(item => item.subcategory === requiredSubcategory);
+              if (armorItems.length === 0) {
+                return <p style={{ color: '#888', fontStyle: 'italic' }}>No {requiredSubcategory} items found in this character's inventory. Create one using the custom item creator.</p>;
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {armorItems.map((item, idx) => (
+                    <button
+                      key={(item as any).id ?? idx}
+                      onClick={async () => {
+                        try {
+                          const upd = await mountAPI.equipMountArmor(mountArmorPicker.mountId, mountArmorPicker.slot, (item as any).name ?? (item as any).item_name);
+                          setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m));
+                          setMountArmorPicker(null);
+                        } catch(e) { console.error(e); }
+                      }}
+                      style={{ padding: '0.5rem 0.75rem', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '0.4rem', color: '#c4b5fd', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    >
+                      <span>{(item as any).name ?? (item as any).item_name}</span>
+                      {item.armor_class != null && <span style={{ color: '#93c5fd', fontSize: '0.75rem' }}>AC {item.armor_class}</span>}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Battlefield Map Picker Modal (DM only) */}
+      {showBattlefieldMapPickerModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h5 style={{ color: '#d4c19c', margin: 0 }}>🗺️ Select Battlefield Map</h5>
+              <button onClick={() => setShowBattlefieldMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+            </div>
+
+            {/* Upload Section */}
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+              <h6 style={{ color: '#d4c19c', margin: '0 0 0.5rem' }}>Upload New Map</h6>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Map name..."
+                  value={mapUploadName}
+                  onChange={e => setMapUploadName(e.target.value)}
+                  style={{ padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', minWidth: '160px' }}
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={e => setMapUploadFile(e.target.files?.[0] ?? null)}
+                  style={{ color: '#ccc', fontSize: '0.85rem' }}
+                />
+                <button
+                  onClick={async () => {
+                    if (!mapUploadFile || !mapUploadName.trim() || !currentCampaign) return;
+                    const fd = new FormData();
+                    fd.append('image', mapUploadFile);
+                    fd.append('display_name', mapUploadName.trim());
+                    try {
+                      await battleMapsAPI.uploadMap(currentCampaign.campaign.id, fd);
+                      const maps = await battleMapsAPI.getMaps(currentCampaign.campaign.id);
+                      setCampaignBattleMaps(maps);
+                      setMapUploadFile(null);
+                      setMapUploadName('');
+                    } catch (e) { console.error(e); }
+                  }}
+                  disabled={!mapUploadFile || !mapUploadName.trim()}
+                  style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(212,193,156,0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
+                >⬆️ Upload</button>
+              </div>
+            </div>
+
+            {/* Map Grid */}
+            {campaignBattleMaps.length === 0 ? (
+              <p style={{ color: '#888', textAlign: 'center' }}>No maps uploaded yet.</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                {campaignBattleMaps.map(bm => (
+                  <div
+                    key={bm.id}
+                    style={{ border: activeBattlefieldMapId === bm.id ? '2px solid #d4c19c' : '2px solid rgba(212,193,156,0.2)', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: '#111', transition: 'border-color 0.2s' }}
+                    onClick={() => {
+                      if (!socket || !currentCampaign) return;
+                      socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: bm.id, mapType: 'battlefield' });
+                      setShowBattlefieldMapPickerModal(false);
+                    }}
+                  >
+                    <img src={battleMapsAPI.getMapImageUrl(bm.id)} alt={bm.display_name} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
+                    <div style={{ padding: '0.4rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#d4c19c', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await battleMapsAPI.deleteMap(bm.id);
+                            setCampaignBattleMaps(prev => prev.filter(m => m.id !== bm.id));
+                            if (activeBattlefieldMapId === bm.id && socket && currentCampaign) {
+                              socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: null, mapType: 'battlefield' });
+                            }
+                          } catch (e) { console.error(e); }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.9rem', paddingLeft: '0.4rem' }}
+                      >🗑️</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Battle Map Picker Modal (DM only) */}
+      {showMapPickerModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h5 style={{ color: '#d4c19c', margin: 0 }}>🗺️ Select Battle Map</h5>
+              <button onClick={() => setShowMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+            </div>
+
+            {/* Upload Section */}
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+              <h6 style={{ color: '#d4c19c', margin: '0 0 0.5rem' }}>Upload New Map</h6>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Map name..."
+                  value={mapUploadName}
+                  onChange={e => setMapUploadName(e.target.value)}
+                  style={{ padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', minWidth: '160px' }}
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={e => setMapUploadFile(e.target.files?.[0] ?? null)}
+                  style={{ color: '#ccc', fontSize: '0.85rem' }}
+                />
+                <button
+                  onClick={async () => {
+                    if (!mapUploadFile || !mapUploadName.trim() || !currentCampaign) return;
+                    const fd = new FormData();
+                    fd.append('image', mapUploadFile);
+                    fd.append('display_name', mapUploadName.trim());
+                    try {
+                      await battleMapsAPI.uploadMap(currentCampaign.campaign.id, fd);
+                      const maps = await battleMapsAPI.getMaps(currentCampaign.campaign.id);
+                      setCampaignBattleMaps(maps);
+                      setMapUploadFile(null);
+                      setMapUploadName('');
+                    } catch (e) { console.error(e); }
+                  }}
+                  disabled={!mapUploadFile || !mapUploadName.trim()}
+                  style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(212,193,156,0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
+                >⬆️ Upload</button>
+              </div>
+            </div>
+
+            {/* Map Grid */}
+            {campaignBattleMaps.length === 0 ? (
+              <p style={{ color: '#888', textAlign: 'center' }}>No maps uploaded yet.</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                {campaignBattleMaps.map(bm => (
+                  <div
+                    key={bm.id}
+                    style={{ border: activeMapId === bm.id ? '2px solid #d4c19c' : '2px solid rgba(212,193,156,0.2)', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: '#111', transition: 'border-color 0.2s' }}
+                    onClick={() => {
+                      if (!socket || !currentCampaign) return;
+                      socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: bm.id, mapType: 'combat' });
+                      setShowMapPickerModal(false);
+                    }}
+                  >
+                    <img src={battleMapsAPI.getMapImageUrl(bm.id)} alt={bm.display_name} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
+                    <div style={{ padding: '0.4rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#d4c19c', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await battleMapsAPI.deleteMap(bm.id);
+                            setCampaignBattleMaps(prev => prev.filter(m => m.id !== bm.id));
+                            if (activeMapId === bm.id && socket && currentCampaign) {
+                              socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: null, mapType: 'combat' });
+                            }
+                          } catch (e) { console.error(e); }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.9rem', paddingLeft: '0.4rem' }}
+                      >🗑️</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </>
   );
