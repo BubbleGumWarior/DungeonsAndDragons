@@ -847,11 +847,51 @@ router.get('/fiefs/:id/research', authenticateToken, async (req, res) => {
 
 // POST /fiefs/:id/research/start — add a research item to the queue
 // body: { research_id: 'farm_lv2' }
+const VALID_RESEARCH_IDS = new Set([
+  'campfire_lv2','campfire_lv3',
+  'hunting_ground_lv2','hunting_ground_lv3',
+  'basic_storage_lv2','basic_storage_lv3',
+  'housing_lv2','housing_lv3','housing_lv4','housing_lv5',
+  'watchtower_lv2','watchtower_lv3',
+  'farm_lv2','farm_lv3','farm_lv4','farm_lv5',
+  'lumber_camp_lv2','lumber_camp_lv3','lumber_camp_lv4','lumber_camp_lv5',
+  'basic_mine_lv2','basic_mine_lv3','basic_mine_lv4','basic_mine_lv5',
+  'tavern_lv2','tavern_lv3','tavern_lv4','tavern_lv5',
+  'chapel_lv2','chapel_lv3','chapel_lv4','chapel_lv5',
+  'research_lab_lv2','research_lab_lv3','research_lab_lv4','research_lab_lv5',
+  'mill_lv2','mill_lv3','mill_lv4','mill_lv5',
+  'market_stall_lv2','market_stall_lv3','market_stall_lv4','market_stall_lv5',
+  'blacksmith_lv2','blacksmith_lv3','blacksmith_lv4','blacksmith_lv5',
+  'barracks_lv2','barracks_lv3','barracks_lv4','barracks_lv5',
+  'ore_mine_lv2','ore_mine_lv3','ore_mine_lv4','ore_mine_lv5',
+  'stable_lv2','stable_lv3','stable_lv4','stable_lv5',
+  'school_lv2','school_lv3','school_lv4',
+  'shrine_lv2','shrine_lv3','shrine_lv4',
+  'workshop_lv2','workshop_lv3','workshop_lv4','workshop_lv5',
+  'inn_lv2','inn_lv3','inn_lv4','inn_lv5',
+  'library_lv2','library_lv3','library_lv4',
+  'guard_post_lv2','guard_post_lv3','guard_post_lv4',
+  'thieves_guild_lv2','thieves_guild_lv3','thieves_guild_lv4',
+  'siege_workshop_lv2','siege_workshop_lv3','siege_workshop_lv4',
+  'bank_lv2','bank_lv3','bank_lv4','bank_lv5',
+  'alchemist_lv2','alchemist_lv3','alchemist_lv4',
+  'armoury_lv2','armoury_lv3','armoury_lv4','armoury_lv5',
+  'mason_lv2','mason_lv3','mason_lv4','mason_lv5',
+  'monastery_lv2','monastery_lv3','monastery_lv4',
+  'academy_lv2','academy_lv3','academy_lv4',
+  'docks_lv2','docks_lv3','docks_lv4','docks_lv5',
+  'grand_market_lv2','grand_market_lv3','grand_market_lv4','grand_market_lv5',
+  'mage_tower_lv2','mage_tower_lv3','mage_tower_lv4',
+  'hospital_lv2','hospital_lv3','hospital_lv4',
+  'imperial_mint_lv2','imperial_mint_lv3',
+  'university_lv2','university_lv3','university_lv4',
+]);
 router.post('/fiefs/:id/research/start', authenticateToken, async (req, res) => {
   try {
     const fiefId = req.params.id;
     const { research_id } = req.body;
     if (!research_id) return res.status(400).json({ error: 'research_id required' });
+    if (!VALID_RESEARCH_IDS.has(research_id)) return res.status(400).json({ error: 'Invalid research_id' });
 
     // Check not already queued or completed
     const existing = await pool.query(

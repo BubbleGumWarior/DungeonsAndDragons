@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, CampaignNPCData } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS, isTemplateUnlocked } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -137,7 +137,7 @@ const BC = (id: string, name: string, icon: string, tier: number, ml: number, da
 const BUILDING_CATALOGUE: BuildingCatalogueEntry[] = [
   // Tier 1 — Camp
   BC('campfire',       'Campfire',       '🔥', 1, 3,  2,  { wood: 8 },                        { food: 3 },            'A simple fire pit. Keeps the camp warm and fed.'),
-  BC('basic_storage',  'Basic Storage',  '📦', 1, 3,  3,  { wood: 15 },                       {},                     'Stores supplies. Lv1: +100 · Lv2: +200 · Lv3: +400 storage cap.'),
+  BC('basic_storage',  'Basic Storage',  '📦', 1, 3,  3,  { wood: 15 },                       {},                     'Stores supplies. Base cap scales with fief tier. Lv1: +100 · Lv2: +200 · Lv3: +400 bonus cap.'),
   BC('housing',        'Housing',        '🏠', 1, 5,  4,  { wood: 20 },                       { pop_cap: 15 },        'Shelter for your people. Each level raises pop cap by 15. Lv1: Tents · Lv2: Hovels · Lv3: Cottages · Lv4: Houses · Lv5: Townhouses'),
   BC('watchtower',     'Watchtower',     '🗼', 1, 3,  4,  { wood: 20 },                       {},                     'Raised platform to watch for danger. +Military.'),
   BC('hunting_ground', 'Hunting Ground', '🏹', 1, 3,  3,  { wood: 10 },                       { food: 8 },            'Designated hunting area. Strong food supply.'),
@@ -10432,7 +10432,7 @@ const CampaignView: React.FC = () => {
                                   const icons = ['💰','🌾','🪵','🪨'];
                                   const val = activeFief.resources?.[key] ?? 0;
                                   const fiefBuildsForCap = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter((b: FiefBuilding) => b.is_complete && !b.is_upgrade);
-                                  const storageCap = 100 + fiefBuildsForCap.filter((b: FiefBuilding) => (b as any).building_type === 'basic_storage').reduce((sum: number, b: FiefBuilding) => sum + Math.round(100 * Math.pow(2, (b.level || 1) - 1)), 0);
+                                  const storageCap = Math.round(500 * Math.pow(2.5, ((activeFief as any).tier || 1) - 1)) + fiefBuildsForCap.filter((b: FiefBuilding) => (b as any).building_type === 'basic_storage').reduce((sum: number, b: FiefBuilding) => sum + Math.round(100 * Math.pow(2, (b.level || 1) - 1)), 0);
                                   const capPct = Math.min(1, val / storageCap);
                                   return (
                                     <div key={key}
@@ -10883,12 +10883,8 @@ const CampaignView: React.FC = () => {
                                 // ── Tier 1 ──────────────────────────────────────────────
                                 { id: 'campfire_lv2',      name: 'Improved Campfire Lv2',        building: 'campfire',      requires_lab_level: 1, cost: 80,    desc: 'Upgrades all Campfires to level 2.' },
                                 { id: 'campfire_lv3',      name: 'Advanced Campfire Lv3',        building: 'campfire',      requires_lab_level: 1, cost: 250,   desc: 'Upgrades all Campfires to level 3.' },
-                                { id: 'campfire_lv4',      name: 'Masterwork Campfire Lv4',      building: 'campfire',      requires_lab_level: 2, cost: 700,   desc: 'Upgrades all Campfires to level 4.' },
-                                { id: 'campfire_lv5',      name: 'Legendary Campfire Lv5',       building: 'campfire',      requires_lab_level: 3, cost: 1800,  desc: 'Upgrades all Campfires to level 5.' },
                                 { id: 'hunting_ground_lv2',name: 'Improved Hunting Lv2',         building: 'hunting_ground',requires_lab_level: 1, cost: 100,   desc: 'Upgrades all Hunting Grounds to level 2.' },
                                 { id: 'hunting_ground_lv3',name: 'Advanced Hunting Lv3',         building: 'hunting_ground',requires_lab_level: 1, cost: 320,   desc: 'Upgrades all Hunting Grounds to level 3.' },
-                                { id: 'hunting_ground_lv4',name: 'Masterwork Hunting Lv4',       building: 'hunting_ground',requires_lab_level: 2, cost: 900,   desc: 'Upgrades all Hunting Grounds to level 4.' },
-                                { id: 'hunting_ground_lv5',name: 'Legendary Hunting Lv5',        building: 'hunting_ground',requires_lab_level: 3, cost: 2400,  desc: 'Upgrades all Hunting Grounds to level 5.' },
                                 { id: 'watchtower_lv2',    name: 'Reinforced Watchtower Lv2',    building: 'watchtower',    requires_lab_level: 1, cost: 90,    desc: 'Upgrades all Watchtowers to level 2.' },
                                 { id: 'watchtower_lv3',    name: 'Fortified Watchtower Lv3',     building: 'watchtower',    requires_lab_level: 2, cost: 280,   desc: 'Upgrades all Watchtowers to level 3.' },
                                 { id: 'housing_lv2',       name: 'Better Shelter Lv2',           building: 'housing',       requires_lab_level: 1, cost: 120,   desc: 'Upgrades all Housing to level 2.' },
@@ -10929,8 +10925,12 @@ const CampaignView: React.FC = () => {
                                 { id: 'market_stall_lv5',  name: 'Legendary Market Lv5',         building: 'market_stall',  requires_lab_level: 4, cost: 10000, desc: 'Upgrades all Market Stalls to level 5.' },
                                 { id: 'blacksmith_lv2',    name: 'Improved Blacksmith Lv2',      building: 'blacksmith',    requires_lab_level: 2, cost: 700,   desc: 'Upgrades all Blacksmiths to level 2.' },
                                 { id: 'blacksmith_lv3',    name: 'Master Blacksmith Lv3',        building: 'blacksmith',    requires_lab_level: 3, cost: 2000,  desc: 'Upgrades all Blacksmiths to level 3.' },
+                                { id: 'blacksmith_lv4',    name: 'Grand Blacksmith Lv4',         building: 'blacksmith',    requires_lab_level: 3, cost: 5500,  desc: 'Upgrades all Blacksmiths to level 4.' },
+                                { id: 'blacksmith_lv5',    name: 'Legendary Blacksmith Lv5',     building: 'blacksmith',    requires_lab_level: 4, cost: 14000, desc: 'Upgrades all Blacksmiths to level 5.' },
                                 { id: 'barracks_lv2',      name: 'Improved Barracks Lv2',        building: 'barracks',      requires_lab_level: 2, cost: 800,   desc: 'Upgrades all Barracks to level 2.' },
                                 { id: 'barracks_lv3',      name: 'Fortress Barracks Lv3',        building: 'barracks',      requires_lab_level: 3, cost: 2400,  desc: 'Upgrades all Barracks to level 3.' },
+                                { id: 'barracks_lv4',      name: 'Grand Barracks Lv4',           building: 'barracks',      requires_lab_level: 3, cost: 6000,  desc: 'Upgrades all Barracks to level 4.' },
+                                { id: 'barracks_lv5',      name: 'Legendary Barracks Lv5',       building: 'barracks',      requires_lab_level: 4, cost: 15000, desc: 'Upgrades all Barracks to level 5.' },
                                 // ── Tier 4 ──────────────────────────────────────────────
                                 { id: 'ore_mine_lv2',      name: 'Improved Ore Mining Lv2',      building: 'ore_mine',      requires_lab_level: 3, cost: 1000,  desc: 'Upgrades all Ore Mines to level 2.' },
                                 { id: 'ore_mine_lv3',      name: 'Advanced Ore Mining Lv3',      building: 'ore_mine',      requires_lab_level: 4, cost: 3000,  desc: 'Upgrades all Ore Mines to level 3.' },
@@ -10938,6 +10938,8 @@ const CampaignView: React.FC = () => {
                                 { id: 'ore_mine_lv5',      name: 'Legendary Ore Mining Lv5',     building: 'ore_mine',      requires_lab_level: 4, cost: 20000, desc: 'Upgrades all Ore Mines to level 5.' },
                                 { id: 'stable_lv2',        name: 'Improved Stable Lv2',          building: 'stable',        requires_lab_level: 2, cost: 900,   desc: 'Upgrades all Stables to level 2.' },
                                 { id: 'stable_lv3',        name: 'Grand Stable Lv3',             building: 'stable',        requires_lab_level: 3, cost: 2700,  desc: 'Upgrades all Stables to level 3.' },
+                                { id: 'stable_lv4',        name: 'Masterwork Stable Lv4',        building: 'stable',        requires_lab_level: 3, cost: 7000,  desc: 'Upgrades all Stables to level 4.' },
+                                { id: 'stable_lv5',        name: 'Legendary Stable Lv5',         building: 'stable',        requires_lab_level: 4, cost: 18000, desc: 'Upgrades all Stables to level 5.' },
                                 { id: 'school_lv2',        name: 'Improved School Lv2',          building: 'school',        requires_lab_level: 2, cost: 1100,  desc: 'Upgrades all Schools to level 2.' },
                                 { id: 'school_lv3',        name: 'Advanced School Lv3',          building: 'school',        requires_lab_level: 3, cost: 3300,  desc: 'Upgrades all Schools to level 3.' },
                                 { id: 'school_lv4',        name: 'Academy School Lv4',           building: 'school',        requires_lab_level: 4, cost: 9000,  desc: 'Upgrades all Schools to level 4.' },
@@ -10946,16 +10948,66 @@ const CampaignView: React.FC = () => {
                                 { id: 'shrine_lv4',        name: 'Sacred Shrine Lv4',            building: 'shrine',        requires_lab_level: 4, cost: 6500,  desc: 'Upgrades all Shrines to level 4.' },
                                 // ── Tier 5 ──────────────────────────────────────────────
                                 { id: 'workshop_lv2',      name: 'Improved Workshop Lv2',        building: 'workshop',      requires_lab_level: 3, cost: 1500,  desc: 'Upgrades all Workshops to level 2.' },
+                                { id: 'workshop_lv3',      name: 'Advanced Workshop Lv3',        building: 'workshop',      requires_lab_level: 3, cost: 4000,  desc: 'Upgrades all Workshops to level 3.' },
+                                { id: 'workshop_lv4',      name: 'Masterwork Workshop Lv4',      building: 'workshop',      requires_lab_level: 3, cost: 10000, desc: 'Upgrades all Workshops to level 4.' },
+                                { id: 'workshop_lv5',      name: 'Legendary Workshop Lv5',       building: 'workshop',      requires_lab_level: 4, cost: 25000, desc: 'Upgrades all Workshops to level 5.' },
                                 { id: 'inn_lv2',           name: 'Improved Inn Lv2',             building: 'inn',           requires_lab_level: 3, cost: 1400,  desc: 'Upgrades all Inns to level 2.' },
+                                { id: 'inn_lv3',           name: 'Grand Inn Lv3',                building: 'inn',           requires_lab_level: 3, cost: 3800,  desc: 'Upgrades all Inns to level 3.' },
+                                { id: 'inn_lv4',           name: 'Masterwork Inn Lv4',           building: 'inn',           requires_lab_level: 3, cost: 9500,  desc: 'Upgrades all Inns to level 4.' },
+                                { id: 'inn_lv5',           name: 'Legendary Inn Lv5',            building: 'inn',           requires_lab_level: 4, cost: 24000, desc: 'Upgrades all Inns to level 5.' },
                                 { id: 'library_lv2',       name: 'Improved Library Lv2',         building: 'library',       requires_lab_level: 3, cost: 1600,  desc: 'Upgrades all Libraries to level 2.' },
+                                { id: 'library_lv3',       name: 'Advanced Library Lv3',         building: 'library',       requires_lab_level: 3, cost: 4500,  desc: 'Upgrades all Libraries to level 3.' },
+                                { id: 'library_lv4',       name: 'Grand Library Lv4',            building: 'library',       requires_lab_level: 4, cost: 12000, desc: 'Upgrades all Libraries to level 4.' },
                                 { id: 'guard_post_lv2',    name: 'Improved Guard Post Lv2',      building: 'guard_post',    requires_lab_level: 3, cost: 1200,  desc: 'Upgrades all Guard Posts to level 2.' },
+                                { id: 'guard_post_lv3',    name: 'Reinforced Guard Post Lv3',    building: 'guard_post',    requires_lab_level: 3, cost: 3500,  desc: 'Upgrades all Guard Posts to level 3.' },
+                                { id: 'guard_post_lv4',    name: 'Fortified Guard Post Lv4',     building: 'guard_post',    requires_lab_level: 3, cost: 9000,  desc: 'Upgrades all Guard Posts to level 4.' },
+                                { id: 'thieves_guild_lv2', name: 'Improved Thieves Guild Lv2',   building: 'thieves_guild', requires_lab_level: 2, cost: 1200,  desc: 'Upgrades all Thieves Guilds to level 2.' },
+                                { id: 'thieves_guild_lv3', name: 'Advanced Thieves Guild Lv3',   building: 'thieves_guild', requires_lab_level: 3, cost: 3600,  desc: 'Upgrades all Thieves Guilds to level 3.' },
+                                { id: 'thieves_guild_lv4', name: 'Master Thieves Guild Lv4',     building: 'thieves_guild', requires_lab_level: 4, cost: 10000, desc: 'Upgrades all Thieves Guilds to level 4.' },
+                                { id: 'siege_workshop_lv2',name: 'Improved Siege Workshop Lv2',  building: 'siege_workshop',requires_lab_level: 2, cost: 1400,  desc: 'Upgrades all Siege Workshops to level 2.' },
+                                { id: 'siege_workshop_lv3',name: 'Advanced Siege Workshop Lv3',  building: 'siege_workshop',requires_lab_level: 3, cost: 4000,  desc: 'Upgrades all Siege Workshops to level 3.' },
+                                { id: 'siege_workshop_lv4',name: 'Master Siege Workshop Lv4',    building: 'siege_workshop',requires_lab_level: 4, cost: 11000, desc: 'Upgrades all Siege Workshops to level 4.' },
                                 // ── Tier 6+ ─────────────────────────────────────────────
                                 { id: 'bank_lv2',          name: 'Improved Bank Lv2',            building: 'bank',          requires_lab_level: 3, cost: 2000,  desc: 'Upgrades all Banks to level 2.' },
                                 { id: 'bank_lv3',          name: 'Grand Bank Lv3',               building: 'bank',          requires_lab_level: 4, cost: 6000,  desc: 'Upgrades all Banks to level 3.' },
+                                { id: 'bank_lv4',          name: 'Masterwork Bank Lv4',          building: 'bank',          requires_lab_level: 4, cost: 15000, desc: 'Upgrades all Banks to level 4.' },
+                                { id: 'bank_lv5',          name: 'Legendary Bank Lv5',           building: 'bank',          requires_lab_level: 4, cost: 40000, desc: 'Upgrades all Banks to level 5.' },
+                                { id: 'alchemist_lv2',     name: 'Improved Alchemist Lv2',       building: 'alchemist',     requires_lab_level: 3, cost: 2200,  desc: 'Upgrades all Alchemists to level 2.' },
+                                { id: 'alchemist_lv3',     name: 'Advanced Alchemist Lv3',       building: 'alchemist',     requires_lab_level: 3, cost: 6500,  desc: 'Upgrades all Alchemists to level 3.' },
+                                { id: 'alchemist_lv4',     name: 'Master Alchemist Lv4',         building: 'alchemist',     requires_lab_level: 4, cost: 18000, desc: 'Upgrades all Alchemists to level 4.' },
+                                { id: 'armoury_lv2',       name: 'Improved Armoury Lv2',         building: 'armoury',       requires_lab_level: 3, cost: 2500,  desc: 'Upgrades all Armouries to level 2.' },
+                                { id: 'armoury_lv3',       name: 'Advanced Armoury Lv3',         building: 'armoury',       requires_lab_level: 3, cost: 7500,  desc: 'Upgrades all Armouries to level 3.' },
+                                { id: 'armoury_lv4',       name: 'Masterwork Armoury Lv4',       building: 'armoury',       requires_lab_level: 4, cost: 20000, desc: 'Upgrades all Armouries to level 4.' },
+                                { id: 'armoury_lv5',       name: 'Legendary Armoury Lv5',        building: 'armoury',       requires_lab_level: 4, cost: 55000, desc: 'Upgrades all Armouries to level 5.' },
+                                { id: 'mason_lv2',         name: 'Improved Mason Lv2',           building: 'mason',         requires_lab_level: 3, cost: 2000,  desc: 'Upgrades all Masons to level 2.' },
+                                { id: 'mason_lv3',         name: 'Advanced Mason Lv3',           building: 'mason',         requires_lab_level: 3, cost: 6000,  desc: 'Upgrades all Masons to level 3.' },
+                                { id: 'mason_lv4',         name: 'Masterwork Mason Lv4',         building: 'mason',         requires_lab_level: 4, cost: 16000, desc: 'Upgrades all Masons to level 4.' },
+                                { id: 'mason_lv5',         name: 'Legendary Mason Lv5',          building: 'mason',         requires_lab_level: 4, cost: 45000, desc: 'Upgrades all Masons to level 5.' },
+                                { id: 'monastery_lv2',     name: 'Improved Monastery Lv2',       building: 'monastery',     requires_lab_level: 2, cost: 1600,  desc: 'Upgrades all Monasteries to level 2.' },
+                                { id: 'monastery_lv3',     name: 'Grand Monastery Lv3',          building: 'monastery',     requires_lab_level: 3, cost: 5000,  desc: 'Upgrades all Monasteries to level 3.' },
+                                { id: 'monastery_lv4',     name: 'Sacred Monastery Lv4',         building: 'monastery',     requires_lab_level: 4, cost: 14000, desc: 'Upgrades all Monasteries to level 4.' },
                                 { id: 'grand_market_lv2',  name: 'Improved Grand Market Lv2',    building: 'grand_market',  requires_lab_level: 4, cost: 3000,  desc: 'Upgrades all Grand Markets to level 2.' },
                                 { id: 'grand_market_lv3',  name: 'Advanced Grand Market Lv3',    building: 'grand_market',  requires_lab_level: 4, cost: 9000,  desc: 'Upgrades all Grand Markets to level 3.' },
+                                { id: 'grand_market_lv4',  name: 'Masterwork Grand Market Lv4',  building: 'grand_market',  requires_lab_level: 4, cost: 20000, desc: 'Upgrades all Grand Markets to level 4.' },
+                                { id: 'grand_market_lv5',  name: 'Legendary Grand Market Lv5',   building: 'grand_market',  requires_lab_level: 4, cost: 55000, desc: 'Upgrades all Grand Markets to level 5.' },
                                 { id: 'imperial_mint_lv2', name: 'Improved Imperial Mint Lv2',   building: 'imperial_mint', requires_lab_level: 4, cost: 4000,  desc: 'Upgrades all Imperial Mints to level 2.' },
                                 { id: 'imperial_mint_lv3', name: 'Advanced Imperial Mint Lv3',   building: 'imperial_mint', requires_lab_level: 4, cost: 12000, desc: 'Upgrades all Imperial Mints to level 3.' },
+                                { id: 'academy_lv2',       name: 'Improved Academy Lv2',         building: 'academy',       requires_lab_level: 3, cost: 3000,  desc: 'Upgrades all Academies to level 2.' },
+                                { id: 'academy_lv3',       name: 'Advanced Academy Lv3',         building: 'academy',       requires_lab_level: 4, cost: 9000,  desc: 'Upgrades all Academies to level 3.' },
+                                { id: 'academy_lv4',       name: 'Grand Academy Lv4',            building: 'academy',       requires_lab_level: 4, cost: 25000, desc: 'Upgrades all Academies to level 4.' },
+                                { id: 'docks_lv2',         name: 'Improved Docks Lv2',           building: 'docks',         requires_lab_level: 3, cost: 3500,  desc: 'Upgrades all Docks to level 2.' },
+                                { id: 'docks_lv3',         name: 'Advanced Docks Lv3',           building: 'docks',         requires_lab_level: 4, cost: 10000, desc: 'Upgrades all Docks to level 3.' },
+                                { id: 'docks_lv4',         name: 'Masterwork Docks Lv4',         building: 'docks',         requires_lab_level: 4, cost: 28000, desc: 'Upgrades all Docks to level 4.' },
+                                { id: 'docks_lv5',         name: 'Legendary Docks Lv5',          building: 'docks',         requires_lab_level: 4, cost: 75000, desc: 'Upgrades all Docks to level 5.' },
+                                { id: 'mage_tower_lv2',    name: 'Improved Mage Tower Lv2',      building: 'mage_tower',    requires_lab_level: 4, cost: 4500,  desc: 'Upgrades all Mage Towers to level 2.' },
+                                { id: 'mage_tower_lv3',    name: 'Advanced Mage Tower Lv3',      building: 'mage_tower',    requires_lab_level: 4, cost: 13500, desc: 'Upgrades all Mage Towers to level 3.' },
+                                { id: 'mage_tower_lv4',    name: 'Grand Mage Tower Lv4',         building: 'mage_tower',    requires_lab_level: 4, cost: 40000, desc: 'Upgrades all Mage Towers to level 4.' },
+                                { id: 'hospital_lv2',      name: 'Improved Hospital Lv2',        building: 'hospital',      requires_lab_level: 3, cost: 4000,  desc: 'Upgrades all Hospitals to level 2.' },
+                                { id: 'hospital_lv3',      name: 'Advanced Hospital Lv3',        building: 'hospital',      requires_lab_level: 4, cost: 12000, desc: 'Upgrades all Hospitals to level 3.' },
+                                { id: 'hospital_lv4',      name: 'Grand Hospital Lv4',           building: 'hospital',      requires_lab_level: 4, cost: 35000, desc: 'Upgrades all Hospitals to level 4.' },
+                                { id: 'university_lv2',    name: 'Improved University Lv2',      building: 'university',    requires_lab_level: 4, cost: 6000,  desc: 'Upgrades all Universities to level 2.' },
+                                { id: 'university_lv3',    name: 'Advanced University Lv3',      building: 'university',    requires_lab_level: 4, cost: 18000, desc: 'Upgrades all Universities to level 3.' },
+                                { id: 'university_lv4',    name: 'Grand University Lv4',         building: 'university',    requires_lab_level: 4, cost: 50000, desc: 'Upgrades all Universities to level 4.' },
                                 // ── Research Lab (max level = fief tier − 1) ─────────────
                                 { id: 'research_lab_lv2',  name: 'Research Lab Lv2',             building: 'research_lab',  requires_lab_level: 1, cost: 400,   desc: 'Upgrades research lab. Unlocks advanced research. (Requires Tier 3 fief)' },
                                 { id: 'research_lab_lv3',  name: 'Research Lab Lv3',             building: 'research_lab',  requires_lab_level: 2, cost: 1200,  desc: 'Unlocks tier-3 research. (Requires Tier 4 fief)' },
@@ -11333,7 +11385,7 @@ const CampaignView: React.FC = () => {
                           const effectiveDays = Math.max(1, Math.round(selectedCatalogueEntry.baseConstructionDays * (1 - techRed)));
                           // Multi-copy exponential cost
                           const existingCount = ((activeFief as any).buildings as FiefBuilding[] ?? []).filter(b => b.is_complete && !b.is_upgrade && (b as any).building_type === selectedCatalogueEntry.id).length;
-                          const costMultiplier = Math.pow(2, existingCount);
+                          const costMultiplier = 1 + existingCount * 0.5;
                           const scaledCost = Object.fromEntries(Object.entries(selectedCatalogueEntry.baseCost).map(([k, v]) => [k, Math.round((v as number) * costMultiplier)]));
                           const available = activeFief.resources ?? { gold: 0, food: 0, wood: 0, stone: 0 };
                           const canAffordBuild = Object.entries(scaledCost).every(([k, v]) => (available[k as keyof typeof available] ?? 0) >= (v as number));

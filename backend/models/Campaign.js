@@ -345,8 +345,8 @@ class Campaign {
 
         // ── Research costs (used for accumulation cap + completion check) ────
         const RESEARCH_COSTS = {
-          campfire_lv2: 80,    campfire_lv3: 250,    campfire_lv4: 700,    campfire_lv5: 1800,
-          hunting_ground_lv2: 100, hunting_ground_lv3: 320, hunting_ground_lv4: 900, hunting_ground_lv5: 2400,
+          campfire_lv2: 80,    campfire_lv3: 250,
+          hunting_ground_lv2: 100, hunting_ground_lv3: 320,
           basic_storage_lv2: 60, basic_storage_lv3: 180,
           housing_lv2: 120,    housing_lv3: 400,     housing_lv4: 1100,    housing_lv5: 3000,
           watchtower_lv2: 90,  watchtower_lv3: 280,
@@ -358,16 +358,30 @@ class Campaign {
           research_lab_lv2: 400, research_lab_lv3: 1200, research_lab_lv4: 3200, research_lab_lv5: 8000,
           mill_lv2: 600,       mill_lv3: 1800,    mill_lv4: 5000,    mill_lv5: 12000,
           market_stall_lv2: 500, market_stall_lv3: 1500, market_stall_lv4: 4000, market_stall_lv5: 10000,
-          blacksmith_lv2: 700, blacksmith_lv3: 2000,
-          barracks_lv2: 800,   barracks_lv3: 2400,
-          ore_mine_lv2: 1000,  ore_mine_lv3: 3000,  ore_mine_lv4: 8000,  ore_mine_lv5: 20000,
-          stable_lv2: 900,     stable_lv3: 2700,
+          blacksmith_lv2: 700, blacksmith_lv3: 2000, blacksmith_lv4: 5500,  blacksmith_lv5: 14000,
+          barracks_lv2: 800,   barracks_lv3: 2400,  barracks_lv4: 6000,    barracks_lv5: 15000,
+          ore_mine_lv2: 1000,  ore_mine_lv3: 3000,  ore_mine_lv4: 8000,    ore_mine_lv5: 20000,
+          stable_lv2: 900,     stable_lv3: 2700,    stable_lv4: 7000,      stable_lv5: 18000,
           school_lv2: 1100,    school_lv3: 3300,    school_lv4: 9000,
           shrine_lv2: 800,     shrine_lv3: 2400,    shrine_lv4: 6500,
-          workshop_lv2: 1500,  inn_lv2: 1400,  library_lv2: 1600,  guard_post_lv2: 1200,
-          bank_lv2: 2000,      bank_lv3: 6000,
-          grand_market_lv2: 3000, grand_market_lv3: 9000,
+          workshop_lv2: 1500,  workshop_lv3: 4000,  workshop_lv4: 10000,   workshop_lv5: 25000,
+          inn_lv2: 1400,       inn_lv3: 3800,       inn_lv4: 9500,         inn_lv5: 24000,
+          library_lv2: 1600,   library_lv3: 4500,   library_lv4: 12000,
+          guard_post_lv2: 1200, guard_post_lv3: 3500, guard_post_lv4: 9000,
+          thieves_guild_lv2: 1200, thieves_guild_lv3: 3600, thieves_guild_lv4: 10000,
+          siege_workshop_lv2: 1400, siege_workshop_lv3: 4000, siege_workshop_lv4: 11000,
+          bank_lv2: 2000,      bank_lv3: 6000,      bank_lv4: 15000,       bank_lv5: 40000,
+          alchemist_lv2: 2200, alchemist_lv3: 6500, alchemist_lv4: 18000,
+          armoury_lv2: 2500,   armoury_lv3: 7500,   armoury_lv4: 20000,    armoury_lv5: 55000,
+          mason_lv2: 2000,     mason_lv3: 6000,     mason_lv4: 16000,      mason_lv5: 45000,
+          monastery_lv2: 1600, monastery_lv3: 5000, monastery_lv4: 14000,
+          academy_lv2: 3000,   academy_lv3: 9000,   academy_lv4: 25000,
+          docks_lv2: 3500,     docks_lv3: 10000,    docks_lv4: 28000,      docks_lv5: 75000,
+          grand_market_lv2: 3000, grand_market_lv3: 9000, grand_market_lv4: 20000, grand_market_lv5: 55000,
+          mage_tower_lv2: 4500, mage_tower_lv3: 13500, mage_tower_lv4: 40000,
+          hospital_lv2: 4000,  hospital_lv3: 12000, hospital_lv4: 35000,
           imperial_mint_lv2: 4000, imperial_mint_lv3: 12000,
+          university_lv2: 6000, university_lv3: 18000, university_lv4: 50000,
         };
 
         // Research worker production — accumulate points, capped at the item's cost
@@ -403,8 +417,9 @@ class Campaign {
         const economyMult = 1 + (economyStat - 1) * 0.05;
         gained.gold = Math.floor(gained.gold * economyMult);
 
-        // Storage cap: base 100 + exponential per basic_storage level (Lv1:+100, Lv2:+200, Lv3:+400)
-        const baseStorageCap = 100;
+        // Storage cap: scales with fief tier so higher-tier upgrades are reachable
+        // Formula: round(500 * 2.5^(tier-1)) — T1:500, T2:1250, T3:3125, T4:7813, T5:19531, T6:48828...
+        const baseStorageCap = Math.round(500 * Math.pow(2.5, (fief.tier || 1) - 1));
         const storageCap = baseStorageCap + buildings
           .filter(b => b.building_type === 'basic_storage')
           .reduce((sum, b) => sum + Math.round(100 * Math.pow(2, (b.level || 1) - 1)), 0);
