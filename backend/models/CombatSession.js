@@ -54,6 +54,8 @@ class CombatSession {
       is_beast = false,
       is_pet = false,
       pet_id = null,
+      is_shadow = false,
+      shadow_id = null,
       owner_character_id = null,
       position_x = 50,
       position_y = 50,
@@ -66,13 +68,13 @@ class CombatSession {
       `INSERT INTO combat_combatants
          (session_id, character_id, monster_instance_id, combatant_key, name, player_id,
           initiative, movement_speed, remaining_movement, is_monster, is_beast, is_pet, pet_id,
-          owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          is_shadow, shadow_id, owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
       [
         session_id, character_id, monster_instance_id, combatant_key, name, player_id,
         initiative, movement_speed, movement_speed, is_monster, is_beast, is_pet, pet_id,
-        owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp,
+        is_shadow, shadow_id, owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp,
       ]
     );
     return result.rows[0];

@@ -1037,6 +1037,7 @@ export interface Shadow {
   damage_type: string;
   special_abilities: string;
   is_active: boolean;
+  image_url?: string;
   created_at: string;
   updated_at: string;
 }
@@ -1074,6 +1075,15 @@ export const shadowAPI = {
 
   deleteShadow: async (characterId: number, shadowId: number): Promise<void> => {
     await api.delete(`/shadows/${characterId}/${shadowId}`);
+  },
+
+  uploadShadowImage: async (shadowId: number, imageFile: File): Promise<Shadow> => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    const response = await api.post(`/shadows/${shadowId}/image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.shadow;
   },
 };
 

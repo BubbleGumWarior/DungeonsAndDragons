@@ -221,8 +221,8 @@ const TIER_NAMES = ['', 'Camp', 'Hamlet', 'Small Village', 'Village', 'Large Vil
 
 // ─── Shadow helper components (need local useState, so defined outside CampaignView) ───
 
-interface ShadowAddFormProps { characterId: number; onCreated: () => void; storedCount: number; maxStored: number; }
-const ShadowAddForm: React.FC<ShadowAddFormProps> = ({ characterId, onCreated, storedCount, maxStored }) => {
+interface ShadowAddFormProps { characterId: number; onCreated: (newShadow?: Shadow) => void; storedCount: number; maxStored: number; onRequestCrop: (file: File, url: string) => void; pendingImagePreview: string | null; }
+const ShadowAddForm: React.FC<ShadowAddFormProps> = ({ characterId, onCreated, storedCount, maxStored, onRequestCrop, pendingImagePreview }) => {
   const [open, setOpen] = React.useState(false);
   const blank = { shadow_name: '', origin_name: '', hit_points_max: 10, armor_class: 12, speed: 30, attack_bonus: 3, damage_dice: '1d6', damage_type: 'necrotic', special_abilities: '', abilities: { str: 10, dex: 14, con: 10, int: 6, wis: 10, cha: 6 } };
   const [form, setForm] = React.useState(blank);
@@ -231,7 +231,7 @@ const ShadowAddForm: React.FC<ShadowAddFormProps> = ({ characterId, onCreated, s
 
   const handleSubmit = async () => {
     setSaving(true);
-    try { await shadowAPI.createShadow(characterId, form); setForm(blank); setOpen(false); onCreated(); }
+    try { const newShadow = await shadowAPI.createShadow(characterId, form); setForm(blank); setOpen(false); onCreated(newShadow); }
     catch (e: any) { console.error('Create shadow error', e); }
     finally { setSaving(false); }
   };
@@ -281,6 +281,34 @@ const ShadowAddForm: React.FC<ShadowAddFormProps> = ({ characterId, onCreated, s
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: '0.4rem', marginBottom: '1rem' }}>
         {['str','dex','con','int','wis','cha'].map(s => abInp(s))}
+      </div>
+      {/* Shadow Image */}
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Shadow Image</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <img
+            src={pendingImagePreview || '/images/ShadowBase.jpg'}
+            alt="Shadow preview"
+            style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(139,92,246,0.4)' }}
+            onError={(e) => { (e.target as HTMLImageElement).src = '/images/ShadowBase.jpg'; }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
+              input.onchange = (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (file) { const url = URL.createObjectURL(file); onRequestCrop(file, url); }
+              };
+              input.click();
+            }}
+            style={{ padding: '5px 12px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '6px', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.8rem' }}
+          >
+            {pendingImagePreview ? 'Change Image' : 'Upload Image'}
+          </button>
+        </div>
       </div>
       <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
         <button onClick={() => setOpen(false)} style={{ padding: '6px 14px', background: 'rgba(107,114,128,0.25)', border: '1px solid rgba(107,114,128,0.4)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}>Cancel</button>
@@ -510,10 +538,12 @@ const CampaignView: React.FC = () => {
 
   // Image cropping state
   const [showImageCropModal, setShowImageCropModal] = useState(false);
-  const [imageToCrop, setImageToCrop] = useState<{ file: File; url: string; characterId: number } | null>(null);
+  const [imageToCrop, setImageToCrop] = useState<{ file: File; url: string; characterId: number; mode?: 'character' | 'shadow_pending' } | null>(null);
   const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
   const [imageScale, setImageScale] = useState(100);
   const [imageLoadError, setImageLoadError] = useState<Record<number, boolean>>({});
+  const [pendingShadowImageFile, setPendingShadowImageFile] = useState<File | null>(null);
+  const [pendingShadowImagePreview, setPendingShadowImagePreview] = useState<string | null>(null);
 
   // NPC state
   const [campaignNPCs, setCampaignNPCs] = useState<CampaignNPC[]>([]);
@@ -614,6 +644,8 @@ const CampaignView: React.FC = () => {
     isBeast?: boolean;
     isPet?: boolean;
     petId?: number;
+    isShadow?: boolean;
+    shadowId?: number;
     ownerId?: number;
   }>>([]);
   const [initiativeOrder, setInitiativeOrder] = useState<(number | string)[]>([]);
@@ -3148,6 +3180,8 @@ const CampaignView: React.FC = () => {
           isBeast?: boolean;
           isPet?: boolean;
           petId?: number;
+          isShadow?: boolean;
+          shadowId?: number;
           ownerId?: number;
         }>;
         initiativeOrder: (number | string)[];
@@ -7613,7 +7647,11 @@ const CampaignView: React.FC = () => {
                       : (deathSaves[Number(combatant.characterId)]?.is_dead ?? false);
                     
                     const petTemplate = combatant.isPet ? campaignPets.find(p => p.id === combatant.petId) : null;
-                    const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url || petTemplate?.image_url);
+                    const shadowTemplate = combatant.isShadow
+                      ? (Object.values(characterShadows) as Shadow[][]).flat().find((s: Shadow) => s.id === combatant.shadowId)
+                      : null;
+                    const shadowImageSrc = combatant.isShadow ? (shadowTemplate?.image_url || '/images/ShadowBase.jpg') : undefined;
+                    const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url || petTemplate?.image_url || shadowImageSrc);
                     
                     // Invisibility — monsters hide entirely from non-DMs; players show faded
                     const tokenConditions = combatConditions[String(combatant.characterId)] ?? [];
@@ -13958,6 +13996,7 @@ const CampaignView: React.FC = () => {
                 {/* Shadows Tab */}
                 {activeTab === 'shadows' && canViewAllTabs(selectedCharacterData.id) && shouldShowShadowsTab(selectedCharacterData) && (() => {
                   const isDM = user?.role === 'Dungeon Master';
+                  const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
                   const shadows = characterShadows[selectedCharacterData.id] ?? [];
                   const conMod = Math.max(0, Math.floor(((selectedCharacterData.abilities?.con ?? 10) - 10) / 2));
                   const maxActive = conMod;
@@ -13987,9 +14026,24 @@ const CampaignView: React.FC = () => {
                         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
                           <ShadowAddForm
                             characterId={selectedCharacterData.id}
-                            onCreated={() => loadShadows(selectedCharacterData.id)}
+                            onCreated={async (newShadow) => {
+                              if (pendingShadowImageFile && newShadow) {
+                                try { await shadowAPI.uploadShadowImage(newShadow.id, pendingShadowImageFile); }
+                                catch (e) { console.error('Shadow image upload error', e); }
+                                setPendingShadowImageFile(null);
+                                if (pendingShadowImagePreview) { URL.revokeObjectURL(pendingShadowImagePreview); setPendingShadowImagePreview(null); }
+                              }
+                              loadShadows(selectedCharacterData.id);
+                            }}
                             storedCount={storedCount}
                             maxStored={maxStored}
+                            onRequestCrop={(file, url) => {
+                              setImageToCrop({ file, url, characterId: 0, mode: 'shadow_pending' });
+                              setShowImageCropModal(true);
+                              setImagePosition({ x: 50, y: 50 });
+                              setImageScale(100);
+                            }}
+                            pendingImagePreview={pendingShadowImagePreview}
                           />
                         </div>
                       )}
@@ -14012,6 +14066,15 @@ const CampaignView: React.FC = () => {
                                 border: `2px solid ${shadow.is_active ? 'rgba(239,68,68,0.4)' : 'rgba(139,92,246,0.3)'}`,
                                 borderRadius: '12px', padding: '1rem', position: 'relative'
                               }}>
+                                {/* Shadow portrait */}
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
+                                  <img
+                                    src={shadow.image_url ? `${API_BASE}${shadow.image_url}` : '/images/ShadowBase.jpg'}
+                                    alt={shadow.shadow_name}
+                                    style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${shadow.is_active ? 'rgba(239,68,68,0.5)' : 'rgba(139,92,246,0.4)'}` }}
+                                    onError={(e) => { (e.target as HTMLImageElement).src = '/images/ShadowBase.jpg'; }}
+                                  />
+                                </div>
                                 {/* Active/Stored badge */}
                                 <span style={{
                                   position: 'absolute', top: '0.75rem', right: '0.75rem',
@@ -16463,22 +16526,32 @@ const CampaignView: React.FC = () => {
                           if (blob) {
                             // Create a new file from the blob
                             const croppedFile = new File([blob], imageToCrop.file.name, { type: 'image/jpeg' });
-                            
-                            // Upload the cropped image
-                            await characterAPI.uploadCharacterImage(imageToCrop.characterId, croppedFile);
-                            
-                            // Clear any image load error for this character
-                            setImageLoadError(prev => ({ ...prev, [imageToCrop.characterId]: false }));
-                            
-                            // Reload campaign to refresh character data
-                            if (campaignName) {
-                              await loadCampaign(campaignName);
+
+                            if (imageToCrop.mode === 'shadow_pending') {
+                              // Store cropped file for shadow creation — upload happens after shadow is created
+                              setPendingShadowImageFile(croppedFile);
+                              if (pendingShadowImagePreview) URL.revokeObjectURL(pendingShadowImagePreview);
+                              setPendingShadowImagePreview(URL.createObjectURL(croppedFile));
+                              setShowImageCropModal(false);
+                              URL.revokeObjectURL(imageToCrop.url);
+                              setImageToCrop(null);
+                            } else {
+                              // Upload the cropped image for character portrait
+                              await characterAPI.uploadCharacterImage(imageToCrop.characterId, croppedFile);
+                              
+                              // Clear any image load error for this character
+                              setImageLoadError(prev => ({ ...prev, [imageToCrop.characterId]: false }));
+                              
+                              // Reload campaign to refresh character data
+                              if (campaignName) {
+                                await loadCampaign(campaignName);
+                              }
+                              
+                              // Close modal and cleanup
+                              setShowImageCropModal(false);
+                              URL.revokeObjectURL(imageToCrop.url);
+                              setImageToCrop(null);
                             }
-                            
-                            // Close modal and cleanup
-                            setShowImageCropModal(false);
-                            URL.revokeObjectURL(imageToCrop.url);
-                            setImageToCrop(null);
                           }
                         }, 'image/jpeg', 0.9);
                       }
@@ -18357,6 +18430,61 @@ const CampaignView: React.FC = () => {
                         {petData.description && (
                           <div style={{ color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(167,139,250,0.15)', paddingTop: '0.75rem' }}>
                             {petData.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* SHADOW layout */}
+                {!detailCharacter && !detailMonster && !detailCombatant.isPet && detailCombatant.isShadow && (() => {
+                  const shadowData = (Object.values(characterShadows) as Shadow[][]).flat().find((s: Shadow) => s.id === detailCombatant.shadowId);
+                  if (!shadowData) return <div style={{ color: '#999', textAlign: 'center', padding: '2rem' }}>Shadow data not found</div>;
+                  const ab = shadowData.abilities || { str: 10, dex: 14, con: 10, int: 6, wis: 10, cha: 6 };
+                  const abilityMod = (v: number) => { const m = Math.floor((v - 10) / 2); return m >= 0 ? `+${m}` : `${m}`; };
+                  const hpPct = shadowData.hit_points_max > 0 ? Math.min(100, (shadowData.hit_points_current / shadowData.hit_points_max) * 100) : 0;
+                  const shadowHealthColor = (pct: number) => pct > 66 ? '#4ade80' : pct > 33 ? '#fbbf24' : '#ef4444';
+                  const shadowImgSrc = shadowData.image_url ? getImageUrl(shadowData.image_url) : '/images/ShadowBase.jpg';
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
+                      {/* Portrait */}
+                      <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(139,92,246,0.4)', background: 'rgba(0,0,0,0.4)', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <img src={shadowImgSrc} alt={shadowData.shadow_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = '/images/ShadowBase.jpg'; }} />
+                      </div>
+                      {/* Stats */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                        {shadowData.origin_name && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Origin: {shadowData.origin_name}</div>}
+                        {/* HP */}
+                        <div style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#c4b5fd', marginBottom: '0.4rem', fontWeight: 'bold' }}>HP</div>
+                          <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '0.3rem' }}>
+                            <div style={{ width: `${hpPct}%`, height: '100%', background: shadowHealthColor(hpPct), borderRadius: '5px' }} />
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: shadowHealthColor(hpPct) }}>{shadowData.hit_points_current}/{shadowData.hit_points_max}</div>
+                        </div>
+                        {/* AC + Speed + Attack */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                          {[['AC', String(shadowData.armor_class)], ['Speed', `${shadowData.speed}ft`], ['Atk', `+${shadowData.attack_bonus}`], ['Dmg', `${shadowData.damage_dice} ${shadowData.damage_type}`]].map(([label, val]) => (
+                            <div key={label} style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: '0.4rem', padding: '0.5rem 0.25rem', textAlign: 'center' }}>
+                              <div style={{ fontSize: '0.6rem', color: '#c4b5fd', fontWeight: 'bold', marginBottom: '0.2rem' }}>{label}</div>
+                              <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Ability scores */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+                          {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(stat => (
+                            <div key={stat} style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: '0.4rem', padding: '0.5rem 0.25rem', textAlign: 'center' }}>
+                              <div style={{ fontSize: '0.6rem', color: '#c4b5fd', fontWeight: 'bold', marginBottom: '0.2rem' }}>{stat.toUpperCase()}</div>
+                              <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#fff', lineHeight: 1 }}>{ab[stat]}</div>
+                              <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '0.15rem' }}>{abilityMod(ab[stat])}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {shadowData.special_abilities && (
+                          <div style={{ color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(139,92,246,0.2)', paddingTop: '0.75rem' }}>
+                            {shadowData.special_abilities}
                           </div>
                         )}
                       </div>

@@ -1,7 +1,32 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { pool } = require('../models/database');
 const { authenticateToken } = require('../middleware/auth');
+
+// ── Image upload config ────────────────────────────────────────────────────
+const shadowStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../uploads/shadows');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const suffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, 'shadow-' + suffix + path.extname(file.originalname));
+  },
+});
+
+const shadowUpload = multer({
+  storage: shadowStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /jpeg|jpg|png|gif|webp|avif/.test(path.extname(file.originalname).toLowerCase());
+    cb(ok ? null : new Error('Only image files are allowed'), ok);
+  },
+});
 
 const parseShadow = (s) => ({
   ...s,
@@ -204,12 +229,47 @@ router.delete('/:characterId/:shadowId', authenticateToken, async (req, res) => 
   try {
     if (req.user.role !== 'Dungeon Master') return res.status(403).json({ error: 'DM only' });
     const { shadowId } = req.params;
+    // Clean up image file if present
+    const existing = await pool.query('SELECT image_url FROM character_shadows WHERE id = $1', [shadowId]);
+    if (existing.rows.length > 0 && existing.rows[0].image_url) {
+      const filePath = path.join(__dirname, '../uploads/shadows', path.basename(existing.rows[0].image_url));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
     await pool.query('DELETE FROM character_shadows WHERE id = $1', [shadowId]);
     await emitShadowsUpdated(req, req.params.characterId);
     res.json({ message: 'Shadow deleted' });
   } catch (error) {
     console.error('Error deleting shadow:', error);
     res.status(500).json({ error: 'Failed to delete shadow' });
+  }
+});
+
+// POST /:shadowId/image — upload shadow image (DM only)
+router.post('/:shadowId/image', authenticateToken, shadowUpload.single('image'), async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') return res.status(403).json({ error: 'DM only' });
+    const { shadowId } = req.params;
+    if (!req.file) return res.status(400).json({ error: 'No image file provided' });
+
+    const existing = await pool.query('SELECT image_url, character_id FROM character_shadows WHERE id = $1', [shadowId]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Shadow not found' });
+
+    // Remove old image file if present
+    if (existing.rows[0].image_url) {
+      const oldFile = path.join(__dirname, '../uploads/shadows', path.basename(existing.rows[0].image_url));
+      if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+    }
+
+    const imageUrl = `/uploads/shadows/${req.file.filename}`;
+    const updated = await pool.query(
+      'UPDATE character_shadows SET image_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [imageUrl, shadowId]
+    );
+    await emitShadowsUpdated(req, existing.rows[0].character_id);
+    res.json({ message: 'Shadow image uploaded', shadow: parseShadow(updated.rows[0]) });
+  } catch (err) {
+    console.error('Error uploading shadow image:', err);
+    res.status(500).json({ error: 'Failed to upload shadow image' });
   }
 });
 

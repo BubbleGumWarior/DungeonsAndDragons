@@ -339,6 +339,8 @@ const startServer = async () => {
         { name: 'addCampaignScores', fn: require('./migrations/add_campaign_scores') },
         { name: 'addTempLimbHealth', fn: require('./migrations/add_temp_limb_health') },
         { name: 'addCampaignNpcs', fn: require('./migrations/add_campaign_npcs') },
+        { name: 'addShadowCombatColumns', fn: require('./migrations/add_shadow_combat_columns') },
+        { name: 'addShadowImageUrl', fn: require('./migrations/add_shadow_image_url') },
       ];
       
       for (const migration of migrations) {
@@ -448,6 +450,8 @@ const startServer = async () => {
                   'is_beast',           cc.is_beast,
                   'is_pet',             cc.is_pet,
                   'pet_id',             cc.pet_id,
+                  'is_shadow',          cc.is_shadow,
+                  'shadow_id',          cc.shadow_id,
                   'owner_character_id', cc.owner_character_id,
                   'position_x',         cc.position_x,
                   'position_y',         cc.position_y
@@ -475,6 +479,8 @@ const startServer = async () => {
         isBeast: c.is_beast,
         isPet: c.is_pet,
         petId: c.pet_id,
+        isShadow: c.is_shadow,
+        shadowId: c.shadow_id,
         ownerId: c.owner_character_id,
       }));
       const validKeys = (session.initiative_order || []).filter(Boolean);
@@ -1325,6 +1331,51 @@ const startServer = async () => {
             } catch (petErr) {
               console.error('Error adding battle pets to combat:', petErr);
             }
+          }
+
+          // Active shadows — auto-join combat (DM-controlled, own initiative)
+          try {
+            const shadowResult = await pool.query(
+              'SELECT * FROM character_shadows WHERE character_id = $1 AND is_active = TRUE',
+              [characterId]
+            );
+            for (const shadow of shadowResult.rows) {
+              const shadowAbilities = typeof shadow.abilities === 'string' ? JSON.parse(shadow.abilities) : (shadow.abilities || {});
+              const shadowDex = shadowAbilities.dex ?? 10;
+              const shadowDexMod = Math.floor((shadowDex - 10) / 2);
+              const shadowInitiative = Math.floor(Math.random() * 20) + 1 + shadowDexMod;
+              const shadowSpeed = shadow.speed || 30;
+              const shadowKey = `shadow_${shadow.id}`;
+
+              await CombatSession.addCombatant({
+                session_id: session.sessionId,
+                combatant_key: shadowKey,
+                name: `${shadow.shadow_name} (Shadow)`,
+                player_id: null,
+                initiative: shadowInitiative,
+                movement_speed: shadowSpeed,
+                is_shadow: true,
+                shadow_id: shadow.id,
+                owner_character_id: character.id,
+              });
+
+              if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
+              battleMovementState[campaignId][shadowKey] = shadowSpeed;
+
+              session.combatants.push({
+                characterId: shadowKey,
+                playerId: null,
+                name: `${shadow.shadow_name} (Shadow)`,
+                initiative: shadowInitiative,
+                movement_speed: shadowSpeed,
+                isShadow: true,
+                shadowId: shadow.id,
+                ownerId: character.id,
+              });
+              console.log(`🌑 Shadow "${shadow.shadow_name}" added to combat (initiative: ${shadowInitiative})`);
+            }
+          } catch (shadowErr) {
+            console.error('Error adding shadows to combat:', shadowErr);
           }
 
           // Sort initiative order
