@@ -481,7 +481,6 @@ const CampaignView: React.FC = () => {
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
 
   // Kingdom state
-  const [kingdoms, setKingdoms] = useState<Kingdom[]>([]);
   const [hasKingdomAccess, setHasKingdomAccess] = useState(false);
   const [pendingKingdomId, setPendingKingdomId] = useState<number | null>(null);
   const [kingdomNameInput, setKingdomNameInput] = useState('');
@@ -1331,12 +1330,8 @@ const CampaignView: React.FC = () => {
       if (currentCampaign) {
         try {
           const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
-          setKingdoms(fetched);
           if (user && fetched.some(k => Number(k.player_id) === Number(user.id))) {
             setHasKingdomAccess(true);
-            // Immediately load full details for the player's own kingdom
-            const myKingdom = fetched.find(k => Number(k.player_id) === Number(user.id));
-
           }
         } catch (error) {
           console.error('Error loading kingdoms:', error);
@@ -4031,38 +4026,21 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('kingdomActivated', (data: { kingdom: Kingdom }) => {
         console.log('👑 [kingdomActivated] received:', data, '| current user id:', user?.id);
-        // Reload full kingdoms list (includes fiefs)
-        if (currentCampaign) {
-          kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
-            .then(fetched => setKingdoms(fetched))
-            .catch(() => {});
-        }
         if (user && Number(data.kingdom.player_id) === Number(user.id)) {
           setHasKingdomAccess(true);
         }
       });
 
-      newSocket.on('kingdomDataChanged', (data: { campaignId: number; kingdomId?: number }) => {
-        if (!currentCampaign || Number(data.campaignId) !== Number(currentCampaign.campaign.id)) return;
-        kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
-          .then(fetched => setKingdoms(fetched))
-          .catch(() => {});
-
+      newSocket.on('kingdomDataChanged', (_data: { campaignId: number; kingdomId?: number }) => {
+        // reserved for future kingdom tab
       });
 
-      newSocket.on('kingdomDeleted', (data: { campaignId: number; kingdomId: number }) => {
-        if (!currentCampaign || Number(data.campaignId) !== Number(currentCampaign.campaign.id)) return;
-        setKingdoms(prev => prev.filter(k => k.id !== data.kingdomId));
+      newSocket.on('kingdomDeleted', (_data: { campaignId: number; kingdomId: number }) => {
+        // reserved for future kingdom tab
       });
 
       newSocket.on('dayAdvanced', (data: AdvanceDaysSummary & { campaignId: number }) => {
         setCurrentDay(data.newDay);
-        // Refresh kingdoms list and all loaded kingdom details
-        if (currentCampaign) {
-          kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
-            .then(fetched => setKingdoms(fetched))
-            .catch(() => {});
-        }
       });
 
       // Listen for NPC reveals
@@ -20561,9 +20539,6 @@ const CampaignView: React.FC = () => {
                     const days = restType === 'short' ? 0 : restType === 'long' ? 1 : customRestDays;
                     const summary = await campaignAPI.advanceDays(currentCampaign.campaign.id, days, restType);
                     setCurrentDay(summary.newDay);
-                    // Refresh kingdoms
-                    const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
-                    setKingdoms(fetched);
                     // Build toast
                     const parts: string[] = [];
                     if (restType !== 'short') parts.push(`Advanced to Day ${summary.newDay}`);
