@@ -341,6 +341,7 @@ const startServer = async () => {
         { name: 'addCampaignNpcs', fn: require('./migrations/add_campaign_npcs') },
         { name: 'addShadowCombatColumns', fn: require('./migrations/add_shadow_combat_columns') },
         { name: 'addShadowImageUrl', fn: require('./migrations/add_shadow_image_url') },
+        { name: 'dropKingdomTables', fn: require('./migrations/drop_kingdom_tables') },
       ];
       
       for (const migration of migrations) {
