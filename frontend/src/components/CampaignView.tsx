@@ -1336,11 +1336,7 @@ const CampaignView: React.FC = () => {
             setHasKingdomAccess(true);
             // Immediately load full details for the player's own kingdom
             const myKingdom = fetched.find(k => Number(k.player_id) === Number(user.id));
-            if (myKingdom) {
-              kingdomAPI.getKingdomDetails(myKingdom.id)
-                .then(details => setKingdomDetails(prev => ({ ...prev, [myKingdom.id]: details })))
-                .catch(() => {});
-            }
+
           }
         } catch (error) {
           console.error('Error loading kingdoms:', error);
@@ -4041,10 +4037,6 @@ const CampaignView: React.FC = () => {
             .then(fetched => setKingdoms(fetched))
             .catch(() => {});
         }
-        // Load full details for this kingdom (buildings, events, etc.)
-        kingdomAPI.getKingdomDetails(data.kingdom.id)
-          .then(details => setKingdomDetails(prev => ({ ...prev, [data.kingdom.id]: details })))
-          .catch(() => {});
         if (user && Number(data.kingdom.player_id) === Number(user.id)) {
           setHasKingdomAccess(true);
         }
@@ -4055,18 +4047,12 @@ const CampaignView: React.FC = () => {
         kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
           .then(fetched => setKingdoms(fetched))
           .catch(() => {});
-        if (data.kingdomId) {
-          kingdomAPI.getKingdomDetails(data.kingdomId)
-            .then(details => setKingdomDetails(prev => ({ ...prev, [data.kingdomId!]: details })))
-            .catch(() => {});
-        }
+
       });
 
       newSocket.on('kingdomDeleted', (data: { campaignId: number; kingdomId: number }) => {
         if (!currentCampaign || Number(data.campaignId) !== Number(currentCampaign.campaign.id)) return;
         setKingdoms(prev => prev.filter(k => k.id !== data.kingdomId));
-        setKingdomDetails(prev => { const next = { ...prev }; delete next[data.kingdomId]; return next; });
-        setExpandedKingdomId(prev => prev === data.kingdomId ? null : prev);
       });
 
       newSocket.on('dayAdvanced', (data: AdvanceDaysSummary & { campaignId: number }) => {
@@ -4074,15 +4060,7 @@ const CampaignView: React.FC = () => {
         // Refresh kingdoms list and all loaded kingdom details
         if (currentCampaign) {
           kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id)
-            .then(fetched => {
-              setKingdoms(fetched);
-              // Refresh full details for every kingdom already in detail cache
-              fetched.forEach(k => {
-                kingdomAPI.getKingdomDetails(k.id)
-                  .then(details => setKingdomDetails(prev => ({ ...prev, [k.id]: details })))
-                  .catch(() => {});
-              });
-            })
+            .then(fetched => setKingdoms(fetched))
             .catch(() => {});
         }
       });
