@@ -2,9 +2,9 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, fiefAPI, kingdomEventAPI, kingdomActionAPI, Fief, FiefBuilding, FiefTraining, FiefGarrison, FiefEventLogEntry, KingdomResources, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
-import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS, isTemplateUnlocked } from '../utils/unitTemplates';
+import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
@@ -124,100 +124,7 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
 const getCityImageFilename = (cityName: string): string =>
   cityName.replace(/'/g, '').replace(/\s+/g, '_');
 
-// ── Kingdom Building Catalogue ────────────────────────────────────────────────
-interface BuildingCatalogueEntry {
-  id: string; name: string; icon: string; minFiefTier: number; maxLevel: number;
-  baseConstructionDays: number; baseCost: Partial<KingdomResources>;
-  baseOutput: Record<string, number>; description: string;
-}
-declare type KRC = Partial<KingdomResources>;
-const BC = (id: string, name: string, icon: string, tier: number, ml: number, days: number, cost: KRC, output: Record<string, number>, desc: string): BuildingCatalogueEntry =>
-  ({ id, name, icon, minFiefTier: tier, maxLevel: ml, baseConstructionDays: days, baseCost: cost, baseOutput: output, description: desc });
 
-const BUILDING_CATALOGUE: BuildingCatalogueEntry[] = [
-  // Tier 1 — Camp
-  BC('campfire',       'Campfire',       '🔥', 1, 3,  2,  { wood: 8 },                        { food: 3 },            'A simple fire pit. Keeps the camp warm and fed.'),
-  BC('basic_storage',  'Basic Storage',  '📦', 1, 3,  3,  { wood: 15 },                       {},                     'Stores supplies. Base cap scales with fief tier. Lv1: +100 · Lv2: +200 · Lv3: +400 bonus cap.'),
-  BC('housing',        'Housing',        '🏠', 1, 5,  4,  { wood: 20 },                       { pop_cap: 15 },        'Shelter for your people. Each level raises pop cap by 15. Lv1: Tents · Lv2: Hovels · Lv3: Cottages · Lv4: Houses · Lv5: Townhouses'),
-  BC('watchtower',     'Watchtower',     '🗼', 1, 3,  4,  { wood: 20 },                       {},                     'Raised platform to watch for danger. +Military.'),
-  BC('hunting_ground', 'Hunting Ground', '🏹', 1, 3,  3,  { wood: 10 },                       { food: 8 },            'Designated hunting area. Strong food supply.'),
-  // Tier 2 — Hamlet
-  BC('research_lab',   'Research Lab',   '🔬', 2, 5,  8,  { wood: 40, gold: 60 },             { research: 5 },        'Scholars study the land. Enables building research. Required to research any upgrade.'),
-  BC('chapel',         'Chapel',         '⛪', 2, 5,  6,  { wood: 50, gold: 80 },             {},                     'A small chapel. Slowly grows community faith.'),
-  BC('farm',           'Farm',           '🌾', 2, 5,  8,  { wood: 60, gold: 40 },             { food: 15 },           'Basic farmland producing steady food output.'),
-  BC('lumber_camp',    'Lumber Camp',    '🪵', 2, 5,  7,  { wood: 40, gold: 30 },             { wood: 15 },           'A camp of woodcutters harvesting the forest.'),
-  BC('basic_mine',     'Basic Mine',     '⛏️', 2, 5, 10,  { wood: 55, gold: 80 },             { stone: 12 },          'Shallow mine extracting stone and ore.'),
-  BC('tavern',         'Tavern',         '🍺', 2, 5,  7,  { wood: 80, gold: 120 },            { gold: 10 },           'A busy tavern bringing coin to the hamlet.'),
-  // Tier 3 — Small Village
-  BC('blacksmith',     'Blacksmith',     '🔨', 3, 5, 12,  { wood: 120, stone: 80, gold: 180 },  {},                    'Smithy forging tools and weapons.'),
-  BC('market_stall',   'Market Stall',   '🛒', 3, 5,  9,  { wood: 100, gold: 160 },           { gold: 25 },           'Small market generating trade income.'),
-  BC('barracks',       'Barracks',       '⚔️', 3, 5, 13,  { wood: 120, stone: 80, gold: 220 }, {},                    'Training ground improving military strength.'),
-  BC('mill',           'Mill',           '⚙️', 3, 5, 11,  { wood: 150, stone: 60, gold: 120 }, { food: 20 },          'Mill improving grain processing efficiency.'),
-  // Tier 4 — Village
-  BC('ore_mine',       'Ore Mine',       '🪨', 4, 5, 16,  { wood: 200, gold: 280 },           { stone: 30 },          'Deep mine extracting rich stone and ore deposits.'),
-  BC('stable',         'Stable',         '🐴', 4, 5, 12,  { wood: 140, gold: 200 },           {},                     'Horses and mounts for the village militia.'),
-  BC('school',         'School',         '📚', 4, 4, 14,  { wood: 160, gold: 280 },           {},                     'Education improving the local economy.'),
-  BC('shrine',         'Shrine',         '🕍', 4, 4,  9,  { stone: 100, gold: 160 },          {},                     'A place of worship improving stability.'),
-  // Tier 5 — Large Village
-  BC('workshop',       'Workshop',       '🔧', 5, 5, 15,  { stone: 160, wood: 120, gold: 320 }, { gold: 40 },          'Craftsmen producing goods for trade.'),
-  BC('inn',            'Inn',            '🏨', 5, 5, 14,  { wood: 200, gold: 350 },           { gold: 35 },           'A comfortable inn attracting travelers and coin.'),
-  BC('library',        'Library',        '📖', 5, 4, 16,  { wood: 160, stone: 100, gold: 400 }, {},                    'Repository of knowledge boosting the economy.'),
-  BC('guard_post',     'Guard Post',     '💂', 5, 4, 11,  { stone: 130, gold: 240 },          {},                     'A guardhouse improving town stability.'),
-  BC('thieves_guild',  'Thieves Guild',  '🗡️', 5, 4, 18,  { wood: 100, gold: 400 },           {},                     'A hidden guild of rogues and spies. Unlocks covert unit training.'),
-  BC('siege_workshop', 'Siege Workshop', '⚙️', 5, 4, 22,  { wood: 200, stone: 160, gold: 500 }, {},                   'Workshop for constructing siege weapons.'),
-  // Tier 6 — Small Town
-  BC('bank',           'Bank',           '🏦', 6, 5, 18,  { stone: 250, gold: 650 },          { gold: 60 },           'A bank generating substantial gold income.'),
-  BC('alchemist',      'Alchemist',      '⚗️', 6, 4, 14,  { stone: 160, gold: 400 },          { gold: 30 },           'Alchemist lab producing valuable reagents.'),
-  BC('armoury',        'Armoury',        '🛡️', 6, 5, 16,  { stone: 200, gold: 500 },          {},                     'Armoury stocking military equipment.'),
-  BC('mason',          'Mason',          '🪚', 6, 5, 13,  { gold: 330, stone: 70 },           { stone: 50 },          'Skilled masons extracting and shaping stone.'),
-  BC('monastery',      'Monastery',      '🛕', 6, 4, 18,  { stone: 250, gold: 580 },          {},                     'A monastery of devoted monks. Greatly grows faith.'),
-  BC('foundry',        'Foundry',        '🔥', 6, 3, 22,  { stone: 300, gold: 650 },          {},                     'An ironworks foundry for advanced siege weapons.'),
-  // Tier 7 — Town
-  BC('castle_walls',   'Castle Walls',   '🏰', 7, 3, 35,  { stone: 800, gold: 650 },          {},                     'Towering walls protecting the settlement.'),
-  BC('cathedral',      'Cathedral',      '⛪', 7, 3, 28,  { stone: 500, gold: 560 },          {},                     'Grand cathedral inspiring stability and devotion.'),
-  BC('academy',        'Academy',        '🎓', 7, 4, 24,  { stone: 300, wood: 200, gold: 720 }, {},                   'Major academy producing scholars and leaders.'),
-  BC('docks',          'Docks',          '⚓', 7, 5, 26,  { wood: 500, stone: 200, gold: 500 }, { gold: 80, food: 30 },'Docks enabling maritime trade.'),
-  BC('shadow_order',   'Shadow Order',   '🌑', 7, 3, 30,  { stone: 400, gold: 800 },          {},                     'A secretive guild of assassins. Unlocks Assassin unit training.'),
-  // Tier 8 — Large Town
-  BC('keep',           'Keep',           '🏯', 8, 3, 40,  { stone: 1200, gold: 1000 },        {},                     'A fortified keep providing strong military.'),
-  BC('grand_market',   'Grand Market',   '🏪', 8, 5, 22,  { stone: 400, gold: 1000 },         { gold: 100 },          'Bustling grand market generating high income.'),
-  BC('mage_tower',     'Mage Tower',     '🧙', 8, 4, 28,  { stone: 500, gold: 1050 },         {},                     'Tower of arcane study boosting economy.'),
-  BC('hospital',       'Hospital',       '🏥', 8, 4, 22,  { stone: 350, gold: 750 },          {},                     'Medical facility improving stability and growth.'),
-  // Tier 9 — City
-  BC('palace',         'Palace',         '🏛️', 9, 3, 50,  { stone: 1600, gold: 2400 },        {},                     'A royal palace symbolising power and prosperity.'),
-  BC('colosseum',      'Colosseum',      '🏟️', 9, 3, 40,  { stone: 1200, gold: 1600 },        { gold: 60 },           'Entertainment arena drawing crowds and gold.'),
-  BC('university',     'University',     '🏫', 9, 4, 35,  { stone: 1000, gold: 2000 },        {},                     'Major university advancing the city\'s economy.'),
-  BC('grand_cathedral','Grand Cathedral','⛩️', 9, 3, 35,  { stone: 1200, gold: 1500 },        {},                     'Magnificent cathedral boosting city stability.'),
-  // Tier 10 — Citadel
-  BC('citadel_fortress','Citadel Fortress','🗼',10,3, 70,  { stone: 2500, gold: 4000 },        {},                     'Impenetrable fortress protecting the citadel.'),
-  BC('royal_academy',  'Royal Academy',  '👑', 10, 3, 55,  { stone: 1500, gold: 3500 },        {},                     'The pinnacle of scholarship.'),
-  BC('imperial_mint',  'Imperial Mint',  '💰', 10, 3, 45,  { stone: 1000, gold: 3000 },        { gold: 150 },          'Minting coins for the entire realm.'),
-  BC('grand_armory',   'Grand Armory',   '⚔️', 10, 3, 55,  { stone: 2000, gold: 3200 },        {},                     'Legendary armoury supplying the finest weapons.'),
-];
-
-const DISASTER_CATALOGUE = [
-  // Natural
-  { id: 'tornado',         name: 'Tornado',         icon: '🌪️', category: 'Natural',     description: 'Destroys 2 random buildings.' },
-  { id: 'flood',           name: 'Flood',           icon: '🌊', category: 'Natural',     description: 'Food and wood reduced by 50%.' },
-  { id: 'earthquake',      name: 'Earthquake',      icon: '💥', category: 'Natural',     description: 'Destroys Walls/Watchtower if present.' },
-  { id: 'drought',         name: 'Drought',         icon: '☀️', category: 'Natural',     description: 'Food reduced by 60%.' },
-  { id: 'wildfire',        name: 'Wildfire',        icon: '🔥', category: 'Natural',     description: 'Destroys Lumber Camp or Farm, wood -70%.' },
-  // Social
-  { id: 'famine',          name: 'Famine',          icon: '💀', category: 'Social',      description: 'Population -20%, food -80%.' },
-  { id: 'plague',          name: 'Plague',          icon: '🦠', category: 'Social',      description: 'Population -30%, stability -3.' },
-  { id: 'rebel_uprising',  name: 'Rebel Uprising',  icon: '⚔️', category: 'Social',      description: 'Military -3, stability -4, gold -40%.' },
-  { id: 'tax_revolt',      name: 'Tax Revolt',      icon: '💸', category: 'Social',      description: 'Economy -3, gold -60%.' },
-  // Magical
-  { id: 'dragon_attack',   name: 'Dragon Attack',   icon: '🐉', category: 'Magical',     description: 'Destroys 2 buildings, population -15%, gold -50%.' },
-  { id: 'curse',           name: 'Curse',           icon: '🔮', category: 'Magical',     description: 'All stats -2.' },
-  { id: 'undead_invasion', name: 'Undead Invasion', icon: '💀', category: 'Magical',     description: 'Military -5, population -25%.' },
-  // Environmental
-  { id: 'blight',          name: 'Blight',          icon: '🍂', category: 'Environmental', description: 'Farm food output reduced 50% for 5 days.' },
-  { id: 'rockslide',       name: 'Rockslide',       icon: '🪨', category: 'Environmental', description: 'Destroys Mine or Ore Mine if present.' },
-  { id: 'storm',           name: 'Storm',           icon: '⛈️', category: 'Environmental', description: 'Gold -50% if Docks present.' },
-];
-
-const TIER_NAMES = ['', 'Camp', 'Hamlet', 'Small Village', 'Village', 'Large Village', 'Small Town', 'Town', 'Large Town', 'City', 'Citadel'];
 
 // ─── Shadow helper components (need local useState, so defined outside CampaignView) ───
 
@@ -576,48 +483,11 @@ const CampaignView: React.FC = () => {
   // Kingdom state
   const [kingdoms, setKingdoms] = useState<Kingdom[]>([]);
   const [hasKingdomAccess, setHasKingdomAccess] = useState(false);
-  const [showGrantKingdomModal, setShowGrantKingdomModal] = useState(false);
   const [pendingKingdomId, setPendingKingdomId] = useState<number | null>(null);
   const [kingdomNameInput, setKingdomNameInput] = useState('');
 
-  // Kingdom detail / UI state
-  const [kingdomDetails, setKingdomDetails] = useState<Record<number, Kingdom>>({});
-  const [expandedKingdomId, setExpandedKingdomId] = useState<number | null>(null);
-  const [selectedFiefId, setSelectedFiefId] = useState<number | null>(null);
-  const [fiefEventLogs, setFiefEventLogs] = useState<Record<number, FiefEventLogEntry[]>>({});
-  const [showAddFiefModal, setShowAddFiefModal] = useState(false);
-  const [newFiefName, setNewFiefName] = useState('');
-  const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
-  const [showAddEventModal, setShowAddEventModal] = useState(false);
-  const [showAddActionModal, setShowAddActionModal] = useState(false);
-  const [showDisasterModal, setShowDisasterModal] = useState(false);
-  const [showPositiveEventModal, setShowPositiveEventModal] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [showGarrisonModal, setShowGarrisonModal] = useState(false);
-  const [garrisonTrainUnit, setGarrisonTrainUnit] = useState<string | null>(null);
-  const [garrisonTrainCount, setGarrisonTrainCount] = useState<string>('5');
-  const [garrisonTrainLinkedArmy, setGarrisonTrainLinkedArmy] = useState<number | null>(null);
-  const [garrisonNewArmyName, setGarrisonNewArmyName] = useState<string>('');
-  // DnD garrison transfer state (replaces old click-based withdraw/deposit/recall states)
-  const [garrisonPendingTransfer, setGarrisonPendingTransfer] = useState<{
-    direction: 'to_army' | 'to_garrison';
-    unitKey: string;
-    armyId: number;
-    maxCount: number;
-    amt: string;
-  } | null>(null);
-  const [garrisonDragOver, setGarrisonDragOver] = useState<string | null>(null); // 'garrison' or army-id string
-  const [cancelJobId, setCancelJobId] = useState<number | null>(null);
-  // Sub-tab state for fief detail panel
-  const [activeFiefSubTab, setActiveFiefSubTab] = useState<'overview' | 'workers' | 'buildings' | 'research' | 'events' | 'log'>('overview');
-  const [editResourceKey, setEditResourceKey] = useState<string | null>(null);
-  const [editResourceVal, setEditResourceVal] = useState<string>('');
   const [setTroopsArmyId, setSetTroopsArmyId] = useState<number | null>(null);
   const [setTroopsVal, setSetTroopsVal] = useState<string>('');
-  const [upgradeConfirmLoading, setUpgradeConfirmLoading] = useState(false);
-  const [newEventData, setNewEventData] = useState({ title: '', description: '', event_type: 'announcement', severity: 'low' });
-  const [newActionData, setNewActionData] = useState({ title: '', description: '', action_type: '' });
-  const [selectedBuildingCatalogueId, setSelectedBuildingCatalogueId] = useState<string | null>(null);
 
   // Rest modal state
   const [showRestModal, setShowRestModal] = useState(false);
