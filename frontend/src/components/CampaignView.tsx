@@ -10622,9 +10622,6 @@ const CampaignView: React.FC = () => {
                 const hasGrainFarm = completedBuildings.some(b => b.building_type === 'grain_farm');
                 const storageTentCount = completedBuildings.filter(b => b.building_type === 'storage_tent').length;
                 const effectiveStorageCap = (fief.storage_capacity ?? 100) + storageTentCount * 50;
-                const builderCount = isWorkerEdit
-                  ? (workerEdits.builders ?? (wa as any).builders ?? 1)
-                  : ((wa as any).builders ?? 1);
 
                 // Food balance (per day)
                 const liveWa = (workerFiefId === fief.id ? workerEdits : wa) as Record<string, number>;
@@ -14164,40 +14161,6 @@ const CampaignView: React.FC = () => {
                   const isOwner = selectedCharacterData.player_id === user?.id;
                   const isDM = user?.role === 'Dungeon Master';
                   const canEdit = isOwner;
-
-                  const saveNote = (noteId: number | null, title: string, content: string) => {
-                    const token = localStorage.getItem('token');
-                    if (noteId === null) {
-                      fetch(`/api/characters/${charId}/notes`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ title, content }),
-                      })
-                        .then(r => r.json())
-                        .then(data => {
-                          if (!data.note) { console.error('Save note failed:', data); return; }
-                          setCharacterNotes(prev => ({ ...prev, [charId]: [data.note, ...(prev[charId] ?? [])] }));
-                          setNoteEditModal(null);
-                        })
-                        .catch(err => console.error('Error saving note:', err));
-                    } else {
-                      fetch(`/api/characters/${charId}/notes/${noteId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ title, content }),
-                      })
-                        .then(r => r.json())
-                        .then(data => {
-                          if (!data.note) { console.error('Update note failed:', data); return; }
-                          setCharacterNotes(prev => ({
-                            ...prev,
-                            [charId]: (prev[charId] ?? []).map(n => n.id === noteId ? data.note : n),
-                          }));
-                          setNoteEditModal(null);
-                        })
-                        .catch(err => console.error('Error updating note:', err));
-                    }
-                  };
 
                   const deleteNote = (noteId: number) => {
                     const token = localStorage.getItem('token');
