@@ -21,6 +21,7 @@ import { CombatLog } from './campaign/CombatLog';
 import { CombatActionsPanel } from './campaign/CombatActionsPanel';
 import ChatPanel from './campaign/ChatPanel';
 import ScoresTab from './campaign/ScoresTab';
+import GoalsTab from './campaign/GoalsTab';
 import GrantKingdomModal from './campaign/GrantKingdomModal';
 import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig, ChatMessage, OutOfCombatRollRequest, CampaignNPC } from '../types/campaignTypes';
 
@@ -514,7 +515,7 @@ const CampaignView: React.FC = () => {
   const [customDiceTarget, setCustomDiceTarget] = useState<number | null>(null);
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
-  const [campaignTab, setCampaignTab] = useState<'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom'>('map');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom' | 'goals'>('map');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
   const [showMobileCharacters, setShowMobileCharacters] = useState(false);
@@ -5470,6 +5471,7 @@ const CampaignView: React.FC = () => {
     { key: 'news', label: 'News', icon: '📰' },
     { key: 'journal', label: 'Journal', icon: '📖' },
     { key: 'encyclopedia', label: 'Encyclopedia', icon: '📚' },
+    { key: 'goals', label: 'Goals', icon: '🎯' },
     ...(showKingdomTab ? [{ key: 'kingdom', label: 'Kingdom', icon: '👑' }] : [])
   ] as const;
 
@@ -5503,7 +5505,6 @@ const CampaignView: React.FC = () => {
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
             ...(shouldShowShadowsTab(selectedCharacterData) ? ['shadows' as const] : []),
             ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : []),
-            ...(user?.role === 'Dungeon Master' ? ['others' as const] : []),
           ] as const)
         : (['board'] as const))
     : ([] as const);
@@ -10579,6 +10580,16 @@ const CampaignView: React.FC = () => {
                   );
                 })()}
               </div>
+            )}
+
+            {/* Kingdom Tab */}
+            {campaignTab === 'goals' && currentCampaign && (
+              <GoalsTab
+                campaignId={currentCampaign.campaign.id}
+                isDungeonMaster={user?.role === 'Dungeon Master'}
+                characters={currentCampaign.characters}
+                socket={socket}
+              />
             )}
 
             {/* Kingdom Tab */}

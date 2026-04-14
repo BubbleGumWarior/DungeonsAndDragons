@@ -17,6 +17,7 @@ const monsterInstanceRoutes = require('./routes/monsterInstances');
 const armyRoutes = require('./routes/armies');
 const skillRoutes = require('./routes/skills');
 const journalsRoutes = require('./routes/journals');
+const goalsRoutes = require('./routes/goals');
 const beastRoutes = require('./routes/beasts');
 const shadowRoutes = require('./routes/shadows');
 const mountRoutes = require('./routes/mounts');
@@ -150,6 +151,7 @@ app.use((req, res, next) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', journalsRoutes);
+app.use('/api/campaigns', goalsRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/monsters', monsterRoutes);
@@ -344,6 +346,7 @@ const startServer = async () => {
         { name: 'addShadowImageUrl', fn: require('./migrations/add_shadow_image_url') },
         { name: 'addAllyCombatant', fn: require('./migrations/add_ally_combatant') },
         { name: 'addCharacterNotes', fn: require('./migrations/add_character_notes') },
+        { name: 'addCampaignGoals', fn: require('./migrations/add_campaign_goals') },
       ];
       
       for (const migration of migrations) {
