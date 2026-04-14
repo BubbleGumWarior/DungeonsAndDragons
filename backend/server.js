@@ -323,6 +323,7 @@ const startServer = async () => {
         { name: 'addResearchSystem', fn: require('./migrations/add_research_system') },
         { name: 'addBuildQueue', fn: require('./migrations/add_build_queue') },
         { name: 'addActiveDisasters', fn: require('./migrations/add_active_disasters') },
+        { name: 'addKingdomTier1Fields', fn: require('./migrations/add_kingdom_tier1_fields') },
         { name: 'addCombatSystem', fn: addCombatSystem },
         { name: 'addCampaignChat', fn: require('./migrations/add_campaign_chat') },
         { name: 'addResistancesToCharacters', fn: require('./migrations/add_resistances_to_characters') },
@@ -341,7 +342,8 @@ const startServer = async () => {
         { name: 'addCampaignNpcs', fn: require('./migrations/add_campaign_npcs') },
         { name: 'addShadowCombatColumns', fn: require('./migrations/add_shadow_combat_columns') },
         { name: 'addShadowImageUrl', fn: require('./migrations/add_shadow_image_url') },
-        { name: 'dropKingdomTables', fn: require('./migrations/drop_kingdom_tables') },
+        { name: 'addAllyCombatant', fn: require('./migrations/add_ally_combatant') },
+        { name: 'addCharacterNotes', fn: require('./migrations/add_character_notes') },
       ];
       
       for (const migration of migrations) {
@@ -1034,7 +1036,7 @@ const startServer = async () => {
       // Invite a player/character to join combat (DM action)
       socket.on('inviteToCombat', async (data) => {
         try {
-          const { campaignId, characterId, targetPlayerId, isMonster } = data;
+          const { campaignId, characterId, targetPlayerId, isMonster, isAlly } = data;
 
           // Get or create a combat session for this campaign
           let session = battleCombatState[campaignId];
@@ -1074,7 +1076,7 @@ const startServer = async () => {
             });
 
             const monsterSpeed = monster.movement_speed || 30;
-            const combatantKey = String(monsterInstance.id);
+            const combatantKey = `monster_${monsterInstance.id}`;
             const combatantName = `${monster.name} #${instanceNumber}`;
 
             // Persist to DB
@@ -1087,6 +1089,7 @@ const startServer = async () => {
               initiative: roll,
               movement_speed: monsterSpeed,
               is_monster: true,
+              is_ally: isAlly ? true : false,
             });
 
             // Update cache
@@ -1100,8 +1103,14 @@ const startServer = async () => {
               initiative: roll,
               movement_speed: monsterSpeed,
               isMonster: true,
+              isAlly: isAlly ? true : false,
               instanceNumber,
             };
+            // Guard against duplicate monster key (e.g. rapid double-add)
+            if (session.combatants.some(c => c.characterId === combatantKey)) {
+              console.warn(`Monster instance ${monsterInstance.id} already in combat for campaign ${campaignId}, skipping duplicate`);
+              return;
+            }
             session.combatants.push(newCombatant);
 
             // Add monster to movement state with a default position so it appears on the map
@@ -1237,6 +1246,12 @@ const startServer = async () => {
             mountId,
             mountCurrentHp,
           };
+
+          // Guard against duplicate player join (double-click / network retry)
+          if (session.combatants.some(c => c.characterId === combatantKey)) {
+            console.warn(`Character ${characterId} already in combat for campaign ${campaignId}, skipping duplicate join`);
+            return;
+          }
           session.combatants.push(newCombatant);
 
           // Beast companion logic for Primal Bond
@@ -1268,6 +1283,9 @@ const startServer = async () => {
                     owner_character_id: character.id,
                   });
                   battleMovementState[campaignId][beastKey] = beastSpeed;
+                  if (session.combatants.some(c => c.characterId === beastKey)) {
+                    console.warn(`Beast companion ${beastKey} already in combat, skipping duplicate`);
+                  } else {
                   session.combatants.push({
                     characterId: beastKey,
                     playerId,
@@ -1277,6 +1295,7 @@ const startServer = async () => {
                     isBeast: true,
                     ownerId: character.id,
                   });
+                  } // end duplicate guard
                   console.log(`🐾 Beast companion ${beastName} added to combat`);
                 }
               }
@@ -1317,6 +1336,10 @@ const startServer = async () => {
                 if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
                 battleMovementState[campaignId][petKey] = petSpeed;
 
+                if (session.combatants.some(c => c.characterId === petKey)) {
+                  console.warn(`Pet ${petKey} already in combat, skipping duplicate`);
+                  continue;
+                }
                 session.combatants.push({
                   characterId: petKey,
                   playerId: null,
@@ -1363,6 +1386,10 @@ const startServer = async () => {
               if (!battleMovementState[campaignId]) battleMovementState[campaignId] = {};
               battleMovementState[campaignId][shadowKey] = shadowSpeed;
 
+              if (session.combatants.some(c => c.characterId === shadowKey)) {
+                console.warn(`Shadow ${shadowKey} already in combat, skipping duplicate`);
+                continue;
+              }
               session.combatants.push({
                 characterId: shadowKey,
                 playerId: null,
@@ -1804,6 +1831,72 @@ const startServer = async () => {
           io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log, timestamp: new Date().toISOString() });
         } catch (error) {
           console.error('Error applying damage:', error);
+        }
+      });
+
+      // Manually adjust a character's health (heal or damage) outside of battle
+      socket.on('manualAdjustHealth', async (data) => {
+        try {
+          const { campaignId, characterId, limbName, amount, isHeal } = data;
+          if (!characterId || !amount || amount <= 0) return;
+
+          const character = await Character.findById(characterId);
+          if (!character) return;
+
+          const hit_points_max = character.hit_points_max ?? character.hit_points ?? 1;
+          const limbMaxes = initCharacterLimbHealth({ ...character, hit_points: hit_points_max });
+
+          let limbHealth = character.limb_health
+            ? (typeof character.limb_health === 'string' ? JSON.parse(character.limb_health) : { ...character.limb_health })
+            : initCharacterLimbHealth(character);
+
+          const allLimbs = ['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
+
+          if (!limbName || limbName === 'all') {
+            // Distribute proportionally across all limbs based on their max-HP ratio
+            const totalMax = allLimbs.reduce((s, l) => s + (limbMaxes[l] || 0), 0) || 1;
+            for (const l of allLimbs) {
+              const share = Math.round(amount * ((limbMaxes[l] || 0) / totalMax));
+              if (isHeal) {
+                limbHealth[l] = Math.min((limbHealth[l] || 0) + share, limbMaxes[l] || 0);
+              } else {
+                limbHealth[l] = Math.max((limbHealth[l] || 0) - share, 0);
+              }
+            }
+          } else {
+            const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
+            if (isHeal) {
+              limbHealth[validLimb] = Math.min((limbHealth[validLimb] || 0) + amount, limbMaxes[validLimb] || 0);
+            } else {
+              limbHealth[validLimb] = Math.max((limbHealth[validLimb] || 0) - amount, 0);
+            }
+          }
+
+          const newHP = Math.max(0, allLimbs.reduce((s, l) => s + (limbHealth[l] || 0), 0));
+          await pool.query(
+            'UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3',
+            [newHP, JSON.stringify(limbHealth), characterId]
+          );
+
+          const limbLabel = !limbName || limbName === 'all' ? 'overall' : limbName.replace(/_/g, ' ');
+          const charName = character.name || `Character ${characterId}`;
+          const toastMessage = isHeal
+            ? `${charName} was healed for ${amount} HP${limbName && limbName !== 'all' ? ` (${limbLabel})` : ''}`
+            : `${charName} took ${amount} damage${limbName && limbName !== 'all' ? ` to their ${limbLabel}` : ''}`;
+
+          io.to(`campaign_${campaignId}`).emit('healthAdjusted', {
+            type: 'character',
+            characterId,
+            newHP,
+            maxHP: hit_points_max,
+            limbHealth,
+            isDead: newHP <= 0,
+            toastMessage,
+            campaignId,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) {
+          console.error('Error in manualAdjustHealth:', error);
         }
       });
 
@@ -3364,9 +3457,16 @@ const startServer = async () => {
 
             if (combatant.character_id) {
               try {
-                const charRow = await pool.query(`SELECT limb_health, hit_points FROM characters WHERE id = $1`, [combatant.character_id]);
+                const charRow = await pool.query(`SELECT limb_health, hit_points, abilities FROM characters WHERE id = $1`, [combatant.character_id]);
                 if (charRow.rows.length > 0) {
-                  let limbHealth = charRow.rows[0].limb_health ?? {};
+                  let limbHealth = charRow.rows[0].limb_health;
+                  // If limb_health is null or empty (character never took limb damage), initialise it
+                  if (!limbHealth || Object.keys(limbHealth).length === 0) {
+                    limbHealth = initCharacterLimbHealth({
+                      hit_points: charRow.rows[0].hit_points,
+                      abilities: charRow.rows[0].abilities,
+                    });
+                  }
                   const currentLimbHp = Number(limbHealth[fallLimb] ?? 0);
                   const newLimbHp = Math.max(0, currentLimbHp - FALL_DAMAGE);
                   limbHealth = { ...limbHealth, [fallLimb]: newLimbHp };

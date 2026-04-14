@@ -67,10 +67,11 @@ const SAVING_THROWS: RollOption[] = [
 ];
 
 const OTHER_ROLLS: RollOption[] = [
-  { label: 'Initiative',  purpose: 'initiative', purposeDetail: 'Initiative',  modifier: 'dex', defaultDice: 'd20' },
-  { label: 'Death Save',  purpose: 'death_save', purposeDetail: 'Death Save',  modifier: 'none', defaultDice: 'd20' },
-  { label: 'Attack Roll', purpose: 'attack',     purposeDetail: 'Attack Roll', modifier: 'none', defaultDice: 'd20' },
-  { label: 'Damage Roll', purpose: 'damage',     purposeDetail: 'Damage Roll', modifier: 'none', defaultDice: 'd6'  },
+  { label: 'Initiative',  purpose: 'initiative',    purposeDetail: 'Initiative',  modifier: 'dex',  defaultDice: 'd20' },
+  { label: 'Death Save',  purpose: 'death_save',    purposeDetail: 'Death Save',  modifier: 'none', defaultDice: 'd20' },
+  { label: 'Attack Roll', purpose: 'attack',        purposeDetail: 'Attack Roll', modifier: 'none', defaultDice: 'd20' },
+  { label: 'Damage Roll', purpose: 'damage',        purposeDetail: 'Damage Roll', modifier: 'none', defaultDice: 'd6'  },
+  { label: 'Custom Roll', purpose: 'ability_check', purposeDetail: 'Custom Roll', modifier: 'none', defaultDice: 'd20' },
 ];
 
 const ABILITY_BADGE: Record<string, string> = {
@@ -78,7 +79,7 @@ const ABILITY_BADGE: Record<string, string> = {
   int: '#818cf8', wis: '#4ade80', cha: '#f472b6', none: '#6b7280',
 };
 
-const DICE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+const DICE_TYPES = ['d2', 'd3', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
 const MESSAGE_STYLES: Record<string, React.CSSProperties> = {
   player: { background: 'rgba(255,255,255,0.04)', borderLeft: '3px solid rgba(255,255,255,0.15)' },
@@ -476,11 +477,24 @@ const ChatPanel: React.FC<Props> = ({
                         style={{ ...selectStyle, width: '42px', flex: 'unset', textAlign: 'center', padding: '3px 4px' }}
                       />
                       <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>×</span>
-                      <select value={grp.diceType}
-                        onChange={e => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: e.target.value } : g))}
-                        style={{ ...selectStyle, width: '62px', flex: 'unset' }}>
-                        {DICE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
+                      {selectedOption?.purposeDetail === 'Custom Roll' ? (
+                        <input
+                          type="text"
+                          value={grp.diceType}
+                          onChange={e => {
+                            const v = e.target.value.trim() || 'd20';
+                            setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: v } : g));
+                          }}
+                          placeholder="d20"
+                          style={{ ...selectStyle, width: '62px', flex: 'unset', textAlign: 'center' }}
+                        />
+                      ) : (
+                        <select value={grp.diceType}
+                          onChange={e => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: e.target.value } : g))}
+                          style={{ ...selectStyle, width: '62px', flex: 'unset' }}>
+                          {DICE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      )}
                       {rollDiceGroups.length > 1 && (
                         <button onClick={() => setRollDiceGroups(prev => prev.filter((_, i) => i !== idx))}
                           style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '3px', color: '#f87171', cursor: 'pointer', fontSize: '0.7rem', padding: '2px 6px', lineHeight: 1 }}>

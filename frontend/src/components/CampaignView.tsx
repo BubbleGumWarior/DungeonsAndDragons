@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, Kingdom, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, fiefAPI, Kingdom, Fief, FiefStoredResources, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -20,6 +21,7 @@ import { CombatLog } from './campaign/CombatLog';
 import { CombatActionsPanel } from './campaign/CombatActionsPanel';
 import ChatPanel from './campaign/ChatPanel';
 import ScoresTab from './campaign/ScoresTab';
+import GrantKingdomModal from './campaign/GrantKingdomModal';
 import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig, ChatMessage, OutOfCombatRollRequest, CampaignNPC } from '../types/campaignTypes';
 
 // Journal Entry Interface
@@ -350,6 +352,127 @@ const ShadowDMControls: React.FC<ShadowDMControlsProps> = ({ shadow, characterId
   );
 };
 
+// ── Note markdown renderer ────────────────────────────────────────────────────
+function renderNoteMarkdown(raw: string): string {
+  if (!raw) return '';
+  const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const applyInline = (s: string) =>
+    s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/_(.+?)_/g, '<em style=\'color:var(--text-gold,#d4c19c)\'>$1</em>');
+  const lines = esc.split('\n');
+  let html = '';
+  let inUl = false;
+  let inOl = false;
+  lines.forEach(line => {
+    if (/^\s*-\s/.test(line)) {
+      if (inOl) { html += '</ol>'; inOl = false; }
+      if (!inUl) { html += '<ul style=\'margin:0.25rem 0 0.25rem 1.25rem;padding:0\'>'; inUl = true; }
+      html += `<li>${applyInline(line.replace(/^\s*-\s/, ''))}</li>`;
+    } else if (/^\s*\d+\.\s/.test(line)) {
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (!inOl) { html += '<ol style=\'margin:0.25rem 0 0.25rem 1.25rem;padding:0\'>'; inOl = true; }
+      html += `<li>${applyInline(line.replace(/^\s*\d+\.\s/, ''))}</li>`;
+    } else {
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (inOl) { html += '</ol>'; inOl = false; }
+      if (line.trim() === '') html += '<div style=\'height:0.4em\'></div>';
+      else html += `<div>${applyInline(line)}</div>`;
+    }
+  });
+  if (inUl) html += '</ul>';
+  if (inOl) html += '</ol>';
+  return html;
+}
+
+// ── Note editor sub-component ─────────────────────────────────────────────────
+interface NoteEditorModalProps {
+  isNew: boolean;
+  initialTitle: string;
+  initialContent: string;
+  onSave: (title: string, content: string) => void;
+  onClose: () => void;
+}
+const NoteEditorModal: React.FC<NoteEditorModalProps> = ({ isNew, initialTitle, initialContent, onSave, onClose }) => {
+  const [title, setTitle] = React.useState(initialTitle);
+  const [content, setContent] = React.useState(initialContent);
+  const taRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const wrapSelection = (prefix: string, suffix: string) => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const { selectionStart: s, selectionEnd: e, value } = ta;
+    const selected = value.slice(s, e) || 'text';
+    const newVal = value.slice(0, s) + prefix + selected + suffix + value.slice(e);
+    setContent(newVal);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(s + prefix.length, s + prefix.length + selected.length);
+    });
+  };
+
+  const prefixLines = (prefix: string, numbered?: boolean) => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const { selectionStart: s, selectionEnd: e, value } = ta;
+    const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+    const lineEnd = e === s
+      ? (value.indexOf('\n', s) === -1 ? value.length : value.indexOf('\n', s))
+      : e;
+    const fullSelected = value.slice(lineStart, lineEnd);
+    let counter = 1;
+    const newLines = fullSelected.split('\n').map(l => {
+      const stripped = l.replace(/^\s*\d+\.\s|^\s*-\s/, '');
+      return (numbered ? `${counter++}. ` : prefix) + stripped;
+    });
+    const replacement = newLines.join('\n');
+    setContent(value.slice(0, lineStart) + replacement + value.slice(lineStart + fullSelected.length));
+    requestAnimationFrame(() => ta.focus());
+  };
+
+  const tbBtn: React.CSSProperties = {
+    padding: '0.25rem 0.6rem', background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px',
+    color: '#cbd5e1', cursor: 'pointer', fontSize: '0.82rem', lineHeight: 1,
+  };
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '0.9rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
+        <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>{isNew ? '📝 New Note' : '✏️ Edit Note'}</h4>
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Title…"
+          autoFocus
+          style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.95rem', outline: 'none' }}
+        />
+        <div style={{ display: 'flex', gap: '0.35rem', padding: '0.4rem 0.55rem', background: 'rgba(0,0,0,0.25)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button style={{ ...tbBtn, fontWeight: 'bold' }} onMouseDown={e => { e.preventDefault(); wrapSelection('**', '**'); }} title="Bold"><strong>B</strong></button>
+          <button style={{ ...tbBtn, fontStyle: 'italic' }} onMouseDown={e => { e.preventDefault(); wrapSelection('_', '_'); }} title="Italic"><em>I</em></button>
+          <div style={{ width: '1px', alignSelf: 'stretch', background: 'rgba(255,255,255,0.12)', margin: '0 0.15rem' }} />
+          <button style={tbBtn} onMouseDown={e => { e.preventDefault(); prefixLines('- '); }} title="Bullet list">• Bullet</button>
+          <button style={tbBtn} onMouseDown={e => { e.preventDefault(); prefixLines('', true); }} title="Numbered list">1. Numbered</button>
+        </div>
+        <textarea
+          ref={taRef}
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          placeholder="Write your note here…"
+          rows={10}
+          style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.88rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit', minHeight: '160px' }}
+        />
+        <div style={{ color: '#475569', fontSize: '0.71rem' }}>Tip: select text then click <strong style={{ color: '#94a3b8' }}>B</strong> / <em style={{ color: '#94a3b8' }}>I</em>. Bullet/Numbered prefixes each selected line.</div>
+        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '0.5rem 1.1rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '0.88rem' }}>Cancel</button>
+          <button onClick={() => onSave(title || 'Untitled', content)} style={{ padding: '0.5rem 1.4rem', background: 'rgba(74,222,128,0.2)', border: '1px solid rgba(74,222,128,0.5)', borderRadius: '6px', color: '#4ade80', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 'bold' }}>💾 Save</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const CampaignView: React.FC = () => {
   const { campaignName } = useParams<{ campaignName: string }>();
   const navigate = useNavigate();
@@ -380,7 +503,15 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others'>('board');
+  const [characterNotes, setCharacterNotes] = useState<{ [charId: number]: { id: number; title: string; content: string; created_at: string }[] }>({});
+  const [notesLoading, setNotesLoading] = useState<{ [charId: number]: boolean }>({});
+  const [noteEditModal, setNoteEditModal] = useState<{ charId: number; note: { id: number; title: string; content: string } | null } | null>(null);
+  const [noteViewModal, setNoteViewModal] = useState<{ title: string; content: string } | null>(null);
+  const [customDiceSides, setCustomDiceSides] = useState(20);
+  const [customDiceCount, setCustomDiceCount] = useState(1);
+  const [customDiceModifier, setCustomDiceModifier] = useState(0);
+  const [customDiceTarget, setCustomDiceTarget] = useState<number | null>(null);
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
   const [campaignTab, setCampaignTab] = useState<'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom'>('map');
@@ -469,6 +600,7 @@ const CampaignView: React.FC = () => {
   // Character skills — declared early because darkness useEffect depends on it
   const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
   const darknessCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const battlefieldDarknessCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [draggedCharacter, setDraggedCharacter] = useState<number | string | null>(null);
   const [draggedArmyParticipant, setDraggedArmyParticipant] = useState<number | null>(null);
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
@@ -484,6 +616,15 @@ const CampaignView: React.FC = () => {
   const [hasKingdomAccess, setHasKingdomAccess] = useState(false);
   const [pendingKingdomId, setPendingKingdomId] = useState<number | null>(null);
   const [kingdomNameInput, setKingdomNameInput] = useState('');
+  const [fiefNameInput, setFiefNameInput] = useState('');
+  const [showGrantKingdomModal, setShowGrantKingdomModal] = useState(false);
+  const [campaignKingdoms, setCampaignKingdoms] = useState<Kingdom[]>([]);
+  const [showBuildModal, setShowBuildModal] = useState(false);
+  const [buildingFiefId, setBuildingFiefId] = useState<number | null>(null);
+  const [workerEdits, setWorkerEdits] = useState<Record<string, number>>({});
+  const [workerFiefId, setWorkerFiefId] = useState<number | null>(null);
+  const [setResourcesFiefId, setSetResourcesFiefId] = useState<number | null>(null);
+  const [setResourcesInput, setSetResourcesInput] = useState<FiefStoredResources>({ wood: 0, stone: 0, minerals: 0, meat: 0, vegetables: 0 });
 
   const [setTroopsArmyId, setSetTroopsArmyId] = useState<number | null>(null);
   const [setTroopsVal, setSetTroopsVal] = useState<string>('');
@@ -516,6 +657,7 @@ const CampaignView: React.FC = () => {
     isShadow?: boolean;
     shadowId?: number;
     ownerId?: number;
+    isAlly?: boolean;
   }>>([]);
   const [initiativeOrder, setInitiativeOrder] = useState<(number | string)[]>([]);
   const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(-1);
@@ -606,6 +748,7 @@ const CampaignView: React.FC = () => {
   const [combatMonsterSearch, setCombatMonsterSearch] = useState('');
   const [combatMonsterSortBy, setCombatMonsterSortBy] = useState<'name' | 'cr' | 'hp' | 'ac'>('name');
   const [combatMonsterSortDir, setCombatMonsterSortDir] = useState<'asc' | 'desc'>('asc');
+  const [combatMonsterAlly, setCombatMonsterAlly] = useState<{ [monsterId: number]: boolean }>({});
 
   // Mount state
   const [campaignMounts, setCampaignMounts] = useState<Mount[]>([]);
@@ -865,104 +1008,204 @@ const CampaignView: React.FC = () => {
 
   // ── Darkness overlay ────────────────────────────────────────────────────────
   // Darkness level narrows vision radius (not fog opacity).
-  // Players: strong fog + clear(er) vision holes around their units.
+  // Players: strong fog + full-clear inner zone + semi-clear partial zone around units.
   // DM:      faded fog + partially revealed zones to visualize unit vision.
+  // Two concentric zones per unit:
+  //   inner (≤ visionRadius)       → fully lit, see everything
+  //   partial (≤ visionRadius × 2)  → dim silhouette zone, see shape but not stats
+  //   outer (> visionRadius × 2)   → full darkness
   useEffect(() => {
     const canvas = darknessCanvasRef.current;
     if (!canvas) return;
 
-    // Always resize canvas to match its CSS dimensions
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    const drawDarknessOverlay = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      // Resize to current CSS dimensions (fixes stale-size bug on resize)
+      canvas.width = rect.width;
+      canvas.height = rect.height;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const isDM = user?.role === 'Dungeon Master';
-    const BASE_VISION_RADIUS_FT = 30; // 1% ≈ 1ft on the map
-    const PLAYER_FOG_OPACITY = 1;
-    const DM_FOG_OPACITY = 0.55;
-    const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
-    const hasBlindedOwnCombatant = combatants.some(c => {
-      if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
-      const charConditions = combatConditions[String(c.characterId)] ?? [];
-      return charConditions.some(cond => cond.toLowerCase() === 'blinded');
-    });
-    const shouldApplyVisionOverlay = isDM ? darknessLevel > 0 : (darknessLevel > 0 || hasBlindedOwnCombatant);
-
-    if (!shouldApplyVisionOverlay) return;
-
-    // For players: collect only their own characters.
-    // For DM: collect all combatants to preview what units can see.
-    const ownCombatantPositions: { x: number; y: number; visionRadius: number }[] = [];
-    combatants.forEach(c => {
-      const isOwn = !isDM ? (!c.isMonster && Number(c.playerId) === Number(user?.id)) : true;
-      if (!isOwn) return;
-      const pos = battlePositions[c.characterId];
-      if (!pos) return;
-      const charConditions = combatConditions[String(c.characterId)] ?? [];
-      const isBlinded = charConditions.some(cond => cond.toLowerCase() === 'blinded');
-      const blindMultiplier = isBlinded ? 0.25 : 1;
-      // Darkvision skill halves the effective darkness penalty
-      const hasDarkvision = !c.isMonster && (characterSkills[Number(c.characterId)] ?? []).some(s => s.name?.toLowerCase() === 'darkvision');
-      const effectiveDarknessMultiplier = hasDarkvision
-        ? Math.max(0.15, 1 - (darknessLevel * 0.5) * 0.85)
-        : darknessRadiusMultiplier;
-      const visionRadius = BASE_VISION_RADIUS_FT * effectiveDarknessMultiplier * blindMultiplier;
-      ownCombatantPositions.push({ x: pos.x, y: pos.y, visionRadius });
-    });
-
-    if (isDM) {
-      // DM: stable faded veil over entire map
-      ctx.fillStyle = `rgba(0, 0, 0, ${DM_FOG_OPACITY})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // DM: reveal unit-vision areas partially so limits are visible but map remains readable
-      ownCombatantPositions.forEach(({ x, y, visionRadius }) => {
-        const cx = (x / 100) * canvas.width;
-        const cy = (y / 100) * canvas.height;
-        const radiusPx = (visionRadius / 100) * canvas.width;
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.globalAlpha = 0.72;
-        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
-        gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
-        gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.65)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;
+      const isDM = user?.role === 'Dungeon Master';
+      const BASE_VISION_RADIUS_FT = 30; // 1% ≈ 1ft on the map
+      const PLAYER_FOG_OPACITY = 1;
+      const DM_FOG_OPACITY = 0.55;
+      const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
+      const hasBlindedOwnCombatant = combatants.some(c => {
+        if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
+        const charConditions = combatConditions[String(c.characterId)] ?? [];
+        return charConditions.some(cond => cond.toLowerCase() === 'blinded');
       });
-    } else {
-      // Players: fixed fog opacity, radius reduced by darkness level
-      ctx.fillStyle = `rgba(0, 0, 0, ${PLAYER_FOG_OPACITY})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const shouldApplyVisionOverlay = isDM ? darknessLevel > 0 : (darknessLevel > 0 || hasBlindedOwnCombatant);
 
-      if (ownCombatantPositions.length > 0) {
-        ctx.globalCompositeOperation = 'destination-out';
+      if (!shouldApplyVisionOverlay) return;
+
+      // For players: collect only their own characters.
+      // For DM: collect all combatants to preview what units can see.
+      const ownCombatantPositions: { x: number; y: number; visionRadius: number }[] = [];
+      combatants.forEach(c => {
+        const isOwn = !isDM ? (!c.isMonster && Number(c.playerId) === Number(user?.id)) : true;
+        if (!isOwn) return;
+        const pos = battlePositions[c.characterId];
+        if (!pos) return;
+        const charConditions = combatConditions[String(c.characterId)] ?? [];
+        const isBlinded = charConditions.some(cond => cond.toLowerCase() === 'blinded');
+        const blindMultiplier = isBlinded ? 0.25 : 1;
+        // Darkvision skill halves the effective darkness penalty
+        const hasDarkvision = !c.isMonster && (characterSkills[Number(c.characterId)] ?? []).some(s => s.name?.toLowerCase() === 'darkvision');
+        const effectiveDarknessMultiplier = hasDarkvision
+          ? Math.max(0.15, 1 - (darknessLevel * 0.5) * 0.85)
+          : darknessRadiusMultiplier;
+        const visionRadius = BASE_VISION_RADIUS_FT * effectiveDarknessMultiplier * blindMultiplier;
+        ownCombatantPositions.push({ x: pos.x, y: pos.y, visionRadius });
+      });
+
+      if (isDM) {
+        // DM: stable faded veil over entire map
+        ctx.fillStyle = `rgba(0, 0, 0, ${DM_FOG_OPACITY})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // DM: reveal unit-vision areas — full inner zone + dimmed partial zone
         ownCombatantPositions.forEach(({ x, y, visionRadius }) => {
           const cx = (x / 100) * canvas.width;
           const cy = (y / 100) * canvas.height;
-          const radiusPx = (visionRadius / 100) * canvas.width;
-          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
-          gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
-          gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.85)');
-          gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          const innerPx = (visionRadius / 100) * canvas.width;
+          const outerPx = innerPx * 2; // partial zone extends to 2× vision radius
+          const innerStop = innerPx / outerPx; // normalized position of inner edge
+
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.globalAlpha = 1;
+
+          // Gradient: full removal in inner zone, half removal in partial zone, none beyond
+          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPx);
+          gradient.addColorStop(0,                    'rgba(0, 0, 0, 1)');
+          gradient.addColorStop(innerStop * 0.9,      'rgba(0, 0, 0, 1)');  // full lit up to inner edge
+          gradient.addColorStop(innerStop,            'rgba(0, 0, 0, 0.5)'); // start partial zone
+          gradient.addColorStop(1,                    'rgba(0, 0, 0, 0)');   // edge of partial zone
+
           ctx.fillStyle = gradient;
           ctx.beginPath();
-          ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+          ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        });
+      } else {
+        // Players: full-black fog with two-zone clearings
+        ctx.fillStyle = `rgba(0, 0, 0, ${PLAYER_FOG_OPACITY})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (ownCombatantPositions.length > 0) {
+          ctx.globalCompositeOperation = 'destination-out';
+          ownCombatantPositions.forEach(({ x, y, visionRadius }) => {
+            const cx = (x / 100) * canvas.width;
+            const cy = (y / 100) * canvas.height;
+            const innerPx = (visionRadius / 100) * canvas.width;
+            const outerPx = innerPx * 2; // partial zone extends to 2× vision radius
+            const innerStop = innerPx / outerPx;
+
+            // Gradient: full removal in inner zone (clear sight), 50% removal in partial zone (dim silhouette)
+            const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPx);
+            gradient.addColorStop(0,                    'rgba(0, 0, 0, 1)');
+            gradient.addColorStop(innerStop * 0.85,     'rgba(0, 0, 0, 1)');  // crisp inner edge
+            gradient.addColorStop(innerStop,            'rgba(0, 0, 0, 0.5)'); // partial zone (50% fog → silhouette visible)
+            gradient.addColorStop(1,                    'rgba(0, 0, 0, 0)');   // fade to full dark
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          ctx.globalCompositeOperation = 'source-over';
+        }
+      }
+    };
+
+    drawDarknessOverlay();
+
+    // Re-draw whenever the canvas element is resized (fixes multi-screen / panel-resize bug)
+    const observer = new ResizeObserver(() => drawDarknessOverlay());
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [darknessLevel, battlePositions, combatants, combatConditions, user, characterSkills]);
+
+  // ── Battlefield darkness overlay (army/mass-combat tab) ─────────────────────
+  // Same two-zone logic as combat: inner=fully lit, partial=silhouette zone, outer=full dark.
+  // Army vision base radius ≈ 150ft. 1% of map ≈ BATTLEFIELD_FEET_PER_PERCENT ft.
+  useEffect(() => {
+    const canvas = battlefieldDarknessCanvasRef.current;
+    if (!canvas || !activeBattle || darknessLevel <= 0) {
+      // Clear canvas when not needed
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      return;
+    }
+
+    const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT; // ≈22.5%
+    const isDM = user?.role === 'Dungeon Master';
+
+    const drawBattlefieldOverlay = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const PLAYER_FOG_OPACITY = isDM ? 0.55 : 1;
+
+      // Collect observer armies: DM sees via all armies, player sees via own armies
+      const observers: { x: number; y: number; visionRadius: number }[] = [];
+      (activeBattle.participants ?? []).forEach(p => {
+        const isOwn = isDM || p.user_id === user?.id;
+        if (!isOwn) return;
+        const x = p.position_x ?? 50;
+        const y = p.position_y ?? 50;
+        observers.push({ x, y, visionRadius: BASE_ARMY_VISION_RADIUS_PCT });
+      });
+
+      ctx.fillStyle = `rgba(0, 0, 0, ${PLAYER_FOG_OPACITY})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (observers.length > 0) {
+        ctx.globalCompositeOperation = 'destination-out';
+        observers.forEach(({ x, y, visionRadius }) => {
+          const cx = (x / 100) * canvas.width;
+          const cy = (y / 100) * canvas.height;
+          const innerPx = (visionRadius / 100) * canvas.width;
+          const outerPx = innerPx * 2;
+          const innerStop = innerPx / outerPx;
+
+          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPx);
+          gradient.addColorStop(0,               'rgba(0, 0, 0, 1)');
+          gradient.addColorStop(innerStop * 0.85,'rgba(0, 0, 0, 1)');
+          gradient.addColorStop(innerStop,       'rgba(0, 0, 0, 0.5)');
+          gradient.addColorStop(1,               'rgba(0, 0, 0, 0)');
+
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
           ctx.fill();
         });
         ctx.globalCompositeOperation = 'source-over';
       }
-    }
-  }, [darknessLevel, battlePositions, combatants, combatConditions, user, characterSkills]);
+    };
+
+    drawBattlefieldOverlay();
+
+    const observer = new ResizeObserver(() => drawBattlefieldOverlay());
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [darknessLevel, activeBattle, user]);
 
   const shouldUseSingleOverlayPanel = (() => {
     if (!overlayViewportWidth) return false;
@@ -1143,6 +1386,13 @@ const CampaignView: React.FC = () => {
   const [showGrantExpModal, setShowGrantExpModal] = useState(false);
   const [selectedCharactersForExp, setSelectedCharactersForExp] = useState<number[]>([]);
   const [expAmount, setExpAmount] = useState<number>(100);
+
+  // Manual health adjustment state
+  const [showHealthModal, setShowHealthModal] = useState(false);
+  const [healthCharacterId, setHealthCharacterId] = useState<number | null>(null);
+  const [healthLimb, setHealthLimb] = useState<string>('all');
+  const [healthAmount, setHealthAmount] = useState<number>(0);
+  const [healthMode, setHealthMode] = useState<'heal' | 'damage'>('heal');
 
   // Level up state
   const [levelUpInfo, setLevelUpInfo] = useState<any | null>(null);
@@ -1330,6 +1580,7 @@ const CampaignView: React.FC = () => {
       if (currentCampaign) {
         try {
           const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
+          setCampaignKingdoms(fetched);
           if (user && fetched.some(k => Number(k.player_id) === Number(user.id))) {
             setHasKingdomAccess(true);
           }
@@ -1389,6 +1640,21 @@ const CampaignView: React.FC = () => {
       npcAPI.getSavedNPCs(selectedCharacter)
         .then(data => setSavedNPCsForCharacter(data.npcs))
         .catch(err => console.error('Error loading saved NPCs:', err));
+    }
+    if (activeTab === 'notes' && selectedCharacter) {
+      setNotesLoading(prev => ({ ...prev, [selectedCharacter]: true }));
+      fetch(`/api/characters/${selectedCharacter}/notes`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(r => r.json())
+        .then(data => {
+          setCharacterNotes(prev => ({ ...prev, [selectedCharacter]: data.notes || [] }));
+          setNotesLoading(prev => ({ ...prev, [selectedCharacter]: false }));
+        })
+        .catch(err => {
+          console.error('Error loading notes:', err);
+          setNotesLoading(prev => ({ ...prev, [selectedCharacter]: false }));
+        });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedCharacter]);
@@ -2225,6 +2491,46 @@ const CampaignView: React.FC = () => {
     } catch (error) {
       console.error('Error granting experience:', error);
       toast('Failed to grant experience');
+    }
+  };
+
+  const handleManualHealthAdjust = async () => {
+    if (!currentCampaign || !healthCharacterId || healthAmount <= 0) {
+      toast('Please select a character and enter a valid amount');
+      return;
+    }
+    const charId = healthCharacterId;
+    const campaignId = currentCampaign.campaign.id;
+    setShowHealthModal(false);
+    setHealthCharacterId(null);
+    setHealthLimb('all');
+    setHealthAmount(0);
+    setHealthMode('heal');
+    try {
+      const result = await characterAPI.adjustHealth(charId, {
+        amount: healthAmount,
+        limbName: healthLimb,
+        isHeal: healthMode === 'heal',
+        campaignId,
+      });
+      // Directly update state so UI reflects the change immediately
+      setCombatCharacterHp(prev => ({
+        ...prev,
+        [charId]: { current: result.newHP, max: result.maxHP ?? prev[charId]?.max ?? result.newHP },
+      }));
+      setCharacterLimbHealth(prev => ({ ...prev, [charId]: result.limbHealth }));
+      const cam = currentCampaignRef.current;
+      if (cam) {
+        cam.characters = cam.characters.map((c: any) =>
+          c.id === charId
+            ? { ...c, hit_points: result.newHP, hit_points_max: result.maxHP ?? c.hit_points_max, limb_health: result.limbHealth }
+            : c
+        );
+      }
+      if (result.toastMessage) toast(result.toastMessage);
+    } catch (err) {
+      console.error('Failed to adjust health:', err);
+      toast('Failed to adjust health');
     }
   };
 
@@ -3124,6 +3430,30 @@ const CampaignView: React.FC = () => {
         setShowTempHpModal(null);
       });
 
+      // Listen for manual health adjustments (outside battle)
+      newSocket.on('healthAdjusted', (data: any) => {
+        if (data.type === 'character') {
+          const charId = data.characterId as number;
+          setCombatCharacterHp(prev => ({
+            ...prev,
+            [charId]: { current: data.newHP, max: data.maxHP ?? prev[charId]?.max ?? data.newHP },
+          }));
+          setCharacterLimbHealth(prev => {
+            const next = { ...prev };
+            if (data.limbHealth === null) { delete next[charId]; } else { next[charId] = data.limbHealth; }
+            return next;
+          });
+          if (currentCampaign) {
+            currentCampaign.characters = currentCampaign.characters.map((c: any) =>
+              c.id === charId
+                ? { ...c, hit_points: data.newHP, hit_points_max: data.maxHP ?? c.hit_points_max, limb_health: data.limbHealth }
+                : c
+            );
+          }
+          if (data.toastMessage) toast(data.toastMessage);
+        }
+      });
+
       // Listen for real-time HP updates
       newSocket.on('healthUpdated', (data: any) => {
         if (data.type === 'character') {
@@ -4021,6 +4351,7 @@ const CampaignView: React.FC = () => {
         if (user && Number(data.targetPlayerId) === Number(user.id)) {
           setPendingKingdomId(data.kingdomId);
           setKingdomNameInput('');
+          setFiefNameInput('');
         }
       });
 
@@ -4029,18 +4360,42 @@ const CampaignView: React.FC = () => {
         if (user && Number(data.kingdom.player_id) === Number(user.id)) {
           setHasKingdomAccess(true);
         }
+        // Merge or insert into campaignKingdoms for live view (no refresh)
+        setCampaignKingdoms(prev => {
+          const idx = prev.findIndex(k => k.id === data.kingdom.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = data.kingdom;
+            return next;
+          }
+          return [...prev, data.kingdom];
+        });
       });
 
-      newSocket.on('kingdomDataChanged', (_data: { campaignId: number; kingdomId?: number }) => {
-        // reserved for future kingdom tab
+      newSocket.on('kingdomDataChanged', (data: { campaignId: number; kingdomId?: number }) => {
+        // Refetch kingdom data live — no page refresh
+        const campaign = currentCampaignRef.current;
+        if (!campaign) return;
+        kingdomAPI.getCampaignKingdoms(campaign.campaign.id).then(kingdoms => {
+          setCampaignKingdoms(kingdoms);
+          if (user && kingdoms.some(k => Number(k.player_id) === Number(user.id))) {
+            setHasKingdomAccess(true);
+          }
+        }).catch(() => {});
       });
 
-      newSocket.on('kingdomDeleted', (_data: { campaignId: number; kingdomId: number }) => {
-        // reserved for future kingdom tab
+      newSocket.on('kingdomDeleted', (delData: { campaignId: number; kingdomId: number }) => {
+        setCampaignKingdoms(prev => prev.filter(k => k.id !== delData.kingdomId));
       });
 
       newSocket.on('dayAdvanced', (data: AdvanceDaysSummary & { campaignId: number }) => {
         setCurrentDay(data.newDay);
+        // Refresh kingdom data after day advance so resource ticks + building completions show live
+        const campaign = currentCampaignRef.current;
+        if (!campaign) return;
+        kingdomAPI.getCampaignKingdoms(campaign.campaign.id).then(kingdoms => {
+          setCampaignKingdoms(kingdoms);
+        }).catch(() => {});
       });
 
       // Listen for NPC reveals
@@ -5119,7 +5474,7 @@ const CampaignView: React.FC = () => {
   ] as const;
 
   const characterTabConfig: Record<
-    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs',
+    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others',
     { label: string; icon: string }
   > = {
     board: { label: 'Overview', icon: '📋' },
@@ -5133,7 +5488,9 @@ const CampaignView: React.FC = () => {
     levelup: { label: 'Level Up', icon: '⬆️' },
     mounts: { label: 'Mounts', icon: '🐴' },
     pets: { label: 'Pets', icon: '🐾' },
-    npcs: { label: 'Characters', icon: '👥' }
+    npcs: { label: 'Characters', icon: '👥' },
+    notes: { label: 'Notes', icon: '📝' },
+    others: { label: 'Others', icon: '🎲' }
   };
 
   const isOwnCharacter = selectedCharacterData
@@ -5142,10 +5499,11 @@ const CampaignView: React.FC = () => {
 
   const availableCharacterTabs = selectedCharacterData
     ? (isOwnCharacter
-        ? (['board', 'sheet', 'npcs', 'inventory', 'skills', 'equip', 'armies', 'mounts', 'pets' as const,
+        ? (['board', 'sheet', 'npcs', 'notes', 'inventory', 'skills', 'equip', 'armies', 'mounts', 'pets' as const,
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
             ...(shouldShowShadowsTab(selectedCharacterData) ? ['shadows' as const] : []),
-            ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : [])
+            ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : []),
+            ...(user?.role === 'Dungeon Master' ? ['others' as const] : []),
           ] as const)
         : (['board'] as const))
     : ([] as const);
@@ -5186,6 +5544,27 @@ const CampaignView: React.FC = () => {
     setPartyMemberIds(nextPartyMemberIds);
     emitPartyGroupUpdate(nextPartyMemberIds, partyPosition);
   };
+
+  // Derived values for the manual health modal
+  const healthModalLimbKeys = ['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'] as const;
+  const healthModalLimbLabels: Record<string, string> = { head: 'Head', chest: 'Chest', left_arm: 'L. Arm', right_arm: 'R. Arm', left_leg: 'L. Leg', right_leg: 'R. Leg' };
+  const healthModalSelectedChar = currentCampaign?.characters.find((c: any) => c.id === healthCharacterId) as any;
+  const healthModalHpMax: number = healthModalSelectedChar ? (healthModalSelectedChar.hit_points_max ?? healthModalSelectedChar.hit_points ?? 1) : 1;
+  const healthModalAbilities = healthModalSelectedChar ? (typeof healthModalSelectedChar.abilities === 'string' ? JSON.parse(healthModalSelectedChar.abilities) : (healthModalSelectedChar.abilities ?? {})) : {};
+  const healthModalCon: number = healthModalAbilities.con ?? 10;
+  const healthModalConBonus = Math.max(0, Math.floor((healthModalCon - 10) / 2) * 0.1);
+  const healthModalLimbMaxes: Record<string, number> = {
+    head:      Math.floor(healthModalHpMax * Math.min(1.0, 0.25 + healthModalConBonus)),
+    chest:     Math.floor(healthModalHpMax * Math.min(2.0, 1.0 + healthModalConBonus)),
+    left_arm:  Math.floor(healthModalHpMax * Math.min(1.0, 0.15 + healthModalConBonus)),
+    right_arm: Math.floor(healthModalHpMax * Math.min(1.0, 0.15 + healthModalConBonus)),
+    left_leg:  Math.floor(healthModalHpMax * Math.min(1.0, 0.40 + healthModalConBonus)),
+    right_leg: Math.floor(healthModalHpMax * Math.min(1.0, 0.40 + healthModalConBonus)),
+  };
+  const healthModalRawLimbs = (healthCharacterId && characterLimbHealth[healthCharacterId])
+    || (healthModalSelectedChar?.limb_health ? (typeof healthModalSelectedChar.limb_health === 'string' ? JSON.parse(healthModalSelectedChar.limb_health) : healthModalSelectedChar.limb_health) : null);
+  const healthModalCurrentLimbs: Record<string, number> = healthModalRawLimbs
+    ?? (healthModalSelectedChar ? healthModalLimbKeys.reduce((acc, k) => ({ ...acc, [k]: healthModalLimbMaxes[k] }), {}) : {});
 
   return (
     <>
@@ -5376,6 +5755,7 @@ const CampaignView: React.FC = () => {
             {user?.role === 'Dungeon Master' && (
               <>
                 <button onClick={() => setShowGrantExpModal(true)} className="campaign-topnav-action-btn exp-btn">⭐ EXP</button>
+                <button onClick={() => setShowHealthModal(true)} className="campaign-topnav-action-btn">🩹 Health</button>
                 <button onClick={() => setShowRestModal(true)} className="campaign-topnav-action-btn rest-btn">💤 Rest</button>
               </>
             )}
@@ -6563,7 +6943,11 @@ const CampaignView: React.FC = () => {
 
                         // ── Vision / darkness check for initiative list ──────────────────────
                         const isDMView = user?.role === 'Dungeon Master';
-                        let initiativeHidden = false;
+                        // Three states: 'visible' | 'partial' | 'hidden'
+                        // 'hidden' means beyond visionRadius × 2 → remove from list entirely
+                        // 'partial' means in the silhouette zone → show ??? (Unknown)
+                        type InitVisibility = 'visible' | 'partial' | 'hidden';
+                        let initiativeVisibility: InitVisibility = 'visible';
                         const hasBlindedOwnCombatant = combatants.some(c => {
                           if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
                           const charConditions = combatConditions[String(c.characterId)] ?? [];
@@ -6572,9 +6956,11 @@ const CampaignView: React.FC = () => {
                         // Invisible monster hidden from players
                         const initCombatantConditions = combatConditions[combatantKey] ?? [];
                         if (!isDMView && combatant.isMonster && initCombatantConditions.some(cond => cond.toLowerCase() === 'invisible')) {
-                          initiativeHidden = true;
+                          initiativeVisibility = 'hidden';
                         }
-                        if (!isDMView && !initiativeHidden && (darknessLevel > 0 || hasBlindedOwnCombatant)) {
+                        if (isDMView) {
+                          initiativeVisibility = 'visible';
+                        } else if (initiativeVisibility !== 'hidden' && (darknessLevel > 0 || hasBlindedOwnCombatant)) {
                           const BASE_VISION_RADIUS_FT = 30;
                           const tokenPos = battlePositions[combatant.characterId];
                           const isOwnCharacter = !combatant.isMonster && Number(combatant.playerId) === Number(user?.id);
@@ -6593,14 +6979,28 @@ const CampaignView: React.FC = () => {
                                 return { x: pos.x, y: pos.y, radius: BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier };
                               })
                               .filter(Boolean) as { x: number; y: number; radius: number }[];
-                            const isVisible = observers.some(obs => {
+
+                            let minDist = Infinity;
+                            for (const obs of observers) {
                               const dx = tokenPos.x - obs.x;
                               const dy = tokenPos.y - obs.y;
-                              return Math.sqrt(dx * dx + dy * dy) <= obs.radius;
-                            });
-                            initiativeHidden = !isVisible;
+                              const dist = Math.sqrt(dx * dx + dy * dy);
+                              if (dist < minDist) minDist = dist;
+                            }
+                            const closestRadius = observers.length > 0
+                              ? Math.max(...observers.map(o => o.radius))
+                              : 0;
+
+                            if (observers.length === 0 || minDist > closestRadius * 2) {
+                              initiativeVisibility = 'hidden';
+                            } else if (minDist > closestRadius) {
+                              initiativeVisibility = 'partial';
+                            }
                           }
                         }
+                        // Convenience alias for existing render code
+                        const initiativeHidden = initiativeVisibility === 'partial';
+                        if (initiativeVisibility === 'hidden') return null;
                         // ────────────────────────────────────────────────────────────────────
 
                         // Compute health and AC for this combatant
@@ -6724,13 +7124,14 @@ const CampaignView: React.FC = () => {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
                                 <span style={{
-                                  color: initiativeHidden ? '#64748b' : (isDead ? '#ef4444' : isCurrentTurn ? '#4a4' : (combatant.isMonster ? '#f87171' : 'var(--text-gold)')),
+                                  color: initiativeHidden ? '#64748b' : (isDead ? '#ef4444' : isCurrentTurn ? '#4a4' : (combatant.isMonster ? (combatant.isAlly ? '#4ade80' : '#f87171') : 'var(--text-gold)')),
                                   fontWeight: isCurrentTurn ? 'bold' : 'normal',
                                   fontSize: isCurrentTurn ? '1.05rem' : '0.95rem',
                                   textDecoration: isDead ? 'line-through' : 'none',
                                   fontStyle: initiativeHidden ? 'italic' : 'normal',
                                 }}>
                                   {initiativeHidden ? '??? (Unknown)' : combatant.name}
+                                  {combatant.isMonster && combatant.isAlly && <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: '#4ade80', background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '999px', padding: '0 0.35rem' }}>Ally</span>}
                                 </span>
                                 {!initiativeHidden && isCurrentTurn && <span style={{ fontSize: '0.75rem', color: '#4a4' }}>← Turn</span>}
                                 {!initiativeHidden && (combatant as any).isMounted && <span style={{ fontSize: '0.65rem', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#c4b5fd' }}>🐴 Mounted</span>}
@@ -7277,7 +7678,7 @@ const CampaignView: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Darkness overlay canvas — drawn by useEffect when darknessLevel > 0 */}
+                  {/* Darkness overlay canvas — always rendered, effect handles clearing when unused */}
                   <canvas
                     ref={darknessCanvasRef}
                     style={{
@@ -7288,11 +7689,6 @@ const CampaignView: React.FC = () => {
                       height: '100%',
                       pointerEvents: 'none',
                       zIndex: 998,
-                      display: (darknessLevel > 0 || (user?.role !== 'Dungeon Master' && combatants.some(c => {
-                        if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
-                        const charConditions = combatConditions[String(c.characterId)] ?? [];
-                        return charConditions.some(cond => cond.toLowerCase() === 'blinded');
-                      }))) ? 'block' : 'none',
                     }}
                   />
                   
@@ -7405,35 +7801,94 @@ const CampaignView: React.FC = () => {
                     const isDM = user?.role === 'Dungeon Master';
 
                     // ── Vision / darkness check ──────────────────────────────
+                    // Three visibility states:
+                    //   'full'    → within visionRadius          → render normally
+                    //   'partial' → within visionRadius × 2      → render dark silhouette
+                    //   'hidden'  → beyond visionRadius × 2      → skip rendering
                     const hasBlindedOwnCombatant = combatants.some(c => {
                       if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
                       const charConditions = combatConditions[String(c.characterId)] ?? [];
                       return charConditions.some(cond => cond.toLowerCase() === 'blinded');
                     });
+                    type VisibilityState = 'full' | 'partial' | 'hidden';
+                    let tokenVisibility: VisibilityState = 'full';
                     if (!isDM && (darknessLevel > 0 || hasBlindedOwnCombatant)) {
                       const BASE_VISION_RADIUS_FT = 30;
-                      // Collect own character positions + radii
-                      const observers = combatants
-                        .filter(c => !c.isMonster && Number(c.playerId) === Number(user?.id))
-                        .map(c => {
-                          const pos = battlePositions[c.characterId];
-                          if (!pos) return null;
-                          const isBlinded = (combatConditions[String(c.characterId)] ?? []).some(cond => cond.toLowerCase() === 'blinded');
-                          const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
-                          const blindMultiplier = isBlinded ? 0.25 : 1;
-                          return { x: pos.x, y: pos.y, radius: BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier };
-                        })
-                        .filter(Boolean) as { x: number; y: number; radius: number }[];
-
-                      const isVisible = observers.some(obs => {
-                        const dx = position.x - obs.x;
-                        const dy = position.y - obs.y;
-                        return Math.sqrt(dx * dx + dy * dy) <= obs.radius;
-                      });
-
-                      // Own characters are always visible to their owner
                       const isOwnCharacter = !combatant.isMonster && Number(combatant.playerId) === Number(user?.id);
-                      if (!isVisible && !isOwnCharacter) return null;
+                      if (!isOwnCharacter) {
+                        // Collect own character observer radii (with darkvision fix)
+                        const observers = combatants
+                          .filter(c => !c.isMonster && Number(c.playerId) === Number(user?.id))
+                          .map(c => {
+                            const pos = battlePositions[c.characterId];
+                            if (!pos) return null;
+                            const isBlinded = (combatConditions[String(c.characterId)] ?? []).some(cond => cond.toLowerCase() === 'blinded');
+                            const hasDv = (characterSkills[Number(c.characterId)] ?? []).some(s => s.name?.toLowerCase() === 'darkvision');
+                            const darknessRadiusMultiplier = hasDv
+                              ? Math.max(0.15, 1 - (darknessLevel * 0.5) * 0.85)
+                              : Math.max(0.15, 1 - darknessLevel * 0.85);
+                            const blindMultiplier = isBlinded ? 0.25 : 1;
+                            return { x: pos.x, y: pos.y, radius: BASE_VISION_RADIUS_FT * darknessRadiusMultiplier * blindMultiplier };
+                          })
+                          .filter(Boolean) as { x: number; y: number; radius: number }[];
+
+                        let minDist = Infinity;
+                        for (const obs of observers) {
+                          const dx = position.x - obs.x;
+                          const dy = position.y - obs.y;
+                          const dist = Math.sqrt(dx * dx + dy * dy);
+                          if (dist < minDist) minDist = dist;
+                        }
+                        const closestRadius = observers.length > 0
+                          ? Math.max(...observers.map(o => o.radius))
+                          : 0;
+
+                        if (observers.length === 0 || minDist > closestRadius * 2) {
+                          tokenVisibility = 'hidden';
+                        } else if (minDist > closestRadius) {
+                          tokenVisibility = 'partial';
+                        }
+                        // else stays 'full'
+                      }
+                    }
+                    if (tokenVisibility === 'hidden') return null;
+
+                    // Render silhouette for partially-dark tokens
+                    if (tokenVisibility === 'partial') {
+                      return (
+                        <div
+                          key={`battle-shadow-${combatant.characterId}`}
+                          style={{
+                            position: 'absolute',
+                            left: `${position.x}%`,
+                            top: `${position.y}%`,
+                            transform: 'translate(-50%, -50%)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            zIndex: 1,
+                            pointerEvents: 'none',
+                            opacity: 0.75,
+                          }}
+                        >
+                          <div style={{
+                            width: '50px',
+                            height: '50px',
+                            borderRadius: '50%',
+                            border: '3px solid rgba(80, 80, 100, 0.8)',
+                            backgroundColor: 'rgba(10, 10, 20, 0.9)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'rgba(150, 150, 180, 0.9)',
+                            fontWeight: 'bold',
+                            fontSize: '1.4rem',
+                            boxShadow: '0 0 8px rgba(0,0,0,0.8)',
+                          }}>
+                            ?
+                          </div>
+                        </div>
+                      );
                     }
                     // ─────────────────────────────────────────────────────────
                     const remaining = remainingMovement[combatant.characterId] ?? combatant.movement_speed ?? 30;
@@ -7996,6 +8451,20 @@ const CampaignView: React.FC = () => {
                             pointerEvents: 'none'
                           }} />
 
+                          {/* Battlefield darkness overlay canvas — same two-zone fog as combat tab */}
+                          <canvas
+                            ref={battlefieldDarknessCanvasRef}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: '100%',
+                              pointerEvents: 'none',
+                              zIndex: 998,
+                            }}
+                          />
+
                           {/* Hover range ring */}
                           {hoveredBattlefieldParticipantId !== null && activeBattle.participants && (() => {
                             const hoveredParticipant = activeBattle.participants?.find(p => p.id === hoveredBattlefieldParticipantId);
@@ -8088,6 +8557,59 @@ const CampaignView: React.FC = () => {
                             const factionColor = participant.faction_color || (participant.team_name === 'A' ? '#3b82f6' : '#ef4444');
                             const hasMovement = (remainingArmyMovement[participant.id] ?? 0) > 0;
                             const isDM = user?.role === 'Dungeon Master';
+
+                            // ── Battlefield darkness check ───────────────────
+                            // Three states: full | partial | hidden
+                            if (!isDM && darknessLevel > 0) {
+                              const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT;
+                              const isOwnArmy = participant.user_id === user?.id;
+                              if (!isOwnArmy) {
+                                const ownArmies = (activeBattle.participants ?? []).filter(p => p.user_id === user?.id);
+                                let minDist = Infinity;
+                                for (const own of ownArmies) {
+                                  const dx = (participant.position_x ?? 50) - (own.position_x ?? 50);
+                                  const dy = (participant.position_y ?? 50) - (own.position_y ?? 50);
+                                  const dist = Math.sqrt(dx * dx + dy * dy);
+                                  if (dist < minDist) minDist = dist;
+                                }
+                                if (ownArmies.length === 0 || minDist > BASE_ARMY_VISION_RADIUS_PCT * 2) {
+                                  return null; // full darkness — hidden
+                                }
+                                if (minDist > BASE_ARMY_VISION_RADIUS_PCT) {
+                                  // Partial darkness — render silhouette
+                                  return (
+                                    <div
+                                      key={`bf-shadow-${participant.id}`}
+                                      style={{
+                                        position: 'absolute',
+                                        left: `${participant.position_x || 50}%`,
+                                        top: `${participant.position_y || 50}%`,
+                                        transform: 'translate(-50%, -50%)',
+                                        width: '90px',
+                                        height: '90px',
+                                        background: 'rgba(10, 10, 20, 0.9)',
+                                        border: '4px solid rgba(80, 80, 100, 0.7)',
+                                        borderRadius: '50%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        pointerEvents: 'none',
+                                        opacity: 0.75,
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.8)',
+                                        zIndex: 1,
+                                      }}
+                                    >
+                                      <span style={{
+                                        fontSize: '2rem',
+                                        fontWeight: 'bold',
+                                        color: 'rgba(150, 150, 180, 0.9)',
+                                      }}>?</span>
+                                    </div>
+                                  );
+                                }
+                              }
+                            }
+                            // ─────────────────────────────────────────────────
                             
                             // Get the army category and icon
                             let armyCategory = 'Swordsmen';
@@ -10060,11 +10582,468 @@ const CampaignView: React.FC = () => {
             )}
 
             {/* Kingdom Tab */}
-            {campaignTab === 'kingdom' && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
-                <p style={{ color: '#94a3b8' }}>Coming soon...</p>
-              </div>
-            )}
+            {campaignTab === 'kingdom' && (() => {
+              const isDMView = user?.role === 'Dungeon Master';
+              const myKingdom = !isDMView ? campaignKingdoms.find(k => k.player_id === user?.id) : undefined;
+              const buildFief = buildingFiefId != null
+                ? campaignKingdoms.flatMap(k => k.fiefs ?? []).find(f => f.id === buildingFiefId)
+                : undefined;
+
+              const TIER1_CATALOG = [
+                { key: 'hunters_cabin',  label: "Hunter's Cabin", icon: '🏹', cost: { wood: 10, stone: 5 },  desc: 'Unlocks hunting. Workers produce meat daily.' },
+                { key: 'grain_farm',     label: 'Grain Farm',     icon: '🌾', cost: { wood: 15, stone: 5 },  desc: 'Unlocks farming. Workers produce vegetables daily.' },
+                { key: 'storage_tent',   label: 'Storage Tent',   icon: '📦', cost: { wood: 8,  stone: 0 },  desc: 'Adds +50 storage capacity.' },
+                { key: 'watchtower',     label: 'Watchtower',     icon: '🗼', cost: { wood: 10, stone: 8 },  desc: 'Defensive structure. Alerts to threats.' },
+              ] as const;
+
+              const renderFiefCard = (fief: Fief, _kingdom: Kingdom) => {
+                const isWorkerEdit = workerFiefId === fief.id;
+                const isResEdit = setResourcesFiefId === fief.id;
+                const sr = fief.stored_resources ?? { wood: 0, stone: 0, minerals: 0, meat: 0, vegetables: 0 };
+                const ar = fief.available_resources ?? { wood: 0, animals: 0, fertile_ground: 0, stone: 0, minerals: 0 };
+                const wa = fief.worker_assignments ?? { gold: 0, food: 0, wood: 0, stone: 0 };
+                const currentWorkers = isWorkerEdit ? workerEdits : wa;
+                const pop = fief.population ?? 0;
+                const workable = Math.floor(pop * 0.8);
+                const totalWorkers = Object.values(currentWorkers).reduce((s: number, v) => s + Math.max(0, Number(v) || 0), 0);
+                const completedBuildings = (fief.buildings ?? []).filter(b => b.is_complete);
+                const underConstruction = (fief.buildings ?? []).filter(b => !b.is_complete);
+                const hasGrainFarm = completedBuildings.some(b => b.building_type === 'grain_farm');
+                const storageTentCount = completedBuildings.filter(b => b.building_type === 'storage_tent').length;
+                const effectiveStorageCap = (fief.storage_capacity ?? 100) + storageTentCount * 50;
+                const builderCount = isWorkerEdit
+                  ? (workerEdits.builders ?? (wa as any).builders ?? 1)
+                  : ((wa as any).builders ?? 1);
+
+                // Food balance (per day)
+                const liveWa = (workerFiefId === fief.id ? workerEdits : wa) as Record<string, number>;
+                const hunters  = Math.max(0, liveWa.hunting  ?? 0);
+                const farmers  = Math.max(0, liveWa.farming  ?? 0);
+                const meatPerDay = hunters  * (1 + ar.animals       / 100);
+                const vegPerDay  = hasGrainFarm ? farmers * (1 + ar.fertile_ground / 100) : 0;
+                const foodProducedPerDay = meatPerDay + vegPerDay;
+                const foodConsumedPerDay = pop * 0.5;
+                const foodBalance = foodProducedPerDay - foodConsumedPerDay;
+
+                const workerFields: Array<{ key: string; label: string; icon: string; disabled: boolean; disabledReason?: string }> = [
+                  { key: 'wood_cutting',   label: 'Woodcutters',  icon: '🪵', disabled: false },
+                  { key: 'hunting',        label: 'Hunters',      icon: '🏹', disabled: false },
+                  { key: 'farming',        label: 'Farmers',      icon: '🌾', disabled: !hasGrainFarm, disabledReason: 'Requires Grain Farm' },
+                  { key: 'stone_mining',   label: 'Stone Miners', icon: '🪨', disabled: true,          disabledReason: 'No Tier-1 mine' },
+                  { key: 'mineral_mining', label: 'Miners',       icon: '⛏️', disabled: true,          disabledReason: 'No Tier-1 mine' },
+                  { key: 'builders',       label: 'Builders',     icon: '🏗️', disabled: false },
+                ];
+
+                return (
+                  <div key={fief.id} className="glass-panel" style={{ marginBottom: '1.5rem', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(212,193,156,0.2)' }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                      <div>
+                        <h3 style={{ color: 'var(--text-gold)', margin: '0 0 0.15rem 0', fontSize: '1.05rem' }}>{fief.name}</h3>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.73rem' }}>
+                          {fief.is_capital ? '⭐ Capital · ' : ''}Village · Tier {fief.tier}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>👥 {pop} pop</span>
+                        {fief.water_access && <span style={{ color: '#60a5fa', fontSize: '0.73rem' }}>💧 Water Access</span>}
+                      </div>
+                    </div>
+
+                    {/* Land quality */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Land Resources</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 1.5rem' }}>
+                        {([
+                          { label: '🪵 Wood',           val: ar.wood },
+                          { label: '🐗 Animals',         val: ar.animals },
+                          { label: '🌾 Fertile Ground',  val: ar.fertile_ground },
+                          { label: '🪨 Stone',           val: ar.stone },
+                          { label: '⛏️ Minerals',        val: ar.minerals },
+                        ] as const).map(({ label, val }) => (
+                          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', width: '96px', flexShrink: 0 }}>{label}</span>
+                            <div style={{ flex: 1, height: '5px', background: 'rgba(255,255,255,0.07)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ width: `${val}%`, height: '100%', background: 'linear-gradient(90deg,#f59e0b,#d97706)', borderRadius: '3px' }} />
+                            </div>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', width: '28px', textAlign: 'right' }}>{val}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Buildable land usage */}
+                    <div style={{ marginBottom: '1rem', fontSize: '0.77rem', color: 'var(--text-secondary)' }}>
+                      🏘️ Buildable Land: <strong>{(fief.buildings ?? []).length}</strong> / <strong>{fief.buildable_land ?? 100}</strong> plots used
+                    </div>
+
+                    {/* Buildings */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Buildings</div>
+                      {(fief.buildings ?? []).length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic', margin: 0 }}>No buildings yet.</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                          {completedBuildings.map(b => (
+                            <span key={b.id} style={{ background: 'rgba(212,193,156,0.1)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '6px', padding: '0.18rem 0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                              {b.name}
+                            </span>
+                          ))}
+                          {underConstruction.map(b => (
+                            <span key={b.id} style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '6px', padding: '0.18rem 0.5rem', fontSize: '0.72rem', color: '#f87171' }}>
+                              🏗️ {b.name} ({b.days_remaining}d left)
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Build button */}
+                    <button
+                      onClick={() => { setBuildingFiefId(fief.id); setShowBuildModal(true); }}
+                      style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '6px', padding: '0.3rem 0.85rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem', marginBottom: '1.25rem' }}
+                    >
+                      + Build Structure
+                    </button>
+
+                    <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.07)', margin: '0 0 1rem 0' }} />
+
+                    {/* Workers */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.7rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Workers</span>
+                        <span style={{ fontSize: '0.72rem', color: totalWorkers > workable ? '#f87171' : 'var(--text-gold)' }}>
+                          {totalWorkers} / {workable} assigned
+                        </span>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: foodBalance >= 0 ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
+                          {foodBalance >= 0 ? '+' : ''}{foodBalance.toFixed(1)} food/day
+                        </span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>(👥 eats {foodConsumedPerDay.toFixed(1)}/day)</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {workerFields.map(({ key, label, icon, disabled, disabledReason }) => {
+                          const curVal = isWorkerEdit && workerFiefId === fief.id
+                            ? (workerEdits[key] ?? (wa as any)[key] ?? 0)
+                            : ((wa as any)[key] ?? 0);
+
+                          const applyWorker = async (delta: number) => {
+                            const base = workerFiefId === fief.id ? (workerEdits[key] ?? (wa as any)[key] ?? 0) : ((wa as any)[key] ?? 0);
+                            const newVal = Math.max(0, (base as number) + delta);
+                            const baseEdits = workerFiefId === fief.id ? workerEdits : { ...(wa as any) };
+                            const newEdits = { ...baseEdits, [key]: newVal };
+                            setWorkerFiefId(fief.id);
+                            setWorkerEdits(newEdits);
+                            try {
+                              const updated = await fiefAPI.updateWorkerAssignments(fief.id, newEdits);
+                              setCampaignKingdoms(prev => prev.map(k => ({
+                                ...k, fiefs: (k.fiefs ?? []).map(f => f.id === updated.id ? updated : f),
+                              })));
+                            } catch (_e: any) { /* silent — live updates via socket */ }
+                          };
+
+                          const btnBase: React.CSSProperties = {
+                            border: 'none', borderRadius: '4px', cursor: disabled ? 'not-allowed' : 'pointer',
+                            fontSize: '0.7rem', fontWeight: 'bold', lineHeight: 1, padding: '0.24rem 0.44rem',
+                            transition: 'background 0.12s',
+                          };
+                          const decBtn: React.CSSProperties = { ...btnBase, background: 'rgba(248,113,113,0.12)', color: disabled ? '#555' : '#f87171' };
+                          const incBtn: React.CSSProperties = { ...btnBase, background: 'rgba(34,197,94,0.12)', color: disabled ? '#555' : '#4ade80' };
+
+                          // Per-row production label
+                          const prodLabel: string | null = (() => {
+                            if (disabled) return null;
+                            if (key === 'wood_cutting') return `+${(curVal * (1 + ar.wood / 100)).toFixed(1)} 🪵/day`;
+                            if (key === 'hunting')      return `+${(curVal * (1 + ar.animals / 100)).toFixed(1)} 🥩/day`;
+                            if (key === 'farming')      return hasGrainFarm ? `+${(curVal * (1 + ar.fertile_ground / 100)).toFixed(1)} 🥦/day` : null;
+                            if (key === 'builders')     return curVal > 0 ? `builds in ${Math.ceil(5 / Math.max(1, curVal))}d` : null;
+                            return null;
+                          })();
+
+                          return (
+                            <div key={key} style={{ opacity: disabled ? 0.45 : 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.28rem' }}>
+                                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                                  {icon} {label}
+                                  {disabledReason && <span style={{ color: '#555', fontStyle: 'italic', marginLeft: '0.35rem' }}>— {disabledReason}</span>}
+                                </span>
+                                {prodLabel && <span style={{ fontSize: '0.7rem', color: key === 'builders' ? '#93c5fd' : '#86efac', fontWeight: 'bold' }}>{prodLabel}</span>}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', flexWrap: 'wrap' }}>
+                                {/* Decrement buttons */}
+                                <button disabled={disabled || curVal <= 0} onClick={() => applyWorker(-10)} style={{ ...decBtn, opacity: curVal < 10 ? 0.35 : 1 }}>−10</button>
+                                <button disabled={disabled || curVal <= 0} onClick={() => applyWorker(-5)}  style={{ ...decBtn, opacity: curVal < 5  ? 0.35 : 1 }}>−5</button>
+                                <button disabled={disabled || curVal <= 0} onClick={() => applyWorker(-1)}  style={{ ...decBtn, opacity: curVal < 1  ? 0.35 : 1 }}>−</button>
+                                {/* Value display */}
+                                <span style={{
+                                  minWidth: '2.4rem', textAlign: 'center', fontSize: '1rem', fontWeight: 'bold',
+                                  color: curVal > 0 ? 'var(--text-gold)' : 'var(--text-muted)',
+                                  background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: '5px', padding: '0.1rem 0.4rem',
+                                }}>{curVal}</span>
+                                {/* Increment buttons */}
+                                <button disabled={disabled} onClick={() => applyWorker(1)}  style={incBtn}>+1</button>
+                                <button disabled={disabled} onClick={() => applyWorker(5)}  style={incBtn}>+5</button>
+                                <button disabled={disabled} onClick={() => applyWorker(10)} style={incBtn}>+10</button>
+                                <button disabled={disabled} onClick={() => applyWorker(50)} style={incBtn}>+50</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {foodBalance < 0 && (
+                      <div style={{ fontSize: '0.72rem', color: '#fbbf24', fontStyle: 'italic', marginBottom: '0.75rem', marginTop: '-0.25rem' }}>
+                        ⚠️ Food deficit — assign more Hunters{hasGrainFarm ? ' or Farmers' : ' (build a Grain Farm to unlock Farming)'}
+                      </div>
+                    )}
+
+                    <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.07)', margin: '0 0 1rem 0' }} />
+
+                    {/* Storage */}
+                    <div style={{ marginBottom: isDMView ? '1rem' : 0 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Storage (cap {effectiveStorageCap})</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.4rem', textAlign: 'center' }}>
+                        {([
+                          { icon: '🪵', label: 'Wood',     val: sr.wood },
+                          { icon: '🪨', label: 'Stone',    val: sr.stone },
+                          { icon: '⛏️', label: 'Minerals', val: sr.minerals },
+                          { icon: '🥩', label: 'Meat',     val: sr.meat },
+                          { icon: '🥦', label: 'Veg',      val: sr.vegetables },
+                        ] as const).map(({ icon, label, val }) => (
+                          <div key={label}>
+                            <div style={{ fontSize: '1.05rem' }}>{icon}</div>
+                            <div style={{ fontSize: '0.67rem', color: 'var(--text-secondary)' }}>{label}</div>
+                            <div style={{ fontSize: '0.82rem', color: 'var(--text-gold)', fontWeight: 'bold' }}>{val}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* DM: Set Resources */}
+                    {isDMView && (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        {isResEdit ? (
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Set Stored Resources (DM)</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                              {(['wood', 'stone', 'minerals', 'meat', 'vegetables'] as const).map(k => (
+                                <div key={k}>
+                                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '0.18rem', textTransform: 'capitalize' }}>{k}</div>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={setResourcesInput[k]}
+                                    onChange={e => setSetResourcesInput(prev => ({ ...prev, [k]: Math.max(0, Number(e.target.value) || 0) }))}
+                                    style={{ width: '100%', padding: '0.22rem 0.25rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.13)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '0.73rem', boxSizing: 'border-box' as const, textAlign: 'center' }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.35rem' }}>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await fiefAPI.setStoredResources(fief.id, setResourcesInput);
+                                    if (currentCampaign) {
+                                      const kingdoms = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
+                                      setCampaignKingdoms(kingdoms);
+                                    }
+                                    setSetResourcesFiefId(null);
+                                  } catch (e: any) { alert(e?.response?.data?.error ?? 'Failed to set resources'); }
+                                }}
+                                style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.72rem' }}
+                              >Apply</button>
+                              <button
+                                onClick={() => setSetResourcesFiefId(null)}
+                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}
+                              >Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => { setSetResourcesFiefId(fief.id); setSetResourcesInput({ ...sr }); }}
+                              style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '4px', padding: '0.22rem 0.7rem', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.72rem' }}
+                            >🎲 Set Stored Resources (DM)</button>
+                            <button
+                              onClick={() => {
+                                // Open inline land resource sliders using the setResourcesFiefId field as 'land' mode
+                                // We reuse setResourcesFiefId with a special negative sentinel to distinguish
+                                setSetResourcesFiefId(-(fief.id));
+                                // Repurpose stored-resource input fields: wood=wood%, stone=stone%, minerals=minerals%, meat=animals%, vegetables=fertile_ground%
+                                setSetResourcesInput({ wood: ar.wood, stone: ar.stone, minerals: ar.minerals, meat: ar.animals, vegetables: ar.fertile_ground });
+                              }}
+                              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', padding: '0.22rem 0.7rem', color: '#fbbf24', cursor: 'pointer', fontSize: '0.72rem' }}
+                            >🗺️ Edit Land Resources (DM)</button>
+                          </div>
+                        )}
+                        {/* DM: Edit Land Resources inline */}
+                        {isDMView && setResourcesFiefId === -(fief.id) && (
+                          <div style={{ marginTop: '0.6rem' }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Edit Land Quality (0–100%)</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '0.5rem' }}>
+                              {([
+                                { key: 'wood',       label: '🪵 Wood' },
+                                { key: 'meat',       label: '🐗 Animals' },
+                                { key: 'vegetables', label: '🌾 Fertile Ground' },
+                                { key: 'stone',      label: '🪨 Stone' },
+                                { key: 'minerals',   label: '⛏️ Minerals' },
+                              ] as const).map(({ key, label }) => (
+                                <div key={key} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 38px', alignItems: 'center', gap: '0.4rem' }}>
+                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{label}</span>
+                                  <input type="range" min={0} max={100} value={setResourcesInput[key]}
+                                    onChange={e => setSetResourcesInput(prev => ({ ...prev, [key]: Number(e.target.value) }))}
+                                    style={{ accentColor: '#f59e0b' }} />
+                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-gold)', textAlign: 'right' }}>{setResourcesInput[key]}%</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.35rem' }}>
+                              <button
+                                onClick={() => {
+                                  if (!socket || !currentCampaign) return;
+                                  socket.emit('updateFiefLandResources', {
+                                    campaignId: currentCampaign.campaign.id,
+                                    fiefId: fief.id,
+                                    availableResources: {
+                                      wood:           setResourcesInput.wood,
+                                      animals:        setResourcesInput.meat,
+                                      fertile_ground: setResourcesInput.vegetables,
+                                      stone:          setResourcesInput.stone,
+                                      minerals:       setResourcesInput.minerals,
+                                    },
+                                  });
+                                  setSetResourcesFiefId(null);
+                                }}
+                                style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.72rem' }}
+                              >Save</button>
+                              <button onClick={() => setSetResourcesFiefId(null)}
+                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}
+                              >Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+
+              return (
+                <div style={{ padding: '1.25rem', maxWidth: '940px', margin: '0 auto' }}>
+                  {/* Build structure modal overlay */}
+                  {showBuildModal && buildFief && (() => {
+                    const builderCount = ((buildFief.worker_assignments as any)?.builders ?? 1);
+                    return (
+                      <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
+                        <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '12px', padding: '1.5rem', maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>🏗️ Build a Structure — {buildFief.name}</h3>
+                            <button onClick={() => setShowBuildModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+                          </div>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.83rem', marginBottom: '1rem' }}>
+                            Available: <strong style={{ color: 'var(--text-gold)' }}>{buildFief.stored_resources?.wood ?? 0} 🪵</strong>{' '}
+                            <strong style={{ color: '#c0c0c0' }}>{buildFief.stored_resources?.stone ?? 0} 🪨</strong>
+                          </p>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                            {TIER1_CATALOG.map(b => {
+                              const wood = buildFief.stored_resources?.wood ?? 0;
+                              const stone = buildFief.stored_resources?.stone ?? 0;
+                              const canAfford = b.cost.wood <= wood && b.cost.stone <= stone;
+                              const daysEst = Math.ceil(5 / Math.max(1, builderCount));
+                              return (
+                                <div
+                                  key={b.key}
+                                  onClick={async () => {
+                                    if (!canAfford) return;
+                                    try {
+                                      const updated = await fiefAPI.construct(buildFief.id, b.key, builderCount);
+                                      setCampaignKingdoms(prev => prev.map(k => ({
+                                        ...k, fiefs: (k.fiefs ?? []).map(f => f.id === updated.id ? updated : f),
+                                      })));
+                                      setShowBuildModal(false);
+                                    } catch (e: any) { alert(e?.response?.data?.error ?? 'Build failed'); }
+                                  }}
+                                  style={{
+                                    background: canAfford ? 'rgba(212,193,156,0.08)' : 'rgba(0,0,0,0.18)',
+                                    border: `1px solid ${canAfford ? 'rgba(212,193,156,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                                    borderRadius: '8px', padding: '0.9rem',
+                                    cursor: canAfford ? 'pointer' : 'not-allowed',
+                                    opacity: canAfford ? 1 : 0.5, transition: 'background 0.15s',
+                                  }}
+                                >
+                                  <div style={{ fontSize: '1.5rem', marginBottom: '0.2rem' }}>{b.icon}</div>
+                                  <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.88rem', marginBottom: '0.2rem' }}>{b.label}</div>
+                                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.73rem', marginBottom: '0.4rem' }}>{b.desc}</div>
+                                  <div style={{ fontSize: '0.73rem', color: canAfford ? '#86efac' : '#f87171' }}>
+                                    {b.cost.wood > 0 ? `${b.cost.wood} 🪵` : ''}{b.cost.stone > 0 ? `  ${b.cost.stone} 🪨` : ''}
+                                  </div>
+                                  <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>~{daysEst} day{daysEst !== 1 ? 's' : ''}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textAlign: 'center', margin: 0 }}>
+                            Assign Builders in the Workers panel to reduce construction time.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* DM view */}
+                  {isDMView && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h2 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.25rem' }}>👑 Kingdoms</h2>
+                        <button
+                          onClick={() => setShowGrantKingdomModal(true)}
+                          style={{ background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.5)', borderRadius: '8px', padding: '0.4rem 0.95rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
+                        >+ Grant Kingdom</button>
+                      </div>
+                      {campaignKingdoms.length === 0 ? (
+                        <div style={{ textAlign: 'center', marginTop: '3rem', color: 'var(--text-muted)' }}>
+                          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>👑</div>
+                          <p>No kingdoms granted yet.</p>
+                        </div>
+                      ) : (
+                        campaignKingdoms.map(k => (
+                          <div key={k.id} style={{ marginBottom: '1.75rem' }}>
+                            <div style={{ marginBottom: '0.75rem' }}>
+                              <h3 style={{ color: 'var(--text-gold)', margin: '0 0 0.15rem 0', fontSize: '1rem' }}>{k.name ?? '(Unnamed Kingdom)'}</h3>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Ruled by {k.player_name} · Tier {k.tier}</span>
+                            </div>
+                            {(k.fiefs ?? []).map(fief => renderFiefCard(fief, k))}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Player view */}
+                  {!isDMView && (
+                    <div>
+                      {!myKingdom ? (
+                        <div style={{ textAlign: 'center', marginTop: '5rem' }}>
+                          <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>👑</div>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '0.35rem' }}>You have not been granted a kingdom yet.</p>
+                          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Ask your Dungeon Master to grant you one.</p>
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ marginBottom: '1.5rem' }}>
+                            <h2 style={{ color: 'var(--text-gold)', margin: '0 0 0.2rem 0', fontSize: '1.25rem' }}>👑 {myKingdom.name}</h2>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Tier {myKingdom.tier} Kingdom</span>
+                          </div>
+                          {(myKingdom.fiefs ?? []).map(fief => renderFiefCard(fief, myKingdom))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
 
 
@@ -10564,14 +11543,14 @@ const CampaignView: React.FC = () => {
                           const mainHandAC  = rawLimbAC?.main_hand ?? 0;
                           const offHandAC   = rawLimbAC?.off_hand  ?? 0;
                           const feetAC      = rawLimbAC?.feet      ?? 0;
-                          // Formula: Head = 100% AC + helmet, Arms = 25% AC + gloves/shield, Legs = 50% AC + leggings, Torso = 100% AC + chestpiece
+                          // Armor SETS the limb AC (not additive). Shields in hand slots still ADD.
                           const characterLimbAC = {
-                            head:      Math.round(baseAC * 1.00) + helmAC,
-                            chest:     Math.round(baseAC * 1.00) + chestAC,
+                            head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.00),
+                            chest:     chestAC > 0 ? chestAC : Math.round(baseAC * 1.00),
                             hands:     Math.round(baseAC * 0.25) + Math.max(mainHandAC, offHandAC),
                             main_hand: Math.round(baseAC * 0.25) + mainHandAC,
                             off_hand:  Math.round(baseAC * 0.25) + offHandAC,
-                            feet:      Math.round(baseAC * 0.50) + feetAC
+                            feet:      feetAC  > 0 ? feetAC  : Math.round(baseAC * 0.50)
                           };
                           
                           // Helper function to get health color based on percentage
@@ -13166,6 +14145,199 @@ const CampaignView: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                {/* ── Notes Tab ── */}
+                {activeTab === 'notes' && (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (() => {
+                  const charId = selectedCharacterData.id;
+                  const notes = characterNotes[charId] ?? [];
+                  const isOwner = selectedCharacterData.player_id === user?.id;
+                  const isDM = user?.role === 'Dungeon Master';
+                  const canEdit = isOwner;
+
+                  const saveNote = (noteId: number | null, title: string, content: string) => {
+                    const token = localStorage.getItem('token');
+                    if (noteId === null) {
+                      fetch(`/api/characters/${charId}/notes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ title, content }),
+                      })
+                        .then(r => r.json())
+                        .then(data => {
+                          if (!data.note) { console.error('Save note failed:', data); return; }
+                          setCharacterNotes(prev => ({ ...prev, [charId]: [data.note, ...(prev[charId] ?? [])] }));
+                          setNoteEditModal(null);
+                        })
+                        .catch(err => console.error('Error saving note:', err));
+                    } else {
+                      fetch(`/api/characters/${charId}/notes/${noteId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ title, content }),
+                      })
+                        .then(r => r.json())
+                        .then(data => {
+                          if (!data.note) { console.error('Update note failed:', data); return; }
+                          setCharacterNotes(prev => ({
+                            ...prev,
+                            [charId]: (prev[charId] ?? []).map(n => n.id === noteId ? data.note : n),
+                          }));
+                          setNoteEditModal(null);
+                        })
+                        .catch(err => console.error('Error updating note:', err));
+                    }
+                  };
+
+                  const deleteNote = (noteId: number) => {
+                    const token = localStorage.getItem('token');
+                    fetch(`/api/characters/${charId}/notes/${noteId}`, {
+                      method: 'DELETE',
+                      headers: { 'Authorization': `Bearer ${token}` },
+                    })
+                      .then(() => {
+                        setCharacterNotes(prev => ({
+                          ...prev,
+                          [charId]: (prev[charId] ?? []).filter(n => n.id !== noteId),
+                        }));
+                      })
+                      .catch(err => console.error('Error deleting note:', err));
+                  };
+
+                  return (
+                    <div className="glass-panel">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📝 Notes{isDM && !isOwner ? ` — ${selectedCharacterData.name}` : ''}</h5>
+                        {canEdit && (
+                          <button
+                            onClick={() => setNoteEditModal({ charId, note: null })}
+                            style={{ padding: '0.4rem 0.9rem', background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '0.4rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 'bold' }}
+                          >+ New Note</button>
+                        )}
+                        {isDM && !isOwner && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Read-only (DM view)</span>
+                        )}
+                      </div>
+                      {notesLoading[charId] ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading notes…</div>
+                      ) : notes.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.6 }}>
+                          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📝</div>
+                          <p style={{ color: 'var(--text-secondary)' }}>{canEdit ? 'No notes yet. Click "+ New Note" to start.' : 'No notes recorded.'}</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
+                          {notes.filter(Boolean).map(note => (
+                            <div key={note.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,193,156,0.22)', borderRadius: '8px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.9rem' }}>{note.title || 'Untitled'}</div>
+                              <div
+                                onClick={() => setNoteViewModal({ title: note.title || 'Untitled', content: note.content })}
+                                title="Click to read in full"
+                                dangerouslySetInnerHTML={{ __html: renderNoteMarkdown(note.content) }}
+                                style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', flex: 1, lineHeight: 1.5, overflow: 'hidden', maxHeight: '7.5rem', cursor: 'pointer' }}
+                              />
+                              {canEdit && (
+                                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.25rem' }}>
+                                  <button onClick={() => setNoteEditModal({ charId, note })} style={{ flex: 1, padding: '0.3rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '4px', color: '#60a5fa', cursor: 'pointer', fontSize: '0.75rem' }}>✏️ Edit</button>
+                                  <button onClick={() => deleteNote(note.id)} style={{ flex: 1, padding: '0.3rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', color: '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}>🗑️ Delete</button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+</div>
+                  );
+                })()}
+
+                {/* ── Others Tab (DM only) — Custom Dice Roller ── */}
+                {activeTab === 'others' && user?.role === 'Dungeon Master' && (() => {
+                  const campaignChars = currentCampaign?.characters ?? [];
+                  return (
+                    <div className="glass-panel">
+                      <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.25rem' }}>🎲 Custom Dice Roller</h5>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>Build any dice roll and send a request to a player. They will see the standard roll modal.</p>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '420px' }}>
+                        {/* Die sides */}
+                        <div>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.35rem' }}>Die Sides (any number ≥ 2)</p>
+                          <input
+                            type="number"
+                            min={2}
+                            value={customDiceSides}
+                            onChange={e => setCustomDiceSides(Math.max(2, parseInt(e.target.value) || 2))}
+                            style={{ padding: '0.45rem 0.75rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '6px', color: '#e2e8f0', fontSize: '1rem', width: '120px', outline: 'none' }}
+                          />
+                          <span style={{ color: 'var(--text-secondary)', marginLeft: '0.6rem', fontSize: '0.9rem' }}>→ d{customDiceSides}</span>
+                        </div>
+
+                        {/* Count */}
+                        <div>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.35rem' }}>Number of Dice</p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <button onClick={() => setCustomDiceCount(c => Math.max(1, c - 1))} style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>−</button>
+                            <span style={{ minWidth: '2rem', textAlign: 'center', color: '#c4b5fd', fontWeight: 'bold', fontSize: '1.1rem' }}>{customDiceCount}</span>
+                            <button onClick={() => setCustomDiceCount(c => Math.min(99, c + 1))} style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>+</button>
+                          </div>
+                        </div>
+
+                        {/* Flat modifier */}
+                        <div>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.35rem' }}>Flat Modifier (optional)</p>
+                          <input
+                            type="number"
+                            value={customDiceModifier}
+                            onChange={e => setCustomDiceModifier(parseInt(e.target.value) || 0)}
+                            style={{ padding: '0.45rem 0.75rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '6px', color: '#e2e8f0', fontSize: '1rem', width: '120px', outline: 'none' }}
+                          />
+                        </div>
+
+                        {/* Target player */}
+                        <div>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.35rem' }}>Target Character</p>
+                          <select
+                            value={customDiceTarget ?? ''}
+                            onChange={e => setCustomDiceTarget(Number(e.target.value) || null)}
+                            style={{ padding: '0.45rem 0.75rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.9rem', cursor: 'pointer', outline: 'none', minWidth: '200px' }}
+                          >
+                            <option value="">— Select a character —</option>
+                            {campaignChars.map((c: any) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Summary + Send */}
+                        <div style={{ paddingTop: '0.5rem', borderTop: '1px solid rgba(167,139,250,0.2)' }}>
+                          <div style={{ color: '#c4b5fd', fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: 'bold' }}>
+                            {customDiceCount}d{customDiceSides}{customDiceModifier !== 0 ? (customDiceModifier > 0 ? ` +${customDiceModifier}` : ` ${customDiceModifier}`) : ''}
+                          </div>
+                          <button
+                            disabled={!customDiceTarget || !socket}
+                            onClick={() => {
+                              if (!customDiceTarget || !socket || !currentCampaign) return;
+                              const targetChar = campaignChars.find((c: any) => c.id === customDiceTarget);
+                              if (!targetChar) return;
+                              socket.emit('requestDiceRoll', {
+                                campaignId: currentCampaign.campaign.id,
+                                targetPlayerId: targetChar.player_id,
+                                targetCharacterName: targetChar.name,
+                                diceType: `d${customDiceSides}`,
+                                diceGroups: [{ count: customDiceCount, diceType: `d${customDiceSides}` }],
+                                rollPurpose: 'ability_check',
+                                purposeDetail: `Custom d${customDiceSides}`,
+                                modifier: 'none',
+                                ...(customDiceModifier !== 0 ? { precomputedModifier: customDiceModifier } : {}),
+                              });
+                            }}
+                            style={{ padding: '0.6rem 1.5rem', background: !customDiceTarget ? 'rgba(167,139,250,0.1)' : 'linear-gradient(135deg,rgba(167,139,250,0.4),rgba(139,92,246,0.4))', border: '1px solid rgba(167,139,250,0.5)', borderRadius: '6px', color: !customDiceTarget ? 'rgba(196,181,253,0.4)' : '#c4b5fd', cursor: !customDiceTarget ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
+                          >📤 Send Roll Request</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 </div>
               </div>
             ) : (
@@ -14781,7 +15953,10 @@ const CampaignView: React.FC = () => {
           <DiceRollModal
             request={pendingDiceRequest}
             rollerName={currentCampaign.userCharacter?.name ?? 'You'}
-            character={currentCampaign.userCharacter}
+            character={currentCampaign.userCharacter ? {
+              ...currentCampaign.userCharacter,
+              ...( characterDataOverrides[currentCampaign.userCharacter.id] ?? {} )
+            } : null}
             rerollApproved={rerollApproved}
             precomputedModifier={pendingDiceRequest.precomputedModifier ?? undefined}
             onRequestReroll={(diceType) => {
@@ -14930,7 +16105,10 @@ const CampaignView: React.FC = () => {
               key={attackRollPhase}
               request={diceRequest}
               rollerName={currentCampaign.userCharacter?.name ?? 'You'}
-              character={currentCampaign.userCharacter}
+              character={currentCampaign.userCharacter ? {
+                ...currentCampaign.userCharacter,
+                ...( characterDataOverrides[currentCampaign.userCharacter.id] ?? {} )
+              } : null}
               rerollApproved={rerollApproved}
               previousRollResult={attackHitRoll && !isHitPhase ? { label: 'Hit Roll', total: attackHitRoll.total, color: '#60a5fa' } : undefined}
               onRequestReroll={(diceType) => {
@@ -15832,42 +17010,19 @@ const CampaignView: React.FC = () => {
                       })
                       .map((monster: Monster) => {
                       const imageUrl = getImageUrl(monster.image_url) ?? null;
+                      const isAlly = combatMonsterAlly[monster.id] ?? false;
                       
                       return (
-                        <button
+                        <div
                           key={monster.id}
-                          onClick={() => {
-                            if (socket && currentCampaign) {
-                              // For monsters, we don't have a player_id, so we'll use the DM's ID
-                              socket.emit('inviteToCombat', {
-                                campaignId: currentCampaign.campaign.id,
-                                characterId: monster.id,
-                                targetPlayerId: user?.id, // DM controls monsters
-                                isMonster: true
-                              });
-                              setShowAddToCombatModal(false);
-                            }
-                          }}
                           style={{
                             padding: '1rem',
-                            background: 'rgba(217, 83, 79, 0.1)',
-                            border: '1px solid rgba(217, 83, 79, 0.3)',
+                            background: isAlly ? 'rgba(74,222,128,0.08)' : 'rgba(217, 83, 79, 0.1)',
+                            border: `1px solid ${isAlly ? 'rgba(74,222,128,0.4)' : 'rgba(217, 83, 79, 0.3)'}`,
                             borderRadius: '0.5rem',
-                            color: '#d9534f',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            transition: 'all 0.2s ease',
                             display: 'flex',
                             gap: '1rem',
                             alignItems: 'center'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(217, 83, 79, 0.2)';
-                            e.currentTarget.style.borderColor = '#d9534f';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'rgba(217, 83, 79, 0.1)';
-                            e.currentTarget.style.borderColor = 'rgba(217, 83, 79, 0.3)';
                           }}
                         >
                           {imageUrl && (
@@ -15878,18 +17033,62 @@ const CampaignView: React.FC = () => {
                               backgroundImage: `url(${imageUrl})`,
                               backgroundSize: 'cover',
                               backgroundPosition: 'center',
-                              border: '1px solid rgba(217, 83, 79, 0.3)',
+                              border: `1px solid ${isAlly ? 'rgba(74,222,128,0.4)' : 'rgba(217, 83, 79, 0.3)'}`,
                               flexShrink: 0
                             }} />
                           )}
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{monster.name}</div>
+                            <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: isAlly ? '#4ade80' : '#d9534f' }}>{monster.name}</div>
                             <div style={{ fontSize: '0.85rem', color: '#999' }}>
                               CR {formatCR(monster.cr)}
                               {monster.limb_health && ` | HP: ${monster.limb_health.chest} | AC: ${monster.limb_ac?.chest || 10}`}
                             </div>
                           </div>
-                        </button>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-end' }}>
+                            {/* Ally toggle */}
+                            <button
+                              onClick={() => setCombatMonsterAlly(prev => ({ ...prev, [monster.id]: !isAlly }))}
+                              style={{
+                                padding: '0.25rem 0.6rem',
+                                borderRadius: '999px',
+                                fontSize: '0.72rem',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                background: isAlly ? 'rgba(74,222,128,0.25)' : 'rgba(239,68,68,0.18)',
+                                border: `1px solid ${isAlly ? 'rgba(74,222,128,0.6)' : 'rgba(239,68,68,0.4)'}`,
+                                color: isAlly ? '#4ade80' : '#f87171',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >{isAlly ? '🤝 Ally' : '⚔️ Enemy'}</button>
+                            {/* Add button */}
+                            <button
+                              onClick={() => {
+                                if (socket && currentCampaign) {
+                                  socket.emit('inviteToCombat', {
+                                    campaignId: currentCampaign.campaign.id,
+                                    characterId: monster.id,
+                                    targetPlayerId: user?.id,
+                                    isMonster: true,
+                                    isAlly,
+                                  });
+                                  setShowAddToCombatModal(false);
+                                  setCombatMonsterAlly({});
+                                }
+                              }}
+                              style={{
+                                padding: '0.3rem 0.7rem',
+                                borderRadius: '4px',
+                                fontSize: '0.78rem',
+                                cursor: 'pointer',
+                                background: isAlly ? 'rgba(74,222,128,0.2)' : 'rgba(217,83,79,0.2)',
+                                border: `1px solid ${isAlly ? 'rgba(74,222,128,0.5)' : 'rgba(217,83,79,0.5)'}`,
+                                color: isAlly ? '#4ade80' : '#d9534f',
+                                fontWeight: 'bold',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >+ Add</button>
+                          </div>
+                        </div>
                       );
                     })}
                     {monsters.filter((m: Monster) => m.name.toLowerCase().includes(combatMonsterSearch.toLowerCase())).length === 0 && (
@@ -15909,7 +17108,7 @@ const CampaignView: React.FC = () => {
 
               {/* Cancel Button */}
               <button
-                onClick={() => { setShowAddToCombatModal(false); setCombatMonsterSearch(''); }}
+                onClick={() => { setShowAddToCombatModal(false); setCombatMonsterSearch(''); setCombatMonsterAlly({}); }}
                 style={{
                   marginTop: '1.5rem',
                   padding: '0.75rem 1.5rem',
@@ -16125,11 +17324,11 @@ const CampaignView: React.FC = () => {
                   const offHandAC  = rawLimbAC?.off_hand  ?? 0;
                   const feetAC     = rawLimbAC?.feet      ?? 0;
                   const cLimbAC = {
-                    head:      Math.round(baseAC * 1.00) + helmAC,
-                    chest:     Math.round(baseAC * 1.00) + chestAC,
+                    head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.00),
+                    chest:     chestAC > 0 ? chestAC : Math.round(baseAC * 1.00),
                     main_hand: Math.round(baseAC * 0.25) + mainHandAC,
                     off_hand:  Math.round(baseAC * 0.25) + offHandAC,
-                    feet:      Math.round(baseAC * 0.50) + feetAC
+                    feet:      feetAC  > 0 ? feetAC  : Math.round(baseAC * 0.50)
                   };
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
@@ -18891,6 +20090,120 @@ const CampaignView: React.FC = () => {
         </div>
       )}
 
+      {/* Manual Health Adjustment Modal */}
+      {showHealthModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, backdropFilter: 'blur(8px)' }}>
+          <div className="glass-panel" style={{ maxWidth: '620px', width: '90%', maxHeight: '85vh', overflow: 'auto', padding: '2rem' }}>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>🩹 Adjust Health</h3>
+
+            {/* Character selector */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Character</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '200px', overflow: 'auto', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem' }}>
+                {currentCampaign?.characters.map((character: any) => {
+                  const isSelected = healthCharacterId === character.id;
+                  const charHP = combatCharacterHp[character.id]?.current ?? character.hit_points ?? '?';
+                  const charMax = combatCharacterHp[character.id]?.max ?? character.hit_points_max ?? character.hit_points ?? '?';
+                  return (
+                    <button
+                      key={character.id}
+                      onClick={() => setHealthCharacterId(character.id)}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', background: isSelected ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)', border: isSelected ? '2px solid rgba(34,197,94,0.5)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '0.5rem', cursor: 'pointer', color: 'var(--text-gold)', textAlign: 'left' }}
+                    >
+                      <span style={{ fontWeight: 'bold' }}>{character.name}</span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>HP: {charHP} / {charMax}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Limb health grid */}
+            {healthCharacterId && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Current Limb Health</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                  {healthModalLimbKeys.map(limb => {
+                    const cur = healthModalCurrentLimbs[limb] ?? 0;
+                    const max = healthModalLimbMaxes[limb] ?? 1;
+                    const pct = Math.max(0, Math.min(100, Math.round((cur / max) * 100)));
+                    const barColor = pct > 66 ? '#22c55e' : pct > 33 ? '#eab308' : '#ef4444';
+                    return (
+                      <div key={limb} style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.4rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>{healthModalLimbLabels[limb]}</div>
+                        <div style={{ fontSize: '0.9rem', color: barColor, fontWeight: 'bold' }}>{cur} / {max}</div>
+                        <div style={{ height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', marginTop: '0.3rem' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: '2px', transition: 'width 0.3s' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Heal / Damage toggle */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Mode</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {(['heal', 'damage'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setHealthMode(mode)}
+                    style={{ flex: 1, padding: '0.6rem', background: healthMode === mode ? (mode === 'heal' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)') : 'rgba(255,255,255,0.05)', border: healthMode === mode ? `2px solid ${mode === 'heal' ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'}` : '1px solid rgba(255,255,255,0.1)', borderRadius: '0.4rem', color: healthMode === mode ? (mode === 'heal' ? '#4ade80' : '#f87171') : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold', textTransform: 'capitalize' }}
+                  >
+                    {mode === 'heal' ? '🩹 Heal' : '⚔️ Damage'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Limb selector */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Target Limb</label>
+              <select
+                value={healthLimb}
+                onChange={e => setHealthLimb(e.target.value)}
+                style={{ width: '100%', padding: '0.65rem', background: '#1a1a2e', border: '2px solid rgba(212,193,156,0.3)', borderRadius: '0.5rem', color: '#d4c19c', fontSize: '1rem' }}
+              >
+                <option value="all" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Overall (all limbs, proportional)</option>
+                {healthModalLimbKeys.map(k => <option key={k} value={k} style={{ background: '#1a1a2e', color: '#d4c19c' }}>{healthModalLimbLabels[k]}</option>)}
+              </select>
+            </div>
+
+            {/* Amount input */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Amount</label>
+              <input
+                type="number"
+                value={healthAmount || ''}
+                onChange={e => setHealthAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                min="1"
+                placeholder="0"
+                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.3)', border: '2px solid rgba(212,193,156,0.3)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center' }}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={handleManualHealthAdjust}
+                disabled={!healthCharacterId || healthAmount <= 0}
+                style={{ flex: 1, padding: '0.75rem', background: !healthCharacterId || healthAmount <= 0 ? 'rgba(100,116,139,0.3)' : healthMode === 'heal' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)', border: `2px solid ${!healthCharacterId || healthAmount <= 0 ? 'rgba(100,116,139,0.4)' : healthMode === 'heal' ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}`, borderRadius: '0.4rem', color: !healthCharacterId || healthAmount <= 0 ? '#64748b' : healthMode === 'heal' ? '#4ade80' : '#f87171', cursor: !healthCharacterId || healthAmount <= 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1rem', opacity: !healthCharacterId || healthAmount <= 0 ? 0.5 : 1 }}
+              >
+                {healthMode === 'heal' ? `🩹 Heal ${healthAmount || 0} HP` : `⚔️ Deal ${healthAmount || 0} Damage`}
+              </button>
+              <button
+                onClick={() => { setShowHealthModal(false); setHealthCharacterId(null); setHealthLimb('all'); setHealthAmount(0); setHealthMode('heal'); }}
+                style={{ flex: 1, padding: '0.75rem', background: 'rgba(239,68,68,0.3)', border: '2px solid rgba(239,68,68,0.5)', borderRadius: '0.4rem', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Skill Modal */}
       {showAddSkillModal && selectedCharacter && (
         <div style={{
@@ -20426,20 +21739,39 @@ const CampaignView: React.FC = () => {
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👑</div>
             <h5 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Congratulations!</h5>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-              You have been granted a kingdom! Give your kingdom a name to establish it.
+              You have been granted a kingdom! Name your kingdom and your starting village to establish it.
             </p>
             <input
               type="text"
               value={kingdomNameInput}
               onChange={(e) => setKingdomNameInput(e.target.value)}
+              placeholder="Kingdom name..."
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(212,193,156,0.4)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '1rem',
+                marginBottom: '0.75rem',
+                boxSizing: 'border-box'
+              }}
+              autoFocus
+            />
+            <input
+              type="text"
+              value={fiefNameInput}
+              onChange={(e) => setFiefNameInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && kingdomNameInput.trim() && socket && currentCampaign) {
-                  socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, name: kingdomNameInput.trim() });
+                if (e.key === 'Enter' && kingdomNameInput.trim() && fiefNameInput.trim() && socket && currentCampaign) {
+                  socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, kingdomName: kingdomNameInput.trim(), fiefName: fiefNameInput.trim() });
                   setPendingKingdomId(null);
                   setKingdomNameInput('');
+                  setFiefNameInput('');
                 }
               }}
-              placeholder="Enter your kingdom's name..."
+              placeholder="Starting village name..."
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
@@ -20451,25 +21783,25 @@ const CampaignView: React.FC = () => {
                 marginBottom: '1.25rem',
                 boxSizing: 'border-box'
               }}
-              autoFocus
             />
             <button
-              disabled={!kingdomNameInput.trim()}
+              disabled={!kingdomNameInput.trim() || !fiefNameInput.trim()}
               onClick={() => {
-                if (!kingdomNameInput.trim() || !socket || !currentCampaign) return;
-                socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, name: kingdomNameInput.trim() });
+                if (!kingdomNameInput.trim() || !fiefNameInput.trim() || !socket || !currentCampaign) return;
+                socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, kingdomName: kingdomNameInput.trim(), fiefName: fiefNameInput.trim() });
                 setPendingKingdomId(null);
                 setKingdomNameInput('');
+                setFiefNameInput('');
               }}
               style={{
                 padding: '10px 28px',
-                backgroundColor: kingdomNameInput.trim() ? '#f59e0b' : '#555',
+                backgroundColor: (kingdomNameInput.trim() && fiefNameInput.trim()) ? '#f59e0b' : '#555',
                 color: '#000',
                 border: 'none',
                 borderRadius: '6px',
                 fontSize: '1rem',
                 fontWeight: 'bold',
-                cursor: kingdomNameInput.trim() ? 'pointer' : 'default',
+                cursor: (kingdomNameInput.trim() && fiefNameInput.trim()) ? 'pointer' : 'default',
                 transition: 'all 0.2s'
               }}
             >
@@ -20797,6 +22129,26 @@ const CampaignView: React.FC = () => {
             💬
           </button>
 
+          {/* Grant Kingdom Modal */}
+          <GrantKingdomModal
+            isOpen={showGrantKingdomModal}
+            onClose={() => setShowGrantKingdomModal(false)}
+            onGrant={(targetPlayerId, availableResources, waterAccess, buildableLand) => {
+              if (!socket || !currentCampaign) return;
+              socket.emit('createKingdom', {
+                campaignId: currentCampaign.campaign.id,
+                targetPlayerId,
+                availableResources,
+                waterAccess,
+                buildableLand,
+              });
+              setShowGrantKingdomModal(false);
+            }}
+            onlinePlayers={currentCampaign?.characters
+              .filter(c => c.player_id && onlineUserIds.has(c.player_id))
+              .map(c => ({ userId: c.player_id as number, characterName: c.name })) ?? []}
+          />
+
           {/* OOC Dice Roll Modal — shown to players when DM requests an out-of-combat roll */}
           {pendingOOCRoll && socket && (
             <DiceRollModal
@@ -20812,7 +22164,10 @@ const CampaignView: React.FC = () => {
                 diceGroups: pendingOOCRoll.diceGroups,
               }}
               rollerName={currentCampaign.userCharacter?.name ?? 'You'}
-              character={currentCampaign.userCharacter}
+              character={currentCampaign.userCharacter ? {
+                ...currentCampaign.userCharacter,
+                ...( characterDataOverrides[currentCampaign.userCharacter.id] ?? {} )
+              } : null}
               onConfirm={(rawRoll, total, modifierValue, modifier, allRolls) => {
                 socket.emit('submitOutOfCombatRoll', {
                   campaignId: currentCampaign.campaign.id,
@@ -21090,6 +22445,64 @@ const CampaignView: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+      {/* Note view modal (read-only full content) */}
+      {noteViewModal && ReactDOM.createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={e => { if (e.target === e.currentTarget) setNoteViewModal(null); }}
+        >
+          <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+              <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>📝 {noteViewModal.title}</h4>
+              <button onClick={() => setNoteViewModal(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: 0, flexShrink: 0 }}>✕</button>
+            </div>
+            <div
+              style={{ overflowY: 'auto', flex: 1, color: '#e2e8f0', fontSize: '0.92rem', lineHeight: 1.7, wordBreak: 'break-word' }}
+              dangerouslySetInnerHTML={{ __html: noteViewModal.content ? renderNoteMarkdown(noteViewModal.content) : '<span style=\'color:#64748b;font-style:italic\'>No content.</span>' }}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Note edit/create modal — portal so it escapes any CSS transform stacking context */}
+      {noteEditModal && ReactDOM.createPortal(
+        <NoteEditorModal
+          isNew={noteEditModal.note === null}
+          initialTitle={noteEditModal.note?.title ?? ''}
+          initialContent={noteEditModal.note?.content ?? ''}
+          onClose={() => setNoteEditModal(null)}
+          onSave={(title, content) => {
+            const { charId, note } = noteEditModal;
+            const token = localStorage.getItem('token');
+            if (note === null) {
+              fetch(`/api/characters/${charId}/notes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ title, content }),
+              }).then(r => r.json()).then(data => {
+                if (!data.note) { console.error('Save note failed:', data); return; }
+                setCharacterNotes(prev => ({ ...prev, [charId]: [data.note, ...(prev[charId] ?? [])] }));
+                setNoteEditModal(null);
+              }).catch(err => console.error('Error saving note:', err));
+            } else {
+              fetch(`/api/characters/${charId}/notes/${note.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ title, content }),
+              }).then(r => r.json()).then(data => {
+                if (!data.note) { console.error('Update note failed:', data); return; }
+                setCharacterNotes(prev => ({
+                  ...prev,
+                  [charId]: (prev[charId] ?? []).map(n => n.id === note.id ? data.note : n),
+                }));
+                setNoteEditModal(null);
+              }).catch(err => console.error('Error updating note:', err));
+            }
+          }}
+        />,
+        document.body
       )}
     </>
   );

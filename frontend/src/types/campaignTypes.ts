@@ -28,6 +28,7 @@ export interface Combatant {
   initiative: number;
   movement_speed: number;
   isMonster?: boolean;
+  isAlly?: boolean;
   monsterId?: number;
   instanceNumber?: number;
 }

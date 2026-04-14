@@ -164,8 +164,8 @@ router.patch('/fiefs/:id/workers', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: `Cannot assign ${totalAssigned} workers — only ${workable} are workable from ${pop} population.` });
     }
 
-    // Sanitise: only allow non-negative integers for known resources (including research)
-    const safe = { gold: 0, food: 0, wood: 0, stone: 0, research: 0 };
+    // Sanitise: only allow non-negative integers for known resources (including research and new worker types)
+    const safe = { gold: 0, food: 0, wood: 0, stone: 0, research: 0, wood_cutting: 0, hunting: 0, farming: 0, stone_mining: 0, mineral_mining: 0, builders: 0 };
     for (const res of Object.keys(safe)) {
       safe[res] = Math.max(0, Math.floor(Number(worker_assignments[res]) || 0));
     }
@@ -1212,6 +1212,138 @@ router.post('/fiefs/:id/transfer-troops', authenticateToken, async (req, res) =>
   } catch (error) {
     console.error('Error transferring troops:', error);
     res.status(500).json({ error: 'Failed to transfer troops' });
+  }
+});
+
+// ── Tier-1 building catalog (costs + base days) ───────────────────────────────
+const TIER1_BUILDINGS = {
+  hunters_cabin:  { name: 'Hunters Cabin',  building_type: 'hunters_cabin',  cost: { wood: 10, stone: 5  }, base_days: 5, description: 'Increases hunting output by 50%.' },
+  grain_farm:     { name: 'Grain Farm',     building_type: 'grain_farm',     cost: { wood: 15, stone: 5  }, base_days: 5, description: 'Unlocks farming and increases vegetable output.' },
+  storage_tent:   { name: 'Storage Tent',   building_type: 'storage_tent',   cost: { wood: 8,  stone: 0  }, base_days: 5, description: 'Increases maximum storage by 50.' },
+  watchtower:     { name: 'Watchtower',     building_type: 'watchtower',     cost: { wood: 10, stone: 8  }, base_days: 5, description: 'Alerts villagers of nearby events (DM narrates).' },
+};
+
+// POST construct a new building in a fief
+router.post('/fiefs/:id/construct', authenticateToken, async (req, res) => {
+  try {
+    const { building_key, builders } = req.body;
+    if (!building_key || !TIER1_BUILDINGS[building_key]) {
+      return res.status(400).json({ error: 'Invalid building type' });
+    }
+
+    const template = TIER1_BUILDINGS[building_key];
+    const fiefRes = await pool.query('SELECT * FROM fiefs WHERE id = $1', [req.params.id]);
+    if (!fiefRes.rows[0]) return res.status(404).json({ error: 'Fief not found' });
+    const fief = fiefRes.rows[0];
+
+    // Ownership check: player must own this kingdom (or be DM)
+    if (req.user.role !== 'Dungeon Master') {
+      const ownerCheck = await pool.query(
+        `SELECT 1 FROM kingdoms WHERE id = $1 AND player_id = $2`,
+        [fief.kingdom_id, req.user.id]
+      );
+      if (!ownerCheck.rows[0]) return res.status(403).json({ error: 'You do not own this fief' });
+    }
+
+    // Check buildable land cap
+    const buildingCountRes = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM fief_buildings WHERE fief_id = $1`,
+      [req.params.id]
+    );
+    const buildingCount = parseInt(buildingCountRes.rows[0].cnt, 10);
+    const buildableLand = fief.buildable_land || 100;
+    if (buildingCount >= buildableLand) {
+      return res.status(400).json({ error: `Buildable land limit reached (${buildableLand})` });
+    }
+
+    // Check stored_resources can cover the cost
+    const stored = fief.stored_resources || { wood: 0, stone: 0, minerals: 0, meat: 0, vegetables: 0 };
+    for (const [res, cost] of Object.entries(template.cost)) {
+      if (cost > 0 && (stored[res] || 0) < cost) {
+        return res.status(400).json({ error: `Not enough ${res} (need ${cost}, have ${stored[res] || 0})` });
+      }
+    }
+
+    // Deduct costs
+    const newStored = { ...stored };
+    for (const [res, cost] of Object.entries(template.cost)) {
+      if (cost > 0) newStored[res] = (newStored[res] || 0) - cost;
+    }
+
+    // Calculate effective days based on builder count
+    const builderCount = Math.max(0, Number(builders) || 0);
+    const effectiveDays = Math.ceil(template.base_days / Math.max(1, builderCount));
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`UPDATE fiefs SET stored_resources = $1 WHERE id = $2`, [JSON.stringify(newStored), req.params.id]);
+      const nextPos = buildingCount + 1;
+      await client.query(
+        `INSERT INTO fief_buildings (fief_id, name, building_type, level, description, construction_days_required, days_remaining, is_complete, queue_position, resource_output, resource_cost)
+         VALUES ($1, $2, $3, 1, $4, $5, $6, false, $7, $8, $9)`,
+        [
+          req.params.id,
+          template.name,
+          template.building_type,
+          template.description,
+          template.base_days,
+          effectiveDays,
+          nextPos,
+          JSON.stringify({}),
+          JSON.stringify(template.cost),
+        ]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // Return updated fief
+    const updatedFief = await Fief.findByIdFull(req.params.id);
+    const kInfo = await getKingdomForFief(req.params.id);
+    const io = req.app.get('io');
+    if (io && kInfo) {
+      io.to(`campaign_${kInfo.campaign_id}`).emit('kingdomDataChanged', { campaignId: kInfo.campaign_id, kingdomId: kInfo.kingdom_id });
+    }
+    res.status(201).json(updatedFief);
+  } catch (error) {
+    console.error('Error constructing building:', error);
+    res.status(500).json({ error: 'Failed to construct building' });
+  }
+});
+
+// PATCH fief stored resources (DM only — for gifting starting materials)
+router.patch('/fiefs/:id/stored-resources', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only the Dungeon Master can set stored resources directly' });
+    }
+    const { stored_resources } = req.body;
+    if (!stored_resources || typeof stored_resources !== 'object') {
+      return res.status(400).json({ error: 'stored_resources must be an object' });
+    }
+    // Sanitize: only allow the 5 known keys, clamp to non-negative
+    const safe = {
+      wood:       Math.max(0, Number(stored_resources.wood       || 0)),
+      stone:      Math.max(0, Number(stored_resources.stone      || 0)),
+      minerals:   Math.max(0, Number(stored_resources.minerals   || 0)),
+      meat:       Math.max(0, Number(stored_resources.meat       || 0)),
+      vegetables: Math.max(0, Number(stored_resources.vegetables || 0)),
+    };
+    await pool.query(`UPDATE fiefs SET stored_resources = $1 WHERE id = $2`, [JSON.stringify(safe), req.params.id]);
+    const kInfo = await getKingdomForFief(req.params.id);
+    const io = req.app.get('io');
+    if (io && kInfo) {
+      io.to(`campaign_${kInfo.campaign_id}`).emit('kingdomDataChanged', { campaignId: kInfo.campaign_id, kingdomId: kInfo.kingdom_id });
+    }
+    res.json({ stored_resources: safe });
+  } catch (error) {
+    console.error('Error updating stored resources:', error);
+    res.status(500).json({ error: 'Failed to update stored resources' });
   }
 });
 

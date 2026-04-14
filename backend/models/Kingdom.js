@@ -2,8 +2,11 @@ const { pool } = require('./database');
 const Fief = require('./Fief');
 
 class Kingdom {
-  static async create({ campaign_id, player_id }) {
+  static async create({ campaign_id, player_id, available_resources, water_access, buildable_land }) {
     const client = await pool.connect();
+    const availRes = available_resources || { wood: 50, animals: 50, fertile_ground: 50, stone: 50, minerals: 50 };
+    const waterAcc = water_access === true;
+    const buildLand = Math.max(1, Math.min(1000, Number(buildable_land) || 100));
     try {
       await client.query('BEGIN');
       const kingdomResult = await client.query(
@@ -11,10 +14,19 @@ class Kingdom {
         [campaign_id, player_id]
       );
       const kingdom = kingdomResult.rows[0];
-      // Auto-create capital fief with 3-day construction timer and starting stats of 1
+      // Auto-create capital fief — ready immediately (no build timer), starting population 10
       await client.query(
-        `INSERT INTO fiefs (kingdom_id, name, is_capital, construction_days_remaining, stats) VALUES ($1, $2, true, 3, $3)`,
-        [kingdom.id, 'Capital', JSON.stringify({ economy: 1, military: 1, stability: 1 })]
+        `INSERT INTO fiefs (kingdom_id, name, is_capital, construction_days_remaining, stats, population, available_resources, water_access, buildable_land, storage_capacity, stored_resources)
+         VALUES ($1, $2, true, 0, $3, 10, $4, $5, $6, 100, $7)`,
+        [
+          kingdom.id,
+          'Capital',
+          JSON.stringify({ economy: 1, military: 1, stability: 1 }),
+          JSON.stringify(availRes),
+          waterAcc,
+          buildLand,
+          JSON.stringify({ wood: 0, stone: 0, minerals: 0, meat: 0, vegetables: 0 }),
+        ]
       );
       await client.query('COMMIT');
       return kingdom;
@@ -69,10 +81,20 @@ class Kingdom {
     const result = [];
     for (const k of kingdoms.rows) {
       const fiefs = await pool.query(
-        `SELECT id, name, tier, population, is_capital, construction_days_remaining, worker_assignments, stats, resources FROM fiefs WHERE kingdom_id = $1 ORDER BY is_capital DESC, created_at ASC`,
+        `SELECT id, name, tier, population, is_capital, construction_days_remaining, worker_assignments, stats, resources,
+                available_resources, water_access, buildable_land, storage_capacity, stored_resources
+         FROM fiefs WHERE kingdom_id = $1 ORDER BY is_capital DESC, created_at ASC`,
         [k.id]
       );
-      result.push({ ...k, fiefs: fiefs.rows });
+      const fiefsWithBuildings = [];
+      for (const fief of fiefs.rows) {
+        const buildings = await pool.query(
+          `SELECT id, name, building_type, level, is_complete, days_remaining, built_at FROM fief_buildings WHERE fief_id = $1 ORDER BY is_complete DESC, queue_position ASC NULLS LAST`,
+          [fief.id]
+        );
+        fiefsWithBuildings.push({ ...fief, buildings: buildings.rows });
+      }
+      result.push({ ...k, fiefs: fiefsWithBuildings });
     }
     return result;
   }

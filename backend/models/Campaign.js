@@ -426,7 +426,13 @@ class Campaign {
 
         // Food consumption: 0.5 per person per day
         const pop = fief.population || 0;
-        const foodConsumed = pop * 0.5 * days;
+        // Fiefs using the new stored-resource system (kingdoms tab) manage food via
+        // stored_resources (meat/vegetables) — do NOT deduct from the legacy food resource.
+        // We detect these by checking that their kingdom has the new system active:
+        // presence of stored_resources column value (a kingdom fief always has it set, older fiefs have the column default).
+        // Use the stored_resources key as the marker — they start with an explicit {wood:0,...} INSERT.
+        const usesNewFoodSystem = fief.kingdom_id != null && fief.stored_resources != null && typeof fief.stored_resources === 'object';
+        const foodConsumed = usesNewFoodSystem ? 0 : pop * 0.5 * days;
 
         // Apply resources — food gets net (produced minus consumed), others just add production
         const currentResources = fief.resources || { gold: 0, food: 0, wood: 0, stone: 0 };
@@ -440,10 +446,109 @@ class Campaign {
         await client.query(`UPDATE fiefs SET resources = $1 WHERE id = $2`, [JSON.stringify(newResources), fiefId]);
         resourcesGained[fiefId] = gained;
 
-        // Population: starvation if food ran out, otherwise probability-based growth
+        // ── Stored-resource collection (new kingdom resource system) ──────────
+        // Uses separate worker keys: wood_cutting, hunting, farming, stone_mining, mineral_mining
+        const storedCurrent = fief.stored_resources || { wood: 0, stone: 0, minerals: 0, meat: 0, vegetables: 0 };
+        const availRes = fief.available_resources || { wood: 50, animals: 50, fertile_ground: 50, stone: 50, minerals: 50 };
+
+        // Building presence checks (must be complete)
+        const hasGrainFarm    = buildings.some(b => b.building_type === 'grain_farm');
+        const hasHuntersCabin = buildings.some(b => b.building_type === 'hunters_cabin');
+        const hasStorageTents = buildings.filter(b => b.building_type === 'storage_tent').length;
+
+        // Effective storage cap = base + 50 per complete Storage Tent
+        const effectiveStorageCap = (fief.storage_capacity || 100) + hasStorageTents * 50;
+
+        const woodWorkers    = Math.max(0, Number(assignments['wood_cutting']    ?? 0));
+        const huntWorkers    = Math.max(0, Number(assignments['hunting']          ?? 0));
+        const farmWorkers    = hasGrainFarm ? Math.max(0, Number(assignments['farming'] ?? 0)) : 0;
+        // Stone/mineral mining (no tier-1 building to unlock yet — zero output)
+        const stoneWorkers   = 0; // requires Quarry (not in tier 1)
+        const mineralWorkers = 0; // requires Mine (not in tier 1)
+
+        // Hunters Cabin bonus: +0.5 hunting multiplier
+        const huntBonus = hasHuntersCabin ? 0.5 : 0;
+
+        // Formula: workers × (1 + land_quality/100) × days
+        const newWood      = woodWorkers    > 0 ? woodWorkers    * (1 + (availRes.wood           || 0) / 100) * days : 0;
+        const newMeat      = huntWorkers    > 0 ? huntWorkers    * (1 + (availRes.animals        || 0) / 100 + huntBonus) * days : 0;
+        const newVegs      = farmWorkers    > 0 ? farmWorkers    * (1 + (availRes.fertile_ground || 0) / 100) * days : 0;
+        const newStone     = stoneWorkers   > 0 ? stoneWorkers   * (1 + (availRes.stone          || 0) / 100) * days : 0;
+        const newMinerals  = mineralWorkers > 0 ? mineralWorkers * (1 + (availRes.minerals       || 0) / 100) * days : 0;
+
+        // Food consumption from stored_resources: population × 0.5 × days
+        const foodRequired = (fief.population || 0) * 0.5 * days;
+        let meatAvail = Math.max(0, (storedCurrent.meat || 0) + newMeat);
+        let vegsAvail = Math.max(0, (storedCurrent.vegetables || 0) + newVegs);
+        let foodConsumedFromStored = 0;
+        let storedFoodShortfall = 0;
+        if (foodRequired > 0) {
+          // Drain meat first, then vegetables
+          const meatUsed = Math.min(meatAvail, foodRequired);
+          meatAvail -= meatUsed;
+          foodConsumedFromStored += meatUsed;
+          const remaining = foodRequired - meatUsed;
+          const vegsUsed = Math.min(vegsAvail, remaining);
+          vegsAvail -= vegsUsed;
+          foodConsumedFromStored += vegsUsed;
+          storedFoodShortfall = foodRequired - foodConsumedFromStored;
+        }
+
+        // Build proposed stored values before cap
+        const proposed = {
+          wood:       (storedCurrent.wood      || 0) + newWood,
+          stone:      (storedCurrent.stone     || 0) + newStone,
+          minerals:   (storedCurrent.minerals  || 0) + newMinerals,
+          meat:       meatAvail,
+          vegetables: vegsAvail,
+        };
+
+        // Proportional cap: if sum exceeds cap, scale each down
+        const totalProposed = Object.values(proposed).reduce((s, v) => s + v, 0);
+        let newStoredResources;
+        if (totalProposed > effectiveStorageCap && totalProposed > 0) {
+          const scale = effectiveStorageCap / totalProposed;
+          newStoredResources = {
+            wood:       Math.floor(proposed.wood       * scale),
+            stone:      Math.floor(proposed.stone      * scale),
+            minerals:   Math.floor(proposed.minerals   * scale),
+            meat:       Math.floor(proposed.meat       * scale),
+            vegetables: Math.floor(proposed.vegetables * scale),
+          };
+        } else {
+          newStoredResources = {
+            wood:       Math.floor(Math.max(0, proposed.wood)),
+            stone:      Math.floor(Math.max(0, proposed.stone)),
+            minerals:   Math.floor(Math.max(0, proposed.minerals)),
+            meat:       Math.floor(Math.max(0, proposed.meat)),
+            vegetables: Math.floor(Math.max(0, proposed.vegetables)),
+          };
+        }
+
+        await client.query(`UPDATE fiefs SET stored_resources = $1 WHERE id = $2`, [JSON.stringify(newStoredResources), fiefId]);
+
+        // Starvation from stored_resources shortage — feeds into popChange below
+        let storedStarvationDeaths = 0;
+        if (storedFoodShortfall > 0 && (fief.population || 0) > 0) {
+          const deathRate = Math.min(0.25, storedFoodShortfall / Math.max((fief.population || 1) * 5, 1));
+          storedStarvationDeaths = Math.max(1, Math.floor((fief.population || 0) * deathRate));
+          await client.query(
+            `INSERT INTO fief_event_log (fief_id, campaign_day, event_type, title, details)
+             VALUES ($1,$2,'starvation','Food shortage from stores',$3)`,
+            [fiefId, newDay, JSON.stringify({ shortfall: storedFoodShortfall, deaths: storedStarvationDeaths })]
+          );
+        }
+
+        // ── END stored-resource collection ────────────────────────────────────
+
+
         let popChange = 0;
         let starvation = false;
-        if (rawFood < 0 && pop > 0) {
+        // For new-system fiefs, starvation is handled by the stored-resource block above
+        if (storedStarvationDeaths > 0) {
+          popChange = -storedStarvationDeaths;
+          starvation = true;
+        } else if (!usesNewFoodSystem && rawFood < 0 && pop > 0) {
           // Starvation: severity scales with how deep the shortage is relative to population
           const shortage = Math.abs(rawFood);
           const deathRate = Math.min(0.25, shortage / Math.max(pop * 5, 1));

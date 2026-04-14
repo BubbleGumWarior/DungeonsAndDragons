@@ -62,19 +62,20 @@ class CombatSession {
       is_mounted = false,
       mount_id = null,
       mount_current_hp = null,
+      is_ally = false,
     } = data;
 
     const result = await pool.query(
       `INSERT INTO combat_combatants
          (session_id, character_id, monster_instance_id, combatant_key, name, player_id,
           initiative, movement_speed, remaining_movement, is_monster, is_beast, is_pet, pet_id,
-          is_shadow, shadow_id, owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+          is_shadow, shadow_id, owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp, is_ally)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [
         session_id, character_id, monster_instance_id, combatant_key, name, player_id,
         initiative, movement_speed, movement_speed, is_monster, is_beast, is_pet, pet_id,
-        is_shadow, shadow_id, owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp,
+        is_shadow, shadow_id, owner_character_id, position_x, position_y, is_mounted, mount_id, mount_current_hp, is_ally,
       ]
     );
     return result.rows[0];
@@ -95,7 +96,7 @@ class CombatSession {
       'position_x', 'position_y', 'remaining_movement', 'conditions',
       'action_used', 'bonus_action_used', 'reaction_used', 'concentration_spell',
       'is_active', 'initiative', 'movement_speed',
-      'is_mounted', 'mount_id', 'mount_current_hp',
+      'is_mounted', 'mount_id', 'mount_current_hp', 'is_ally',
     ];
     const updates = [];
     const values = [];

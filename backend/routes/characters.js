@@ -465,6 +465,106 @@ router.get('/inventory/item/:itemName', authenticateToken, async (req, res) => {
   }
 });
 
+// Manually adjust character health (heal or damage) — DM only
+router.patch('/:id/health', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only the Dungeon Master can manually adjust health' });
+    }
+
+    const { id } = req.params;
+    const { amount, limbName, isHeal, campaignId } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
+    const character = await Character.findById(id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    const hit_points_max = (character.hit_points_max != null) ? character.hit_points_max : character.hit_points;
+
+    const abilities = typeof character.abilities === 'string' ? JSON.parse(character.abilities) : (character.abilities || {});
+    const con = abilities.con ?? 10;
+    const conMod = Math.floor((con - 10) / 2);
+    const conBonus = Math.max(0, conMod * 0.1);
+    const makeLimbMaxes = (hp) => ({
+      head:      Math.floor(hp * Math.min(1.0, 0.25 + conBonus)),
+      chest:     Math.floor(hp * Math.min(2.0, 1.0 + conBonus)),
+      left_arm:  Math.floor(hp * Math.min(1.0, 0.15 + conBonus)),
+      right_arm: Math.floor(hp * Math.min(1.0, 0.15 + conBonus)),
+      left_leg:  Math.floor(hp * Math.min(1.0, 0.40 + conBonus)),
+      right_leg: Math.floor(hp * Math.min(1.0, 0.40 + conBonus)),
+    });
+
+    const limbMaxes = makeLimbMaxes(hit_points_max || 1);
+    const allLimbs = ['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
+
+    let limbHealth;
+    if (character.limb_health) {
+      limbHealth = typeof character.limb_health === 'string' ? JSON.parse(character.limb_health) : { ...character.limb_health };
+    } else {
+      limbHealth = makeLimbMaxes(character.hit_points || 1);
+    }
+
+    if (!limbName || limbName === 'all') {
+      const totalMax = allLimbs.reduce((s, l) => s + (limbMaxes[l] || 0), 0) || 1;
+      for (const l of allLimbs) {
+        const share = Math.round(amount * ((limbMaxes[l] || 0) / totalMax));
+        if (isHeal) {
+          limbHealth[l] = Math.min((limbHealth[l] || 0) + share, limbMaxes[l] || 0);
+        } else {
+          limbHealth[l] = Math.max((limbHealth[l] || 0) - share, 0);
+        }
+      }
+    } else {
+      const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
+      if (isHeal) {
+        limbHealth[validLimb] = Math.min((limbHealth[validLimb] || 0) + amount, limbMaxes[validLimb] || 0);
+      } else {
+        limbHealth[validLimb] = Math.max((limbHealth[validLimb] || 0) - amount, 0);
+      }
+    }
+
+    const newHP = Math.max(0, allLimbs.reduce((s, l) => s + (limbHealth[l] || 0), 0));
+
+    await pool.query(
+      'UPDATE characters SET hit_points = $1, limb_health = $2 WHERE id = $3',
+      [newHP, JSON.stringify(limbHealth), id]
+    );
+
+    const limbLabel = !limbName || limbName === 'all' ? '' : ` (${limbName.replace(/_/g, ' ')})`;
+    const charName = character.name || `Character ${id}`;
+    const toastMessage = isHeal
+      ? `${charName} was healed for ${amount} HP${limbLabel}`
+      : `${charName} took ${amount} damage${limbLabel ? ` to their${limbLabel}` : ''}`;
+
+    if (campaignId) {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`campaign_${campaignId}`).emit('healthAdjusted', {
+          type: 'character',
+          characterId: parseInt(id, 10),
+          newHP,
+          maxHP: hit_points_max,
+          limbHealth,
+          isDead: newHP <= 0,
+          toastMessage,
+          campaignId,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    res.json({ newHP, maxHP: hit_points_max, limbHealth, isDead: newHP <= 0, toastMessage });
+  } catch (error) {
+    console.error('Error adjusting character health:', error);
+    res.status(500).json({ error: 'Failed to adjust health' });
+  }
+});
+
 // Get character equipment with full details
 router.get('/:id/equipment-details', authenticateToken, async (req, res) => {
   try {
@@ -1413,6 +1513,113 @@ router.put('/:id/concealed-class', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error setting concealed class:', error);
     res.status(500).json({ error: 'Failed to update concealed class' });
+  }
+});
+
+// ── Character Notes ──────────────────────────────────────────────────────────
+
+// Get all notes for a character (owner or DM of campaign)
+router.get('/:id/notes', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const character = await Character.findById(id);
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    const isDM = req.user.role === 'Dungeon Master';
+    const isOwner = character.player_id === req.user.id;
+
+    if (!isOwner && !isDM) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, title, content, created_at, updated_at
+         FROM character_notes
+        WHERE character_id = $1
+        ORDER BY created_at DESC`,
+      [id]
+    );
+    res.json({ notes: result.rows });
+  } catch (error) {
+    console.error('Error fetching character notes:', error);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+});
+
+// Create a note (owner only)
+router.post('/:id/notes', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title = 'Note', content = '' } = req.body;
+    const character = await Character.findById(id);
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    if (character.player_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the character owner can create notes' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO character_notes (character_id, title, content)
+       VALUES ($1, $2, $3)
+       RETURNING id, title, content, created_at, updated_at`,
+      [id, title.slice(0, 200), content]
+    );
+    res.status(201).json({ note: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating character note:', error);
+    res.status(500).json({ error: 'Failed to create note' });
+  }
+});
+
+// Update a note (owner only)
+router.put('/:id/notes/:noteId', authenticateToken, async (req, res) => {
+  try {
+    const { id, noteId } = req.params;
+    const { title, content } = req.body;
+    const character = await Character.findById(id);
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    if (character.player_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the character owner can edit notes' });
+    }
+
+    const result = await pool.query(
+      `UPDATE character_notes
+          SET title = COALESCE($1, title),
+              content = COALESCE($2, content),
+              updated_at = NOW()
+        WHERE id = $3 AND character_id = $4
+       RETURNING id, title, content, created_at, updated_at`,
+      [title ? title.slice(0, 200) : null, content ?? null, noteId, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Note not found' });
+    res.json({ note: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating character note:', error);
+    res.status(500).json({ error: 'Failed to update note' });
+  }
+});
+
+// Delete a note (owner only)
+router.delete('/:id/notes/:noteId', authenticateToken, async (req, res) => {
+  try {
+    const { id, noteId } = req.params;
+    const character = await Character.findById(id);
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    if (character.player_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the character owner can delete notes' });
+    }
+
+    const result = await pool.query(
+      `DELETE FROM character_notes WHERE id = $1 AND character_id = $2 RETURNING id`,
+      [noteId, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Note not found' });
+    res.json({ message: 'Note deleted' });
+  } catch (error) {
+    console.error('Error deleting character note:', error);
+    res.status(500).json({ error: 'Failed to delete note' });
   }
 });
 

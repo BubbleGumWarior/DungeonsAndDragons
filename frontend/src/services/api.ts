@@ -475,6 +475,11 @@ export const characterAPI = {
     return response.data;
   },
 
+  adjustHealth: async (characterId: number, data: { amount: number; limbName: string; isHeal: boolean; campaignId: number }): Promise<{ newHP: number; maxHP: number; limbHealth: Record<string, number>; isDead: boolean; toastMessage: string }> => {
+    const response = await api.patch(`/characters/${characterId}/health`, data);
+    return response.data;
+  },
+
   equipItem: async (characterId: number, itemName: string, slot: string): Promise<{ message: string; character: Character; equipped_item: InventoryItem; slot: string; previous_item?: string }> => {
     const response = await api.post(`/characters/${characterId}/equip`, { itemName, slot });
     return response.data;
@@ -1259,6 +1264,22 @@ export interface FiefTraining {
 
 export type FiefGarrison = Record<string, number>;
 
+export interface FiefAvailableResources {
+  wood: number;
+  animals: number;
+  fertile_ground: number;
+  stone: number;
+  minerals: number;
+}
+
+export interface FiefStoredResources {
+  wood: number;
+  stone: number;
+  minerals: number;
+  meat: number;
+  vegetables: number;
+}
+
 export interface Fief {
   id: number;
   kingdom_id: number;
@@ -1270,12 +1291,17 @@ export interface Fief {
   is_capital: boolean;
   construction_days_remaining: number;
   tier_upgrade_days_remaining: number;
-  worker_assignments: { gold: number; food: number; wood: number; stone: number };
+  worker_assignments: { gold: number; food: number; wood: number; stone: number; wood_cutting?: number; hunting?: number; farming?: number; stone_mining?: number; mineral_mining?: number; builders?: number };
   faith?: number;
   garrison: FiefGarrison;
   created_at: string;
   buildings?: FiefBuilding[];
   training_queue?: FiefTraining[];
+  available_resources?: FiefAvailableResources;
+  water_access?: boolean;
+  buildable_land?: number;
+  storage_capacity?: number;
+  stored_resources?: FiefStoredResources;
 }
 
 export interface KingdomEvent {
@@ -1454,7 +1480,7 @@ export const fiefAPI = {
     const response = await api.patch(`/fiefs/${id}/stats`, { stats });
     return response.data;
   },
-  updateWorkerAssignments: async (id: number, assignments: { gold: number; food: number; wood: number; stone: number }): Promise<Fief> => {
+  updateWorkerAssignments: async (id: number, assignments: Partial<{ gold: number; food: number; wood: number; stone: number; research: number; wood_cutting: number; hunting: number; farming: number; stone_mining: number; mineral_mining: number; builders: number }>): Promise<Fief> => {
     const response = await api.patch(`/fiefs/${id}/workers`, { worker_assignments: assignments });
     return response.data;
   },
@@ -1540,6 +1566,14 @@ export const fiefAPI = {
   },
   getPositiveEvents: async (): Promise<Array<{ id: string; name: string; description: string }>> => {
     const response = await api.get(`/fiefs/positive-events`);
+    return response.data;
+  },
+  construct: async (fiefId: number, buildingKey: string, builders: number): Promise<Fief> => {
+    const response = await api.post(`/fiefs/${fiefId}/construct`, { building_key: buildingKey, builders });
+    return response.data;
+  },
+  setStoredResources: async (fiefId: number, storedResources: FiefStoredResources): Promise<{ stored_resources: FiefStoredResources }> => {
+    const response = await api.patch(`/fiefs/${fiefId}/stored-resources`, { stored_resources: storedResources });
     return response.data;
   },
 };

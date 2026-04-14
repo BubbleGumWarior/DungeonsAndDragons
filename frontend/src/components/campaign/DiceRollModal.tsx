@@ -23,7 +23,18 @@ const PURPOSE_THEMES: Record<string, { color: string; bg: string; label: string 
   initiative:    { color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', label: 'Initiative' },
 };
 
-function getModifierInfo(modifier: string | undefined, character: Character | null | undefined): { value: number; label: string } {
+// Skill name → governing ability mapping
+const SKILL_ABILITY_MAP: Record<string, keyof NonNullable<Character['abilities']>> = {
+  acrobatics: 'dex', 'animal handling': 'wis', animalhandling: 'wis',
+  arcana: 'int', athletics: 'str', deception: 'cha',
+  history: 'int', insight: 'wis', intimidation: 'cha',
+  investigation: 'int', medicine: 'wis', nature: 'int',
+  perception: 'wis', performance: 'cha', persuasion: 'cha',
+  religion: 'int', 'sleight of hand': 'dex', sleightofhand: 'dex',
+  stealth: 'dex', survival: 'wis',
+};
+
+function getModifierInfo(modifier: string | undefined, character: Character | null | undefined, purposeDetail?: string): { value: number; label: string } {
   if (!modifier || modifier === 'none') return { value: 0, label: '' };
   if (!character?.abilities) return { value: 0, label: modifier.toUpperCase() };
 
@@ -33,8 +44,27 @@ function getModifierInfo(modifier: string | undefined, character: Character | nu
 
   if (abilityMap[modifier]) {
     const score = character.abilities[abilityMap[modifier]] ?? 10;
-    const value = Math.floor((score - 10) / 2);
-    return { value, label: modifier.toUpperCase() };
+    const abilityMod = Math.floor((score - 10) / 2);
+    const level = character.level ?? 1;
+    const profBonus = Math.floor((level - 1) / 4) + 2;
+
+    // If a purposeDetail matches a known skill, apply proficiency/expertise
+    if (purposeDetail) {
+      const key = purposeDetail.toLowerCase().replace(/\s+/g, '');
+      const keySpaced = purposeDetail.toLowerCase();
+      const skillAbility = SKILL_ABILITY_MAP[key] || SKILL_ABILITY_MAP[keySpaced];
+      if (skillAbility) {
+        const profSkills: string[] = (character.skills ?? []).map(s => s.toLowerCase());
+        const expertiseSkills: string[] = ((character as any).expertise ?? []).map((s: string) => s.toLowerCase());
+        const pdLower = purposeDetail.toLowerCase();
+        const isExpert = expertiseSkills.includes(pdLower);
+        const isProf = isExpert || profSkills.includes(pdLower);
+        const bonus = isExpert ? profBonus * 2 : isProf ? profBonus : 0;
+        const label = `${modifier.toUpperCase()}${isExpert ? ' (Expertise)' : isProf ? ' (Prof)' : ''}`;
+        return { value: abilityMod + bonus, label };
+      }
+    }
+    return { value: abilityMod, label: modifier.toUpperCase() };
   }
 
   if (modifier === 'prof') {
@@ -94,7 +124,7 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
 
   const { rollPurpose, purposeDetail, requesterName, targetCharacterName, modifier } = request;
   const theme = PURPOSE_THEMES[rollPurpose] ?? PURPOSE_THEMES['ability_check'];
-  const baseMod = getModifierInfo(modifier, character);
+  const baseMod = getModifierInfo(modifier, character, purposeDetail);
   const mod = precomputedModifier !== undefined
     ? {
         value: precomputedModifier,
