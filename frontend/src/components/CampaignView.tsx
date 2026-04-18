@@ -637,6 +637,11 @@ const CampaignView: React.FC = () => {
   const [currentDay, setCurrentDay] = useState(1);
   const [restLoading, setRestLoading] = useState(false);
 
+  const getCharacterAge = (race: string, day: number): number => {
+    const base = race?.toLowerCase().includes('thri-kreen') ? 3 : 13;
+    return base + Math.floor((day - 1) / 365);
+  };
+
   // Combat state
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
   const [showResetCombatModal, setShowResetCombatModal] = useState(false);
@@ -5896,6 +5901,9 @@ const CampaignView: React.FC = () => {
                     )}
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                       Lvl {character.level} {character.race} {user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      Age: {getCharacterAge(character.race, currentDay)}
                     </div>
                     
                     {/* Health Bar and Status */}
@@ -11169,6 +11177,7 @@ const CampaignView: React.FC = () => {
                               : selectedCharacterData.class
                           }{user?.role === 'Dungeon Master' && selectedCharacterData.concealed_class ? ` 🎭` : ''}</span>
                           <span className="char-pill char-pill-level">Lvl {selectedCharacterData.level}</span>
+                          <span className="char-pill">🎂 Age {getCharacterAge(selectedCharacterData.race, currentDay)}</span>
                         </div>
                         <div className="char-title-row">
                           <span className="char-field-label-sm">Title</span>
@@ -14126,7 +14135,7 @@ const CampaignView: React.FC = () => {
                             )}
                             <div style={{ padding: '0.75rem' }}>
                               <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '0.25rem' }}>{npc.name}</div>
-                              {npc.age && <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.4rem' }}>Age: {npc.age}</div>}
+                              {npc.age && <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.4rem' }}>Age: {Number(npc.age) + Math.floor((currentDay - 1) / 365)}</div>}
                               {npc.description && <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: 0, lineHeight: 1.45 }}>{npc.description}</p>}
                             </div>
                           </div>

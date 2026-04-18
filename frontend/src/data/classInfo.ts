@@ -80,17 +80,17 @@ export const classInfo: Record<string, ClassInfo> = {
     subclasses: [
       { name: 'Life Domain', color: '#2ECC71', description: 'Master healer protecting life' },
       { name: 'War Domain', color: '#C0392B', description: 'Divine warrior blessing combat' },
-      { name: 'Trickery Domain', color: '#8E44AD', description: 'Agent of deception and misdirection' }
+      { name: 'Order Domain', color: '#2C3E50', description: 'Champion of law and civilization who compels obedience and protects the social order.' }
     ],
     levelProgression: [
-      { level: 1, features: 'Spellcasting, Divine Domain, Bonus Proficiency (Life), Disciple of Life (Life) / Bonus Proficiencies (War), War Priest (War) / Blessing of the Trickster (Trickery)' },
-      { level: 2, features: 'Channel Divinity (1/rest), Preserve Life (Life) / Channel Divinity: Guided Strike (War) / Channel Divinity: Invoke Duplicity (Trickery)' },
+      { level: 1, features: "Spellcasting, Divine Domain, Bonus Proficiency (Life), Disciple of Life (Life) / Bonus Proficiencies (War), War Priest (War) / Voice of Authority (Order)" },
+      { level: 2, features: "Channel Divinity (1/rest), Preserve Life (Life) / Channel Divinity: Guided Strike (War) / Channel Divinity: Order's Demand (Order)" },
       { level: 3, features: '2nd Level Spells' },
       { level: 4, features: 'Ability Score Improvement' },
       { level: 5, features: 'Destroy Undead (CR 1/2), 3rd Level Spells' },
-      { level: 6, features: "Channel Divinity (2/rest), Blessed Healer (Life) / Channel Divinity: War God's Blessing (War) / Channel Divinity: Cloak of Shadows (Trickery)" },
+      { level: 6, features: "Channel Divinity (2/rest), Blessed Healer (Life) / Channel Divinity: War God's Blessing (War) / Embodiment of the Law (Order)" },
       { level: 7, features: '4th Level Spells' },
-      { level: 8, features: 'Ability Score Improvement, Destroy Undead (CR 1), Divine Strike (Life) / Divine Strike (War) / Divine Strike (Trickery)' },
+      { level: 8, features: 'Ability Score Improvement, Destroy Undead (CR 1), Divine Strike (Life) / Divine Strike (War) / Divine Strike (Order)' },
       { level: 9, features: '5th Level Spells' },
       { level: 10, features: 'Divine Intervention' },
       { level: 11, features: 'Destroy Undead (CR 2), 6th Level Spells' },
@@ -99,7 +99,7 @@ export const classInfo: Record<string, ClassInfo> = {
       { level: 14, features: 'Destroy Undead (CR 3)' },
       { level: 15, features: '8th Level Spells' },
       { level: 16, features: 'Ability Score Improvement' },
-      { level: 17, features: 'Destroy Undead (CR 4), 9th Level Spells, Supreme Healing (Life) / Avatar of Battle (War) / Improved Duplicity (Trickery)' },
+      { level: 17, features: "Destroy Undead (CR 4), 9th Level Spells, Supreme Healing (Life) / Avatar of Battle (War) / Order's Wrath (Order)" },
       { level: 18, features: 'Channel Divinity (3/rest)' },
       { level: 19, features: 'Ability Score Improvement' },
       { level: 20, features: 'Divine Intervention Improvement' }
