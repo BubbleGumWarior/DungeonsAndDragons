@@ -3325,8 +3325,17 @@ const CampaignView: React.FC = () => {
         // Server keys monsterHpData by numeric instance id ("42"); remap to combatant key format ("monster_42")
         if ((data as any).monsterHpData) {
           const rawHp = (data as any).monsterHpData as Record<string, any>;
-          const remapped: Record<string, { limbHealth: Record<string, number>; totalHP: number }> = {};
-          Object.entries(rawHp).forEach(([id, hp]) => { remapped[`monster_${id}`] = hp as any; });
+          const templates = (data as any).combatMonsterTemplates as Record<string, any> | undefined;
+          const remapped: Record<string, { limbHealth: Record<string, number>; totalHP: number; maxTotalHP?: number }> = {};
+          Object.entries(rawHp).forEach(([id, hp]) => {
+            const combatant = data.combatants.find((c: any) => String(c.characterId) === `monster_${id}`);
+            const templateId = combatant?.monsterId;
+            const template = templateId ? templates?.[String(templateId)] : undefined;
+            const maxTotalHP = template?.limb_health
+              ? Object.values(template.limb_health as Record<string, number>).reduce((s, v) => s + v, 0)
+              : undefined;
+            remapped[`monster_${id}`] = { ...(hp as any), ...(maxTotalHP !== undefined ? { maxTotalHP } : {}) };
+          });
           setMonsterInstanceHp(remapped);
         }
         // Hydrate monster templates for active combat monsters (players may not have them via API)
@@ -3577,7 +3586,12 @@ const CampaignView: React.FC = () => {
           const monsterKey = `monster_${data.instanceId}`;
           setMonsterInstanceHp(prev => ({
             ...prev,
-            [monsterKey]: { limbHealth: data.limbHealth, totalHP: data.totalHP },
+            [monsterKey]: {
+              limbHealth: data.limbHealth,
+              totalHP: data.totalHP,
+              // Preserve the original max so the health bar doesn't always show 100%
+              maxTotalHP: (prev[monsterKey] as any)?.maxTotalHP,
+            },
           }));
           if (Object.prototype.hasOwnProperty.call(data, 'tempLimbHealth')) {
             setCombatTempHealth(prev => ({ ...prev, [monsterKey]: data.tempLimbHealth }));
@@ -7124,9 +7138,10 @@ const CampaignView: React.FC = () => {
                         } else if (combatant.isMonster) {
                           const instanceHp = monsterInstanceHp[String(combatant.characterId)];
                           if (instanceHp) {
-                            const maxHp = initMonsterTemplate
+                            const templateMax = initMonsterTemplate?.limb_health
                               ? Object.values(initMonsterTemplate.limb_health as Record<string,number>).reduce((s,v)=>s+v,0)
-                              : instanceHp.totalHP;
+                              : 0;
+                            const maxHp = templateMax > 0 ? templateMax : ((instanceHp as any).maxTotalHP ?? instanceHp.totalHP);
                             const tempData = combatTempHealth[String(combatant.characterId)];
                             const tempHpTotal = tempData ? Object.values(tempData).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
                             healthPct = maxHp > 0 ? (instanceHp.totalHP / maxHp) * 100 : 0;
@@ -7149,9 +7164,10 @@ const CampaignView: React.FC = () => {
                           } else if (combatant.isMonster) {
                             const instanceHp = monsterInstanceHp[String(combatant.characterId)];
                             if (!instanceHp) return 1;
-                            return initMonsterTemplate
+                            const templateMax = initMonsterTemplate?.limb_health
                               ? Object.values(initMonsterTemplate.limb_health as Record<string,number>).reduce((s,v)=>s+v,0)
-                              : instanceHp.totalHP;
+                              : 0;
+                            return templateMax > 0 ? templateMax : ((instanceHp as any).maxTotalHP ?? instanceHp.totalHP);
                           }
                           return 1;
                         })();

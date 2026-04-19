@@ -602,7 +602,9 @@ const startServer = async () => {
               const MonsterInstanceSync = require('./models/MonsterInstance');
               const monsterCombatants = battleCombatState[campaignId].combatants.filter(c => c.isMonster);
               for (const mc of monsterCombatants) {
-                const instanceId = parseInt(String(mc.characterId), 10);
+                // Prefer the stored monsterInstanceId; fall back to stripping the "monster_" prefix from characterId
+                const instanceId = mc.monsterInstanceId
+                  ?? parseInt(String(mc.characterId).replace(/^monster_/, ''), 10);
                 if (!isNaN(instanceId)) {
                   const inst = await MonsterInstanceSync.findById(instanceId);
                   if (inst) {
