@@ -2197,9 +2197,9 @@ const CampaignView: React.FC = () => {
       const currentScore = currentAbilities[ability as keyof typeof currentAbilities] as number;
       const newScore = currentScore + increment;
 
-      // Clamp between 1 and 20 (standard D&D rules)
-      if (newScore < 1 || newScore > 20) {
-        toast('Ability scores must be between 1 and 20');
+      // Clamp between 1 and 40 (custom rules allow up to 40)
+      if (newScore < 1 || newScore > 40) {
+        toast('Ability scores must be between 1 and 40');
         return;
       }
 
@@ -11487,14 +11487,14 @@ const CampaignView: React.FC = () => {
                                 {user?.role === 'Dungeon Master' && (
                                   <button
                                     onClick={() => handleUpdateAbility(selectedCharacterData.id, ability, 1)}
-                                    disabled={score >= 20}
+                                    disabled={score >= 40}
                                     style={{
                                       background: 'rgba(34, 197, 94, 0.3)',
                                       border: '1px solid rgba(34, 197, 94, 0.5)',
-                                      color: score >= 20 ? 'rgba(255, 255, 255, 0.3)' : '#86efac',
+                                      color: score >= 40 ? 'rgba(255, 255, 255, 0.3)' : '#86efac',
                                       borderRadius: '4px',
                                       padding: '0.25rem 0.4rem',
-                                      cursor: score >= 20 ? 'not-allowed' : 'pointer',
+                                      cursor: score >= 40 ? 'not-allowed' : 'pointer',
                                       fontSize: '0.85rem',
                                       fontWeight: 'bold',
                                       flex: '0 0 auto'
@@ -11772,14 +11772,14 @@ const CampaignView: React.FC = () => {
                                 {user?.role === 'Dungeon Master' && (
                                   <button
                                     onClick={() => handleUpdateAbility(selectedCharacterData.id, ability, 1)}
-                                    disabled={score >= 20}
+                                    disabled={score >= 40}
                                     style={{
                                       background: 'rgba(34, 197, 94, 0.3)',
                                       border: '1px solid rgba(34, 197, 94, 0.5)',
-                                      color: score >= 20 ? 'rgba(255, 255, 255, 0.3)' : '#86efac',
+                                      color: score >= 40 ? 'rgba(255, 255, 255, 0.3)' : '#86efac',
                                       borderRadius: '4px',
                                       padding: '0.25rem 0.4rem',
-                                      cursor: score >= 20 ? 'not-allowed' : 'pointer',
+                                      cursor: score >= 40 ? 'not-allowed' : 'pointer',
                                       fontSize: '0.85rem',
                                       fontWeight: 'bold',
                                       flex: '0 0 auto'

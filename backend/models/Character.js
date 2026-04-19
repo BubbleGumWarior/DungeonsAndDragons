@@ -369,8 +369,8 @@ class Character {
     } else {
       const requiredAbilities = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
       for (const ability of requiredAbilities) {
-        if (!characterData.abilities[ability] || characterData.abilities[ability] < 1 || characterData.abilities[ability] > 20) {
-          errors.push(`${ability.toUpperCase()} must be between 1 and 20`);
+        if (!characterData.abilities[ability] || characterData.abilities[ability] < 1 || characterData.abilities[ability] > 40) {
+          errors.push(`${ability.toUpperCase()} must be between 1 and 40`);
         }
       }
     }
