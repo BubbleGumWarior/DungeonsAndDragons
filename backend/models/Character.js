@@ -76,6 +76,7 @@ class Character {
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
+      character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
       
       return character;
     } catch (error) {
@@ -105,6 +106,7 @@ class Character {
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
+      character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
       
       // Convert image data to data URL
       this.convertImageToDataUrl(character);
@@ -137,6 +139,7 @@ class Character {
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
+      character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
       
       // Convert image data to data URL
       this.convertImageToDataUrl(character);
@@ -166,6 +169,7 @@ class Character {
         character.equipment = this.parseJsonField(character.equipment);
         character.spells = this.parseJsonField(character.spells);
         character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
+        character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
         this.convertImageToDataUrl(character);
         return character;
       });
@@ -193,6 +197,7 @@ class Character {
         character.equipment = this.parseJsonField(character.equipment);
         character.spells = this.parseJsonField(character.spells);
         character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
+        character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
         this.convertImageToDataUrl(character);
         return character;
       });
@@ -207,7 +212,7 @@ class Character {
       name, race, class: characterClass, background, level,
       hit_points, hit_points_max, armor_class, abilities, skills, expertise, equipment, spells,
       backstory, personality_traits, ideals, bonds, flaws, equipped_items, image_url,
-      movement_speed, resistances
+      movement_speed, resistances, proficiencies
     } = updateData;
     
     try {
@@ -235,6 +240,7 @@ class Character {
              image_url = COALESCE($21, image_url),
              movement_speed = COALESCE($22, movement_speed),
              resistances = COALESCE($23, resistances),
+             proficiencies = COALESCE($24, proficiencies),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 
          RETURNING *`,
@@ -252,7 +258,8 @@ class Character {
           equipped_items ? JSON.stringify(equipped_items) : null,
           image_url,
           movement_speed !== undefined ? movement_speed : null,
-          resistances ? JSON.stringify(resistances) : null
+          resistances ? JSON.stringify(resistances) : null,
+          proficiencies ? JSON.stringify(proficiencies) : null
         ]
       );
       
@@ -266,6 +273,7 @@ class Character {
       character.equipment = this.parseJsonField(character.equipment);
       character.spells = this.parseJsonField(character.spells);
       character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
+      character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
       
       return character;
     } catch (error) {

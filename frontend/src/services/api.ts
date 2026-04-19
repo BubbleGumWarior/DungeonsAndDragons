@@ -112,6 +112,7 @@ export interface Character {
   updated_at: string;
   race_traits?: string[];
   resistances?: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
+  proficiencies?: { weapons: string[]; armor: string[]; tools: string[]; languages: string[] };
   concealed_class?: string | null;
 }
 

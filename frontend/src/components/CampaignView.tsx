@@ -1010,6 +1010,27 @@ const CampaignView: React.FC = () => {
         return merged;
       });
     }
+
+    // Seed proficiencies from DB
+    const proficiencyMap: Record<number, { weapons: string[]; armor: string[]; tools: string[]; languages: string[] }> = {};
+    currentCampaign.characters.forEach((character: any) => {
+      const prof = character.proficiencies;
+      if (prof && (prof.weapons?.length > 0 || prof.armor?.length > 0 || prof.tools?.length > 0 || prof.languages?.length > 0)) {
+        proficiencyMap[Number(character.id)] = prof;
+      }
+    });
+    if (Object.keys(proficiencyMap).length > 0) {
+      setCharacterDataOverrides(prev => {
+        const merged: Record<number, Partial<any>> = { ...prev };
+        Object.entries(proficiencyMap).forEach(([id, prof]) => {
+          const numId = Number(id);
+          if (!merged[numId]?.proficiencies) {
+            merged[numId] = { ...merged[numId], proficiencies: prof };
+          }
+        });
+        return merged;
+      });
+    }
   }, [currentCampaign]);
 
   // ── Darkness overlay ────────────────────────────────────────────────────────
@@ -2385,6 +2406,26 @@ const CampaignView: React.FC = () => {
     }
   };
 
+  const handleUpdateProficiencies = async (characterId: number, newProficiencies: { weapons: string[]; armor: string[]; tools: string[]; languages: string[] }) => {
+    try {
+      if (!socket || !currentCampaign) return;
+      await characterAPI.update(characterId, { proficiencies: newProficiencies });
+      const numCharId = Number(characterId);
+      setCharacterDataOverrides(prev => ({
+        ...prev,
+        [numCharId]: { ...prev[numCharId], proficiencies: newProficiencies }
+      }));
+      socket.emit('updateProficiencies', {
+        campaignId: currentCampaign.campaign.id,
+        characterId,
+        proficiencies: newProficiencies,
+      });
+    } catch (error) {
+      console.error('Error updating proficiencies:', error);
+      toast('Failed to update proficiencies');
+    }
+  };
+
   const handleToggleSkillProficiency = async (characterId: number, skillName: string) => {
     try {
       const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
@@ -3391,6 +3432,10 @@ const CampaignView: React.FC = () => {
             return updated;
           });
         }
+        // Merge monster templates so players see icon/details without a page refresh
+        if ((data as any).combatMonsterTemplates) {
+          setCombatMonsterTemplates(prev => ({ ...prev, ...(data as any).combatMonsterTemplates }));
+        }
       });
 
       // Listen for turn advanced (initiative moves to next combatant)
@@ -4233,6 +4278,21 @@ const CampaignView: React.FC = () => {
           setCharacterDataOverrides(prev => ({
             ...prev,
             [charId]: { ...prev[charId], resistances: data.resistances }
+          }));
+        }
+      });
+
+      newSocket.on('proficienciesUpdated', (data: {
+        campaignId: number;
+        characterId: number;
+        proficiencies: { weapons: string[]; armor: string[]; tools: string[]; languages: string[] };
+      }) => {
+        const campaign = currentCampaignRef.current;
+        if (campaign && Number(campaign.campaign.id) === Number(data.campaignId)) {
+          const charId = Number(data.characterId);
+          setCharacterDataOverrides(prev => ({
+            ...prev,
+            [charId]: { ...prev[charId], proficiencies: data.proficiencies }
           }));
         }
       });
@@ -12068,133 +12128,195 @@ const CampaignView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Resistances / Immunities / Vulnerabilities */}
-                    {(() => {
-                      const charResistances = (characterDataOverrides[selectedCharacterData.id]?.resistances ?? selectedCharacterData.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined;
-                      const resData = charResistances ?? { resistances: [], immunities: [], vulnerabilities: [] };
-                      const isDM = user?.role === 'Dungeon Master';
-                      const categories = [
-                        { key: 'resistances' as const, label: 'Resistances', color: '#93c5fd', bg: 'rgba(96,165,250,0.15)', border: 'rgba(96,165,250,0.4)', sectionBg: 'rgba(96,165,250,0.05)' },
-                        { key: 'immunities' as const, label: 'Immunities', color: '#86efac', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)', sectionBg: 'rgba(74,222,128,0.05)' },
-                        { key: 'vulnerabilities' as const, label: 'Vulnerabilities', color: '#fca5a5', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.4)', sectionBg: 'rgba(248,113,113,0.05)' },
-                      ];
-                      const hasAny = resData.resistances.length > 0 || resData.immunities.length > 0 || resData.vulnerabilities.length > 0;
-                      if (!hasAny && !isDM) return null;
-                      return (
-                        <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1rem' }}>
-                          <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>⚔️ Damage Affinities</div>
-                          {categories.map(cat => (
-                            <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
-                              <div style={{ fontSize: '0.75rem', color: cat.color, fontWeight: 'bold', marginBottom: '0.3rem' }}>{cat.label}</div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
-                                {resData[cat.key].map((tag: string) => (
-                                  <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: cat.bg, color: cat.color, border: `1px solid ${cat.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
-                                    {tag}
-                                    {isDM && <span onClick={() => { const updated = { ...resData, [cat.key]: resData[cat.key].filter((t: string) => t !== tag) }; handleUpdateResistances(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>×</span>}
-                                  </span>
-                                ))}
-                                {resData[cat.key].length === 0 && !isDM && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>}
-                                {isDM && (
-                                  <select onChange={e => { if (!e.target.value) return; const val = e.target.value; if (!resData[cat.key].includes(val)) { const updated = { ...resData, [cat.key]: [...resData[cat.key], val] }; handleUpdateResistances(selectedCharacterData.id, updated); } e.target.value = ''; }} style={{ padding: '0.2rem 0.3rem', borderRadius: '0.25rem', background: 'rgba(0,0,0,0.5)', border: `1px solid ${cat.border}`, color: cat.color, fontSize: '0.7rem', cursor: 'pointer' }}>
-                                    <option value="">+ Add...</option>
-                                    {['Acid','Bludgeoning','Cold','Fire','Force','Lightning','Necrotic','Piercing','Poison','Psychic','Radiant','Slashing','Thunder','Nonmagical Bludgeoning','Nonmagical Piercing','Nonmagical Slashing'].map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                                )}
+                    {/* ── 3-column row: Resistances | Proficiencies | Spell Slots ── */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem', marginBottom: '2rem', alignItems: 'start' }}>
+
+                      {/* LEFT — Resistances / Immunities / Vulnerabilities */}
+                      <div>
+                        {(() => {
+                          const charResistances = (characterDataOverrides[selectedCharacterData.id]?.resistances ?? selectedCharacterData.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined;
+                          const resData = charResistances ?? { resistances: [], immunities: [], vulnerabilities: [] };
+                          const isDM = user?.role === 'Dungeon Master';
+                          const categories = [
+                            { key: 'resistances' as const, label: 'Resistances', color: '#93c5fd', bg: 'rgba(96,165,250,0.15)', border: 'rgba(96,165,250,0.4)' },
+                            { key: 'immunities' as const, label: 'Immunities', color: '#86efac', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' },
+                            { key: 'vulnerabilities' as const, label: 'Vulnerabilities', color: '#fca5a5', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.4)' },
+                          ];
+                          const hasAny = resData.resistances.length > 0 || resData.immunities.length > 0 || resData.vulnerabilities.length > 0;
+                          if (!hasAny && !isDM) return null;
+                          return (
+                            <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
+                              <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>⚔️ Damage Affinities</div>
+                              {categories.map(cat => (
+                                <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
+                                  <div style={{ fontSize: '0.75rem', color: cat.color, fontWeight: 'bold', marginBottom: '0.3rem' }}>{cat.label}</div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
+                                    {resData[cat.key].map((tag: string) => (
+                                      <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: cat.bg, color: cat.color, border: `1px solid ${cat.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
+                                        {tag}
+                                        {isDM && <span onClick={() => { const updated = { ...resData, [cat.key]: resData[cat.key].filter((t: string) => t !== tag) }; handleUpdateResistances(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>×</span>}
+                                      </span>
+                                    ))}
+                                    {resData[cat.key].length === 0 && !isDM && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>}
+                                    {isDM && (
+                                      <select onChange={e => { if (!e.target.value) return; const val = e.target.value; if (!resData[cat.key].includes(val)) { const updated = { ...resData, [cat.key]: [...resData[cat.key], val] }; handleUpdateResistances(selectedCharacterData.id, updated); } e.target.value = ''; }} style={{ padding: '0.2rem 0.3rem', borderRadius: '0.25rem', background: 'rgba(0,0,0,0.5)', border: `1px solid ${cat.border}`, color: cat.color, fontSize: '0.7rem', cursor: 'pointer' }}>
+                                        <option value="">+ Add...</option>
+                                        {['Acid','Bludgeoning','Cold','Fire','Force','Lightning','Necrotic','Piercing','Poison','Psychic','Radiant','Slashing','Thunder','Nonmagical Bludgeoning','Nonmagical Piercing','Nonmagical Slashing'].map(t => <option key={t} value={t}>{t}</option>)}
+                                      </select>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* MIDDLE — Proficiencies (weapon / armor / tool / language) */}
+                      <div>
+                        {(() => {
+                          const charProficiencies = (characterDataOverrides[selectedCharacterData.id]?.proficiencies ?? selectedCharacterData.proficiencies) as { weapons: string[]; armor: string[]; tools: string[]; languages: string[] } | undefined;
+                          const profData = charProficiencies ?? { weapons: [], armor: [], tools: [], languages: [] };
+                          const isDM = user?.role === 'Dungeon Master';
+                          const categories = [
+                            {
+                              key: 'weapons' as const, label: 'Weapons', color: '#fca5a5', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.4)',
+                              options: ['Simple Melee','Simple Ranged','Martial Melee','Martial Ranged','Hand Crossbow','Longsword','Rapier','Shortsword','Dagger','Greataxe','Maul','Warhammer','Spear','Trident','Net','Whip','Flail','Halberd','Glaive','Pike','Lance','Longbow','Shortbow','Light Crossbow','Heavy Crossbow','Sling','Javelin','Handaxe','Battleaxe','Mace','Quarterstaff']
+                            },
+                            {
+                              key: 'armor' as const, label: 'Armor', color: '#93c5fd', bg: 'rgba(96,165,250,0.15)', border: 'rgba(96,165,250,0.4)',
+                              options: ['Light Armor','Medium Armor','Heavy Armor','Shields']
+                            },
+                            {
+                              key: 'tools' as const, label: 'Tools', color: '#86efac', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)',
+                              options: ["Alchemist's Supplies","Brewer's Supplies","Calligrapher's Supplies","Carpenter's Tools","Cartographer's Tools","Cobbler's Tools","Cook's Utensils","Glassblower's Tools","Jeweler's Tools","Leatherworker's Tools","Mason's Tools","Painter's Supplies","Potter's Tools","Smith's Tools","Tinker's Tools","Weaver's Tools","Woodcarver's Tools","Disguise Kit","Forgery Kit","Herbalism Kit","Navigator's Tools","Poisoner's Kit","Thieves' Tools","Gaming Set (Dice)","Gaming Set (Cards)","Musical Instrument"]
+                            },
+                            {
+                              key: 'languages' as const, label: 'Languages', color: '#c4b5fd', bg: 'rgba(196,181,253,0.15)', border: 'rgba(196,181,253,0.4)',
+                              options: ['Common','Dwarvish','Elvish','Giant','Gnomish','Goblin','Halfling','Orc','Abyssal','Celestial','Deep Speech','Draconic','Infernal','Primordial','Sylvan','Undercommon','Thieves\' Cant','Druidic']
+                            },
+                          ];
+                          const hasAny = profData.weapons.length > 0 || profData.armor.length > 0 || profData.tools.length > 0 || profData.languages.length > 0;
+                          if (!hasAny && !isDM) return null;
+                          return (
+                            <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
+                              <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>📚 Proficiencies</div>
+                              {categories.map(cat => (
+                                <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
+                                  <div style={{ fontSize: '0.75rem', color: cat.color, fontWeight: 'bold', marginBottom: '0.3rem' }}>{cat.label}</div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
+                                    {profData[cat.key].map((tag: string) => (
+                                      <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: cat.bg, color: cat.color, border: `1px solid ${cat.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
+                                        {tag}
+                                        {isDM && <span onClick={() => { const updated = { ...profData, [cat.key]: profData[cat.key].filter((t: string) => t !== tag) }; handleUpdateProficiencies(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>×</span>}
+                                      </span>
+                                    ))}
+                                    {profData[cat.key].length === 0 && !isDM && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>}
+                                    {isDM && (
+                                      <select onChange={e => { if (!e.target.value) return; const val = e.target.value; if (!profData[cat.key].includes(val)) { const updated = { ...profData, [cat.key]: [...profData[cat.key], val] }; handleUpdateProficiencies(selectedCharacterData.id, updated); } e.target.value = ''; }} style={{ padding: '0.2rem 0.3rem', borderRadius: '0.25rem', background: 'rgba(0,0,0,0.5)', border: `1px solid ${cat.border}`, color: cat.color, fontSize: '0.7rem', cursor: 'pointer' }}>
+                                        <option value="">+ Add...</option>
+                                        {cat.options.map(t => <option key={t} value={t}>{t}</option>)}
+                                      </select>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* RIGHT — Spell Slots */}
+                      <div>
+                        {isSpellcaster(selectedCharacterData.class) && (() => {
+                          const slotInfo = getSpellSlots(selectedCharacterData.class, selectedCharacterData.level);
+                          if (!slotInfo) return null;
+                          const isDM = user?.role === 'Dungeon Master';
+                          const canInteract = isDM;
+                          const slotsUsed: Record<string, number> = characterSpellSlotsUsed[selectedCharacterData.id] || {};
+
+                          const handleUseSlot = (level: number) => {
+                            if (!canInteract) return;
+                            const usedNow = slotsUsed[String(level)] || 0;
+                            const totalSlots = slotInfo.type === 'pact' ? (level === slotInfo.slotLevel ? slotInfo.slots : 0) : (slotInfo.slots[level - 1] ?? 0);
+                            if (usedNow >= totalSlots) return;
+                            socket?.emit('useSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id, slotLevel: level });
+                          };
+
+                          const handleRestoreSlot = (level: number) => {
+                            if (!isDM) return;
+                            socket?.emit('restoreSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id, slotLevel: level });
+                          };
+
+                          const SlotRow = ({ slotLevel, totalCount, isPact }: { slotLevel: number; totalCount: number; isPact?: boolean }) => {
+                            const used = slotsUsed[String(slotLevel)] || 0;
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
+                                <span style={{ fontSize: '0.75rem', color: isPact ? '#c084fc' : '#7dd3fc', fontFamily: 'serif', fontWeight: 'bold' }}>
+                                  {toRoman(slotLevel)}
+                                </span>
+                                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                  {Array.from({ length: totalCount }).map((_, idx) => {
+                                    const isUsed = idx < used;
+                                    return (
+                                      <div
+                                        key={idx}
+                                        title={isUsed ? (isDM ? 'Click to restore slot' : 'Used') : (canInteract ? 'Click to use slot' : 'Available')}
+                                        onClick={() => { if (isUsed) handleRestoreSlot(slotLevel); else handleUseSlot(slotLevel); }}
+                                        style={{
+                                          width: '20px', height: '20px', borderRadius: '50%',
+                                          background: isUsed ? 'rgba(0,0,0,0.3)' : (isPact ? 'rgba(168,85,247,0.7)' : 'rgba(99,202,255,0.7)'),
+                                          border: `2px solid ${isPact ? 'rgba(168,85,247,0.8)' : 'rgba(99,202,255,0.8)'}`,
+                                          cursor: canInteract ? 'pointer' : 'default',
+                                          opacity: isUsed ? 0.4 : 1,
+                                          transition: 'opacity 0.2s, background 0.2s',
+                                        }}
+                                      />
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
+                            );
+                          };
 
-                    {/* Spell Slots Panel (spellcasting classes only) */}
-                    {isSpellcaster(selectedCharacterData.class) && (() => {
-                      const slotInfo = getSpellSlots(selectedCharacterData.class, selectedCharacterData.level);
-                      if (!slotInfo) return null;
-                      const isDM = user?.role === 'Dungeon Master';
-                      const canInteract = isDM;
-                      const slotsUsed: Record<string, number> = characterSpellSlotsUsed[selectedCharacterData.id] || {};
-
-                      const handleUseSlot = (level: number) => {
-                        if (!canInteract) return;
-                        const usedNow = slotsUsed[String(level)] || 0;
-                        const totalSlots = slotInfo.type === 'pact' ? (level === slotInfo.slotLevel ? slotInfo.slots : 0) : (slotInfo.slots[level - 1] ?? 0);
-                        if (usedNow >= totalSlots) return;
-                        socket?.emit('useSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id, slotLevel: level });
-                      };
-
-                      const handleRestoreSlot = (level: number) => {
-                        if (!isDM) return;
-                        socket?.emit('restoreSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id, slotLevel: level });
-                      };
-
-                      // Render slot bubbles for a given level: filled = available, dim = used
-                      const SlotRow = ({ slotLevel, totalCount, isPact }: { slotLevel: number; totalCount: number; isPact?: boolean }) => {
-                        const used = slotsUsed[String(slotLevel)] || 0;
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: isPact ? '#c084fc' : '#7dd3fc', fontFamily: 'serif', fontWeight: 'bold' }}>
-                              {toRoman(slotLevel)}
-                            </span>
-                            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                              {Array.from({ length: totalCount }).map((_, idx) => {
-                                const isUsed = idx < used;
-                                return (
-                                  <div
-                                    key={idx}
-                                    title={isUsed ? (isDM ? 'Click to restore slot' : 'Used') : (canInteract ? 'Click to use slot' : 'Available')}
-                                    onClick={() => { if (isUsed) handleRestoreSlot(slotLevel); else handleUseSlot(slotLevel); }}
-                                    style={{
-                                      width: '20px', height: '20px', borderRadius: '50%',
-                                      background: isUsed ? 'rgba(0,0,0,0.3)' : (isPact ? 'rgba(168,85,247,0.7)' : 'rgba(99,202,255,0.7)'),
-                                      border: `2px solid ${isPact ? 'rgba(168,85,247,0.8)' : 'rgba(99,202,255,0.8)'}`,
-                                      cursor: canInteract ? 'pointer' : 'default',
-                                      opacity: isUsed ? 0.4 : 1,
-                                      transition: 'opacity 0.2s, background 0.2s',
-                                    }}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      };
-
-                      return (
-                        <div style={{
-                          background: 'rgba(99, 202, 255, 0.08)',
-                          border: '2px solid rgba(99, 202, 255, 0.35)',
-                          borderRadius: '12px',
-                          padding: '1.25rem',
-                          marginBottom: '2rem'
-                        }}>
-                          <h6 style={{ color: '#7dd3fc', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            ✨ Spell Slots
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                              {slotInfo.type === 'pact' ? '(Pact Magic — recharge on short rest)' : '(recharge on long rest)'}
-                              {canInteract && <span style={{ marginLeft: '0.5rem', color: '#7dd3fc' }}>· click to use/restore</span>}
-                            </span>
-                          </h6>
-                          {slotInfo.type === 'pact' ? (
-                            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                              <SlotRow slotLevel={slotInfo.slotLevel} totalCount={slotInfo.slots} isPact />
-                              {selectedCharacterData.level >= 11 && (
-                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', alignSelf: 'center' }}>
-                                  Mystic Arcanum:{' '}
-                                  {[6,7,8,9].filter((_, i) => selectedCharacterData.level >= [11,13,15,17][i]).map(lvl => toRoman(lvl)).join('  ')}
+                          return (
+                            <div style={{
+                              background: 'rgba(99, 202, 255, 0.08)',
+                              border: '2px solid rgba(99, 202, 255, 0.35)',
+                              borderRadius: '12px',
+                              padding: '1.25rem',
+                              height: '100%',
+                            }}>
+                              <h6 style={{ color: '#7dd3fc', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                ✨ Spell Slots
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                                  {slotInfo.type === 'pact' ? '(Pact Magic — short rest)' : '(long rest)'}
+                                  {canInteract && <span style={{ marginLeft: '0.5rem', color: '#7dd3fc' }}>· click to use/restore</span>}
+                                </span>
+                              </h6>
+                              {slotInfo.type === 'pact' ? (
+                                <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                  <SlotRow slotLevel={slotInfo.slotLevel} totalCount={slotInfo.slots} isPact />
+                                  {selectedCharacterData.level >= 11 && (
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', alignSelf: 'center' }}>
+                                      Mystic Arcanum:{' '}
+                                      {[6,7,8,9].filter((_, i) => selectedCharacterData.level >= [11,13,15,17][i]).map(lvl => toRoman(lvl)).join('  ')}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                  {slotInfo.slots.map((count, i) => count > 0 && (
+                                    <SlotRow key={i} slotLevel={i + 1} totalCount={count} />
+                                  ))}
                                 </div>
                               )}
                             </div>
-                          ) : (
-                            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                              {slotInfo.slots.map((count, i) => count > 0 && (
-                                <SlotRow key={i} slotLevel={i + 1} totalCount={count} />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                          );
+                        })()}
+                      </div>
+
+                    </div>
 
                     {/* Ki Points Panel (Monk only) */}
                     {selectedCharacterData.class === 'Monk' && (() => {

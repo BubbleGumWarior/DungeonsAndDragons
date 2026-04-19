@@ -347,6 +347,7 @@ const startServer = async () => {
         { name: 'addAllyCombatant', fn: require('./migrations/add_ally_combatant') },
         { name: 'addCharacterNotes', fn: require('./migrations/add_character_notes') },
         { name: 'addCampaignGoals', fn: require('./migrations/add_campaign_goals') },
+        { name: 'addProficienciesToCharacters', fn: require('./migrations/add_proficiencies_to_characters') },
       ];
       
       for (const migration of migrations) {
@@ -1131,10 +1132,23 @@ const startServer = async () => {
               .slice().sort((a, b) => b.initiative - a.initiative)
               .map(c => c.characterId);
 
+            // Build monster template map so players see icon/details immediately (no refresh needed)
+            const combatMonsterTemplatesAdd = {};
+            try {
+              const MonsterModelAdd = require('./models/Monster');
+              for (const c of session.combatants) {
+                if (c.isMonster && c.monsterId && !combatMonsterTemplatesAdd[String(c.monsterId)]) {
+                  const tmpl = await MonsterModelAdd.findById(c.monsterId);
+                  if (tmpl) combatMonsterTemplatesAdd[String(c.monsterId)] = { id: tmpl.id, name: tmpl.name, image_url: tmpl.image_url, limb_health: tmpl.limb_health, limb_ac: tmpl.limb_ac, cr: tmpl.cr, resistances: tmpl.resistances };
+                }
+              }
+            } catch (e) { console.warn('Could not fetch monster templates for combatantsUpdated:', e.message); }
+
             io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
               combatants: session.combatants,
               initiativeOrder: session.initiativeOrder,
               currentTurnIndex: session.currentTurnIndex,
+              combatMonsterTemplates: combatMonsterTemplatesAdd,
               timestamp: new Date().toISOString(),
             });
             console.log(`🐉 Monster ${combatantName} added to combat in campaign ${campaignId} (initiative: ${roll})`);
@@ -1414,10 +1428,23 @@ const startServer = async () => {
             .slice().sort((a, b) => b.initiative - a.initiative)
             .map(c => c.characterId);
 
+          // Build monster template map so players see icon/details immediately
+          const combatMonsterTemplatesAccept = {};
+          try {
+            const MonsterModelAccept = require('./models/Monster');
+            for (const c of session.combatants) {
+              if (c.isMonster && c.monsterId && !combatMonsterTemplatesAccept[String(c.monsterId)]) {
+                const tmpl = await MonsterModelAccept.findById(c.monsterId);
+                if (tmpl) combatMonsterTemplatesAccept[String(c.monsterId)] = { id: tmpl.id, name: tmpl.name, image_url: tmpl.image_url, limb_health: tmpl.limb_health, limb_ac: tmpl.limb_ac, cr: tmpl.cr, resistances: tmpl.resistances };
+              }
+            }
+          } catch (e) { console.warn('Could not fetch monster templates for combatantsUpdated (accept):', e.message); }
+
           io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
             combatants: session.combatants,
             initiativeOrder: session.initiativeOrder,
             currentTurnIndex: session.currentTurnIndex,
+            combatMonsterTemplates: combatMonsterTemplatesAccept,
             timestamp: new Date().toISOString(),
           });
           console.log(`🛡️ ${character.name} added to combat in campaign ${campaignId} (initiative: ${initiative})`);
@@ -2894,10 +2921,23 @@ const startServer = async () => {
           }
           await CombatSession.updateTurnIndex(session.sessionId, session.currentTurnIndex);
 
+          // Build monster template map so players see icon/details immediately
+          const combatMonsterTemplatesRemove = {};
+          try {
+            const MonsterModelRemove = require('./models/Monster');
+            for (const c of session.combatants) {
+              if (c.isMonster && c.monsterId && !combatMonsterTemplatesRemove[String(c.monsterId)]) {
+                const tmpl = await MonsterModelRemove.findById(c.monsterId);
+                if (tmpl) combatMonsterTemplatesRemove[String(c.monsterId)] = { id: tmpl.id, name: tmpl.name, image_url: tmpl.image_url, limb_health: tmpl.limb_health, limb_ac: tmpl.limb_ac, cr: tmpl.cr, resistances: tmpl.resistances };
+              }
+            }
+          } catch (e) { console.warn('Could not fetch monster templates for combatantsUpdated (remove):', e.message); }
+
           io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
             combatants: session.combatants,
             initiativeOrder: session.initiativeOrder,
             currentTurnIndex: session.currentTurnIndex,
+            combatMonsterTemplates: combatMonsterTemplatesRemove,
             timestamp: new Date().toISOString(),
           });
         } catch (error) { console.error('Error removing combatant:', error); }
@@ -3339,6 +3379,20 @@ const startServer = async () => {
         }
       });
 
+      // Handle proficiency updates (DM adds/removes proficiency tags on a character)
+      socket.on('updateProficiencies', (data) => {
+        try {
+          const { campaignId, characterId, proficiencies } = data;
+          io.to(`campaign_${campaignId}`).emit('proficienciesUpdated', {
+            campaignId,
+            characterId,
+            proficiencies,
+          });
+        } catch (error) {
+          console.error('Error handling proficiency update:', error);
+        }
+      });
+
       // Kingdom handlers
       socket.on('createKingdom', async ({ campaignId, targetPlayerId }) => {
         try {
@@ -3535,11 +3589,24 @@ const startServer = async () => {
             }
           }
 
+          // Build monster template map so players see icon/details immediately
+          const combatMonsterTemplatesMount = {};
+          try {
+            const MonsterModelMount = require('./models/Monster');
+            for (const c of session.combatants) {
+              if (c.isMonster && c.monsterId && !combatMonsterTemplatesMount[String(c.monsterId)]) {
+                const tmpl = await MonsterModelMount.findById(c.monsterId);
+                if (tmpl) combatMonsterTemplatesMount[String(c.monsterId)] = { id: tmpl.id, name: tmpl.name, image_url: tmpl.image_url, limb_health: tmpl.limb_health, limb_ac: tmpl.limb_ac, cr: tmpl.cr, resistances: tmpl.resistances };
+              }
+            }
+          } catch (e) { console.warn('Could not fetch monster templates for combatantsUpdated (mount):', e.message); }
+
           // Broadcast updated combatants using in-memory state (camelCase, consistent with rest of handlers)
           io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
             combatants: session.combatants,
             initiativeOrder: session.initiativeOrder,
             currentTurnIndex: session.currentTurnIndex,
+            combatMonsterTemplates: combatMonsterTemplatesMount,
             campaignId,
             timestamp: new Date().toISOString(),
           });
