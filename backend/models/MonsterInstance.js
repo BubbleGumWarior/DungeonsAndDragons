@@ -35,7 +35,11 @@ class MonsterInstance {
 
   static async findActiveByCampaignId(campaignId) {
     const result = await pool.query(
-      'SELECT * FROM monster_instances WHERE campaign_id = $1 AND in_combat = TRUE ORDER BY instance_number',
+      `SELECT mi.*, m.limb_health AS max_limb_health
+       FROM monster_instances mi
+       JOIN monsters m ON m.id = mi.monster_id
+       WHERE mi.campaign_id = $1 AND mi.in_combat = TRUE
+       ORDER BY mi.instance_number`,
       [campaignId]
     );
     

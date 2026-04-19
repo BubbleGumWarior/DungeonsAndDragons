@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, fiefAPI, Kingdom, Fief, FiefStoredResources, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, fiefAPI, Kingdom, Fief, FiefStoredResources, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -989,6 +989,35 @@ const CampaignView: React.FC = () => {
     setCombatCharacterHp(prev => ({ ...hpMap, ...prev }));
     if (Object.keys(limbMap).length > 0) {
       setCharacterLimbHealth(prev => ({ ...limbMap, ...prev }));
+    }
+
+    // ── Hydrate active monster instance HP immediately via REST so HP shows correctly before socket sync ──
+    const campaignId = currentCampaign.campaign?.id;
+    if (campaignId) {
+      monsterInstanceAPI.getActiveInstances(campaignId).then(instances => {
+        if (!instances?.length) return;
+        setMonsterInstanceHp(prev => {
+          const updated = { ...prev };
+          instances.forEach((inst: any) => {
+            const key = `monster_${inst.id}`;
+            const limbHealth = typeof inst.current_limb_health === 'string'
+              ? JSON.parse(inst.current_limb_health)
+              : inst.current_limb_health;
+            const totalHP = Object.values(limbHealth).reduce((s: number, v: any) => s + Number(v), 0);
+            const maxLimbHealth = inst.max_limb_health
+              ? (typeof inst.max_limb_health === 'string' ? JSON.parse(inst.max_limb_health) : inst.max_limb_health)
+              : null;
+            const maxTotalHP = maxLimbHealth
+              ? Object.values(maxLimbHealth).reduce((s: number, v: any) => s + Number(v), 0)
+              : undefined;
+            // Only seed if not already set by a more recent socket event
+            if (!updated[key]) {
+              updated[key] = { limbHealth, totalHP, ...(maxTotalHP !== undefined ? { maxTotalHP } : {}) } as any;
+            }
+          });
+          return updated;
+        });
+      }).catch(() => { /* non-fatal */ });
     }
 
     // Seed resistances from DB so players see them immediately without needing a socket event.
