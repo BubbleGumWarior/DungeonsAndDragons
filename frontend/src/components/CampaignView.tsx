@@ -11692,7 +11692,7 @@ const CampaignView: React.FC = () => {
                           const feetAC      = rawLimbAC?.feet      ?? 0;
                           // Armor SETS the limb AC (not additive). Shields in hand slots still ADD.
                           const characterLimbAC = {
-                            head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.00),
+                            head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.20),
                             chest:     chestAC > 0 ? chestAC : Math.round(baseAC * 1.00),
                             hands:     Math.round(baseAC * 0.25) + Math.max(mainHandAC, offHandAC),
                             main_hand: Math.round(baseAC * 0.25) + mainHandAC,
@@ -17575,7 +17575,7 @@ const CampaignView: React.FC = () => {
                   const offHandAC  = rawLimbAC?.off_hand  ?? 0;
                   const feetAC     = rawLimbAC?.feet      ?? 0;
                   const cLimbAC = {
-                    head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.00),
+                    head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.20),
                     chest:     chestAC > 0 ? chestAC : Math.round(baseAC * 1.00),
                     main_hand: Math.round(baseAC * 0.25) + mainHandAC,
                     off_hand:  Math.round(baseAC * 0.25) + offHandAC,
