@@ -23,4 +23,4 @@ async function addCharacterGold() {
   }
 }
 
-addCharacterGold().catch(console.error).finally(() => process.exit());
+module.exports = addCharacterGold;
