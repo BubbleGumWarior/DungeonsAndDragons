@@ -220,7 +220,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
       flaws,
       movement_speed,
       resistances,
-      proficiencies
+      proficiencies,
+      gold
     } = req.body;
     
     // Validate character data if provided
@@ -260,6 +261,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (movement_speed !== undefined) updateData.movement_speed = movement_speed;
     if (resistances !== undefined) updateData.resistances = resistances;
     if (proficiencies !== undefined) updateData.proficiencies = proficiencies;
+    if (gold !== undefined) updateData.gold = Math.max(0, parseInt(gold, 10) || 0);
     
     const updatedCharacter = await Character.update(id, updateData);
     res.json({

@@ -348,6 +348,7 @@ const startServer = async () => {
         { name: 'addCharacterNotes', fn: require('./migrations/add_character_notes') },
         { name: 'addCampaignGoals', fn: require('./migrations/add_campaign_goals') },
         { name: 'addProficienciesToCharacters', fn: require('./migrations/add_proficiencies_to_characters') },
+        { name: 'addCharacterGold', fn: require('./migrations/add_character_gold') },
       ];
       
       for (const migration of migrations) {

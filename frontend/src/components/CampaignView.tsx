@@ -830,6 +830,7 @@ const CampaignView: React.FC = () => {
   const [showBackstoryModal, setShowBackstoryModal] = useState(false);
   const [deleteCharacterFieldModal, setDeleteCharacterFieldModal] = useState<{ isOpen: boolean; characterId: number | null; field: string; fieldLabel: string }>({ isOpen: false, characterId: null, field: '', fieldLabel: '' });
   const [editCharacterFieldModal, setEditCharacterFieldModal] = useState<{ isOpen: boolean; characterId: number | null; field: string; fieldLabel: string; value: string }>({ isOpen: false, characterId: null, field: '', fieldLabel: '', value: '' });
+  const [editGoldModal, setEditGoldModal] = useState<{ isOpen: boolean; characterId: number | null; rawValue: string }>({ isOpen: false, characterId: null, rawValue: '' });
   const [showAddArmyModal, setShowAddArmyModal] = useState(false);
   const [newArmyData, setNewArmyData] = useState<{
     name: string;
@@ -12195,6 +12196,43 @@ const CampaignView: React.FC = () => {
                           feet per round
                         </div>
                       </div>
+
+                      {/* Currency */}
+                      {(() => {
+                        const totalCp = selectedCharacterData.gold ?? 0;
+                        const gp = Math.floor(totalCp / 100);
+                        const sp = Math.floor((totalCp % 100) / 10);
+                        const cp = totalCp % 10;
+                        return (
+                          <div style={{
+                            background: 'rgba(212, 175, 55, 0.1)',
+                            border: '2px solid rgba(212, 175, 55, 0.4)',
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            textAlign: 'center'
+                          }}>
+                            <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                              💰 Currency
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '1.1rem', fontWeight: 'bold', color: 'white', marginBottom: '0.4rem' }}>
+                              <span style={{ color: '#fbbf24' }}>{gp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#d4af37' }}>gp</span></span>
+                              <span style={{ color: '#c0c0c0' }}>{sp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#aaa' }}>sp</span></span>
+                              <span style={{ color: '#cd7f32' }}>{cp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#a0522d' }}>cp</span></span>
+                            </div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem' }}>
+                              {totalCp} total copper
+                            </div>
+                            {user?.role === 'Dungeon Master' && (
+                              <button
+                                onClick={() => setEditGoldModal({ isOpen: true, characterId: selectedCharacterData.id, rawValue: String(totalCp) })}
+                                style={{ background: 'rgba(212, 175, 55, 0.2)', border: '1px solid rgba(212, 175, 55, 0.5)', color: '#fbbf24', borderRadius: '6px', padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                              >
+                                ✏️ Edit
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* ── 3-column row: Resistances | Proficiencies | Spell Slots ── */}
@@ -15942,6 +15980,60 @@ const CampaignView: React.FC = () => {
         />
 
         {/* Edit / Add Character Field Modal (player) */}
+        {editGoldModal.isOpen && (() => {
+          const rawCp = parseInt(editGoldModal.rawValue, 10);
+          const previewCp = isNaN(rawCp) || rawCp < 0 ? 0 : rawCp;
+          const pgp = Math.floor(previewCp / 100);
+          const psp = Math.floor((previewCp % 100) / 10);
+          const pcp = previewCp % 10;
+          const handleGoldSave = async () => {
+            if (!editGoldModal.characterId) return;
+            const val = Math.max(0, parseInt(editGoldModal.rawValue, 10) || 0);
+            try {
+              await characterAPI.update(editGoldModal.characterId, { gold: val });
+              setCharacterDataOverrides(prev => ({ ...prev, [editGoldModal.characterId!]: { ...prev[editGoldModal.characterId!], gold: val } }));
+              const activeSocket = socketRef.current;
+              const activeCampaign = currentCampaignRef.current;
+              if (activeSocket && activeCampaign) {
+                activeSocket.emit('characterFieldUpdated', { campaignId: activeCampaign.campaign.id, characterId: editGoldModal.characterId, field: 'gold', value: val });
+              }
+              setToastMessage('Currency saved');
+              setTimeout(() => setToastMessage(null), 3000);
+            } catch (err) {
+              console.error('Error saving gold:', err);
+            }
+            setEditGoldModal({ isOpen: false, characterId: null, rawValue: '' });
+          };
+          return (
+            <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}
+              onClick={e => { if (e.target === e.currentTarget) setEditGoldModal({ isOpen: false, characterId: null, rawValue: '' }); }}>
+              <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid rgba(212,175,55,0.6)', borderRadius: '12px', padding: '2rem', maxWidth: '380px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                <h5 style={{ color: '#fbbf24', marginBottom: '1rem', marginTop: 0 }}>💰 Set Currency</h5>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Enter the total value in <strong style={{ color: '#cd7f32' }}>copper pieces</strong>.<br/>1 gp = 100 cp &nbsp;·&nbsp; 1 sp = 10 cp</p>
+                <input
+                  type="number"
+                  min="0"
+                  value={editGoldModal.rawValue}
+                  onChange={e => setEditGoldModal(prev => ({ ...prev, rawValue: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') handleGoldSave(); if (e.key === 'Escape') setEditGoldModal({ isOpen: false, characterId: null, rawValue: '' }); }}
+                  placeholder="e.g. 1234"
+                  autoFocus
+                  style={{ width: '100%', padding: '0.6rem 0.75rem', backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(212,175,55,0.4)', borderRadius: '8px', fontSize: '1.1rem', boxSizing: 'border-box', outline: 'none', marginBottom: '0.75rem' }}
+                />
+                <div style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)', borderRadius: '8px', padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.95rem', display: 'flex', justifyContent: 'center', gap: '1.25rem' }}>
+                  <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{pgp}<span style={{ fontSize: '0.7rem', marginLeft: '2px' }}>gp</span></span>
+                  <span style={{ color: '#c0c0c0', fontWeight: 'bold' }}>{psp}<span style={{ fontSize: '0.7rem', marginLeft: '2px' }}>sp</span></span>
+                  <span style={{ color: '#cd7f32', fontWeight: 'bold' }}>{pcp}<span style={{ fontSize: '0.7rem', marginLeft: '2px' }}>cp</span></span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setEditGoldModal({ isOpen: false, characterId: null, rawValue: '' })} className="btn btn-secondary" style={{ padding: '0.5rem 1.25rem' }}>Cancel</button>
+                  <button onClick={handleGoldSave} className="btn btn-primary" style={{ padding: '0.5rem 1.25rem' }}>Save</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {editCharacterFieldModal.isOpen && (
           <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
             <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid var(--primary-gold, #d4c19c)', borderRadius: '12px', padding: '2rem', maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
