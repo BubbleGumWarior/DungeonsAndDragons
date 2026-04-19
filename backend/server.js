@@ -1728,8 +1728,8 @@ const startServer = async () => {
           let updatedHealthData = null;
 
           if (targetType === 'monster') {
-            // targetKey is JSON string of monster instance id ("42")
-            const instanceId = parseInt(targetKey, 10);
+            // targetKey may be "monster_42" or plain "42" — strip prefix before parsing
+            const instanceId = parseInt(String(targetKey).replace(/^monster_/, ''), 10);
             const MonsterInstance = require('./models/MonsterInstance');
             const instance = await MonsterInstance.findById(instanceId);
             if (!instance) return;
@@ -2076,7 +2076,7 @@ const startServer = async () => {
             io.to(`campaign_${campaignId}`).emit('healthUpdated', { ...updatedHealthData, timestamp: new Date().toISOString() });
             io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
           } else if (targetType === 'monster') {
-            const instanceId = parseInt(targetKey, 10);
+            const instanceId = parseInt(String(targetKey).replace(/^monster_/, ''), 10);
             const MonsterInstance = require('./models/MonsterInstance');
             const instance = await MonsterInstance.findById(instanceId);
             if (!instance) return;
@@ -2177,7 +2177,7 @@ const startServer = async () => {
             }
             updatedHealthData = { type: 'character', characterId: charId, newHP, limbHealth: limbHealthToStore, isDead: false };
           } else if (targetType === 'monster') {
-            const instanceId = parseInt(targetKey, 10);
+            const instanceId = parseInt(String(targetKey).replace(/^monster_/, ''), 10);
             const MonsterInstance = require('./models/MonsterInstance');
             const instance = await MonsterInstance.findById(instanceId);
             if (!instance) return;
@@ -2239,7 +2239,7 @@ const startServer = async () => {
             await pool.query('UPDATE characters SET temp_limb_health = $1 WHERE id = $2', [JSON.stringify(newTemp), charId]);
             updatedHealthData = { type: 'character', characterId: charId, tempLimbHealth: newTemp };
           } else if (targetType === 'monster') {
-            const instanceId = parseInt(targetKey, 10);
+            const instanceId = parseInt(String(targetKey).replace(/^monster_/, ''), 10);
             const MonsterInstance = require('./models/MonsterInstance');
             const instance = await MonsterInstance.findById(instanceId);
             if (!instance) return;
@@ -2809,7 +2809,7 @@ const startServer = async () => {
           let updatedHealthData = null;
 
           if (targetType === 'monster') {
-            const instanceId = parseInt(targetKey, 10);
+            const instanceId = parseInt(String(targetKey).replace(/^monster_/, ''), 10);
             const MonsterInstance = require('./models/MonsterInstance');
             const instance = await MonsterInstance.findById(instanceId);
             if (!instance) return;
