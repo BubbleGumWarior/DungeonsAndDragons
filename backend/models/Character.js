@@ -212,7 +212,7 @@ class Character {
       name, race, class: characterClass, background, level,
       hit_points, hit_points_max, armor_class, abilities, skills, expertise, equipment, spells,
       backstory, personality_traits, ideals, bonds, flaws, equipped_items, image_url,
-      movement_speed, resistances, proficiencies
+      movement_speed, resistances, proficiencies, gold
     } = updateData;
     
     try {
@@ -241,6 +241,7 @@ class Character {
              movement_speed = COALESCE($22, movement_speed),
              resistances = COALESCE($23, resistances),
              proficiencies = COALESCE($24, proficiencies),
+             gold = COALESCE($25, gold),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 
          RETURNING *`,
@@ -259,7 +260,8 @@ class Character {
           image_url,
           movement_speed !== undefined ? movement_speed : null,
           resistances ? JSON.stringify(resistances) : null,
-          proficiencies ? JSON.stringify(proficiencies) : null
+          proficiencies ? JSON.stringify(proficiencies) : null,
+          gold !== undefined ? gold : null
         ]
       );
       
