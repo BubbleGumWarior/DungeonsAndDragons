@@ -114,6 +114,7 @@ export interface Character {
   resistances?: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
   proficiencies?: { weapons: string[]; armor: string[]; tools: string[]; languages: string[] };
   concealed_class?: string | null;
+  gold?: number;
 }
 
 export interface EquippedItems {
