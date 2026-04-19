@@ -733,6 +733,7 @@ const CampaignView: React.FC = () => {
   // Templates for monsters currently in combat — sent by server regardless of visible_to_players
   const [combatMonsterTemplates, setCombatMonsterTemplates] = useState<Record<string, any>>({});
   const [showAddMonsterModal, setShowAddMonsterModal] = useState(false);
+  const [editingMonsterId, setEditingMonsterId] = useState<number | null>(null);
   const [monsterFormData, setMonsterFormData] = useState<any>({
     name: '',
     description: '',
@@ -2139,6 +2140,20 @@ const CampaignView: React.FC = () => {
       console.error('Error loading character skills:', error);
     }
   }, []);
+
+  // ── Pre-load skills for all combatants so DM darkvision zones render correctly ──
+  // Without this, characterSkills is empty for player characters the DM hasn't
+  // explicitly selected, causing hasDarkvision to always be false on the DM view.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    combatants.forEach(c => {
+      if (c.isMonster) return;
+      const id = Number(c.characterId);
+      if (!characterSkills[id]) {
+        loadCharacterSkills(id);
+      }
+    });
+  }, [combatants, characterSkills, loadCharacterSkills]);
 
   const loadBeastCompanion = useCallback(async (characterId: number) => {
     try {
@@ -10575,8 +10590,26 @@ const CampaignView: React.FC = () => {
                               </div>
                             )}
                             {monster.limb_health && (
-                              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                CR: {formatCR(monster.cr)} | HP: {monster.limb_health.chest} | AC: {monster.limb_ac?.chest || 10}
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                <div style={{ marginBottom: '0.3rem' }}>CR: {formatCR(monster.cr)}</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.2rem' }}>
+                                  {(['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'] as const).map(limb => (
+                                    <div key={limb} style={{
+                                      background: 'rgba(212,193,156,0.06)',
+                                      border: '1px solid rgba(212,193,156,0.15)',
+                                      borderRadius: '3px',
+                                      padding: '2px 4px',
+                                      textAlign: 'center'
+                                    }}>
+                                      <div style={{ fontSize: '0.55rem', color: 'var(--text-gold)', textTransform: 'capitalize' }}>
+                                        {limb.replace('_', ' ')}
+                                      </div>
+                                      <div style={{ fontSize: '0.7rem', color: '#fff' }}>
+                                        HP {(monster.limb_health as any)[limb] ?? '—'} · AC {(monster.limb_ac as any)?.[limb] ?? 10}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
                             {monster.abilities && (
@@ -10622,6 +10655,42 @@ const CampaignView: React.FC = () => {
                               >
                                 {monster.visible_to_players ? 'Hide' : 'Show'}
                               </button>
+                              {!(monster as any).is_global && (
+                                <button
+                                  onClick={() => {
+                                    setMonsterFormData({
+                                      name: monster.name,
+                                      description: monster.description || '',
+                                      limb_health: { ...monster.limb_health },
+                                      limb_ac: { ...(monster.limb_ac || { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 }) },
+                                      abilities: { ...(monster.abilities || { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }) },
+                                      cr: monster.cr ?? 0,
+                                      resistances: monster.resistances
+                                        ? {
+                                            resistances: [...(monster.resistances.resistances || [])],
+                                            immunities: [...(monster.resistances.immunities || [])],
+                                            vulnerabilities: [...(monster.resistances.vulnerabilities || [])]
+                                          }
+                                        : { resistances: [], immunities: [], vulnerabilities: [] }
+                                    });
+                                    setMonsterImageFile(null);
+                                    setEditingMonsterId(monster.id);
+                                    setShowAddMonsterModal(true);
+                                  }}
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.4rem 0.6rem',
+                                    borderRadius: '0.5rem',
+                                    border: '1px solid rgba(96, 165, 250, 0.5)',
+                                    background: 'rgba(96, 165, 250, 0.15)',
+                                    color: '#93c5fd',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem'
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                              )}
                               {!(monster as any).is_global && (
                                 <button
                                   onClick={() => handleDeleteMonster(monster.id)}
@@ -12314,161 +12383,146 @@ const CampaignView: React.FC = () => {
                             </div>
                           );
                         })()}
+
+                        {/* Ki Points (Monk) — grouped in third column */}
+                        {selectedCharacterData.class === 'Monk' && (() => {
+                          const maxKi = selectedCharacterData.level;
+                          const remaining = characterKiPoints[selectedCharacterData.id] ?? maxKi;
+                          const isDM = user?.role === 'Dungeon Master';
+                          const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
+                          const canInteract = isDM || isOwner;
+                          return (
+                            <div style={{ background: 'rgba(250,204,21,0.06)', border: '2px solid rgba(250,204,21,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
+                              <h6 style={{ color: '#fbbf24', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                🌀 Ki Points
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short/long rest{canInteract ? ' · click to use/restore' : ''})</span>
+                              </h6>
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                {Array.from({ length: maxKi }).map((_, idx) => {
+                                  const isUsed = idx >= remaining;
+                                  return (
+                                    <div key={idx}
+                                      title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                      onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreKiPoint' : 'useKiPoint', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
+                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(250,204,21,0.7)', border: '2px solid rgba(250,204,21,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.35 : 1, transition: 'opacity 0.2s' }} />
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{remaining}/{maxKi} remaining</div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Charlatan Tricks — grouped in third column */}
+                        {selectedCharacterData.class === 'Charlatan' && (() => {
+                          const lvl = selectedCharacterData.level;
+                          const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
+                          const used = characterTricksUsed[selectedCharacterData.id] ?? 0;
+                          const remaining = maxTricks - used;
+                          const isDM = user?.role === 'Dungeon Master';
+                          const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
+                          const canInteract = isDM || isOwner;
+                          return (
+                            <div style={{ background: 'rgba(251,146,60,0.06)', border: '2px solid rgba(251,146,60,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
+                              <h6 style={{ color: '#fb923c', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                🃏 Tricks
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short rest{canInteract ? ' · click to use/restore' : ''})</span>
+                              </h6>
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                {Array.from({ length: maxTricks }).map((_, idx) => {
+                                  const isUsed = idx >= remaining;
+                                  return (
+                                    <div key={idx}
+                                      title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                      onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreTrick' : 'useTrick', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
+                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(251,146,60,0.7)', border: '2px solid rgba(251,146,60,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.35 : 1, transition: 'opacity 0.2s' }} />
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{remaining}/{maxTricks} remaining</div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Shadow Sovereign Resources — grouped in third column */}
+                        {selectedCharacterData.class === 'Shadow Sovereign' && (() => {
+                          const lvl = selectedCharacterData.level;
+                          const abilities = selectedCharacterData.abilities || {};
+                          const dex = abilities.dex ?? 10;
+                          const dexMod = Math.max(0, Math.floor((dex - 10) / 2));
+                          const con = abilities.con ?? 10;
+                          const conMod = Math.max(0, Math.floor((con - 10) / 2));
+                          const res = characterShadowResources[selectedCharacterData.id] ?? { shadow_reap_used: 0, shadow_step_used: 0 };
+                          const isDM = user?.role === 'Dungeon Master';
+                          const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
+                          const canInteract = isDM || isOwner;
+                          const shadows = characterShadows[selectedCharacterData.id] ?? [];
+                          const activeCount = shadows.filter(s => s.is_active).length;
+                          const maxReap = lvl >= 12 ? 2 : 1;
+                          const maxStep = dexMod + (lvl >= 11 ? 4 : lvl >= 7 ? 2 : 0);
+                          return (
+                            <>
+                              {lvl >= 6 && (
+                                <div style={{ background: 'rgba(139,92,246,0.06)', border: '2px solid rgba(139,92,246,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
+                                  <h6 style={{ color: '#a78bfa', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    ☽ Shadow Reap
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(long rest{canInteract ? ' · click to use/restore' : ''})</span>
+                                  </h6>
+                                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    {Array.from({ length: maxReap }).map((_, idx) => {
+                                      const isUsed = idx < res.shadow_reap_used;
+                                      return (
+                                        <div key={idx}
+                                          title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                          onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreShadowReap' : 'useShadowReap', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
+                                          style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(139,92,246,0.7)', border: '2px solid rgba(139,92,246,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.4 : 1, transition: 'opacity 0.2s' }} />
+                                      );
+                                    })}
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{maxReap - res.shadow_reap_used}/{maxReap} remaining</div>
+                                </div>
+                              )}
+                              {maxStep > 0 && (
+                                <div style={{ background: 'rgba(99,102,241,0.06)', border: '2px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
+                                  <h6 style={{ color: '#818cf8', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    👣 Shadow Step
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short rest{canInteract ? ' · click to use/restore' : ''})</span>
+                                  </h6>
+                                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    {Array.from({ length: maxStep }).map((_, idx) => {
+                                      const isUsed = idx < res.shadow_step_used;
+                                      return (
+                                        <div key={idx}
+                                          title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
+                                          onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreShadowStep' : 'useShadowStep', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
+                                          style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(99,102,241,0.7)', border: '2px solid rgba(99,102,241,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.4 : 1, transition: 'opacity 0.2s' }} />
+                                      );
+                                    })}
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{maxStep - res.shadow_step_used}/{maxStep} remaining</div>
+                                </div>
+                              )}
+                              {conMod > 0 && (
+                                <div style={{ background: 'rgba(239,68,68,0.06)', border: '2px solid rgba(239,68,68,0.3)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
+                                  <h6 style={{ color: '#f87171', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    ◈ Active Shadows
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(max {conMod} · manage in Shadows tab)</span>
+                                  </h6>
+                                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    {Array.from({ length: conMod }).map((_, idx) => {
+                                      const isActive = idx < activeCount;
+                                      return <div key={idx} title={isActive ? 'Shadow active' : 'Slot empty'} style={{ width: '22px', height: '22px', borderRadius: '50%', background: isActive ? 'rgba(239,68,68,0.7)' : 'rgba(0,0,0,0.2)', border: '2px solid rgba(239,68,68,0.6)', opacity: isActive ? 1 : 0.35 }} />;
+                                    })}
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{activeCount}/{conMod} active · {shadows.length - activeCount} stored</div>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
 
                     </div>
-
-                    {/* Ki Points Panel (Monk only) */}
-                    {selectedCharacterData.class === 'Monk' && (() => {
-                      const maxKi = selectedCharacterData.level;
-                      const remaining = characterKiPoints[selectedCharacterData.id] ?? maxKi;
-                      const isDM = user?.role === 'Dungeon Master';
-                      const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
-                      const canInteract = isDM || isOwner;
-                      return (
-                        <div style={{ background: 'rgba(250,204,21,0.06)', border: '2px solid rgba(250,204,21,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem' }}>
-                          <h6 style={{ color: '#fbbf24', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            🌀 Ki Points
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on short/long rest{canInteract ? ' · click to use/restore' : ''})</span>
-                          </h6>
-                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                            {Array.from({ length: maxKi }).map((_, idx) => {
-                              const isUsed = idx >= remaining;
-                              return (
-                                <div
-                                  key={idx}
-                                  title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
-                                  onClick={() => {
-                                    if (!canInteract) return;
-                                    socket?.emit(isUsed ? 'restoreKiPoint' : 'useKiPoint', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id });
-                                  }}
-                                  style={{
-                                    width: '22px', height: '22px', borderRadius: '50%',
-                                    background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(250,204,21,0.7)',
-                                    border: '2px solid rgba(250,204,21,0.8)',
-                                    cursor: canInteract ? 'pointer' : 'default',
-                                    opacity: isUsed ? 0.35 : 1,
-                                    transition: 'opacity 0.2s',
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{remaining}/{maxKi} remaining</div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Charlatan Tricks Panel */}
-                    {selectedCharacterData.class === 'Charlatan' && (() => {
-                      const lvl = selectedCharacterData.level;
-                      const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
-                      const used = characterTricksUsed[selectedCharacterData.id] ?? 0;
-                      const remaining = maxTricks - used;
-                      const isDM = user?.role === 'Dungeon Master';
-                      const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
-                      const canInteract = isDM || isOwner;
-                      return (
-                        <div style={{ background: 'rgba(251,146,60,0.06)', border: '2px solid rgba(251,146,60,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem' }}>
-                          <h6 style={{ color: '#fb923c', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            🃏 Tricks
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on short rest{canInteract ? ' · click to use/restore' : ''})</span>
-                          </h6>
-                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                            {Array.from({ length: maxTricks }).map((_, idx) => {
-                              const isUsed = idx >= remaining;
-                              return (
-                                <div key={idx}
-                                  title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
-                                  onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreTrick' : 'useTrick', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
-                                  style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(251,146,60,0.7)', border: '2px solid rgba(251,146,60,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.35 : 1, transition: 'opacity 0.2s' }} />
-                              );
-                            })}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{remaining}/{maxTricks} remaining</div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Shadow Sovereign Resource Panels */}
-                    {selectedCharacterData.class === 'Shadow Sovereign' && (() => {
-                      const lvl = selectedCharacterData.level;
-                      const abilities = selectedCharacterData.abilities || {};
-                      const dex = abilities.dex ?? 10;
-                      const dexMod = Math.max(0, Math.floor((dex - 10) / 2));
-                      const con = abilities.con ?? 10;
-                      const conMod = Math.max(0, Math.floor((con - 10) / 2));
-                      const res = characterShadowResources[selectedCharacterData.id] ?? { shadow_reap_used: 0, shadow_step_used: 0 };
-                      const isDM = user?.role === 'Dungeon Master';
-                      const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
-                      const canInteract = isDM || isOwner;
-                      const shadows = characterShadows[selectedCharacterData.id] ?? [];
-                      const activeCount = shadows.filter(s => s.is_active).length;
-                      const maxReap = lvl >= 12 ? 2 : 1;
-                      const maxStep = dexMod + (lvl >= 11 ? 4 : lvl >= 7 ? 2 : 0);
-                      return (
-                        <>
-                          {/* Shadow Reap — long rest */}
-                          {lvl >= 6 && (
-                            <div style={{ background: 'rgba(139,92,246,0.06)', border: '2px solid rgba(139,92,246,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem' }}>
-                              <h6 style={{ color: '#a78bfa', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                ☽ Shadow Reap
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on long rest{canInteract ? ' · click to use/restore' : ''})</span>
-                              </h6>
-                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                {Array.from({ length: maxReap }).map((_, idx) => {
-                                  const isUsed = idx < res.shadow_reap_used;
-                                  return (
-                                    <div key={idx}
-                                      title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
-                                      onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreShadowReap' : 'useShadowReap', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
-                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(139,92,246,0.7)', border: '2px solid rgba(139,92,246,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.4 : 1, transition: 'opacity 0.2s' }} />
-                                  );
-                                })}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{maxReap - res.shadow_reap_used}/{maxReap} remaining</div>
-                            </div>
-                          )}
-                          {/* Shadow Step — short rest */}
-                          {maxStep > 0 && (
-                            <div style={{ background: 'rgba(99,102,241,0.06)', border: '2px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem' }}>
-                              <h6 style={{ color: '#818cf8', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                👣 Shadow Step
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(recharge on short rest{canInteract ? ' · click to use/restore' : ''})</span>
-                              </h6>
-                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                {Array.from({ length: maxStep }).map((_, idx) => {
-                                  const isUsed = idx < res.shadow_step_used;
-                                  return (
-                                    <div key={idx}
-                                      title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
-                                      onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreShadowStep' : 'useShadowStep', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
-                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(99,102,241,0.7)', border: '2px solid rgba(99,102,241,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.4 : 1, transition: 'opacity 0.2s' }} />
-                                  );
-                                })}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{maxStep - res.shadow_step_used}/{maxStep} remaining</div>
-                            </div>
-                          )}
-                          {/* Active Shadows — read-only counter derived from shadows tab */}
-                          {conMod > 0 && (
-                            <div style={{ background: 'rgba(239,68,68,0.06)', border: '2px solid rgba(239,68,68,0.3)', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem' }}>
-                              <h6 style={{ color: '#f87171', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                ◈ Active Shadows
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(max {conMod} · manage in Shadows tab)</span>
-                              </h6>
-                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                {Array.from({ length: conMod }).map((_, idx) => {
-                                  const isActive = idx < activeCount;
-                                  return <div key={idx} title={isActive ? 'Shadow active' : 'Slot empty'} style={{ width: '22px', height: '22px', borderRadius: '50%', background: isActive ? 'rgba(239,68,68,0.7)' : 'rgba(0,0,0,0.2)', border: '2px solid rgba(239,68,68,0.6)', opacity: isActive ? 1 : 0.35 }} />;
-                                })}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{activeCount}/{conMod} active · {shadows.length - activeCount} stored</div>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
 
                     {/* Skills - Organized by Ability Score */}
                     <div>
@@ -17836,7 +17890,7 @@ const CampaignView: React.FC = () => {
               maxHeight: '90vh',
               overflow: 'auto'
             }}>
-              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📚 Add Monster</h3>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📚 {editingMonsterId ? 'Edit Monster' : 'Add Monster'}</h3>
               
               {/* Name */}
               <div style={{ marginBottom: '1rem' }}>
@@ -18062,15 +18116,22 @@ const CampaignView: React.FC = () => {
                       return;
                     }
                     try {
-                      // Create the monster
-                      const newMonster = await monsterAPI.createMonster({
-                        campaign_id: currentCampaign?.campaign.id,
-                        ...monsterFormData
-                      });
-
-                      // Upload image if provided
-                      if (monsterImageFile) {
-                        await monsterAPI.uploadMonsterImage(newMonster.id, monsterImageFile);
+                      if (editingMonsterId != null) {
+                        // Update existing monster
+                        await monsterAPI.updateMonster(editingMonsterId, monsterFormData);
+                        if (monsterImageFile) {
+                          await monsterAPI.uploadMonsterImage(editingMonsterId, monsterImageFile);
+                        }
+                      } else {
+                        // Create the monster
+                        const newMonster = await monsterAPI.createMonster({
+                          campaign_id: currentCampaign?.campaign.id,
+                          ...monsterFormData
+                        });
+                        // Upload image if provided
+                        if (monsterImageFile) {
+                          await monsterAPI.uploadMonsterImage(newMonster.id, monsterImageFile);
+                        }
                       }
 
                       // Reload monsters
@@ -18088,10 +18149,11 @@ const CampaignView: React.FC = () => {
                         resistances: { resistances: [], immunities: [], vulnerabilities: [] }
                       });
                       setMonsterImageFile(null);
+                      setEditingMonsterId(null);
                       setShowAddMonsterModal(false);
                     } catch (error) {
-                      console.error('Error creating monster:', error);
-                      toast('Failed to create monster');
+                      console.error('Error saving monster:', error);
+                      toast('Failed to save monster');
                     }
                   }}
                   style={{
@@ -18106,7 +18168,7 @@ const CampaignView: React.FC = () => {
                     fontSize: '1rem'
                   }}
                 >
-                  ✓ Create Monster
+                  {editingMonsterId ? '✓ Save Changes' : '✓ Create Monster'}
                 </button>
                 <button
                   onClick={() => {
@@ -18115,9 +18177,12 @@ const CampaignView: React.FC = () => {
                       description: '',
                       limb_health: { head: 10, chest: 30, left_arm: 15, right_arm: 15, left_leg: 20, right_leg: 20 },
                       limb_ac: { head: 10, chest: 12, left_arm: 10, right_arm: 10, left_leg: 10, right_leg: 10 },
-                      abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
+                      abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+                      cr: 0,
+                      resistances: { resistances: [], immunities: [], vulnerabilities: [] }
                     });
                     setMonsterImageFile(null);
+                    setEditingMonsterId(null);
                     setShowAddMonsterModal(false);
                   }}
                   style={{
