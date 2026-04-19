@@ -3322,8 +3322,12 @@ const CampaignView: React.FC = () => {
           setCombatCharacterHp(hpMap);
         }
         // Hydrate monster HP from DB data included in sync
+        // Server keys monsterHpData by numeric instance id ("42"); remap to combatant key format ("monster_42")
         if ((data as any).monsterHpData) {
-          setMonsterInstanceHp((data as any).monsterHpData);
+          const rawHp = (data as any).monsterHpData as Record<string, any>;
+          const remapped: Record<string, { limbHealth: Record<string, number>; totalHP: number }> = {};
+          Object.entries(rawHp).forEach(([id, hp]) => { remapped[`monster_${id}`] = hp as any; });
+          setMonsterInstanceHp(remapped);
         }
         // Hydrate monster templates for active combat monsters (players may not have them via API)
         if ((data as any).combatMonsterTemplates) {
@@ -3352,7 +3356,7 @@ const CampaignView: React.FC = () => {
           if (monsterHpSync) {
             Object.entries(monsterHpSync).forEach(([id, hp]) => {
               if (Object.prototype.hasOwnProperty.call(hp, 'tempLimbHealth')) {
-                tempMap[id] = (hp as any).tempLimbHealth;
+                tempMap[`monster_${id}`] = (hp as any).tempLimbHealth;
               }
             });
           }
@@ -3569,12 +3573,14 @@ const CampaignView: React.FC = () => {
             currentCampaign.characters = updated;
           }
         } else if (data.type === 'monster') {
+          // Key by combatant key format ("monster_42") so reads via combatant.characterId work
+          const monsterKey = `monster_${data.instanceId}`;
           setMonsterInstanceHp(prev => ({
             ...prev,
-            [String(data.instanceId)]: { limbHealth: data.limbHealth, totalHP: data.totalHP },
+            [monsterKey]: { limbHealth: data.limbHealth, totalHP: data.totalHP },
           }));
           if (Object.prototype.hasOwnProperty.call(data, 'tempLimbHealth')) {
-            setCombatTempHealth(prev => ({ ...prev, [String(data.instanceId)]: data.tempLimbHealth }));
+            setCombatTempHealth(prev => ({ ...prev, [monsterKey]: data.tempLimbHealth }));
           }
         }
       });
