@@ -101,18 +101,24 @@ if (filesToFix.length === 0) {
 
 for (const filePath of filesToFix) {
   const abs = path.resolve(filePath);
-  let content = fs.readFileSync(abs, 'utf8');
-  // Strip UTF-8 BOM (U+FEFF) if present
-  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+  // Read as raw bytes so we can detect/strip the UTF-8 BOM (EF BB BF) reliably
+  // (Node strips BOM when decoding to string, making charCodeAt checks unreliable)
+  let rawBuf = fs.readFileSync(abs);
+  let hadBom = false;
+  if (rawBuf[0] === 0xEF && rawBuf[1] === 0xBB && rawBuf[2] === 0xBF) {
+    rawBuf = rawBuf.slice(3);
+    hadBom = true;
+  }
+  const content = rawBuf.toString('utf8');
   const fixed = fixMojibake(content);
-  if (fixed !== content) {
+  if (fixed !== content || hadBom) {
     fs.writeFileSync(abs, fixed, 'utf8');
-    // Count changes
+    const tag = hadBom ? ' [BOM stripped]' : '';
     let changed = 0;
     for (let i = 0; i < Math.max(content.length, fixed.length); i++) {
       if (content[i] !== fixed[i]) { changed++; }
     }
-    console.log(`Fixed: ${abs} (${changed} char positions changed)`);
+    console.log(`Fixed: ${abs} (${changed} char positions changed${tag})`);
   } else {
     console.log(`No changes: ${abs}`);
   }
