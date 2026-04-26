@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 // Determine API base URL based on environment
 const getApiBaseUrl = () => {
@@ -659,8 +659,6 @@ export interface Army {
   total_troops?: number;
   starting_troops?: number;
   unit_type?: string;
-  source_fief_id?: number | null;
-  is_garrisoned?: boolean;
   created_at: string;
   updated_at: string;
   player_name?: string;
@@ -793,11 +791,6 @@ export const armyAPI = {
 
   updateTroops: async (armyId: number, troopChange: number): Promise<Army> => {
     const response = await api.patch(`/armies/${armyId}/troops`, { troop_change: troopChange });
-    return response.data;
-  },
-
-  updateGarrisonStatus: async (armyId: number, is_garrisoned: boolean): Promise<Army> => {
-    const response = await api.patch(`/armies/${armyId}/garrison-status`, { is_garrisoned });
     return response.data;
   }
 };
@@ -1105,7 +1098,7 @@ export const shadowAPI = {
   },
 };
 
-// ─── Mounts ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Mounts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Mount {
   id: number;
@@ -1230,156 +1223,15 @@ export const battleMapsAPI = {
   },
 };
 
-export interface KingdomResources {
-  gold: number;
-  food: number;
-  wood: number;
-  stone: number;
-}
-
-export interface KingdomStats {
-  economy: number;
-  military: number;
-  stability: number;
-}
-
-export interface FiefBuilding {
-  id: number;
-  fief_id: number;
-  name: string;
-  building_type: string;
-  level: number;
-  description: string;
-  construction_days_required: number;
-  days_remaining: number;
-  is_complete: boolean;
-  is_upgrade: boolean;
-  parent_building_id: number | null;
-  resource_output: Partial<KingdomResources>;
-  resource_cost: Partial<KingdomResources>;
-  temp_output_modifier: Partial<KingdomResources>;
-  temp_modifier_days_remaining: number;
-  built_at: string | null;
-}
-
-export interface FiefTraining {
-  id: number;
-  fief_id: number;
-  unit_type: string;
-  count: number;
-  training_days_required: number;
-  days_remaining: number;
-  resource_cost: Partial<KingdomResources>;
-  tier?: number;
-  linked_army_id?: number | null;
-  created_at: string;
-}
-
-export type FiefGarrison = Record<string, number>;
-
-export interface FiefAvailableResources {
-  wood: number;
-  animals: number;
-  fertile_ground: number;
-  stone: number;
-  minerals: number;
-}
-
-export interface FiefStoredResources {
-  wood: number;
-  stone: number;
-  minerals: number;
-  meat: number;
-  vegetables: number;
-}
-
-export interface Fief {
-  id: number;
-  kingdom_id: number;
-  name: string;
-  tier: number;
-  resources: KingdomResources;
-  stats: KingdomStats;
-  population: number;
-  is_capital: boolean;
-  construction_days_remaining: number;
-  tier_upgrade_days_remaining: number;
-  worker_assignments: { gold: number; food: number; wood: number; stone: number; wood_cutting?: number; hunting?: number; farming?: number; stone_mining?: number; mineral_mining?: number; builders?: number };
-  faith?: number;
-  garrison: FiefGarrison;
-  created_at: string;
-  buildings?: FiefBuilding[];
-  training_queue?: FiefTraining[];
-  available_resources?: FiefAvailableResources;
-  water_access?: boolean;
-  buildable_land?: number;
-  storage_capacity?: number;
-  stored_resources?: FiefStoredResources;
-}
-
-export interface KingdomEvent {
-  id: number;
-  kingdom_id: number;
-  fief_id: number | null;
-  title: string;
-  description: string;
-  event_type: 'crisis' | 'opportunity' | 'announcement' | 'disaster';
-  severity: 'low' | 'medium' | 'high';
-  is_resolved: boolean;
-  resolved_at: string | null;
-  created_by: number | null;
-  created_by_name?: string;
-  created_at: string;
-}
-
-export interface KingdomAction {
-  id: number;
-  kingdom_id: number;
-  fief_id: number | null;
-  title: string;
-  description: string;
-  action_type: string;
-  is_completed: boolean;
-  completed_at: string | null;
-  created_at: string;
-}
-
-export interface FiefEventLogEntry {
-  id: number;
-  fief_id: number;
-  campaign_day: number;
-  event_type: 'resource_production' | 'population_growth' | 'building_complete' | 'building_started' | 'disaster' | 'manual_change';
-  title: string;
-  details: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface Kingdom {
-  id: number;
-  campaign_id: number;
-  player_id: number;
-  name: string | null;
-  is_active: boolean;
-  player_name: string;
-  tier: number;
-  resources: KingdomResources;
-  stats: KingdomStats;
-  population: number;
-  created_at: string;
-  fiefs?: Fief[];
-  events?: KingdomEvent[];
-  actions?: KingdomAction[];
-}
-
 export interface AdvanceDaysSummary {
   newDay: number;
-  restType: string;
+  restType?: string;
   completedBuildings: Array<{ name: string; level: number; fiefId: number; fiefName: string }>;
-  resourcesGained: Record<number, KingdomResources>;
+  resourcesGained: Record<number, unknown>;
   populationGained: Record<number, number>;
 }
 
-// ─── Pets ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Pets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Pet {
   id: number;
@@ -1442,184 +1294,8 @@ export const petAPI = {
   },
 };
 
-export const kingdomAPI = {
-  getCampaignKingdoms: async (campaignId: number): Promise<Kingdom[]> => {
-    const response = await api.get(`/kingdoms/campaign/${campaignId}`);
-    return response.data;
-  },
-  getKingdomDetails: async (id: number): Promise<Kingdom> => {
-    const response = await api.get(`/kingdoms/${id}`);
-    return response.data;
-  },
-  upgradeTier: async (id: number): Promise<Kingdom> => {
-    const response = await api.post(`/kingdoms/${id}/upgrade-tier`);
-    return response.data;
-  },
-  updateResources: async (id: number, resources: KingdomResources): Promise<Kingdom> => {
-    const response = await api.patch(`/kingdoms/${id}/resources`, { resources });
-    return response.data;
-  },
-  updateStats: async (id: number, stats: KingdomStats): Promise<Kingdom> => {
-    const response = await api.patch(`/kingdoms/${id}/stats`, { stats });
-    return response.data;
-  },
-  updatePopulation: async (id: number, population: number): Promise<Kingdom> => {
-    const response = await api.patch(`/kingdoms/${id}/population`, { population });
-    return response.data;
-  },
-  deleteKingdom: async (id: number): Promise<void> => {
-    await api.delete(`/kingdoms/${id}`);
-  },
-};
 
-export const fiefAPI = {
-  getKingdomFiefs: async (kingdomId: number): Promise<Fief[]> => {
-    const response = await api.get(`/kingdoms/${kingdomId}/fiefs`);
-    return response.data;
-  },
-  createFief: async (kingdomId: number, data: { name: string }): Promise<Fief> => {
-    const response = await api.post(`/kingdoms/${kingdomId}/fiefs`, data);
-    return response.data;
-  },
-  getFiefDetails: async (id: number): Promise<Fief> => {
-    const response = await api.get(`/fiefs/${id}`);
-    return response.data;
-  },
-  updateResources: async (id: number, resources: KingdomResources): Promise<Fief> => {
-    const response = await api.patch(`/fiefs/${id}/resources`, { resources });
-    return response.data;
-  },
-  updateStats: async (id: number, stats: KingdomStats): Promise<Fief> => {
-    const response = await api.patch(`/fiefs/${id}/stats`, { stats });
-    return response.data;
-  },
-  updateWorkerAssignments: async (id: number, assignments: Partial<{ gold: number; food: number; wood: number; stone: number; research: number; wood_cutting: number; hunting: number; farming: number; stone_mining: number; mineral_mining: number; builders: number }>): Promise<Fief> => {
-    const response = await api.patch(`/fiefs/${id}/workers`, { worker_assignments: assignments });
-    return response.data;
-  },
-  updatePopulation: async (id: number, population: number): Promise<Fief> => {
-    const response = await api.patch(`/fiefs/${id}/population`, { population });
-    return response.data;
-  },
-  upgradeTier: async (id: number): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${id}/upgrade-tier`);
-    return response.data;
-  },
-  addBuilding: async (fiefId: number, data: Partial<FiefBuilding> & { construction_days: number; resource_cost: Partial<KingdomResources>; resource_output: Partial<KingdomResources> }): Promise<{ building: FiefBuilding; updatedResources: KingdomResources }> => {
-    const response = await api.post(`/fiefs/${fiefId}/buildings`, data);
-    return response.data;
-  },
-  upgradeBuilding: async (fiefId: number, buildingId: number, data: { upgrade_cost: Partial<KingdomResources>; construction_days: number; new_resource_output?: Partial<KingdomResources> }): Promise<{ upgradeBuilding: FiefBuilding; updatedResources: KingdomResources }> => {
-    const response = await api.post(`/fiefs/${fiefId}/buildings/${buildingId}/upgrade`, data);
-    return response.data;
-  },
-  deleteBuilding: async (fiefId: number, buildingId: number): Promise<{ success: boolean }> => {
-    const response = await api.delete(`/fiefs/${fiefId}/buildings/${buildingId}`);
-    return response.data;
-  },
-  getEventLog: async (fiefId: number, page = 1, limit = 50): Promise<{ entries: FiefEventLogEntry[]; total: number; page: number; limit: number }> => {
-    const response = await api.get(`/fiefs/${fiefId}/log`, { params: { page, limit } });
-    return response.data;
-  },
-  sendDisaster: async (fiefId: number, disasterId: string): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/disaster`, { disasterId });
-    return response.data;
-  },
-  trainUnits: async (fiefId: number, unit_type: string, count: number, linked_army_id?: number | null): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/train`, { unit_type, count, linked_army_id });
-    return response.data;
-  },
-  getAvailableUnitTypes: async (fiefId: number): Promise<string[]> => {
-    const response = await api.get(`/fiefs/${fiefId}/available-unit-types`);
-    return response.data;
-  },
-  cancelTraining: async (fiefId: number, trainId: number): Promise<Fief> => {
-    const response = await api.delete(`/fiefs/${fiefId}/train/${trainId}`);
-    return response.data;
-  },
-  transferTroops: async (fiefId: number, army_id: number, unit_type: string, amount: number, direction: 'to_garrison' | 'to_army'): Promise<{ fief: Fief; army: Army }> => {
-    const response = await api.post(`/fiefs/${fiefId}/transfer-troops`, { army_id, unit_type, amount, direction });
-    return response.data;
-  },
-  updateFaith: async (fiefId: number, faith: number): Promise<Fief> => {
-    const response = await api.patch(`/fiefs/${fiefId}/faith`, { faith });
-    return response.data;
-  },
-  prioritizeBuilding: async (fiefId: number, buildingId: number): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/buildings/${buildingId}/prioritize`);
-    return response.data;
-  },
-  pauseBuilding: async (fiefId: number, buildingId: number): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/buildings/${buildingId}/pause`);
-    return response.data;
-  },
-  getResearch: async (fiefId: number): Promise<{ queue: any[]; completedLevels: any[] }> => {
-    const response = await api.get(`/fiefs/${fiefId}/research`);
-    return response.data;
-  },
-  startResearch: async (fiefId: number, research_id: string): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/research/start`, { research_id });
-    return response.data;
-  },
-  prioritizeResearch: async (fiefId: number, queueId: number): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/research/${queueId}/prioritize`);
-    return response.data;
-  },
-  pauseResearch: async (fiefId: number, queueId: number): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/research/${queueId}/pause`);
-    return response.data;
-  },
-  resolveDisaster: async (fiefId: number, uid: string): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/disasters/${uid}/resolve`);
-    return response.data;
-  },
-  sendPositiveEvent: async (fiefId: number, eventId: string): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/positive-event`, { eventId });
-    return response.data;
-  },
-  getPositiveEvents: async (): Promise<Array<{ id: string; name: string; description: string }>> => {
-    const response = await api.get(`/fiefs/positive-events`);
-    return response.data;
-  },
-  construct: async (fiefId: number, buildingKey: string, builders: number): Promise<Fief> => {
-    const response = await api.post(`/fiefs/${fiefId}/construct`, { building_key: buildingKey, builders });
-    return response.data;
-  },
-  setStoredResources: async (fiefId: number, storedResources: FiefStoredResources): Promise<{ stored_resources: FiefStoredResources }> => {
-    const response = await api.patch(`/fiefs/${fiefId}/stored-resources`, { stored_resources: storedResources });
-    return response.data;
-  },
-};
 
-export const kingdomEventAPI = {
-  getEvents: async (kingdomId: number): Promise<KingdomEvent[]> => {
-    const response = await api.get(`/kingdoms/${kingdomId}/events`);
-    return response.data;
-  },
-  createEvent: async (kingdomId: number, data: Partial<KingdomEvent>): Promise<KingdomEvent> => {
-    const response = await api.post(`/kingdoms/${kingdomId}/events`, data);
-    return response.data;
-  },
-  resolveEvent: async (kingdomId: number, eventId: number): Promise<KingdomEvent> => {
-    const response = await api.patch(`/kingdoms/${kingdomId}/events/${eventId}`, {});
-    return response.data;
-  },
-};
-
-export const kingdomActionAPI = {
-  getActions: async (kingdomId: number): Promise<KingdomAction[]> => {
-    const response = await api.get(`/kingdoms/${kingdomId}/actions`);
-    return response.data;
-  },
-  createAction: async (kingdomId: number, data: Partial<KingdomAction>): Promise<KingdomAction> => {
-    const response = await api.post(`/kingdoms/${kingdomId}/actions`, data);
-    return response.data;
-  },
-  completeAction: async (kingdomId: number, actionId: number): Promise<KingdomAction> => {
-    const response = await api.patch(`/kingdoms/${kingdomId}/actions/${actionId}`, {});
-    return response.data;
-  },
-};
 
 export interface CampaignNPCData {
   id: number;

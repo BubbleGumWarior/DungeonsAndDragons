@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+﻿import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, kingdomAPI, fiefAPI, Kingdom, Fief, FiefStoredResources, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -22,7 +22,6 @@ import { CombatActionsPanel } from './campaign/CombatActionsPanel';
 import ChatPanel from './campaign/ChatPanel';
 import ScoresTab from './campaign/ScoresTab';
 import GoalsTab from './campaign/GoalsTab';
-import GrantKingdomModal from './campaign/GrantKingdomModal';
 import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig, ChatMessage, OutOfCombatRollRequest, CampaignNPC } from '../types/campaignTypes';
 
 // Journal Entry Interface
@@ -37,14 +36,14 @@ interface JournalEntry {
   updated_at?: string;
 }
 
-// Helper function to get army category icon — driven by UNIT_TEMPLATES
+// Helper function to get army category icon â€” driven by UNIT_TEMPLATES
 const getArmyCategoryIcon = (category: string): string =>
-  UNIT_TEMPLATES[category]?.icon ?? '⚔️';
+  UNIT_TEMPLATES[category]?.icon ?? 'âš”ï¸';
 
 // Army categories organized by type
 const ARMY_CATEGORIES = ARMY_CATEGORY_GROUPS;
 
-// Stat presets for army categories — pulled from UNIT_TEMPLATES
+// Stat presets for army categories â€” pulled from UNIT_TEMPLATES
 const getArmyCategoryPresets = (category: string): { equipment: number; discipline: number; morale: number; command: number; logistics: number } => {
   const template = UNIT_TEMPLATES[category];
   if (!template) return { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
@@ -129,7 +128,7 @@ const getCityImageFilename = (cityName: string): string =>
 
 
 
-// ─── Shadow helper components (need local useState, so defined outside CampaignView) ───
+// â”€â”€â”€ Shadow helper components (need local useState, so defined outside CampaignView) â”€â”€â”€
 
 interface ShadowAddFormProps { characterId: number; onCreated: (newShadow?: Shadow) => void; storedCount: number; maxStored: number; onRequestCrop: (file: File, url: string) => void; pendingImagePreview: string | null; }
 const ShadowAddForm: React.FC<ShadowAddFormProps> = ({ characterId, onCreated, storedCount, maxStored, onRequestCrop, pendingImagePreview }) => {
@@ -177,7 +176,7 @@ const ShadowAddForm: React.FC<ShadowAddFormProps> = ({ characterId, onCreated, s
 
   return (
     <div style={{ background: 'rgba(139,92,246,0.08)', border: '2px solid rgba(139,92,246,0.4)', borderRadius: '12px', padding: '1.25rem', textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
-      <h6 style={{ color: '#c4b5fd', marginBottom: '1rem' }}>🌑 New Shadow</h6>
+      <h6 style={{ color: '#c4b5fd', marginBottom: '1rem' }}>ðŸŒ‘ New Shadow</h6>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
         {inp('Shadow Name', 'shadow_name')} {inp('Origin Name', 'origin_name')}
         {inp('Max HP', 'hit_points_max', 'number')} {inp('Armor Class', 'armor_class', 'number')}
@@ -288,7 +287,7 @@ const ShadowDMControls: React.FC<ShadowDMControlsProps> = ({ shadow, characterId
           disabled={!shadow.is_active && activeCount >= maxActive}
           title={!shadow.is_active && activeCount >= maxActive ? `Cap reached (${maxActive} active)` : undefined}
           style={{ fontSize: '0.72rem', padding: '3px 10px', background: shadow.is_active ? 'rgba(139,92,246,0.2)' : 'rgba(239,68,68,0.18)', border: `1px solid ${shadow.is_active ? 'rgba(139,92,246,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius: '5px', color: shadow.is_active ? '#c4b5fd' : '#fca5a5', cursor: (!shadow.is_active && activeCount >= maxActive) ? 'not-allowed' : 'pointer', opacity: (!shadow.is_active && activeCount >= maxActive) ? 0.45 : 1 }}>
-          {shadow.is_active ? '→ Store' : '→ Activate'}
+          {shadow.is_active ? 'â†’ Store' : 'â†’ Activate'}
         </button>
         {activeError && <span style={{ fontSize: '0.7rem', color: '#f87171', width: '100%', marginTop: '2px' }}>{activeError}</span>}
         <button onClick={() => setEditing(e => !e)} style={{ fontSize: '0.72rem', padding: '3px 10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '5px', color: '#93c5fd', cursor: 'pointer' }}>
@@ -299,7 +298,7 @@ const ShadowDMControls: React.FC<ShadowDMControlsProps> = ({ shadow, characterId
         ) : (
           <>
             <button onClick={deleteShadow} style={{ fontSize: '0.72rem', padding: '3px 10px', background: 'rgba(239,68,68,0.35)', border: '1px solid rgba(239,68,68,0.6)', borderRadius: '5px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>Confirm</button>
-            <button onClick={() => setConfirmDelete(false)} style={{ fontSize: '0.72rem', padding: '3px 8px', background: 'rgba(75,85,99,0.3)', border: '1px solid rgba(107,114,128,0.4)', borderRadius: '5px', color: 'var(--text-muted)', cursor: 'pointer' }}>×</button>
+            <button onClick={() => setConfirmDelete(false)} style={{ fontSize: '0.72rem', padding: '3px 8px', background: 'rgba(75,85,99,0.3)', border: '1px solid rgba(107,114,128,0.4)', borderRadius: '5px', color: 'var(--text-muted)', cursor: 'pointer' }}>Ã—</button>
           </>
         )}
       </div>
@@ -353,7 +352,7 @@ const ShadowDMControls: React.FC<ShadowDMControlsProps> = ({ shadow, characterId
   );
 };
 
-// ── Note markdown renderer ────────────────────────────────────────────────────
+// â”€â”€ Note markdown renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderNoteMarkdown(raw: string): string {
   if (!raw) return '';
   const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -384,7 +383,7 @@ function renderNoteMarkdown(raw: string): string {
   return html;
 }
 
-// ── Note editor sub-component ─────────────────────────────────────────────────
+// â”€â”€ Note editor sub-component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface NoteEditorModalProps {
   isNew: boolean;
   initialTitle: string;
@@ -441,11 +440,11 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({ isNew, initialTitle, 
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '0.9rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
-        <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>{isNew ? '📝 New Note' : '✏️ Edit Note'}</h4>
+        <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>{isNew ? 'ðŸ“ New Note' : 'âœï¸ Edit Note'}</h4>
         <input
           value={title}
           onChange={e => setTitle(e.target.value)}
-          placeholder="Title…"
+          placeholder="Titleâ€¦"
           autoFocus
           style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.95rem', outline: 'none' }}
         />
@@ -453,28 +452,28 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({ isNew, initialTitle, 
           <button style={{ ...tbBtn, fontWeight: 'bold' }} onMouseDown={e => { e.preventDefault(); wrapSelection('**', '**'); }} title="Bold"><strong>B</strong></button>
           <button style={{ ...tbBtn, fontStyle: 'italic' }} onMouseDown={e => { e.preventDefault(); wrapSelection('_', '_'); }} title="Italic"><em>I</em></button>
           <div style={{ width: '1px', alignSelf: 'stretch', background: 'rgba(255,255,255,0.12)', margin: '0 0.15rem' }} />
-          <button style={tbBtn} onMouseDown={e => { e.preventDefault(); prefixLines('- '); }} title="Bullet list">• Bullet</button>
+          <button style={tbBtn} onMouseDown={e => { e.preventDefault(); prefixLines('- '); }} title="Bullet list">â€¢ Bullet</button>
           <button style={tbBtn} onMouseDown={e => { e.preventDefault(); prefixLines('', true); }} title="Numbered list">1. Numbered</button>
         </div>
         <textarea
           ref={taRef}
           value={content}
           onChange={e => setContent(e.target.value)}
-          placeholder="Write your note here…"
+          placeholder="Write your note hereâ€¦"
           rows={10}
           style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.88rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit', minHeight: '160px' }}
         />
         <div style={{ color: '#475569', fontSize: '0.71rem' }}>Tip: select text then click <strong style={{ color: '#94a3b8' }}>B</strong> / <em style={{ color: '#94a3b8' }}>I</em>. Bullet/Numbered prefixes each selected line.</div>
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '0.5rem 1.1rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '0.88rem' }}>Cancel</button>
-          <button onClick={() => onSave(title || 'Untitled', content)} style={{ padding: '0.5rem 1.4rem', background: 'rgba(74,222,128,0.2)', border: '1px solid rgba(74,222,128,0.5)', borderRadius: '6px', color: '#4ade80', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 'bold' }}>💾 Save</button>
+          <button onClick={() => onSave(title || 'Untitled', content)} style={{ padding: '0.5rem 1.4rem', background: 'rgba(74,222,128,0.2)', border: '1px solid rgba(74,222,128,0.5)', borderRadius: '6px', color: '#4ade80', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 'bold' }}>ðŸ’¾ Save</button>
         </div>
       </div>
     </div>
   );
 };
 
-// Subclass unlock levels per class — used to detect missing subclass selection
+// Subclass unlock levels per class â€” used to detect missing subclass selection
 const SUBCLASS_UNLOCK_LEVELS: Record<string, number> = {
   'Cleric': 1, 'Sorcerer': 1, 'Warlock': 1,
   'Druid': 2, 'Wizard': 2,
@@ -524,7 +523,7 @@ const CampaignView: React.FC = () => {
   const [customDiceTarget, setCustomDiceTarget] = useState<number | null>(null);
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
-  const [campaignTab, setCampaignTab] = useState<'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'kingdom' | 'goals'>('map');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'goals'>('map');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
   const [showMobileCharacters, setShowMobileCharacters] = useState(false);
@@ -607,7 +606,7 @@ const CampaignView: React.FC = () => {
   const [remainingArmyMovement, setRemainingArmyMovement] = useState<Record<number, number>>({});
   // Darkness: 0 = fully lit, 1 = pitch black. DM sees at half opacity, players see full black.
   const [darknessLevel, setDarknessLevel] = useState(0);
-  // Character skills — declared early because darkness useEffect depends on it
+  // Character skills â€” declared early because darkness useEffect depends on it
   const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
   const darknessCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const battlefieldDarknessCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -621,20 +620,6 @@ const CampaignView: React.FC = () => {
   const [showPartyMenu, setShowPartyMenu] = useState(false);
   const [showPartyMembersModal, setShowPartyMembersModal] = useState(false);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
-
-  // Kingdom state
-  const [hasKingdomAccess, setHasKingdomAccess] = useState(false);
-  const [pendingKingdomId, setPendingKingdomId] = useState<number | null>(null);
-  const [kingdomNameInput, setKingdomNameInput] = useState('');
-  const [fiefNameInput, setFiefNameInput] = useState('');
-  const [showGrantKingdomModal, setShowGrantKingdomModal] = useState(false);
-  const [campaignKingdoms, setCampaignKingdoms] = useState<Kingdom[]>([]);
-  const [showBuildModal, setShowBuildModal] = useState(false);
-  const [buildingFiefId, setBuildingFiefId] = useState<number | null>(null);
-  const [workerEdits, setWorkerEdits] = useState<Record<string, number>>({});
-  const [workerFiefId, setWorkerFiefId] = useState<number | null>(null);
-  const [setResourcesFiefId, setSetResourcesFiefId] = useState<number | null>(null);
-  const [setResourcesInput, setSetResourcesInput] = useState<FiefStoredResources>({ wood: 0, stone: 0, minerals: 0, meat: 0, vegetables: 0 });
 
   const [setTroopsArmyId, setSetTroopsArmyId] = useState<number | null>(null);
   const [setTroopsVal, setSetTroopsVal] = useState<string>('');
@@ -739,7 +724,7 @@ const CampaignView: React.FC = () => {
 
   // Monster/Encyclopedia state
   const [monsters, setMonsters] = useState<any[]>([]);
-  // Templates for monsters currently in combat — sent by server regardless of visible_to_players
+  // Templates for monsters currently in combat â€” sent by server regardless of visible_to_players
   const [combatMonsterTemplates, setCombatMonsterTemplates] = useState<Record<string, any>>({});
   const [showAddMonsterModal, setShowAddMonsterModal] = useState(false);
   const [editingMonsterId, setEditingMonsterId] = useState<number | null>(null);
@@ -900,19 +885,19 @@ const CampaignView: React.FC = () => {
   // Helper function to get correct image URL (handles both data URLs from DB and file paths)
   const getImageUrl = (imageUrl: string | undefined): string | undefined => {
     if (!imageUrl) return undefined;
-    // Data URLs — return as-is
+    // Data URLs â€” return as-is
     if (imageUrl.startsWith('data:')) return imageUrl;
-    // Already absolute (http/https) — return as-is
+    // Already absolute (http/https) â€” return as-is
     if (imageUrl.startsWith('http')) return imageUrl;
-    // Public-folder images (/images/...) — served by the frontend, no prefix needed
+    // Public-folder images (/images/...) â€” served by the frontend, no prefix needed
     if (imageUrl.startsWith('/images/')) return imageUrl;
-    // Uploaded files (/uploads/...) — served by the Express backend
+    // Uploaded files (/uploads/...) â€” served by the Express backend
     if (process.env.NODE_ENV === 'production') return imageUrl;
     return `http://localhost:5000${imageUrl}`;
   };
 
   const formatCR = (cr: number | undefined): string => {
-    if (cr === undefined || cr === null) return '—';
+    if (cr === undefined || cr === null) return 'â€”';
     if (cr === 0) return '0';
     if (cr === 0.125) return '1/8';
     if (cr === 0.25) return '1/4';
@@ -1000,7 +985,7 @@ const CampaignView: React.FC = () => {
       setCharacterLimbHealth(prev => ({ ...limbMap, ...prev }));
     }
 
-    // ── Hydrate active monster instance HP immediately via REST so HP shows correctly before socket sync ──
+    // â”€â”€ Hydrate active monster instance HP immediately via REST so HP shows correctly before socket sync â”€â”€
     const campaignId = currentCampaign.campaign?.id;
     if (campaignId) {
       monsterInstanceAPI.getActiveInstances(campaignId).then(instances => {
@@ -1073,14 +1058,14 @@ const CampaignView: React.FC = () => {
     }
   }, [currentCampaign]);
 
-  // ── Darkness overlay ────────────────────────────────────────────────────────
+  // â”€â”€ Darkness overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Darkness level narrows vision radius (not fog opacity).
   // Players: strong fog + full-clear inner zone + semi-clear partial zone around units.
   // DM:      faded fog + partially revealed zones to visualize unit vision.
   // Two concentric zones per unit:
-  //   inner (≤ visionRadius)       → fully lit, see everything
-  //   partial (≤ visionRadius × 2)  → dim silhouette zone, see shape but not stats
-  //   outer (> visionRadius × 2)   → full darkness
+  //   inner (â‰¤ visionRadius)       â†’ fully lit, see everything
+  //   partial (â‰¤ visionRadius Ã— 2)  â†’ dim silhouette zone, see shape but not stats
+  //   outer (> visionRadius Ã— 2)   â†’ full darkness
   useEffect(() => {
     const canvas = darknessCanvasRef.current;
     if (!canvas) return;
@@ -1098,7 +1083,7 @@ const CampaignView: React.FC = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const isDM = user?.role === 'Dungeon Master';
-      const BASE_VISION_RADIUS_FT = 30; // 1% ≈ 1ft on the map
+      const BASE_VISION_RADIUS_FT = 30; // 1% â‰ˆ 1ft on the map
       const PLAYER_FOG_OPACITY = 1;
       const DM_FOG_OPACITY = 0.55;
       const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
@@ -1136,12 +1121,12 @@ const CampaignView: React.FC = () => {
         ctx.fillStyle = `rgba(0, 0, 0, ${DM_FOG_OPACITY})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // DM: reveal unit-vision areas — full inner zone + dimmed partial zone
+        // DM: reveal unit-vision areas â€” full inner zone + dimmed partial zone
         ownCombatantPositions.forEach(({ x, y, visionRadius }) => {
           const cx = (x / 100) * canvas.width;
           const cy = (y / 100) * canvas.height;
           const innerPx = (visionRadius / 100) * canvas.width;
-          const outerPx = innerPx * 2; // partial zone extends to 2× vision radius
+          const outerPx = innerPx * 2; // partial zone extends to 2Ã— vision radius
           const innerStop = innerPx / outerPx; // normalized position of inner edge
 
           ctx.globalCompositeOperation = 'destination-out';
@@ -1172,14 +1157,14 @@ const CampaignView: React.FC = () => {
             const cx = (x / 100) * canvas.width;
             const cy = (y / 100) * canvas.height;
             const innerPx = (visionRadius / 100) * canvas.width;
-            const outerPx = innerPx * 2; // partial zone extends to 2× vision radius
+            const outerPx = innerPx * 2; // partial zone extends to 2Ã— vision radius
             const innerStop = innerPx / outerPx;
 
             // Gradient: full removal in inner zone (clear sight), 50% removal in partial zone (dim silhouette)
             const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPx);
             gradient.addColorStop(0,                    'rgba(0, 0, 0, 1)');
             gradient.addColorStop(innerStop * 0.85,     'rgba(0, 0, 0, 1)');  // crisp inner edge
-            gradient.addColorStop(innerStop,            'rgba(0, 0, 0, 0.5)'); // partial zone (50% fog → silhouette visible)
+            gradient.addColorStop(innerStop,            'rgba(0, 0, 0, 0.5)'); // partial zone (50% fog â†’ silhouette visible)
             gradient.addColorStop(1,                    'rgba(0, 0, 0, 0)');   // fade to full dark
 
             ctx.fillStyle = gradient;
@@ -1200,9 +1185,9 @@ const CampaignView: React.FC = () => {
     return () => observer.disconnect();
   }, [darknessLevel, battlePositions, combatants, combatConditions, user, characterSkills]);
 
-  // ── Battlefield darkness overlay (army/mass-combat tab) ─────────────────────
+  // â”€â”€ Battlefield darkness overlay (army/mass-combat tab) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Same two-zone logic as combat: inner=fully lit, partial=silhouette zone, outer=full dark.
-  // Army vision base radius ≈ 150ft. 1% of map ≈ BATTLEFIELD_FEET_PER_PERCENT ft.
+  // Army vision base radius â‰ˆ 150ft. 1% of map â‰ˆ BATTLEFIELD_FEET_PER_PERCENT ft.
   useEffect(() => {
     const canvas = battlefieldDarknessCanvasRef.current;
     if (!canvas || !activeBattle || darknessLevel <= 0) {
@@ -1214,7 +1199,7 @@ const CampaignView: React.FC = () => {
       return;
     }
 
-    const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT; // ≈22.5%
+    const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT; // â‰ˆ22.5%
     const isDM = user?.role === 'Dungeon Master';
 
     const drawBattlefieldOverlay = () => {
@@ -1392,9 +1377,9 @@ const CampaignView: React.FC = () => {
     // For hand slots, show shield if shield is equipped, otherwise show swords
     if (slotId === 'main_hand' || slotId === 'off_hand') {
       if (equippedItem && equippedItem.subcategory && equippedItem.subcategory.toLowerCase().includes('shield')) {
-        return '🛡️';
+        return 'ðŸ›¡ï¸';
       }
-      return '⚔️';
+      return 'âš”ï¸';
     }
     return defaultIcon;
   };
@@ -1645,20 +1630,10 @@ const CampaignView: React.FC = () => {
     loadMonsters();
   }, [currentCampaign]);
 
-  // Load kingdoms when campaign changes
+  // Load current campaign day
   useEffect(() => {
-    const loadKingdoms = async () => {
+    const loadCurrentDay = async () => {
       if (currentCampaign) {
-        try {
-          const fetched = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
-          setCampaignKingdoms(fetched);
-          if (user && fetched.some(k => Number(k.player_id) === Number(user.id))) {
-            setHasKingdomAccess(true);
-          }
-        } catch (error) {
-          console.error('Error loading kingdoms:', error);
-        }
-        // Load current campaign day
         try {
           const dayData = await campaignAPI.getCurrentDay(currentCampaign.campaign.id);
           setCurrentDay(dayData.current_day);
@@ -1667,8 +1642,8 @@ const CampaignView: React.FC = () => {
         }
       }
     };
-    loadKingdoms();
-  }, [currentCampaign, user]);
+    loadCurrentDay();
+  }, [currentCampaign]);
 
   // Load mounts when campaign changes
   useEffect(() => {
@@ -1971,7 +1946,7 @@ const CampaignView: React.FC = () => {
       if (field === 'backstory') setBackstoryPage(0);
       const activeSocket = socketRef.current;
       const activeCampaign = currentCampaignRef.current;
-      console.log('📤 characterFieldUpdated delete — socket:', !!activeSocket, 'campaign:', activeCampaign?.campaign.id);
+      console.log('ðŸ“¤ characterFieldUpdated delete â€” socket:', !!activeSocket, 'campaign:', activeCampaign?.campaign.id);
       if (activeSocket && activeCampaign) {
         activeSocket.emit('characterFieldUpdated', {
           campaignId: activeCampaign.campaign.id,
@@ -2006,7 +1981,7 @@ const CampaignView: React.FC = () => {
       }));
       const activeSocket = socketRef.current;
       const activeCampaign = currentCampaignRef.current;
-      console.log('📤 characterFieldUpdated save — socket:', !!activeSocket, 'campaign:', activeCampaign?.campaign.id);
+      console.log('ðŸ“¤ characterFieldUpdated save â€” socket:', !!activeSocket, 'campaign:', activeCampaign?.campaign.id);
       if (activeSocket && activeCampaign) {
         activeSocket.emit('characterFieldUpdated', {
           campaignId: activeCampaign.campaign.id,
@@ -2184,7 +2159,7 @@ const CampaignView: React.FC = () => {
     }
   }, []);
 
-  // ── Pre-load skills for all combatants so DM darkvision zones render correctly ──
+  // â”€â”€ Pre-load skills for all combatants so DM darkvision zones render correctly â”€â”€
   // Without this, characterSkills is empty for player characters the DM hasn't
   // explicitly selected, causing hasDarkvision to always be false on the DM view.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2303,7 +2278,7 @@ const CampaignView: React.FC = () => {
       }));
       
       // Emit socket event to update all other users
-      console.log('📡 Socket state:', { 
+      console.log('ðŸ“¡ Socket state:', { 
         socketExists: !!socket, 
         socketConnected: socket?.connected,
         socketId: socket?.id 
@@ -2317,7 +2292,7 @@ const CampaignView: React.FC = () => {
         timestamp: new Date().toISOString()
       });
       
-      console.log('📤 Emitted abilityUpdated:', { 
+      console.log('ðŸ“¤ Emitted abilityUpdated:', { 
         campaignId: currentCampaign.campaign.id, 
         characterId, 
         ability, 
@@ -2529,7 +2504,7 @@ const CampaignView: React.FC = () => {
         isAdding: !skillExists,
         timestamp: new Date().toISOString()
       };
-      console.log('📤 Emitting skillProficiencyToggled:', skillEventData);
+      console.log('ðŸ“¤ Emitting skillProficiencyToggled:', skillEventData);
       socket.emit('skillProficiencyToggled', skillEventData);
       
       setToastMessage(skillExists ? `${skillName} proficiency removed` : `${skillName} proficiency added`);
@@ -2540,7 +2515,7 @@ const CampaignView: React.FC = () => {
     }
   };
 
-  // Expertise Toggle (for dungeonmaster to add/remove expertise — requires proficiency)
+  // Expertise Toggle (for dungeonmaster to add/remove expertise â€” requires proficiency)
   const handleToggleSkillExpertise = async (characterId: number, skillName: string) => {
     try {
       const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
@@ -2589,7 +2564,7 @@ const CampaignView: React.FC = () => {
 
     try {
       await skillAPI.grantExperience(currentCampaign.campaign.id, selectedCharactersForExp, expAmount);
-      // Close modal — the socket 'experienceGranted' event will reload campaign data and show the toast for all users
+      // Close modal â€” the socket 'experienceGranted' event will reload campaign data and show the toast for all users
       setShowGrantExpModal(false);
       setSelectedCharactersForExp([]);
       setExpAmount(100);
@@ -2751,8 +2726,8 @@ const CampaignView: React.FC = () => {
     }
   };
 
-  // Helper: compute per-limb max HP from a character's BASE HP (not normalized — limbs can sum > baseHP)
-  // Formula: Head 25%+CON, Torso 100%+CON (max 200%), Arms 15%+CON, Legs 40%+CON — each +1 CON = +10%
+  // Helper: compute per-limb max HP from a character's BASE HP (not normalized â€” limbs can sum > baseHP)
+  // Formula: Head 25%+CON, Torso 100%+CON (max 200%), Arms 15%+CON, Legs 40%+CON â€” each +1 CON = +10%
   const calcCharacterLimbHealthMax = (baseHP: number, con: number): Record<string, number> => {
     const conMod = Math.floor((con - 10) / 2);
     const conBonus = Math.max(0, conMod * 0.1);
@@ -3062,12 +3037,12 @@ const CampaignView: React.FC = () => {
           newSocket.emit('registerUser', user.id);
         }
         newSocket.emit('joinCampaign', currentCampaign.campaign.id);
-        console.log('🔄 Reconnected — rejoined campaign room:', currentCampaign.campaign.id);
+        console.log('ðŸ”„ Reconnected â€” rejoined campaign room:', currentCampaign.campaign.id);
       });
       
       // Debug: Listen to ALL socket events
       newSocket.onAny((eventName, ...args) => {
-        console.log(`🔔 Socket received event: "${eventName}"`, args);
+        console.log(`ðŸ”” Socket received event: "${eventName}"`, args);
       });
       
       // Listen for equipment updates
@@ -3159,7 +3134,7 @@ const CampaignView: React.FC = () => {
         y: number;
         timestamp: string;
       }) => {
-        console.log('📍 Received world map character movement:', data);
+        console.log('ðŸ“ Received world map character movement:', data);
         // Update character position in state
         setCharacterPositions(prev => ({
           ...prev,
@@ -3205,7 +3180,7 @@ const CampaignView: React.FC = () => {
                 ? `${leftNames.join(', ')} left the party`
                 : '';
 
-              const message = [joinedMessage, leftMessage].filter(Boolean).join(' • ');
+              const message = [joinedMessage, leftMessage].filter(Boolean).join(' â€¢ ');
               if (message) {
                 setToastMessage(message);
                 setTimeout(() => setToastMessage(null), 3500);
@@ -3275,7 +3250,7 @@ const CampaignView: React.FC = () => {
         remainingMovement?: number;
         timestamp: string;
       }) => {
-        console.log('📍 Received battlefield participant movement:', data);
+        console.log('ðŸ“ Received battlefield participant movement:', data);
         // Update the active battle state if it matches
         setActiveBattle(prev => {
           if (!prev || prev.id !== data.battleId || !prev.participants) return prev;
@@ -3358,7 +3333,7 @@ const CampaignView: React.FC = () => {
           });
           return updated;
         });
-        // Prime character HP map — prefer DB values from sync, fall back to currentCampaign characters
+        // Prime character HP map â€” prefer DB values from sync, fall back to currentCampaign characters
         const charHpFromSync = (data as any).characterHpData as Record<string, { current: number; max: number; limbHealth?: Record<string, number> }> | undefined;
         if (charHpFromSync && Object.keys(charHpFromSync).length > 0) {
           // Use authoritative DB values (current + max both correct)
@@ -3369,7 +3344,7 @@ const CampaignView: React.FC = () => {
             if (hp.limbHealth) {
               limbMap[Number(id)] = hp.limbHealth;
             } else {
-              // DB has no limb data yet — compute max values so stale zeros from prior combat are cleared
+              // DB has no limb data yet â€” compute max values so stale zeros from prior combat are cleared
               const char = currentCampaign?.characters.find((c: any) => Number(c.id) === Number(id));
               if (char) limbMap[Number(id)] = calcCharacterLimbHealthMax(hp.max, char.abilities?.con ?? 10);
             }
@@ -3566,7 +3541,7 @@ const CampaignView: React.FC = () => {
         setInitiativeOrder([]);
         setCurrentTurnIndex(-1);
         setCombatLog([]);
-        // Note: combatCharacterHp is intentionally NOT cleared — player HP persists after combat reset
+        // Note: combatCharacterHp is intentionally NOT cleared â€” player HP persists after combat reset
         setMonsterInstanceHp({});
         setCombatConditions({});
         setDeathSaves({});
@@ -3651,7 +3626,7 @@ const CampaignView: React.FC = () => {
                   }
                 : c
             );
-            // Mutate only temporary — proper update via context re-fetch if needed
+            // Mutate only temporary â€” proper update via context re-fetch if needed
             currentCampaign.characters = updated;
           }
         } else if (data.type === 'monster') {
@@ -3701,7 +3676,7 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Short rest — player is prompted to spend hit dice
+      // Short rest â€” player is prompted to spend hit dice
       newSocket.on('shortRestStarted', (data: any) => {
         const myChar = data.characters?.find((c: any) => c.playerId === user?.id);
         if (myChar) {
@@ -3730,11 +3705,11 @@ const CampaignView: React.FC = () => {
           setToastMessage(`${data.name}: rolled ${data.diceSpent}d${data.die} [${rollStr}] ${conStr} CON = +${data.totalHealed} HP`);
           setTimeout(() => setToastMessage(null), 6000);
         }
-        // Event is now targeted to this player's socket only — always close the prompt
+        // Event is now targeted to this player's socket only â€” always close the prompt
         setShortRestPrompt(null);
       });
 
-      // Long rest — all characters fully restored
+      // Long rest â€” all characters fully restored
       newSocket.on('longRestCompleted', (data: any) => {
         const hdrMap: Record<number, number> = {};
         const hpMap: Record<number, { current: number; max: number }> = {};
@@ -3750,7 +3725,7 @@ const CampaignView: React.FC = () => {
         setCombatCharacterHp(prev => ({ ...prev, ...hpMap }));
         setCharacterSpellSlotsUsed(prev => ({ ...prev, ...spellReset }));
         setCharacterKiPoints(prev => ({ ...prev, ...kiReset }));
-        setToastMessage('🌙 Long rest complete — all characters fully restored');
+        setToastMessage('ðŸŒ™ Long rest complete â€” all characters fully restored');
         setTimeout(() => setToastMessage(null), 5000);
       });
 
@@ -3796,10 +3771,10 @@ const CampaignView: React.FC = () => {
         setCombatLog(data.log);
       });
 
-      // Listen for turn started — show notification if it's the current user's turn
+      // Listen for turn started â€” show notification if it's the current user's turn
       newSocket.on('turnStarted', (data: { campaignId: number; currentCharacterId: number | string; playerId: number; characterName: string }) => {
         if (user && Number(data.playerId) === Number(user.id)) {
-          setTurnNotification(`⚔️ It's your turn: ${data.characterName}`);
+          setTurnNotification(`âš”ï¸ It's your turn: ${data.characterName}`);
           setTimeout(() => setTurnNotification(null), 5000);
         }
       });
@@ -3818,20 +3793,20 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Player receives attack dice config from DM — start rolling
+      // Player receives attack dice config from DM â€” start rolling
       newSocket.on('attackDiceConfig', (data: AttackDiceConfig & { attackerPlayerId?: number }) => {
         // Only show to the attacking player (or DM seeing the full state)
         const myCharKey = currentCampaign?.userCharacter
           ? String(currentCampaign.userCharacter.id)
           : null;
         if (user?.role !== 'Dungeon Master' && myCharKey && String(data.attackerKey) !== myCharKey) return;
-        if (user?.role === 'Dungeon Master') return; // DM configured it — they don't roll
+        if (user?.role === 'Dungeon Master') return; // DM configured it â€” they don't roll
         setPendingAttackDiceConfig(data);
         setAttackRollPhase('hit');
         setAttackHitRoll(null);
       });
 
-      // Listen for dice results — players clear modal; DM gets outcome panel
+      // Listen for dice results â€” players clear modal; DM gets outcome panel
       newSocket.on('diceResultReceived', (data: any) => {
         setPendingDiceRequest(null);
         if (user?.role === 'Dungeon Master') {
@@ -3859,7 +3834,7 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Hit roll submitted — DM approves/denies before player rolls damage
+      // Hit roll submitted â€” DM approves/denies before player rolls damage
       newSocket.on('hitRollResult', (data: { requestId: number; attackerName: string; targetName: string; hitTotal: number }) => {
         if (user?.role === 'Dungeon Master') setPendingHitRollApproval(data);
       });
@@ -3874,7 +3849,7 @@ const CampaignView: React.FC = () => {
         setAttackHitRoll(null);
       });
 
-      // Reconnect restore — server sends this when player rejoins mid-attack
+      // Reconnect restore â€” server sends this when player rejoins mid-attack
       newSocket.on('restoreAttackState', (data: { config: AttackDiceConfig; phase: 'awaiting_approval' | 'damage'; hitTotal: number }) => {
         setPendingAttackDiceConfig(data.config);
         setAttackHitRoll({ raw: data.hitTotal, total: data.hitTotal });
@@ -3887,16 +3862,16 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Reroll request — DM sees approval panel
+      // Reroll request â€” DM sees approval panel
       newSocket.on('rerollRequested', (data: { requestId: number; rollerName: string; diceType: string }) => {
         if (user?.role === 'Dungeon Master') setPendingRerollRequest(data);
       });
-      // Reroll approved — player's modal resets so they can roll again
+      // Reroll approved â€” player's modal resets so they can roll again
       newSocket.on('rerollApproved', () => {
         setRerollApproved(true);
         setTimeout(() => setRerollApproved(false), 200);
       });
-      // Reroll denied — no further action needed (player sees their pending message disappear on next render)
+      // Reroll denied â€” no further action needed (player sees their pending message disappear on next render)
       newSocket.on('rerollDenied', () => {
         setPendingDiceRequest(null);
       });
@@ -3908,7 +3883,7 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Turn skipped due to stun/incapacitation — add to combat log view
+      // Turn skipped due to stun/incapacitation â€” add to combat log view
       newSocket.on('turnSkipped', (data: { characterId: string; characterName: string; reason: string; campaignId: number }) => {
         setCombatLog(prev => [{
           id: Date.now(),
@@ -3919,7 +3894,7 @@ const CampaignView: React.FC = () => {
           limb_name: null,
           roll_result: null,
           damage: null,
-          details: `⏭️ ${data.characterName}'s turn was skipped (${data.reason})`,
+          details: `â­ï¸ ${data.characterName}'s turn was skipped (${data.reason})`,
           created_at: new Date().toISOString(),
         } as CombatLogEntry, ...prev]);
       });
@@ -3943,7 +3918,7 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Mount fell — rider was dismounted and took fall damage
+      // Mount fell â€” rider was dismounted and took fall damage
       newSocket.on('mountFell', (data: { combatantKey: string; mountName: string; riderName: string }) => {
         // Toast-style notification is shown via combat log; just ensure combatants are up-to-date
         // (combatantsUpdated will follow, so no extra state needed here)
@@ -4041,7 +4016,7 @@ const CampaignView: React.FC = () => {
                 setPendingInvitations(uniqueInvitations);
                 // Auto-open modal when new invitation is received
                 if (uniqueInvitations.length > 0) {
-                  console.log('🗡️ Opening battle invitations modal for', uniqueInvitations.length, 'invitation(s)');
+                  console.log('ðŸ—¡ï¸ Opening battle invitations modal for', uniqueInvitations.length, 'invitation(s)');
                   setShowBattleInvitationsModal(true);
                 }
               })
@@ -4173,7 +4148,7 @@ const CampaignView: React.FC = () => {
         setJournalEntries(prev => prev.filter(e => e.id !== data.entryId));
       });
 
-      // ─── Mount socket events ─────────────────────────────────────────────
+      // â”€â”€â”€ Mount socket events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       newSocket.on('mountAdded', (data: { mount: Mount; timestamp: string }) => {
         setCampaignMounts(prev => [...prev, data.mount]);
       });
@@ -4190,7 +4165,7 @@ const CampaignView: React.FC = () => {
         setCampaignMounts(prev => prev.filter(m => m.id !== data.mountId));
       });
 
-      // ─── Pet socket events ──────────────────────────────────────────────
+      // â”€â”€â”€ Pet socket events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       newSocket.on('petAdded', (data: { pet: Pet; timestamp: string }) => {
         setCampaignPets(prev => [...prev, data.pet]);
       });
@@ -4280,11 +4255,11 @@ const CampaignView: React.FC = () => {
         newScore: number;
         timestamp: string;
       }) => {
-        console.log('🔔 Received abilityUpdated event:', data);
+        console.log('ðŸ”” Received abilityUpdated event:', data);
         const campaign = currentCampaignRef.current;
         // Update the character in the campaign data without reloading
         if (campaign && campaign.campaign.id === data.campaignId) {
-          console.log('✅ Updating character abilities for character', data.characterId);
+          console.log('âœ… Updating character abilities for character', data.characterId);
           // Update character's abilities using override state (preserves tabs and UI state)
           setCharacterDataOverrides(prev => {
             const baseChar = campaign.characters.find(c => c.id === data.characterId);
@@ -4302,7 +4277,7 @@ const CampaignView: React.FC = () => {
               }
             };
             
-            console.log('📝 Updated overrides:', updated);
+            console.log('ðŸ“ Updated overrides:', updated);
             return updated;
           });
 
@@ -4313,7 +4288,7 @@ const CampaignView: React.FC = () => {
             setTimeout(() => setToastMessage(null), 3000);
           }
         } else {
-          console.log('❌ Campaign mismatch or no campaign:', { 
+          console.log('âŒ Campaign mismatch or no campaign:', { 
             hasCampaign: !!campaign, 
             currentCampaignId: campaign?.campaign.id, 
             dataCampaignId: data.campaignId 
@@ -4415,7 +4390,7 @@ const CampaignView: React.FC = () => {
         isAdding: boolean;
         timestamp: string;
       }) => {
-        console.log('📥 Frontend received skillProficiencyToggled:', data);
+        console.log('ðŸ“¥ Frontend received skillProficiencyToggled:', data);
         const campaign = currentCampaignRef.current;
         // Update the character in the campaign data without reloading
         if (campaign && campaign.campaign.id === data.campaignId) {
@@ -4521,57 +4496,8 @@ const CampaignView: React.FC = () => {
         }
       });
 
-      // Kingdom flow
-      newSocket.on('kingdomNameRequest', (data: { kingdomId: number; targetPlayerId: number }) => {
-        console.log('👑 [kingdomNameRequest] received:', data, '| current user id:', user?.id, '| match:', user && Number(data.targetPlayerId) === Number(user.id));
-        if (user && Number(data.targetPlayerId) === Number(user.id)) {
-          setPendingKingdomId(data.kingdomId);
-          setKingdomNameInput('');
-          setFiefNameInput('');
-        }
-      });
-
-      newSocket.on('kingdomActivated', (data: { kingdom: Kingdom }) => {
-        console.log('👑 [kingdomActivated] received:', data, '| current user id:', user?.id);
-        if (user && Number(data.kingdom.player_id) === Number(user.id)) {
-          setHasKingdomAccess(true);
-        }
-        // Merge or insert into campaignKingdoms for live view (no refresh)
-        setCampaignKingdoms(prev => {
-          const idx = prev.findIndex(k => k.id === data.kingdom.id);
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = data.kingdom;
-            return next;
-          }
-          return [...prev, data.kingdom];
-        });
-      });
-
-      newSocket.on('kingdomDataChanged', (data: { campaignId: number; kingdomId?: number }) => {
-        // Refetch kingdom data live — no page refresh
-        const campaign = currentCampaignRef.current;
-        if (!campaign) return;
-        kingdomAPI.getCampaignKingdoms(campaign.campaign.id).then(kingdoms => {
-          setCampaignKingdoms(kingdoms);
-          if (user && kingdoms.some(k => Number(k.player_id) === Number(user.id))) {
-            setHasKingdomAccess(true);
-          }
-        }).catch(() => {});
-      });
-
-      newSocket.on('kingdomDeleted', (delData: { campaignId: number; kingdomId: number }) => {
-        setCampaignKingdoms(prev => prev.filter(k => k.id !== delData.kingdomId));
-      });
-
       newSocket.on('dayAdvanced', (data: AdvanceDaysSummary & { campaignId: number }) => {
         setCurrentDay(data.newDay);
-        // Refresh kingdom data after day advance so resource ticks + building completions show live
-        const campaign = currentCampaignRef.current;
-        if (!campaign) return;
-        kingdomAPI.getCampaignKingdoms(campaign.campaign.id).then(kingdoms => {
-          setCampaignKingdoms(kingdoms);
-        }).catch(() => {});
       });
 
       // Listen for NPC reveals
@@ -4582,15 +4508,15 @@ const CampaignView: React.FC = () => {
       // Register user/campaign only after listeners are bound to avoid missing initial sync events
       if (user) {
         newSocket.emit('registerUser', user.id);
-        console.log('🔗 Registered user:', user.id);
+        console.log('ðŸ”— Registered user:', user.id);
       }
       newSocket.emit('joinCampaign', currentCampaign.campaign.id);
-      console.log('👥 Joined campaign room:', currentCampaign.campaign.id);
+      console.log('ðŸ‘¥ Joined campaign room:', currentCampaign.campaign.id);
 
       setSocket(newSocket);
       
       return () => {
-        console.log('🔌 Disconnecting socket from campaign', currentCampaign.campaign.id);
+        console.log('ðŸ”Œ Disconnecting socket from campaign', currentCampaign.campaign.id);
         newSocket.emit('leaveCampaign', currentCampaign.campaign.id);
         newSocket.disconnect();
       };
@@ -4635,16 +4561,16 @@ const CampaignView: React.FC = () => {
     // Define equipment slots with their names and types
     const isFourArmed = character.race === 'Thri-kreen';
     const equipmentSlots = [
-      { id: 'head', name: 'Helmet/Hat', className: 'head', icon: '🛡️' },
-      { id: 'chest', name: 'Armor/Clothing', className: 'chest', icon: '🛡️' },
-      { id: 'main_hand', name: 'Main Hand', className: 'left-hand', icon: '⚔️' },
-      { id: 'off_hand', name: 'Off Hand', className: 'right-hand', icon: '⚔️' },
+      { id: 'head', name: 'Helmet/Hat', className: 'head', icon: 'ðŸ›¡ï¸' },
+      { id: 'chest', name: 'Armor/Clothing', className: 'chest', icon: 'ðŸ›¡ï¸' },
+      { id: 'main_hand', name: 'Main Hand', className: 'left-hand', icon: 'âš”ï¸' },
+      { id: 'off_hand', name: 'Off Hand', className: 'right-hand', icon: 'âš”ï¸' },
       ...(isFourArmed ? [
-        { id: 'lower_left_hand', name: 'Lower Left Hand', className: 'lower-left-hand', icon: '⚔️' },
-        { id: 'lower_right_hand', name: 'Lower Right Hand', className: 'lower-right-hand', icon: '⚔️' },
+        { id: 'lower_left_hand', name: 'Lower Left Hand', className: 'lower-left-hand', icon: 'âš”ï¸' },
+        { id: 'lower_right_hand', name: 'Lower Right Hand', className: 'lower-right-hand', icon: 'âš”ï¸' },
       ] : []),
-      { id: 'feet', name: 'Left Boot', className: 'left-foot', icon: '🥾' },
-      { id: 'feet_right', name: 'Right Boot', className: 'right-foot', icon: '🥾', syncWith: 'feet' }
+      { id: 'feet', name: 'Left Boot', className: 'left-foot', icon: 'ðŸ¥¾' },
+      { id: 'feet_right', name: 'Right Boot', className: 'right-foot', icon: 'ðŸ¥¾', syncWith: 'feet' }
     ];
 
     // Get equipped items for this character
@@ -4927,7 +4853,7 @@ const CampaignView: React.FC = () => {
     return (
       <div>
         <div className="glass-panel">
-          <h6>⚔️ Equipment</h6>
+          <h6>âš”ï¸ Equipment</h6>
           <div className="equipment-tab-layout">
             {/* Character Figure with Equipment Slots */}
             <div className="equipment-figure-wrapper">
@@ -5062,7 +4988,7 @@ const CampaignView: React.FC = () => {
                           boxShadow: '0 0 20px rgba(212, 193, 156, 0.5)'
                         }}
                       >
-                        🎒 Drop here to unequip
+                        ðŸŽ’ Drop here to unequip
                       </div>
                     </div>
                   )}
@@ -5101,7 +5027,7 @@ const CampaignView: React.FC = () => {
                               {item.item_name}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                              {item.category} {item.subcategory && `• ${item.subcategory}`}
+                              {item.category} {item.subcategory && `â€¢ ${item.subcategory}`}
                             </div>
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
                               {item.description}
@@ -5201,7 +5127,7 @@ const CampaignView: React.FC = () => {
       <div>
         <div className="glass-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h6>🎒 Equipment & Inventory</h6>
+            <h6>ðŸŽ’ Equipment & Inventory</h6>
             {user?.role === 'Dungeon Master' && (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
@@ -5232,7 +5158,7 @@ const CampaignView: React.FC = () => {
                     color: '#60a5fa'
                   }}
                 >
-                  ✨ Create Custom
+                  âœ¨ Create Custom
                 </button>
               </div>
             )}
@@ -5367,7 +5293,7 @@ const CampaignView: React.FC = () => {
                               }}
                               title={`Remove ${itemName} from inventory`}
                             >
-                              ×
+                              Ã—
                             </button>
                           )}
                         </div>
@@ -5376,7 +5302,7 @@ const CampaignView: React.FC = () => {
                       {/* Subtitle: Category */}
                       {itemDetails && (
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: '1.2', textAlign: 'center' }}>
-                          {itemDetails.category} {itemDetails.subcategory && `• ${itemDetails.subcategory}`}
+                          {itemDetails.category} {itemDetails.subcategory && `â€¢ ${itemDetails.subcategory}`}
                         </div>
                       )}
                     </div>
@@ -5503,7 +5429,7 @@ const CampaignView: React.FC = () => {
                         color: '#fca5a5',
                         lineHeight: '1.3'
                       }}>
-                        ⚠️ Stealth disadvantage
+                        âš ï¸ Stealth disadvantage
                       </div>
                     )}
                   </div>
@@ -5521,7 +5447,7 @@ const CampaignView: React.FC = () => {
               borderRadius: '1rem',
               background: 'rgba(255, 255, 255, 0.02)'
             }}>
-              <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.5 }}>🔍</div>
+              <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.5 }}>ðŸ”</div>
               <p className="text-muted" style={{ fontSize: '1rem', textAlign: 'center', margin: 0 }}>
                 No items match this filter
               </p>
@@ -5541,7 +5467,7 @@ const CampaignView: React.FC = () => {
               borderRadius: '1rem',
               background: 'rgba(255, 255, 255, 0.02)'
             }}>
-              <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.5 }}>🎒</div>
+              <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.5 }}>ðŸŽ’</div>
               <p className="text-muted" style={{ fontSize: '1rem', textAlign: 'center', margin: 0 }}>
                 No equipment in inventory
               </p>
@@ -5636,38 +5562,35 @@ const CampaignView: React.FC = () => {
       }
     : baseCharacterData;
 
-  const showKingdomTab = user?.role === 'Dungeon Master' || hasKingdomAccess;
-
   const campaignTabs = [
-    { key: 'map', label: 'Map', icon: '🗺️' },
-    { key: 'scores', label: 'Scores', icon: '🏆' },
-    { key: 'combat', label: 'Combat', icon: '⚔️' },
-    { key: 'battlefield', label: 'Battlefield', icon: '🏹' },
-    { key: 'news', label: 'News', icon: '📰' },
-    { key: 'journal', label: 'Journal', icon: '📖' },
-    { key: 'encyclopedia', label: 'Encyclopedia', icon: '📚' },
-    { key: 'goals', label: 'Goals', icon: '🎯' },
-    ...(showKingdomTab ? [{ key: 'kingdom', label: 'Kingdom', icon: '👑' }] : [])
+    { key: 'map', label: 'Map', icon: 'ðŸ—ºï¸' },
+    { key: 'scores', label: 'Scores', icon: 'ðŸ†' },
+    { key: 'combat', label: 'Combat', icon: 'âš”ï¸' },
+    { key: 'battlefield', label: 'Battlefield', icon: 'ðŸ¹' },
+    { key: 'news', label: 'News', icon: 'ðŸ“°' },
+    { key: 'journal', label: 'Journal', icon: 'ðŸ“–' },
+    { key: 'encyclopedia', label: 'Encyclopedia', icon: 'ðŸ“š' },
+    { key: 'goals', label: 'Goals', icon: 'ðŸŽ¯' },
   ] as const;
 
   const characterTabConfig: Record<
     'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others',
     { label: string; icon: string }
   > = {
-    board: { label: 'Overview', icon: '📋' },
-    sheet: { label: 'Character Sheet', icon: '📊' },
-    inventory: { label: 'Inventory', icon: '🎒' },
-    skills: { label: 'Skills', icon: '✨' },
-    equip: { label: 'Equipment', icon: '🛡️' },
-    armies: { label: 'Armies', icon: '⚔️' },
-    companion: { label: 'Companion', icon: '🐾' },
-    shadows: { label: 'Shadows', icon: '🌑' },
-    levelup: { label: 'Level Up', icon: '⬆️' },
-    mounts: { label: 'Mounts', icon: '🐴' },
-    pets: { label: 'Pets', icon: '🐾' },
-    npcs: { label: 'Characters', icon: '👥' },
-    notes: { label: 'Notes', icon: '📝' },
-    others: { label: 'Others', icon: '🎲' }
+    board: { label: 'Overview', icon: 'ðŸ“‹' },
+    sheet: { label: 'Character Sheet', icon: 'ðŸ“Š' },
+    inventory: { label: 'Inventory', icon: 'ðŸŽ’' },
+    skills: { label: 'Skills', icon: 'âœ¨' },
+    equip: { label: 'Equipment', icon: 'ðŸ›¡ï¸' },
+    armies: { label: 'Armies', icon: 'âš”ï¸' },
+    companion: { label: 'Companion', icon: 'ðŸ¾' },
+    shadows: { label: 'Shadows', icon: 'ðŸŒ‘' },
+    levelup: { label: 'Level Up', icon: 'â¬†ï¸' },
+    mounts: { label: 'Mounts', icon: 'ðŸ´' },
+    pets: { label: 'Pets', icon: 'ðŸ¾' },
+    npcs: { label: 'Characters', icon: 'ðŸ‘¥' },
+    notes: { label: 'Notes', icon: 'ðŸ“' },
+    others: { label: 'Others', icon: 'ðŸŽ²' }
   };
 
   const isOwnCharacter = selectedCharacterData
@@ -5753,7 +5676,7 @@ const CampaignView: React.FC = () => {
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open navigation menu"
           >
-            ☰
+            â˜°
           </button>
           <div className="campaign-mobile-title">{campaign.name}</div>
           <button
@@ -5762,7 +5685,7 @@ const CampaignView: React.FC = () => {
             onClick={() => setShowMobileCharacters((prev) => !prev)}
             aria-label="Toggle characters"
           >
-            👥
+            ðŸ‘¥
           </button>
         </div>
 
@@ -5780,7 +5703,7 @@ const CampaignView: React.FC = () => {
                 onClick={() => setMobileNavOpen(false)}
                 aria-label="Close navigation menu"
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -5793,7 +5716,7 @@ const CampaignView: React.FC = () => {
                   setMobileNavOpen(false);
                 }}
               >
-                📜 Backstory
+                ðŸ“œ Backstory
               </button>
               <button
                 type="button"
@@ -5803,7 +5726,7 @@ const CampaignView: React.FC = () => {
                   handleBackToDashboard();
                 }}
               >
-                ← Back to Dashboard
+                â† Back to Dashboard
               </button>
             </div>
 
@@ -5812,7 +5735,7 @@ const CampaignView: React.FC = () => {
               className={`campaign-mobile-section ${mobileNavSection === 'campaign' ? 'active' : ''}`}
               onClick={() => setMobileNavSection('campaign')}
             >
-              Campaign View {mobileNavSection === 'campaign' ? '▼' : '▶'}
+              Campaign View {mobileNavSection === 'campaign' ? 'â–¼' : 'â–¶'}
             </button>
             {mobileNavSection === 'campaign' && (
               <div className="campaign-mobile-submenu">
@@ -5839,7 +5762,7 @@ const CampaignView: React.FC = () => {
               className={`campaign-mobile-section ${mobileNavSection === 'character' ? 'active' : ''}`}
               onClick={() => setMobileNavSection('character')}
             >
-              Character View {mobileNavSection === 'character' ? '▼' : '▶'}
+              Character View {mobileNavSection === 'character' ? 'â–¼' : 'â–¶'}
             </button>
             {mobileNavSection === 'character' && (
               <div className="campaign-mobile-submenu">
@@ -5863,11 +5786,11 @@ const CampaignView: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Top Navigation Bar ───────────────────────────────────────────── */}
+        {/* â”€â”€ Top Navigation Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <nav className="campaign-topnav campaign-desktop-header">
           {/* Brand / Back */}
           <div className="campaign-topnav-brand">
-            <button onClick={handleBackToDashboard} className="campaign-topnav-back">← Dashboard</button>
+            <button onClick={handleBackToDashboard} className="campaign-topnav-back">â† Dashboard</button>
             <span className="campaign-topnav-name">{campaign.name}</span>
           </div>
 
@@ -5877,17 +5800,17 @@ const CampaignView: React.FC = () => {
               onClick={() => setMainView('campaign')}
               className={`campaign-topnav-view-btn${mainView === 'campaign' ? ' active' : ''}`}
             >
-              🗺️ Campaign
+              ðŸ—ºï¸ Campaign
             </button>
             <button
               onClick={() => setMainView('character')}
               className={`campaign-topnav-view-btn${mainView === 'character' ? ' active' : ''}`}
             >
-              👤 Character
+              ðŸ‘¤ Character
             </button>
           </div>
 
-          {/* Sub-tabs — flex-wrap so overflowing tabs drop to next line */}
+          {/* Sub-tabs â€” flex-wrap so overflowing tabs drop to next line */}
           <div className="campaign-topnav-tab-group">
             {mainView === 'campaign' && campaignTabs.map((tab) => (
               <button
@@ -5915,7 +5838,7 @@ const CampaignView: React.FC = () => {
           {/* Actions */}
           <div className="campaign-topnav-actions">
             <span className="campaign-topnav-day">
-              📅 Day {currentDay}
+              ðŸ“… Day {currentDay}
               {user?.role === 'Dungeon Master' && (
                 <button
                   onClick={() => setPendingConfirm({ msg: 'Reset the campaign day back to Day 1? This cannot be undone.', onYes: async () => {
@@ -5925,17 +5848,17 @@ const CampaignView: React.FC = () => {
                     } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed to reset day'); setTimeout(() => setToastMessage(null), 3000); }
                   }})}
                   style={{ marginLeft: '0.4rem', padding: '1px 4px', fontSize: '0.6rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '3px', color: '#f87171', cursor: 'pointer' }}
-                >↺</button>
+                >â†º</button>
               )}
             </span>
             {user?.role === 'Dungeon Master' && (
               <>
-                <button onClick={() => setShowGrantExpModal(true)} className="campaign-topnav-action-btn exp-btn">⭐ EXP</button>
-                <button onClick={() => setShowHealthModal(true)} className="campaign-topnav-action-btn">🩹 Health</button>
-                <button onClick={() => setShowRestModal(true)} className="campaign-topnav-action-btn rest-btn">💤 Rest</button>
+                <button onClick={() => setShowGrantExpModal(true)} className="campaign-topnav-action-btn exp-btn">â­ EXP</button>
+                <button onClick={() => setShowHealthModal(true)} className="campaign-topnav-action-btn">ðŸ©¹ Health</button>
+                <button onClick={() => setShowRestModal(true)} className="campaign-topnav-action-btn rest-btn">ðŸ’¤ Rest</button>
               </>
             )}
-            <button onClick={() => setShowBackstoryModal(true)} className="campaign-topnav-action-btn">📜 Backstory</button>
+            <button onClick={() => setShowBackstoryModal(true)} className="campaign-topnav-action-btn">ðŸ“œ Backstory</button>
           </div>
         </nav>
 
@@ -5948,7 +5871,7 @@ const CampaignView: React.FC = () => {
               onClick={() => setCharacterListCollapsed(false)}
               title="Show character list"
             >
-              👥
+              ðŸ‘¥
             </button>
           )}
 
@@ -5984,21 +5907,21 @@ const CampaignView: React.FC = () => {
                   e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
                 }}
               >
-                {characterListCollapsed ? '▼ Show' : '▲ Hide'}
+                {characterListCollapsed ? 'â–¼ Show' : 'â–² Hide'}
               </button>
 
               {/* Character List Content - Full List */}
               {!characterListCollapsed && (
                 <>
                   <div style={{ marginBottom: '1rem' }}>
-                    <h6 style={{ margin: 0, marginBottom: '0.5rem' }}>👥 Characters ({characters.length})</h6>
+                    <h6 style={{ margin: 0, marginBottom: '0.5rem' }}>ðŸ‘¥ Characters ({characters.length})</h6>
                     {characters.length > 1 && (
                       <div style={{ 
                         fontSize: '0.65rem', 
                         color: 'var(--text-muted)', 
                         fontStyle: 'italic'
                       }}>
-                        Use ↑ ↓ arrow keys to navigate
+                        Use â†‘ â†“ arrow keys to navigate
                       </div>
                     )}
                   </div>
@@ -6079,7 +6002,7 @@ const CampaignView: React.FC = () => {
                       if (character.subclass_name) {
                         return (
                           <div style={{ fontSize: '0.68rem', color: '#a78bfa', marginTop: '0.1rem' }}>
-                            ✦ {character.subclass_name}
+                            âœ¦ {character.subclass_name}
                           </div>
                         );
                       }
@@ -6095,7 +6018,7 @@ const CampaignView: React.FC = () => {
                             textDecoration: user?.role === 'Dungeon Master' ? 'underline dotted' : 'none',
                           }}
                         >
-                          ⚫ No subclass
+                          âš« No subclass
                         </div>
                       );
                     })()}
@@ -6142,7 +6065,7 @@ const CampaignView: React.FC = () => {
                               fontSize: '1rem',
                               filter: health.isDead ? 'none' : 'drop-shadow(0 0 4px rgba(40, 167, 69, 0.6))'
                             }} title={health.isDead ? 'Dead' : 'Alive'}>
-                              {health.isDead ? '💀' : '❤️'}
+                              {health.isDead ? 'ðŸ’€' : 'â¤ï¸'}
                             </div>
                             
                             {/* Health Bar Background */}
@@ -6209,7 +6132,7 @@ const CampaignView: React.FC = () => {
                                 fontSize: '0.9rem',
                                 filter: 'drop-shadow(0 0 4px rgba(168, 85, 247, 0.6))'
                               }} title="Experience">
-                                ⭐
+                                â­
                               </div>
                               
                               {/* EXP Bar Background */}
@@ -6262,7 +6185,7 @@ const CampaignView: React.FC = () => {
                               {character.level >= 20 
                                 ? 'MAX LEVEL' 
                                 : canLevelUp(character.level, character.experience_points || 0)
-                                ? '⬆️ READY TO LEVEL UP!'
+                                ? 'â¬†ï¸ READY TO LEVEL UP!'
                                 : `${getLevelProgress(character.level, character.experience_points || 0).toFixed(0)}% to Level ${character.level + 1}`
                               }
                             </div>
@@ -6300,14 +6223,14 @@ const CampaignView: React.FC = () => {
                               if (slotInfo.type === 'pact') {
                                 return (
                                   <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.55rem', color: '#c084fc' }}>✨</span>
+                                    <span style={{ fontSize: '0.55rem', color: '#c084fc' }}>âœ¨</span>
                                     <MiniSlotRow slotLevel={slotInfo.slotLevel} totalCount={slotInfo.slots} isPact />
                                   </div>
                                 );
                               }
                               return (
                                 <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>✨</span>
+                                  <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>âœ¨</span>
                                   {slotInfo.slots.map((count, i) => count > 0 ? <MiniSlotRow key={i} slotLevel={i + 1} totalCount={count} /> : null)}
                                 </div>
                               );
@@ -6321,7 +6244,7 @@ const CampaignView: React.FC = () => {
                               const isDMView = user?.role === 'Dungeon Master';
                               return (
                                 <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '0.55rem', color: '#fb923c' }}>🃏</span>
+                                  <span style={{ fontSize: '0.55rem', color: '#fb923c' }}>ðŸƒ</span>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                                     <span style={{ fontSize: '0.5rem', color: '#fb923c', minWidth: '10px' }}>T</span>
                                     {Array.from({ length: maxTricks }).map((_, idx) => {
@@ -6358,7 +6281,7 @@ const CampaignView: React.FC = () => {
                                 <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                   {lvl >= 6 && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      <span style={{ fontSize: '0.5rem', color: '#a78bfa', minWidth: '12px' }}>☽</span>
+                                      <span style={{ fontSize: '0.5rem', color: '#a78bfa', minWidth: '12px' }}>â˜½</span>
                                       {Array.from({ length: maxReap }).map((_, idx) => {
                                         const isUsed = idx < res.shadow_reap_used;
                                         return <div key={idx} onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreShadowReap' : 'useShadowReap', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }} title={isUsed ? 'Shadow Reap used' : 'Shadow Reap available'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(139,92,246,0.7)', border: '1px solid rgba(139,92,246,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />;
@@ -6367,7 +6290,7 @@ const CampaignView: React.FC = () => {
                                   )}
                                   {maxStep > 0 && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      <span style={{ fontSize: '0.5rem', color: '#818cf8', minWidth: '12px' }}>👣</span>
+                                      <span style={{ fontSize: '0.5rem', color: '#818cf8', minWidth: '12px' }}>ðŸ‘£</span>
                                       {Array.from({ length: maxStep }).map((_, idx) => {
                                         const isUsed = idx < res.shadow_step_used;
                                         return <div key={idx} onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreShadowStep' : 'useShadowStep', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }} title={isUsed ? 'Shadow Step used' : 'Shadow Step available'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(99,102,241,0.7)', border: '1px solid rgba(99,102,241,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />;
@@ -6376,7 +6299,7 @@ const CampaignView: React.FC = () => {
                                   )}
                                   {conMod > 0 && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      <span style={{ fontSize: '0.5rem', color: '#f87171', minWidth: '12px' }}>◈</span>
+                                      <span style={{ fontSize: '0.5rem', color: '#f87171', minWidth: '12px' }}>â—ˆ</span>
                                       {Array.from({ length: conMod }).map((_, idx) => {
                                         const isActive = idx < activeCount;
                                         return <div key={idx} title={isActive ? 'Shadow active' : 'Shadow slot empty'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isActive ? 'rgba(239,68,68,0.7)' : 'rgba(0,0,0,0.2)', border: '1px solid rgba(239,68,68,0.6)', opacity: isActive ? 1 : 0.4 }} />;
@@ -6409,7 +6332,7 @@ const CampaignView: React.FC = () => {
                         textAlign: 'center',
                         fontWeight: 'bold'
                       }}>
-                        👥 DM Controls
+                        ðŸ‘¥ DM Controls
                       </div>
                     </div>
                   ) : (
@@ -6456,7 +6379,7 @@ const CampaignView: React.FC = () => {
 
                           {/* Health Bar - Compact */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <div style={{ fontSize: '0.8rem' }}>❤️</div>
+                            <div style={{ fontSize: '0.8rem' }}>â¤ï¸</div>
                             <div style={{
                               flex: 1,
                               height: '8px',
@@ -6480,7 +6403,7 @@ const CampaignView: React.FC = () => {
 
                           {/* EXP Bar - Compact */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <div style={{ fontSize: '0.8rem' }}>⭐</div>
+                            <div style={{ fontSize: '0.8rem' }}>â­</div>
                             <div style={{
                               flex: 1,
                               height: '8px',
@@ -6516,7 +6439,7 @@ const CampaignView: React.FC = () => {
             {/* Campaign Tab Content */}
             {campaignTab === 'map' && (
               <div className="glass-panel">
-                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>🗺️ Campaign Map</h5>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>ðŸ—ºï¸ Campaign Map</h5>
                 <div style={{
                   position: 'relative',
                   display: 'flex',
@@ -6614,7 +6537,7 @@ const CampaignView: React.FC = () => {
 
                   {/* City Buttons Overlay */}
                   {/* Sizes are % of map container width, calibrated to the 2600px source image:
-                      regular towns: 108/2600*100 ≈ 4.15%, major cities: 180/2600*100 ≈ 6.92% */}
+                      regular towns: 108/2600*100 â‰ˆ 4.15%, major cities: 180/2600*100 â‰ˆ 6.92% */}
                   {CITY_LOCATIONS.map(city => {
                     const sizePercent = city.major ? '6.92%' : '4.15%';
                     return (
@@ -6780,7 +6703,7 @@ const CampaignView: React.FC = () => {
                             pointerEvents: 'none'
                           }}
                         />
-                        <span style={{ position: 'relative', zIndex: 2, filter: 'drop-shadow(0 1px 0 rgba(255,255,255,0.4))' }}>👥</span>
+                        <span style={{ position: 'relative', zIndex: 2, filter: 'drop-shadow(0 1px 0 rgba(255,255,255,0.4))' }}>ðŸ‘¥</span>
                       </div>
 
                       <div style={{
@@ -6835,7 +6758,7 @@ const CampaignView: React.FC = () => {
                       <div className="modal-header">
                         <h3 className="modal-title">Party Manager</h3>
                         <button className="modal-close" onClick={() => setShowPartyMenu(false)} aria-label="Close Party Manager">
-                          ×
+                          Ã—
                         </button>
                       </div>
                       <div className="modal-content" style={{ padding: '1rem' }}>
@@ -6866,7 +6789,7 @@ const CampaignView: React.FC = () => {
                                       className="btn btn-secondary"
                                       style={{ padding: '0.35rem 0.65rem', minHeight: 'auto', fontSize: '0.75rem' }}
                                     >
-                                      Add →
+                                      Add â†’
                                     </button>
                                   </div>
                                 ))
@@ -6900,7 +6823,7 @@ const CampaignView: React.FC = () => {
                                       className="btn btn-secondary"
                                       style={{ padding: '0.35rem 0.65rem', minHeight: 'auto', fontSize: '0.75rem' }}
                                     >
-                                      ← Remove
+                                      â† Remove
                                     </button>
                                   </div>
                                 ))
@@ -6919,7 +6842,7 @@ const CampaignView: React.FC = () => {
                       <div className="modal-header">
                         <h3 className="modal-title">Party Members</h3>
                         <button className="modal-close" onClick={() => setShowPartyMembersModal(false)} aria-label="Close Party Members">
-                          ×
+                          Ã—
                         </button>
                       </div>
                       <div className="modal-content">
@@ -6957,13 +6880,13 @@ const CampaignView: React.FC = () => {
                       style={{ maxWidth: '2600px', width: '95vh', maxHeight: '95vh', overflowY: 'auto' }}
                     >
                       <div className="modal-header" style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-panel, #1a1a2e)' }}>
-                        <h3 className="modal-title">🏙️ {selectedCity}</h3>
+                        <h3 className="modal-title">ðŸ™ï¸ {selectedCity}</h3>
                         <button
                           className="modal-close"
                           onClick={() => setSelectedCity(null)}
                           aria-label="Close city view"
                         >
-                          ×
+                          Ã—
                         </button>
                       </div>
                       <div className="modal-content" style={{ padding: '1rem', textAlign: 'center' }}>
@@ -7023,7 +6946,7 @@ const CampaignView: React.FC = () => {
             {campaignTab === 'combat' && (
               <div className="glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Combat Area</h5>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>âš”ï¸ Combat Area</h5>
                   {user?.role === 'Dungeon Master' && (
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
                       <button
@@ -7039,7 +6962,7 @@ const CampaignView: React.FC = () => {
                           fontSize: '0.9rem'
                         }}
                       >
-                        ➕ Add to Combat
+                        âž• Add to Combat
                       </button>
                       {combatants.length > 0 && (
                         <>
@@ -7067,7 +6990,7 @@ const CampaignView: React.FC = () => {
                               fontSize: '0.9rem'
                             }}
                           >
-                            {currentTurnIndex === -1 ? '⚔️ Start Combat' : '🔄 Next Turn'}
+                            {currentTurnIndex === -1 ? 'âš”ï¸ Start Combat' : 'ðŸ”„ Next Turn'}
                           </button>
                           <button
                             onClick={() => setShowResetCombatModal(true)}
@@ -7082,13 +7005,13 @@ const CampaignView: React.FC = () => {
                               fontSize: '0.9rem'
                             }}
                           >
-                            🔄 Reset Combat
+                            ðŸ”„ Reset Combat
                           </button>
 
                           {/* DM Darkness slider */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', width: '100%' }}>
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              {darknessLevel === 0 ? '☀️' : darknessLevel < 0.5 ? '🌙' : '🌑'} Darkness Radius
+                              {darknessLevel === 0 ? 'â˜€ï¸' : darknessLevel < 0.5 ? 'ðŸŒ™' : 'ðŸŒ‘'} Darkness Radius
                             </span>
                             <input
                               type="range"
@@ -7125,7 +7048,7 @@ const CampaignView: React.FC = () => {
                     borderRadius: '0.75rem'
                   }}>
                     <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span>🎲</span>
+                      <span>ðŸŽ²</span>
                       <span>Initiative Order</span>
                       {currentTurnIndex >= 0 && initiativeOrder.length > 0 ? (
                         <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#999' }}>
@@ -7133,7 +7056,7 @@ const CampaignView: React.FC = () => {
                         </span>
                       ) : (
                         <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#f4a261' }}>
-                          ⏸️ Waiting to start
+                          â¸ï¸ Waiting to start
                         </span>
                       )}
                     </h6>
@@ -7147,11 +7070,11 @@ const CampaignView: React.FC = () => {
                         const isSelected = selectedCombatant === combatant.characterId;
                         const combatantKey = String(combatant.characterId);
 
-                        // ── Vision / darkness check for initiative list ──────────────────────
+                        // â”€â”€ Vision / darkness check for initiative list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                         const isDMView = user?.role === 'Dungeon Master';
                         // Three states: 'visible' | 'partial' | 'hidden'
-                        // 'hidden' means beyond visionRadius × 2 → remove from list entirely
-                        // 'partial' means in the silhouette zone → show ??? (Unknown)
+                        // 'hidden' means beyond visionRadius Ã— 2 â†’ remove from list entirely
+                        // 'partial' means in the silhouette zone â†’ show ??? (Unknown)
                         type InitVisibility = 'visible' | 'partial' | 'hidden';
                         let initiativeVisibility: InitVisibility = 'visible';
                         const hasBlindedOwnCombatant = combatants.some(c => {
@@ -7207,7 +7130,7 @@ const CampaignView: React.FC = () => {
                         // Convenience alias for existing render code
                         const initiativeHidden = initiativeVisibility === 'partial';
                         if (initiativeVisibility === 'hidden') return null;
-                        // ────────────────────────────────────────────────────────────────────
+                        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
                         // Compute health and AC for this combatant
                         const initCharacter = combatant.isMonster
@@ -7341,9 +7264,9 @@ const CampaignView: React.FC = () => {
                                   {initiativeHidden ? '??? (Unknown)' : combatant.name}
                                   {combatant.isMonster && combatant.isAlly && <span style={{ fontSize: '0.65rem', marginLeft: '0.3rem', color: '#4ade80', background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '999px', padding: '0 0.35rem' }}>Ally</span>}
                                 </span>
-                                {!initiativeHidden && isCurrentTurn && <span style={{ fontSize: '0.75rem', color: '#4a4' }}>← Turn</span>}
-                                {!initiativeHidden && (combatant as any).isMounted && <span style={{ fontSize: '0.65rem', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#c4b5fd' }}>🐴 Mounted</span>}
-                                {!initiativeHidden && isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#ef4444' }}>💀 Dead</span>}
+                                {!initiativeHidden && isCurrentTurn && <span style={{ fontSize: '0.75rem', color: '#4a4' }}>â† Turn</span>}
+                                {!initiativeHidden && (combatant as any).isMounted && <span style={{ fontSize: '0.65rem', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#c4b5fd' }}>ðŸ´ Mounted</span>}
+                                {!initiativeHidden && isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#ef4444' }}>ðŸ’€ Dead</span>}
                                 {!initiativeHidden && isDead && user?.role === 'Dungeon Master' && (
                                   <button
                                     onClick={(e) => {
@@ -7359,11 +7282,11 @@ const CampaignView: React.FC = () => {
                                     }}
                                     style={{ fontSize: '0.65rem', padding: '1px 5px', background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '0.25rem', color: '#4ade80', cursor: 'pointer' }}
                                   >
-                                    ✨ Revive
+                                    âœ¨ Revive
                                   </button>
                                 )}
-                                {!initiativeHidden && isStable && !isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#4ade80' }}>💚 Stable</span>}
-                                {!initiativeHidden && isDown && !isDead && !isStable && <span style={{ fontSize: '0.7rem', background: 'rgba(251,146,60,0.2)', border: '1px solid #fb923c', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#fb923c' }}>☠️ Down</span>}
+                                {!initiativeHidden && isStable && !isDead && <span style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#4ade80' }}>ðŸ’š Stable</span>}
+                                {!initiativeHidden && isDown && !isDead && !isStable && <span style={{ fontSize: '0.7rem', background: 'rgba(251,146,60,0.2)', border: '1px solid #fb923c', borderRadius: '0.25rem', padding: '0 0.3rem', color: '#fb923c' }}>â˜ ï¸ Down</span>}
                                 {!initiativeHidden && (isSelected ? conditions : conditions.slice(0,3)).map(c => {
                                   const condStyle: Record<string, {bg:string;border:string;color:string}> = {
                                     Stunned:      {bg:'rgba(239,68,68,0.2)',    border:'rgba(239,68,68,0.5)',    color:'#f87171'},
@@ -7385,9 +7308,9 @@ const CampaignView: React.FC = () => {
                                 {!initiativeHidden && !isSelected && conditions.length > 3 && <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>+{conditions.length-3}</span>}
                                 {!initiativeHidden && (dotConditions[combatantKey] ?? []).map(dot => {
                                   const dotStyle: Record<string, {bg:string;border:string;color:string;icon:string}> = {
-                                    Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'🔥'},
-                                    Bleeding: {bg:'rgba(239,68,68,0.2)',   border:'rgba(239,68,68,0.6)',   color:'#f87171', icon:'🩸'},
-                                    Poison:   {bg:'rgba(34,197,94,0.2)',   border:'rgba(34,197,94,0.6)',   color:'#4ade80', icon:'☠️'},
+                                    Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'ðŸ”¥'},
+                                    Bleeding: {bg:'rgba(239,68,68,0.2)',   border:'rgba(239,68,68,0.6)',   color:'#f87171', icon:'ðŸ©¸'},
+                                    Poison:   {bg:'rgba(34,197,94,0.2)',   border:'rgba(34,197,94,0.6)',   color:'#4ade80', icon:'â˜ ï¸'},
                                   };
                                   const s = dotStyle[dot.type] ?? dotStyle.Poison;
                                   const turns = dot.turnsRemaining !== null ? ` (${dot.turnsRemaining})` : '';
@@ -7441,9 +7364,9 @@ const CampaignView: React.FC = () => {
                               {/* Death saves mini */}
                               {ds && !isDead && !isStable && (
                                 <div style={{ display: 'flex', gap: '0.2rem', fontSize: '0.65rem' }}>
-                                  <span style={{ color: '#4ade80' }}>{'✓'.repeat(ds.successes)}{'○'.repeat(3 - ds.successes)}</span>
+                                  <span style={{ color: '#4ade80' }}>{'âœ“'.repeat(ds.successes)}{'â—‹'.repeat(3 - ds.successes)}</span>
                                   <span style={{ color: '#999', margin: '0 0.1rem' }}>|</span>
-                                  <span style={{ color: '#ef4444' }}>{'✗'.repeat(ds.failures)}{'○'.repeat(3 - ds.failures)}</span>
+                                  <span style={{ color: '#ef4444' }}>{'âœ—'.repeat(ds.failures)}{'â—‹'.repeat(3 - ds.failures)}</span>
                                 </div>
                               )}
                               <div style={{ fontSize: '0.7rem', color: '#999' }}>
@@ -7459,7 +7382,7 @@ const CampaignView: React.FC = () => {
                                 return (
                                   <div style={{ marginTop: '0.15rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.15rem' }}>
-                                      <span style={{ fontSize: '0.65rem', color: '#c4b5fd' }}>🐴 {mountHpCur}/{mountHpMax} HP</span>
+                                      <span style={{ fontSize: '0.65rem', color: '#c4b5fd' }}>ðŸ´ {mountHpCur}/{mountHpMax} HP</span>
                                       <div style={{ flex: 1, height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
                                         <div style={{ width: `${mountHpPct}%`, height: '100%', background: mountHpColor, borderRadius: '2px', transition: 'width 0.3s' }} />
                                       </div>
@@ -7472,7 +7395,7 @@ const CampaignView: React.FC = () => {
                                           setMountDamageModal({ combatantKey: String(combatant.characterId), mountName: mount?.name ?? 'Mount' });
                                         }}
                                         style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.25rem', color: '#f87171', cursor: 'pointer' }}
-                                      >⚔️ Damage Mount</button>
+                                      >âš”ï¸ Damage Mount</button>
                                     )}
                                   </div>
                                 );
@@ -7515,7 +7438,7 @@ const CampaignView: React.FC = () => {
                   </div>
                 )}
 
-                {/* Actions Panel + Combat Log — shown when combat is active */}
+                {/* Actions Panel + Combat Log â€” shown when combat is active */}
                 {combatants.length > 0 && (() => {
                   const activeCombatantData = selectedCombatant
                     ? combatants.find(c => c.characterId === selectedCombatant)
@@ -7534,7 +7457,7 @@ const CampaignView: React.FC = () => {
                       {/* Actions panel */}
                       <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '0.75rem', padding: '1rem' }}>
                         <h6 style={{ color: 'var(--text-gold)', margin: '0 0 0.75rem', fontSize: '0.9rem' }}>
-                          ⚡ Actions{activeCombatantData ? ` — ${activeCombatantData.name}` : ''}
+                          âš¡ Actions{activeCombatantData ? ` â€” ${activeCombatantData.name}` : ''}
                           {!activeCombatantData && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal' }}> (select a combatant)</span>}
                         </h6>
                         <CombatActionsPanel
@@ -7663,7 +7586,7 @@ const CampaignView: React.FC = () => {
                               const isProf = isExpert || profSkills.some((s: string) => s.toLowerCase() === 'stealth');
                               stealthMod = dexMod + (isExpert ? profBonus * 2 : isProf ? profBonus : 0);
                             }
-                            // Request a stealth ability check roll — sent to this player's own modal
+                            // Request a stealth ability check roll â€” sent to this player's own modal
                             socket.emit('requestDiceRoll', {
                               campaignId: currentCampaign.campaign.id,
                               targetPlayerId: ownCombatant.playerId,
@@ -7749,7 +7672,7 @@ const CampaignView: React.FC = () => {
                         setShowMapPickerModal(true);
                       }}
                       style={{ padding: '0.4rem 0.9rem', background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.4rem', color: '#d4c19c', cursor: 'pointer', fontSize: '0.85rem' }}
-                    >🗺️ Select Map</button>
+                    >ðŸ—ºï¸ Select Map</button>
                     {activeMapId && (
                       <button
                         onClick={() => {
@@ -7757,7 +7680,7 @@ const CampaignView: React.FC = () => {
                           socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: null, mapType: 'combat' });
                         }}
                         style={{ padding: '0.4rem 0.9rem', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: '0.4rem', color: '#f87171', cursor: 'pointer', fontSize: '0.85rem' }}
-                      >✕ Clear Map</button>
+                      >âœ• Clear Map</button>
                     )}
                   </div>
                 )}
@@ -7780,7 +7703,7 @@ const CampaignView: React.FC = () => {
                     const x = ((e.clientX - rect.left) / rect.width) * 100;
                     const y = ((e.clientY - rect.top) / rect.height) * 100;
                     setCurrentDragPosition({ x, y });
-                    // console.log('📍 Drag position:', x.toFixed(1), y.toFixed(1)); // Uncomment for debugging
+                    // console.log('ðŸ“ Drag position:', x.toFixed(1), y.toFixed(1)); // Uncomment for debugging
                   }
                 }}
                 onDragLeave={(e) => {
@@ -7882,11 +7805,11 @@ const CampaignView: React.FC = () => {
                     />
                   ) : (
                     <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(212,193,156,0.5)', fontSize: '1.1rem' }}>
-                      {user?.role === 'Dungeon Master' ? '🗺️ No map selected — use "Select Map" above' : '🗺️ Awaiting battle map...'}
+                      {user?.role === 'Dungeon Master' ? 'ðŸ—ºï¸ No map selected â€” use "Select Map" above' : 'ðŸ—ºï¸ Awaiting battle map...'}
                     </div>
                   )}
 
-                  {/* Darkness overlay canvas — always rendered, effect handles clearing when unused */}
+                  {/* Darkness overlay canvas â€” always rendered, effect handles clearing when unused */}
                   <canvas
                     ref={darknessCanvasRef}
                     style={{
@@ -8008,11 +7931,11 @@ const CampaignView: React.FC = () => {
                     
                     const isDM = user?.role === 'Dungeon Master';
 
-                    // ── Vision / darkness check ──────────────────────────────
+                    // â”€â”€ Vision / darkness check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                     // Three visibility states:
-                    //   'full'    → within visionRadius          → render normally
-                    //   'partial' → within visionRadius × 2      → render dark silhouette
-                    //   'hidden'  → beyond visionRadius × 2      → skip rendering
+                    //   'full'    â†’ within visionRadius          â†’ render normally
+                    //   'partial' â†’ within visionRadius Ã— 2      â†’ render dark silhouette
+                    //   'hidden'  â†’ beyond visionRadius Ã— 2      â†’ skip rendering
                     const hasBlindedOwnCombatant = combatants.some(c => {
                       if (c.isMonster || Number(c.playerId) !== Number(user?.id)) return false;
                       const charConditions = combatConditions[String(c.characterId)] ?? [];
@@ -8098,7 +8021,7 @@ const CampaignView: React.FC = () => {
                         </div>
                       );
                     }
-                    // ─────────────────────────────────────────────────────────
+                    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                     const remaining = remainingMovement[combatant.characterId] ?? combatant.movement_speed ?? 30;
                     
                     // Check if it's this token's turn (in combat)
@@ -8107,7 +8030,7 @@ const CampaignView: React.FC = () => {
                       : false; // Changed from true - no one's turn if combat hasn't started
                     
                     // Find if this is a character or monster instance
-                    // Always skip character lookup for monsters — their characterId is a monster_instance DB row ID
+                    // Always skip character lookup for monsters â€” their characterId is a monster_instance DB row ID
                     // which can accidentally match a real character ID, causing wrong name/image
                     const character = combatant.isMonster
                       ? null
@@ -8142,7 +8065,7 @@ const CampaignView: React.FC = () => {
                     const shadowImageSrc = combatant.isShadow ? (shadowTemplate?.image_url || '/images/ShadowBase.jpg') : undefined;
                     const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url || petTemplate?.image_url || shadowImageSrc);
                     
-                    // Invisibility — monsters hide entirely from non-DMs; players show faded
+                    // Invisibility â€” monsters hide entirely from non-DMs; players show faded
                     const tokenConditions = combatConditions[String(combatant.characterId)] ?? [];
                     const isTokenInvisible = tokenConditions.some(cond => cond.toLowerCase() === 'invisible');
                     if (combatant.isMonster && !isDM && isTokenInvisible) return null;
@@ -8234,7 +8157,7 @@ const CampaignView: React.FC = () => {
             {campaignTab === 'battlefield' && (
               <div className="glass-panel" style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🏰 Battlefield - Mass Combat</h5>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>ðŸ° Battlefield - Mass Combat</h5>
                   {user?.role === 'Dungeon Master' && !activeBattle && (
                     <button
                       onClick={() => setShowBattleSetupModal(true)}
@@ -8247,7 +8170,7 @@ const CampaignView: React.FC = () => {
                         fontWeight: 'bold'
                       }}
                     >
-                      ⚔️ Start New Battle
+                      âš”ï¸ Start New Battle
                     </button>
                   )}
                 </div>
@@ -8264,7 +8187,7 @@ const CampaignView: React.FC = () => {
                     background: 'rgba(255, 255, 255, 0.02)',
                     padding: '3rem'
                   }}>
-                    <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>⚔️</div>
+                    <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>âš”ï¸</div>
                     <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Active Battle</h4>
                     <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '600px' }}>
                       {user?.role === 'Dungeon Master' 
@@ -8334,7 +8257,7 @@ const CampaignView: React.FC = () => {
                               setShowBattlefieldMapPickerModal(true);
                             }}
                             style={{ padding: '0.5rem 1rem', background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.5rem', color: '#d4c19c', cursor: 'pointer', fontSize: '0.85rem' }}
-                          >🗺️ Select Battlefield Map</button>
+                          >ðŸ—ºï¸ Select Battlefield Map</button>
                           {activeBattlefieldMapId && (
                             <button
                               onClick={() => {
@@ -8342,11 +8265,11 @@ const CampaignView: React.FC = () => {
                                 socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: null, mapType: 'battlefield' });
                               }}
                               style={{ padding: '0.5rem 1rem', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: '0.5rem', color: '#f87171', cursor: 'pointer', fontSize: '0.85rem' }}
-                            >✕ Clear Map</button>
+                            >âœ• Clear Map</button>
                           )}
                           {/* End Battle Button - Always available for DM */}
                           <button
-                            onClick={() => setPendingConfirm({ msg: '⚠️ Cancel this battle? All progress will be lost and participants will be removed.', onYes: () => {
+                            onClick={() => setPendingConfirm({ msg: 'âš ï¸ Cancel this battle? All progress will be lost and participants will be removed.', onYes: () => {
                               battleAPI.updateStatus(activeBattle.id, 'cancelled')
                                 .then(() => { setActiveBattle(null); toast('Battle cancelled successfully.'); })
                                 .catch(error => { console.error('Error cancelling battle:', error); toast('Failed to cancel battle'); });
@@ -8362,7 +8285,7 @@ const CampaignView: React.FC = () => {
                               marginLeft: 'auto'
                             }}
                           >
-                            🚫 End Battle
+                            ðŸš« End Battle
                           </button>
                           
                           {activeBattle.status === 'planning' && (
@@ -8379,7 +8302,7 @@ const CampaignView: React.FC = () => {
                                   fontSize: '0.85rem'
                                 }}
                               >
-                                📨 Invite Players
+                                ðŸ“¨ Invite Players
                               </button>
                               <button
                                 onClick={() => setShowAddParticipantModal(true)}
@@ -8393,7 +8316,7 @@ const CampaignView: React.FC = () => {
                                   fontSize: '0.85rem'
                                 }}
                               >
-                                🎭 Add AI Army
+                                ðŸŽ­ Add AI Army
                               </button>
                               <button
                                 onClick={async () => {
@@ -8417,7 +8340,7 @@ const CampaignView: React.FC = () => {
                                   fontWeight: 'bold'
                                 }}
                               >
-                                ⚔️ Start Battle
+                                âš”ï¸ Start Battle
                               </button>
                             </>
                           )}
@@ -8451,7 +8374,7 @@ const CampaignView: React.FC = () => {
                                 opacity: (user?.role === 'Dungeon Master' || (activeBattle.participants || []).filter(p => (p.current_troops || 0) > 0).every(p => p.has_selected_goal || new Set(battleGoals.map(goal => goal.participant_id)).has(p.id))) ? 1 : 0.6
                               }}
                             >
-                              ✅ Move to Resolution
+                              âœ… Move to Resolution
                             </button>
                           )}
                           {activeBattle.status === 'resolution' && activeBattle.current_round < (activeBattle.total_rounds || 5) && (
@@ -8498,7 +8421,7 @@ const CampaignView: React.FC = () => {
                                 fontWeight: 'bold'
                               }}
                             >
-                              ▶️ Next Round
+                              â–¶ï¸ Next Round
                             </button>
                           )}
                           {activeBattle.status === 'resolution' && activeBattle.current_round >= (activeBattle.total_rounds || 5) && (
@@ -8528,7 +8451,7 @@ const CampaignView: React.FC = () => {
                                 fontWeight: 'bold'
                               }}
                             >
-                              🏁 Complete Battle
+                              ðŸ Complete Battle
                             </button>
                           )}
                         </div>
@@ -8643,7 +8566,7 @@ const CampaignView: React.FC = () => {
                             />
                           ) : (
                             <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(212,193,156,0.5)', fontSize: '1.1rem' }}>
-                              {user?.role === 'Dungeon Master' ? '🗺️ No map selected — use \'Select Battlefield Map\' above' : '🗺️ Awaiting battlefield map...'}
+                              {user?.role === 'Dungeon Master' ? 'ðŸ—ºï¸ No map selected â€” use \'Select Battlefield Map\' above' : 'ðŸ—ºï¸ Awaiting battlefield map...'}
                             </div>
                           )}
                           
@@ -8659,7 +8582,7 @@ const CampaignView: React.FC = () => {
                             pointerEvents: 'none'
                           }} />
 
-                          {/* Battlefield darkness overlay canvas — same two-zone fog as combat tab */}
+                          {/* Battlefield darkness overlay canvas â€” same two-zone fog as combat tab */}
                           <canvas
                             ref={battlefieldDarknessCanvasRef}
                             style={{
@@ -8766,7 +8689,7 @@ const CampaignView: React.FC = () => {
                             const hasMovement = (remainingArmyMovement[participant.id] ?? 0) > 0;
                             const isDM = user?.role === 'Dungeon Master';
 
-                            // ── Battlefield darkness check ───────────────────
+                            // â”€â”€ Battlefield darkness check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                             // Three states: full | partial | hidden
                             if (!isDM && darknessLevel > 0) {
                               const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT;
@@ -8781,10 +8704,10 @@ const CampaignView: React.FC = () => {
                                   if (dist < minDist) minDist = dist;
                                 }
                                 if (ownArmies.length === 0 || minDist > BASE_ARMY_VISION_RADIUS_PCT * 2) {
-                                  return null; // full darkness — hidden
+                                  return null; // full darkness â€” hidden
                                 }
                                 if (minDist > BASE_ARMY_VISION_RADIUS_PCT) {
-                                  // Partial darkness — render silhouette
+                                  // Partial darkness â€” render silhouette
                                   return (
                                     <div
                                       key={`bf-shadow-${participant.id}`}
@@ -8817,11 +8740,11 @@ const CampaignView: React.FC = () => {
                                 }
                               }
                             }
-                            // ─────────────────────────────────────────────────
+                            // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                             
                             // Get the army category and icon
                             let armyCategory = 'Swordsmen';
-                            let categoryIcon = '⚔️';
+                            let categoryIcon = 'âš”ï¸';
                             
                             if (participant.is_temporary) {
                               // For temporary armies, use temp_army_category
@@ -8892,7 +8815,7 @@ const CampaignView: React.FC = () => {
                                 }
                                 setHoveredBattlefieldParticipantId(prev => (prev === participant.id ? null : prev));
                               }}
-                              title={`${participant.temp_army_name || participant.army_name || `Army #${participant.id}`} · ${getArmyRangeLabel(armyCategory)}`}
+                              title={`${participant.temp_army_name || participant.army_name || `Army #${participant.id}`} Â· ${getArmyRangeLabel(armyCategory)}`}
                             >
                               {/* Team badge */}
                               <div style={{
@@ -8954,7 +8877,7 @@ const CampaignView: React.FC = () => {
                                   fontWeight: 'bold',
                                   marginTop: '0.1rem'
                                 }}>
-                                  👥 {participant.current_troops.toLocaleString()}
+                                  ðŸ‘¥ {participant.current_troops.toLocaleString()}
                                 </div>
                               )}
                               
@@ -8974,7 +8897,7 @@ const CampaignView: React.FC = () => {
                               }}
                               title={`Movement: ${(remainingArmyMovement[participant.id] || 0).toFixed(0)}ft remaining`}
                               >
-                                🏃 {(remainingArmyMovement[participant.id] || 0).toFixed(0)}ft
+                                ðŸƒ {(remainingArmyMovement[participant.id] || 0).toFixed(0)}ft
                               </div>
                             </div>
                           );})}
@@ -9006,7 +8929,7 @@ const CampaignView: React.FC = () => {
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
                               }}
                             >
-                              ⚔️ Participants
+                              âš”ï¸ Participants
                             </button>
                           )}
                           {activeBattle.status === 'goal_selection' && (
@@ -9027,7 +8950,7 @@ const CampaignView: React.FC = () => {
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
                               }}
                             >
-                              🎯 Goals
+                              ðŸŽ¯ Goals
                             </button>
                           )}
                           {activeBattle.status === 'resolution' && (
@@ -9048,7 +8971,7 @@ const CampaignView: React.FC = () => {
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
                               }}
                             >
-                              ⚔️ Goals
+                              âš”ï¸ Goals
                             </button>
                           )}
                           
@@ -9140,7 +9063,7 @@ const CampaignView: React.FC = () => {
                                   }}
                                 >
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                    <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Battle Participants</h5>
+                                    <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>âš”ï¸ Battle Participants</h5>
                                     <button
                                       onClick={() => setShowBattlefieldParticipants(false)}
                                       style={{
@@ -9154,7 +9077,7 @@ const CampaignView: React.FC = () => {
                                         fontSize: '0.9rem'
                                       }}
                                     >
-                                      ✕ Close
+                                      âœ• Close
                                     </button>
                                   </div>
                                   {(() => {
@@ -9243,7 +9166,7 @@ const CampaignView: React.FC = () => {
                                                       marginTop: '0.25rem',
                                                       fontWeight: 'bold'
                                                     }}>
-                                                      👥 Troops: {participant.current_troops.toLocaleString()} / {participant.army_total_troops?.toLocaleString() || 'N/A'}
+                                                      ðŸ‘¥ Troops: {participant.current_troops.toLocaleString()} / {participant.army_total_troops?.toLocaleString() || 'N/A'}
                                                     </div>
                                                   )}
                                                 </div>
@@ -9305,7 +9228,7 @@ const CampaignView: React.FC = () => {
                                   ...getVisibility(openKeys.includes('selection'))
                                 }}
                               >
-                                {/* ── GOAL SELECTION PANEL ── */}
+                                {/* â”€â”€ GOAL SELECTION PANEL â”€â”€ */}
                                 {(() => {
                                   const selectable = getSelectableParticipants();
                                   const selectedParticipant = selectedGoalArmyId
@@ -9331,7 +9254,7 @@ const CampaignView: React.FC = () => {
                                     if (!req) return '';
                                     return req.method === 'ahead'
                                       ? `Requires score +${req.delta} vs target`
-                                      : `Requires score −${req.delta} vs target`;
+                                      : `Requires score âˆ’${req.delta} vs target`;
                                   };
                                   const meetsScoreRequirement = (req: { method: 'ahead' | 'behind'; delta: number }, atk: number, def: number) => {
                                     const d = atk - def;
@@ -9379,11 +9302,11 @@ const CampaignView: React.FC = () => {
                                   };
 
                                   const SECTION_META: Record<string, { label: string; icon: string; accentColor: string; dimColor: string; borderColor: string }> = {
-                                    attacking: { label: 'Attacking', icon: '⚔️', accentColor: 'rgba(239, 68, 68, 0.85)', dimColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.5)' },
-                                    defending: { label: 'Defending', icon: '🛡️', accentColor: 'rgba(59, 130, 246, 0.85)', dimColor: 'rgba(59, 130, 246, 0.12)', borderColor: 'rgba(59, 130, 246, 0.5)' },
-                                    logistics: { label: 'Logistics', icon: '📦', accentColor: 'rgba(34, 197, 94, 0.85)', dimColor: 'rgba(34, 197, 94, 0.12)', borderColor: 'rgba(34, 197, 94, 0.5)' },
-                                    commander: { label: 'Commander', icon: '👑', accentColor: 'rgba(168, 85, 247, 0.85)', dimColor: 'rgba(168, 85, 247, 0.12)', borderColor: 'rgba(168, 85, 247, 0.5)' },
-                                    unique: { label: 'Unique', icon: '✨', accentColor: 'rgba(234, 179, 8, 0.85)', dimColor: 'rgba(234, 179, 8, 0.12)', borderColor: 'rgba(234, 179, 8, 0.5)' }
+                                    attacking: { label: 'Attacking', icon: 'âš”ï¸', accentColor: 'rgba(239, 68, 68, 0.85)', dimColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.5)' },
+                                    defending: { label: 'Defending', icon: 'ðŸ›¡ï¸', accentColor: 'rgba(59, 130, 246, 0.85)', dimColor: 'rgba(59, 130, 246, 0.12)', borderColor: 'rgba(59, 130, 246, 0.5)' },
+                                    logistics: { label: 'Logistics', icon: 'ðŸ“¦', accentColor: 'rgba(34, 197, 94, 0.85)', dimColor: 'rgba(34, 197, 94, 0.12)', borderColor: 'rgba(34, 197, 94, 0.5)' },
+                                    commander: { label: 'Commander', icon: 'ðŸ‘‘', accentColor: 'rgba(168, 85, 247, 0.85)', dimColor: 'rgba(168, 85, 247, 0.12)', borderColor: 'rgba(168, 85, 247, 0.5)' },
+                                    unique: { label: 'Unique', icon: 'âœ¨', accentColor: 'rgba(234, 179, 8, 0.85)', dimColor: 'rgba(234, 179, 8, 0.12)', borderColor: 'rgba(234, 179, 8, 0.5)' }
                                   };
 
                                   const attackerScore = selectedParticipant ? getParticipantScore(selectedParticipant) : 0;
@@ -9413,10 +9336,10 @@ const CampaignView: React.FC = () => {
 
                                   return (
                                     <>
-                                      {/* ── Header ── */}
+                                      {/* â”€â”€ Header â”€â”€ */}
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
-                                          <span style={{ fontSize: '1.3rem' }}>🎯</span>
+                                          <span style={{ fontSize: '1.3rem' }}>ðŸŽ¯</span>
                                           <h5 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Goal Selection</h5>
                                           <span style={{
                                             padding: '0.2rem 0.6rem',
@@ -9461,13 +9384,13 @@ const CampaignView: React.FC = () => {
                                             fontSize: '0.9rem',
                                             lineHeight: 1
                                           }}
-                                        >✕</button>
+                                        >âœ•</button>
                                       </div>
 
-                                      {/* ── Main Body ── */}
+                                      {/* â”€â”€ Main Body â”€â”€ */}
                                       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '1.25rem', alignItems: 'start' }}>
 
-                                        {/* ── Left: Army List ── */}
+                                        {/* â”€â”€ Left: Army List â”€â”€ */}
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                           <div style={{
                                             fontSize: '0.7rem',
@@ -9510,17 +9433,17 @@ const CampaignView: React.FC = () => {
                                                   {getBattleParticipantName(participant)}
                                                 </div>
                                                 <div style={{ fontSize: '0.72rem', color: participant.has_selected_goal ? '#4ade80' : '#facc15', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                                  {participant.has_selected_goal ? '✅ Locked' : '⏳ Needs goal'}
+                                                  {participant.has_selected_goal ? 'âœ… Locked' : 'â³ Needs goal'}
                                                 </div>
                                                 <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.1rem' }}>
-                                                  {getParticipantCategory(participant)} · {(participant.current_troops || 0).toLocaleString()} troops
+                                                  {getParticipantCategory(participant)} Â· {(participant.current_troops || 0).toLocaleString()} troops
                                                 </div>
                                               </button>
                                             );
                                           })}
                                         </div>
 
-                                        {/* ── Right: Goal Browser ── */}
+                                        {/* â”€â”€ Right: Goal Browser â”€â”€ */}
                                         {selectedParticipant ? (
                                           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
 
@@ -9538,7 +9461,7 @@ const CampaignView: React.FC = () => {
                                               <div style={{ fontWeight: 800, color: 'var(--text-gold)', fontSize: '0.95rem' }}>
                                                 {getBattleParticipantName(selectedParticipant)}
                                               </div>
-                                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>·</span>
+                                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Â·</span>
                                               <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>{selectedCategory}</span>
                                               <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{getArmyRangeLabel(selectedCategory)}</span>
                                               <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
@@ -9564,8 +9487,8 @@ const CampaignView: React.FC = () => {
                                                 color: '#4ade80',
                                                 fontWeight: 700
                                               }}>
-                                                <span style={{ fontSize: '1.1rem' }}>✅</span>
-                                                <span>Goal locked: <span style={{ color: '#86efac' }}>{selectedGoal.goal_name}</span>{selectedGoal.target_army_name ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> → {selectedGoal.target_army_name}</span> : ''}</span>
+                                                <span style={{ fontSize: '1.1rem' }}>âœ…</span>
+                                                <span>Goal locked: <span style={{ color: '#86efac' }}>{selectedGoal.goal_name}</span>{selectedGoal.target_army_name ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> â†’ {selectedGoal.target_army_name}</span> : ''}</span>
                                               </div>
                                             )}
 
@@ -9683,11 +9606,11 @@ const CampaignView: React.FC = () => {
                                                         <div style={{ marginLeft: '0.25rem' }}>
                                                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
                                                             <span style={{ fontWeight: 700, color: isSelected ? meta.accentColor : isEligible ? '#e2e8f0' : '#64748b', fontSize: '0.9rem' }}>
-                                                              {isSelected && <span style={{ marginRight: '0.3rem' }}>✓</span>}{goal.name}
+                                                              {isSelected && <span style={{ marginRight: '0.3rem' }}>âœ“</span>}{goal.name}
                                                             </span>
                                                             {goal.target_type === 'enemy' && isEligible && rangeElig.rangeFeet > 0 && (
                                                               <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', background: 'rgba(147,197,253,0.12)', border: '1px solid rgba(147,197,253,0.35)', color: '#93c5fd', fontSize: '0.65rem', fontWeight: 600 }}>
-                                                                ⬤ {rangeElig.rangeFeet}ft range
+                                                                â¬¤ {rangeElig.rangeFeet}ft range
                                                               </span>
                                                             )}
                                                             {goal.score_requirement && isEligible && (
@@ -9720,7 +9643,7 @@ const CampaignView: React.FC = () => {
                                                                   fontSize: '0.68rem',
                                                                   fontWeight: 600
                                                                 }}>
-                                                                  🔒 {chip.label}
+                                                                  ðŸ”’ {chip.label}
                                                                 </span>
                                                               ))}
                                                             </div>
@@ -9793,7 +9716,7 @@ const CampaignView: React.FC = () => {
                                                               {getBattleParticipantName(target)}
                                                             </div>
                                                             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                                              Score {getParticipantScore(target)} · {(target.current_troops || 0).toLocaleString()} troops
+                                                              Score {getParticipantScore(target)} Â· {(target.current_troops || 0).toLocaleString()} troops
                                                             </div>
                                                           </div>
                                                           <div style={{
@@ -9806,7 +9729,7 @@ const CampaignView: React.FC = () => {
                                                             fontWeight: 600,
                                                             whiteSpace: 'nowrap'
                                                           }}>
-                                                            {distFt}ft {distFt <= rangeFeet ? '✓' : '✗'}
+                                                            {distFt}ft {distFt <= rangeFeet ? 'âœ“' : 'âœ—'}
                                                           </div>
                                                         </button>
                                                       );
@@ -9866,7 +9789,7 @@ const CampaignView: React.FC = () => {
                                                       transition: 'all 0.15s ease'
                                                     }}
                                                   >
-                                                    🔒 Lock In Goal
+                                                    ðŸ”’ Lock In Goal
                                                   </button>
                                                 );
                                               })()}
@@ -9894,7 +9817,7 @@ const CampaignView: React.FC = () => {
                                                     cursor: 'pointer'
                                                   }}
                                                 >
-                                                  ⏭ Skip (No eligible goals)
+                                                  â­ Skip (No eligible goals)
                                                 </button>
                                               )}
                                             </div>
@@ -9922,7 +9845,7 @@ const CampaignView: React.FC = () => {
                                   }}
                                 >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Goal Resolution</h5>
+                                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>âš”ï¸ Goal Resolution</h5>
                                   <button
                                     onClick={() => setShowGoalResolutionModal(false)}
                                     style={{
@@ -9936,7 +9859,7 @@ const CampaignView: React.FC = () => {
                                       fontSize: '0.9rem'
                                     }}
                                   >
-                                    ✕ Close
+                                    âœ• Close
                                   </button>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -9986,13 +9909,13 @@ const CampaignView: React.FC = () => {
                                         </div>
                                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
                                           {executorName}
-                                          {targetName ? ` → ${targetName}` : ''}
+                                          {targetName ? ` â†’ ${targetName}` : ''}
                                         </div>
                                         {goal.advantage && goal.advantage !== 'none' && (
                                           <div style={{ fontSize: '0.75rem', color: '#facc15' }}>Advantage: {goal.advantage}</div>
                                         )}
                                         {goal.attacker_roll && (
-                                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Attacker roll: {goal.attacker_roll} · Defender roll: {goal.defender_roll}</div>
+                                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Attacker roll: {goal.attacker_roll} Â· Defender roll: {goal.defender_roll}</div>
                                         )}
                                         {goal.logistics_roll && (
                                           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Logistics roll: {goal.logistics_roll}</div>
@@ -10123,7 +10046,7 @@ const CampaignView: React.FC = () => {
                                               cursor: 'pointer'
                                             }}
                                           >
-                                            🎲 Resolve Goal
+                                            ðŸŽ² Resolve Goal
                                           </button>
                                         )}
 
@@ -10138,8 +10061,8 @@ const CampaignView: React.FC = () => {
                                                 <>
                                                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'grid', gap: '0.2rem' }}>
                                                     <div>Adjust results before applying:</div>
-                                                    {showCasualties && <div>• Target casualties / Self casualties (troops)</div>}
-                                                    {showScores && <div>• Target score change / Self score change</div>}
+                                                    {showCasualties && <div>â€¢ Target casualties / Self casualties (troops)</div>}
+                                                    {showScores && <div>â€¢ Target score change / Self score change</div>}
                                                   </div>
                                                   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, columnCount)}, minmax(120px, 1fr))`, gap: '0.4rem' }}>
                                                     {showCasualties && (
@@ -10244,7 +10167,7 @@ const CampaignView: React.FC = () => {
                                                 cursor: 'pointer'
                                               }}
                                             >
-                                              💾 Update Result
+                                              ðŸ’¾ Update Result
                                             </button>
                                           </div>
                                         )}
@@ -10273,7 +10196,7 @@ const CampaignView: React.FC = () => {
                                         fontWeight: 'bold'
                                       }}
                                     >
-                                      ✅ Apply Goal Results
+                                      âœ… Apply Goal Results
                                     </button>
                                   )}
                                 </div>
@@ -10292,7 +10215,7 @@ const CampaignView: React.FC = () => {
             {campaignTab === 'news' && (
               <div className="glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📰 Campaign News</h5>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>ðŸ“° Campaign News</h5>
                   {user?.role === 'Dungeon Master' && (
                     <button
                       onClick={() => setShowAddJournalModal(true)}
@@ -10327,7 +10250,7 @@ const CampaignView: React.FC = () => {
                     background: 'rgba(255, 255, 255, 0.02)',
                     padding: '2.5rem'
                   }}>
-                    <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>📰</div>
+                    <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>ðŸ“°</div>
                     <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No News Yet</h4>
                     <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
                       {user?.role === 'Dungeon Master'
@@ -10412,7 +10335,7 @@ const CampaignView: React.FC = () => {
                       {campaignTab === 'journal' && (
               <div className="glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📖 Campaign Journal</h5>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>ðŸ“– Campaign Journal</h5>
                   {user?.role === 'Dungeon Master' && (
                     <button
                       onClick={() => setShowAddJournalModal(true)}
@@ -10447,7 +10370,7 @@ const CampaignView: React.FC = () => {
                     background: 'rgba(255, 255, 255, 0.02)',
                     padding: '3rem'
                   }}>
-                    <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>📖</div>
+                    <div style={{ fontSize: '4rem', marginBottom: '1rem', opacity: 0.5 }}>ðŸ“–</div>
                     <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Journal Entries Yet</h4>
                     <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
                       {user?.role === 'Dungeon Master' 
@@ -10529,7 +10452,7 @@ const CampaignView: React.FC = () => {
             {campaignTab === 'encyclopedia' && (
               <div className="glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📚 Monster Encyclopedia</h5>
+                  <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>ðŸ“š Monster Encyclopedia</h5>
                   {user?.role === 'Dungeon Master' && (
                     <button
                       onClick={() => setShowAddMonsterModal(true)}
@@ -10601,7 +10524,7 @@ const CampaignView: React.FC = () => {
                         fontSize: '1rem'
                       }}
                     >
-                      {encyclopediaSortDir === 'asc' ? '↑' : '↓'}
+                      {encyclopediaSortDir === 'asc' ? 'â†‘' : 'â†“'}
                     </button>
                   </div>
                 )}
@@ -10638,7 +10561,7 @@ const CampaignView: React.FC = () => {
                         background: 'rgba(255, 255, 255, 0.02)',
                         padding: '2.5rem'
                       }}>
-                        <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>🐉</div>
+                        <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.5 }}>ðŸ‰</div>
                         <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Monsters Added</h4>
                         <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '500px' }}>
                           {user?.role === 'Dungeon Master'
@@ -10729,7 +10652,7 @@ const CampaignView: React.FC = () => {
                                         {limb.replace('_', ' ')}
                                       </div>
                                       <div style={{ fontSize: '0.7rem', color: '#fff' }}>
-                                        HP {(monster.limb_health as any)[limb] ?? '—'} · AC {(monster.limb_ac as any)?.[limb] ?? 10}
+                                        HP {(monster.limb_health as any)[limb] ?? 'â€”'} Â· AC {(monster.limb_ac as any)?.[limb] ?? 10}
                                       </div>
                                     </div>
                                   ))}
@@ -10747,7 +10670,7 @@ const CampaignView: React.FC = () => {
                               </div>
                             )}
                             {(monster as any).is_global && (
-                              <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginTop: '0.25rem' }}>📖 Default Template</div>
+                              <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginTop: '0.25rem' }}>ðŸ“– Default Template</div>
                             )}
                             {monster.resistances && (monster.resistances.resistances.length > 0 || monster.resistances.immunities.length > 0 || monster.resistances.vulnerabilities.length > 0) && (
                               <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -10843,7 +10766,6 @@ const CampaignView: React.FC = () => {
               </div>
             )}
 
-            {/* Kingdom Tab */}
             {campaignTab === 'goals' && currentCampaign && (
               <GoalsTab
                 campaignId={currentCampaign.campaign.id}
@@ -10853,466 +10775,9 @@ const CampaignView: React.FC = () => {
               />
             )}
 
-            {/* Kingdom Tab */}
-            {campaignTab === 'kingdom' && (() => {
-              const isDMView = user?.role === 'Dungeon Master';
-              const myKingdom = !isDMView ? campaignKingdoms.find(k => k.player_id === user?.id) : undefined;
-              const buildFief = buildingFiefId != null
-                ? campaignKingdoms.flatMap(k => k.fiefs ?? []).find(f => f.id === buildingFiefId)
-                : undefined;
 
-              const TIER1_CATALOG = [
-                { key: 'hunters_cabin',  label: "Hunter's Cabin", icon: '🏹', cost: { wood: 10, stone: 5 },  desc: 'Unlocks hunting. Workers produce meat daily.' },
-                { key: 'grain_farm',     label: 'Grain Farm',     icon: '🌾', cost: { wood: 15, stone: 5 },  desc: 'Unlocks farming. Workers produce vegetables daily.' },
-                { key: 'storage_tent',   label: 'Storage Tent',   icon: '📦', cost: { wood: 8,  stone: 0 },  desc: 'Adds +50 storage capacity.' },
-                { key: 'watchtower',     label: 'Watchtower',     icon: '🗼', cost: { wood: 10, stone: 8 },  desc: 'Defensive structure. Alerts to threats.' },
-              ] as const;
-
-              const renderFiefCard = (fief: Fief, _kingdom: Kingdom) => {
-                const isWorkerEdit = workerFiefId === fief.id;
-                const isResEdit = setResourcesFiefId === fief.id;
-                const sr = fief.stored_resources ?? { wood: 0, stone: 0, minerals: 0, meat: 0, vegetables: 0 };
-                const ar = fief.available_resources ?? { wood: 0, animals: 0, fertile_ground: 0, stone: 0, minerals: 0 };
-                const wa = fief.worker_assignments ?? { gold: 0, food: 0, wood: 0, stone: 0 };
-                const currentWorkers = isWorkerEdit ? workerEdits : wa;
-                const pop = fief.population ?? 0;
-                const workable = Math.floor(pop * 0.8);
-                const totalWorkers = Object.values(currentWorkers).reduce((s: number, v) => s + Math.max(0, Number(v) || 0), 0);
-                const completedBuildings = (fief.buildings ?? []).filter(b => b.is_complete);
-                const underConstruction = (fief.buildings ?? []).filter(b => !b.is_complete);
-                const hasGrainFarm = completedBuildings.some(b => b.building_type === 'grain_farm');
-                const storageTentCount = completedBuildings.filter(b => b.building_type === 'storage_tent').length;
-                const effectiveStorageCap = (fief.storage_capacity ?? 100) + storageTentCount * 50;
-
-                // Food balance (per day)
-                const liveWa = (workerFiefId === fief.id ? workerEdits : wa) as Record<string, number>;
-                const hunters  = Math.max(0, liveWa.hunting  ?? 0);
-                const farmers  = Math.max(0, liveWa.farming  ?? 0);
-                const meatPerDay = hunters  * (1 + ar.animals       / 100);
-                const vegPerDay  = hasGrainFarm ? farmers * (1 + ar.fertile_ground / 100) : 0;
-                const foodProducedPerDay = meatPerDay + vegPerDay;
-                const foodConsumedPerDay = pop * 0.5;
-                const foodBalance = foodProducedPerDay - foodConsumedPerDay;
-
-                const workerFields: Array<{ key: string; label: string; icon: string; disabled: boolean; disabledReason?: string }> = [
-                  { key: 'wood_cutting',   label: 'Woodcutters',  icon: '🪵', disabled: false },
-                  { key: 'hunting',        label: 'Hunters',      icon: '🏹', disabled: false },
-                  { key: 'farming',        label: 'Farmers',      icon: '🌾', disabled: !hasGrainFarm, disabledReason: 'Requires Grain Farm' },
-                  { key: 'stone_mining',   label: 'Stone Miners', icon: '🪨', disabled: true,          disabledReason: 'No Tier-1 mine' },
-                  { key: 'mineral_mining', label: 'Miners',       icon: '⛏️', disabled: true,          disabledReason: 'No Tier-1 mine' },
-                  { key: 'builders',       label: 'Builders',     icon: '🏗️', disabled: false },
-                ];
-
-                return (
-                  <div key={fief.id} className="glass-panel" style={{ marginBottom: '1.5rem', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(212,193,156,0.2)' }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                      <div>
-                        <h3 style={{ color: 'var(--text-gold)', margin: '0 0 0.15rem 0', fontSize: '1.05rem' }}>{fief.name}</h3>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.73rem' }}>
-                          {fief.is_capital ? '⭐ Capital · ' : ''}Village · Tier {fief.tier}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>👥 {pop} pop</span>
-                        {fief.water_access && <span style={{ color: '#60a5fa', fontSize: '0.73rem' }}>💧 Water Access</span>}
-                      </div>
-                    </div>
-
-                    {/* Land quality */}
-                    <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Land Resources</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 1.5rem' }}>
-                        {([
-                          { label: '🪵 Wood',           val: ar.wood },
-                          { label: '🐗 Animals',         val: ar.animals },
-                          { label: '🌾 Fertile Ground',  val: ar.fertile_ground },
-                          { label: '🪨 Stone',           val: ar.stone },
-                          { label: '⛏️ Minerals',        val: ar.minerals },
-                        ] as const).map(({ label, val }) => (
-                          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', width: '96px', flexShrink: 0 }}>{label}</span>
-                            <div style={{ flex: 1, height: '5px', background: 'rgba(255,255,255,0.07)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{ width: `${val}%`, height: '100%', background: 'linear-gradient(90deg,#f59e0b,#d97706)', borderRadius: '3px' }} />
-                            </div>
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', width: '28px', textAlign: 'right' }}>{val}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Buildable land usage */}
-                    <div style={{ marginBottom: '1rem', fontSize: '0.77rem', color: 'var(--text-secondary)' }}>
-                      🏘️ Buildable Land: <strong>{(fief.buildings ?? []).length}</strong> / <strong>{fief.buildable_land ?? 100}</strong> plots used
-                    </div>
-
-                    {/* Buildings */}
-                    <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Buildings</div>
-                      {(fief.buildings ?? []).length === 0 ? (
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic', margin: 0 }}>No buildings yet.</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                          {completedBuildings.map(b => (
-                            <span key={b.id} style={{ background: 'rgba(212,193,156,0.1)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '6px', padding: '0.18rem 0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                              {b.name}
-                            </span>
-                          ))}
-                          {underConstruction.map(b => (
-                            <span key={b.id} style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '6px', padding: '0.18rem 0.5rem', fontSize: '0.72rem', color: '#f87171' }}>
-                              🏗️ {b.name} ({b.days_remaining}d left)
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Build button */}
-                    <button
-                      onClick={() => { setBuildingFiefId(fief.id); setShowBuildModal(true); }}
-                      style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '6px', padding: '0.3rem 0.85rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem', marginBottom: '1.25rem' }}
-                    >
-                      + Build Structure
-                    </button>
-
-                    <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.07)', margin: '0 0 1rem 0' }} />
-
-                    {/* Workers */}
-                    <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.7rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Workers</span>
-                        <span style={{ fontSize: '0.72rem', color: totalWorkers > workable ? '#f87171' : 'var(--text-gold)' }}>
-                          {totalWorkers} / {workable} assigned
-                        </span>
-                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: foodBalance >= 0 ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
-                          {foodBalance >= 0 ? '+' : ''}{foodBalance.toFixed(1)} food/day
-                        </span>
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>(👥 eats {foodConsumedPerDay.toFixed(1)}/day)</span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                        {workerFields.map(({ key, label, icon, disabled, disabledReason }) => {
-                          const curVal = isWorkerEdit && workerFiefId === fief.id
-                            ? (workerEdits[key] ?? (wa as any)[key] ?? 0)
-                            : ((wa as any)[key] ?? 0);
-
-                          const applyWorker = async (delta: number) => {
-                            const base = workerFiefId === fief.id ? (workerEdits[key] ?? (wa as any)[key] ?? 0) : ((wa as any)[key] ?? 0);
-                            const newVal = Math.max(0, (base as number) + delta);
-                            const baseEdits = workerFiefId === fief.id ? workerEdits : { ...(wa as any) };
-                            const newEdits = { ...baseEdits, [key]: newVal };
-                            setWorkerFiefId(fief.id);
-                            setWorkerEdits(newEdits);
-                            try {
-                              const updated = await fiefAPI.updateWorkerAssignments(fief.id, newEdits);
-                              setCampaignKingdoms(prev => prev.map(k => ({
-                                ...k, fiefs: (k.fiefs ?? []).map(f => f.id === updated.id ? updated : f),
-                              })));
-                            } catch (_e: any) { /* silent — live updates via socket */ }
-                          };
-
-                          const btnBase: React.CSSProperties = {
-                            border: 'none', borderRadius: '4px', cursor: disabled ? 'not-allowed' : 'pointer',
-                            fontSize: '0.7rem', fontWeight: 'bold', lineHeight: 1, padding: '0.24rem 0.44rem',
-                            transition: 'background 0.12s',
-                          };
-                          const decBtn: React.CSSProperties = { ...btnBase, background: 'rgba(248,113,113,0.12)', color: disabled ? '#555' : '#f87171' };
-                          const incBtn: React.CSSProperties = { ...btnBase, background: 'rgba(34,197,94,0.12)', color: disabled ? '#555' : '#4ade80' };
-
-                          // Per-row production label
-                          const prodLabel: string | null = (() => {
-                            if (disabled) return null;
-                            if (key === 'wood_cutting') return `+${(curVal * (1 + ar.wood / 100)).toFixed(1)} 🪵/day`;
-                            if (key === 'hunting')      return `+${(curVal * (1 + ar.animals / 100)).toFixed(1)} 🥩/day`;
-                            if (key === 'farming')      return hasGrainFarm ? `+${(curVal * (1 + ar.fertile_ground / 100)).toFixed(1)} 🥦/day` : null;
-                            if (key === 'builders')     return curVal > 0 ? `builds in ${Math.ceil(5 / Math.max(1, curVal))}d` : null;
-                            return null;
-                          })();
-
-                          return (
-                            <div key={key} style={{ opacity: disabled ? 0.45 : 1 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.28rem' }}>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                                  {icon} {label}
-                                  {disabledReason && <span style={{ color: '#555', fontStyle: 'italic', marginLeft: '0.35rem' }}>— {disabledReason}</span>}
-                                </span>
-                                {prodLabel && <span style={{ fontSize: '0.7rem', color: key === 'builders' ? '#93c5fd' : '#86efac', fontWeight: 'bold' }}>{prodLabel}</span>}
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', flexWrap: 'wrap' }}>
-                                {/* Decrement buttons */}
-                                <button disabled={disabled || curVal <= 0} onClick={() => applyWorker(-10)} style={{ ...decBtn, opacity: curVal < 10 ? 0.35 : 1 }}>−10</button>
-                                <button disabled={disabled || curVal <= 0} onClick={() => applyWorker(-5)}  style={{ ...decBtn, opacity: curVal < 5  ? 0.35 : 1 }}>−5</button>
-                                <button disabled={disabled || curVal <= 0} onClick={() => applyWorker(-1)}  style={{ ...decBtn, opacity: curVal < 1  ? 0.35 : 1 }}>−</button>
-                                {/* Value display */}
-                                <span style={{
-                                  minWidth: '2.4rem', textAlign: 'center', fontSize: '1rem', fontWeight: 'bold',
-                                  color: curVal > 0 ? 'var(--text-gold)' : 'var(--text-muted)',
-                                  background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)',
-                                  borderRadius: '5px', padding: '0.1rem 0.4rem',
-                                }}>{curVal}</span>
-                                {/* Increment buttons */}
-                                <button disabled={disabled} onClick={() => applyWorker(1)}  style={incBtn}>+1</button>
-                                <button disabled={disabled} onClick={() => applyWorker(5)}  style={incBtn}>+5</button>
-                                <button disabled={disabled} onClick={() => applyWorker(10)} style={incBtn}>+10</button>
-                                <button disabled={disabled} onClick={() => applyWorker(50)} style={incBtn}>+50</button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {foodBalance < 0 && (
-                      <div style={{ fontSize: '0.72rem', color: '#fbbf24', fontStyle: 'italic', marginBottom: '0.75rem', marginTop: '-0.25rem' }}>
-                        ⚠️ Food deficit — assign more Hunters{hasGrainFarm ? ' or Farmers' : ' (build a Grain Farm to unlock Farming)'}
-                      </div>
-                    )}
-
-                    <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.07)', margin: '0 0 1rem 0' }} />
-
-                    {/* Storage */}
-                    <div style={{ marginBottom: isDMView ? '1rem' : 0 }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Storage (cap {effectiveStorageCap})</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.4rem', textAlign: 'center' }}>
-                        {([
-                          { icon: '🪵', label: 'Wood',     val: sr.wood },
-                          { icon: '🪨', label: 'Stone',    val: sr.stone },
-                          { icon: '⛏️', label: 'Minerals', val: sr.minerals },
-                          { icon: '🥩', label: 'Meat',     val: sr.meat },
-                          { icon: '🥦', label: 'Veg',      val: sr.vegetables },
-                        ] as const).map(({ icon, label, val }) => (
-                          <div key={label}>
-                            <div style={{ fontSize: '1.05rem' }}>{icon}</div>
-                            <div style={{ fontSize: '0.67rem', color: 'var(--text-secondary)' }}>{label}</div>
-                            <div style={{ fontSize: '0.82rem', color: 'var(--text-gold)', fontWeight: 'bold' }}>{val}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* DM: Set Resources */}
-                    {isDMView && (
-                      <div style={{ marginTop: '0.75rem' }}>
-                        {isResEdit ? (
-                          <div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Set Stored Resources (DM)</div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.4rem', marginBottom: '0.5rem' }}>
-                              {(['wood', 'stone', 'minerals', 'meat', 'vegetables'] as const).map(k => (
-                                <div key={k}>
-                                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '0.18rem', textTransform: 'capitalize' }}>{k}</div>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={setResourcesInput[k]}
-                                    onChange={e => setSetResourcesInput(prev => ({ ...prev, [k]: Math.max(0, Number(e.target.value) || 0) }))}
-                                    style={{ width: '100%', padding: '0.22rem 0.25rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.13)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '0.73rem', boxSizing: 'border-box' as const, textAlign: 'center' }}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.35rem' }}>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    await fiefAPI.setStoredResources(fief.id, setResourcesInput);
-                                    if (currentCampaign) {
-                                      const kingdoms = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
-                                      setCampaignKingdoms(kingdoms);
-                                    }
-                                    setSetResourcesFiefId(null);
-                                  } catch (e: any) { alert(e?.response?.data?.error ?? 'Failed to set resources'); }
-                                }}
-                                style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.72rem' }}
-                              >Apply</button>
-                              <button
-                                onClick={() => setSetResourcesFiefId(null)}
-                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}
-                              >Cancel</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                            <button
-                              onClick={() => { setSetResourcesFiefId(fief.id); setSetResourcesInput({ ...sr }); }}
-                              style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '4px', padding: '0.22rem 0.7rem', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.72rem' }}
-                            >🎲 Set Stored Resources (DM)</button>
-                            <button
-                              onClick={() => {
-                                // Open inline land resource sliders using the setResourcesFiefId field as 'land' mode
-                                // We reuse setResourcesFiefId with a special negative sentinel to distinguish
-                                setSetResourcesFiefId(-(fief.id));
-                                // Repurpose stored-resource input fields: wood=wood%, stone=stone%, minerals=minerals%, meat=animals%, vegetables=fertile_ground%
-                                setSetResourcesInput({ wood: ar.wood, stone: ar.stone, minerals: ar.minerals, meat: ar.animals, vegetables: ar.fertile_ground });
-                              }}
-                              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', padding: '0.22rem 0.7rem', color: '#fbbf24', cursor: 'pointer', fontSize: '0.72rem' }}
-                            >🗺️ Edit Land Resources (DM)</button>
-                          </div>
-                        )}
-                        {/* DM: Edit Land Resources inline */}
-                        {isDMView && setResourcesFiefId === -(fief.id) && (
-                          <div style={{ marginTop: '0.6rem' }}>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Edit Land Quality (0–100%)</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '0.5rem' }}>
-                              {([
-                                { key: 'wood',       label: '🪵 Wood' },
-                                { key: 'meat',       label: '🐗 Animals' },
-                                { key: 'vegetables', label: '🌾 Fertile Ground' },
-                                { key: 'stone',      label: '🪨 Stone' },
-                                { key: 'minerals',   label: '⛏️ Minerals' },
-                              ] as const).map(({ key, label }) => (
-                                <div key={key} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 38px', alignItems: 'center', gap: '0.4rem' }}>
-                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{label}</span>
-                                  <input type="range" min={0} max={100} value={setResourcesInput[key]}
-                                    onChange={e => setSetResourcesInput(prev => ({ ...prev, [key]: Number(e.target.value) }))}
-                                    style={{ accentColor: '#f59e0b' }} />
-                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-gold)', textAlign: 'right' }}>{setResourcesInput[key]}%</span>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.35rem' }}>
-                              <button
-                                onClick={() => {
-                                  if (!socket || !currentCampaign) return;
-                                  socket.emit('updateFiefLandResources', {
-                                    campaignId: currentCampaign.campaign.id,
-                                    fiefId: fief.id,
-                                    availableResources: {
-                                      wood:           setResourcesInput.wood,
-                                      animals:        setResourcesInput.meat,
-                                      fertile_ground: setResourcesInput.vegetables,
-                                      stone:          setResourcesInput.stone,
-                                      minerals:       setResourcesInput.minerals,
-                                    },
-                                  });
-                                  setSetResourcesFiefId(null);
-                                }}
-                                style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.72rem' }}
-                              >Save</button>
-                              <button onClick={() => setSetResourcesFiefId(null)}
-                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '4px', padding: '0.18rem 0.6rem', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}
-                              >Cancel</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              };
-
-              return (
-                <div style={{ padding: '1.25rem', maxWidth: '940px', margin: '0 auto' }}>
-                  {/* Build structure modal overlay */}
-                  {showBuildModal && buildFief && (() => {
-                    const builderCount = ((buildFief.worker_assignments as any)?.builders ?? 1);
-                    return (
-                      <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
-                        <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '12px', padding: '1.5rem', maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>🏗️ Build a Structure — {buildFief.name}</h3>
-                            <button onClick={() => setShowBuildModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
-                          </div>
-                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.83rem', marginBottom: '1rem' }}>
-                            Available: <strong style={{ color: 'var(--text-gold)' }}>{buildFief.stored_resources?.wood ?? 0} 🪵</strong>{' '}
-                            <strong style={{ color: '#c0c0c0' }}>{buildFief.stored_resources?.stone ?? 0} 🪨</strong>
-                          </p>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
-                            {TIER1_CATALOG.map(b => {
-                              const wood = buildFief.stored_resources?.wood ?? 0;
-                              const stone = buildFief.stored_resources?.stone ?? 0;
-                              const canAfford = b.cost.wood <= wood && b.cost.stone <= stone;
-                              const daysEst = Math.ceil(5 / Math.max(1, builderCount));
-                              return (
-                                <div
-                                  key={b.key}
-                                  onClick={async () => {
-                                    if (!canAfford) return;
-                                    try {
-                                      const updated = await fiefAPI.construct(buildFief.id, b.key, builderCount);
-                                      setCampaignKingdoms(prev => prev.map(k => ({
-                                        ...k, fiefs: (k.fiefs ?? []).map(f => f.id === updated.id ? updated : f),
-                                      })));
-                                      setShowBuildModal(false);
-                                    } catch (e: any) { alert(e?.response?.data?.error ?? 'Build failed'); }
-                                  }}
-                                  style={{
-                                    background: canAfford ? 'rgba(212,193,156,0.08)' : 'rgba(0,0,0,0.18)',
-                                    border: `1px solid ${canAfford ? 'rgba(212,193,156,0.35)' : 'rgba(255,255,255,0.07)'}`,
-                                    borderRadius: '8px', padding: '0.9rem',
-                                    cursor: canAfford ? 'pointer' : 'not-allowed',
-                                    opacity: canAfford ? 1 : 0.5, transition: 'background 0.15s',
-                                  }}
-                                >
-                                  <div style={{ fontSize: '1.5rem', marginBottom: '0.2rem' }}>{b.icon}</div>
-                                  <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.88rem', marginBottom: '0.2rem' }}>{b.label}</div>
-                                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.73rem', marginBottom: '0.4rem' }}>{b.desc}</div>
-                                  <div style={{ fontSize: '0.73rem', color: canAfford ? '#86efac' : '#f87171' }}>
-                                    {b.cost.wood > 0 ? `${b.cost.wood} 🪵` : ''}{b.cost.stone > 0 ? `  ${b.cost.stone} 🪨` : ''}
-                                  </div>
-                                  <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>~{daysEst} day{daysEst !== 1 ? 's' : ''}</div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textAlign: 'center', margin: 0 }}>
-                            Assign Builders in the Workers panel to reduce construction time.
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* DM view */}
-                  {isDMView && (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                        <h2 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.25rem' }}>👑 Kingdoms</h2>
-                        <button
-                          onClick={() => setShowGrantKingdomModal(true)}
-                          style={{ background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.5)', borderRadius: '8px', padding: '0.4rem 0.95rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
-                        >+ Grant Kingdom</button>
-                      </div>
-                      {campaignKingdoms.length === 0 ? (
-                        <div style={{ textAlign: 'center', marginTop: '3rem', color: 'var(--text-muted)' }}>
-                          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>👑</div>
-                          <p>No kingdoms granted yet.</p>
-                        </div>
-                      ) : (
-                        campaignKingdoms.map(k => (
-                          <div key={k.id} style={{ marginBottom: '1.75rem' }}>
-                            <div style={{ marginBottom: '0.75rem' }}>
-                              <h3 style={{ color: 'var(--text-gold)', margin: '0 0 0.15rem 0', fontSize: '1rem' }}>{k.name ?? '(Unnamed Kingdom)'}</h3>
-                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Ruled by {k.player_name} · Tier {k.tier}</span>
-                            </div>
-                            {(k.fiefs ?? []).map(fief => renderFiefCard(fief, k))}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* Player view */}
-                  {!isDMView && (
-                    <div>
-                      {!myKingdom ? (
-                        <div style={{ textAlign: 'center', marginTop: '5rem' }}>
-                          <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>👑</div>
-                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '0.35rem' }}>You have not been granted a kingdom yet.</p>
-                          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Ask your Dungeon Master to grant you one.</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <div style={{ marginBottom: '1.5rem' }}>
-                            <h2 style={{ color: 'var(--text-gold)', margin: '0 0 0.2rem 0', fontSize: '1.25rem' }}>👑 {myKingdom.name}</h2>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Tier {myKingdom.tier} Kingdom</span>
-                          </div>
-                          {(myKingdom.fiefs ?? []).map(fief => renderFiefCard(fief, myKingdom))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+            </div>
+              </div>
 
 
 
@@ -11338,7 +10803,7 @@ const CampaignView: React.FC = () => {
                     padding: '0.5rem 0.75rem',
                     marginBottom: '0.5rem'
                   }}>
-                    🔒 Limited view - overview only
+                    ðŸ”’ Limited view - overview only
                   </div>
                 )}
 
@@ -11347,7 +10812,7 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'board' && (
                   <div className="glass-panel character-overview">
 
-                    {/* ── HERO BANNER ── */}
+                    {/* â”€â”€ HERO BANNER â”€â”€ */}
                     <div className="char-hero">
                       {/* Portrait */}
                       <div className="char-hero-portrait">
@@ -11379,12 +10844,12 @@ const CampaignView: React.FC = () => {
                                     };
                                     input.click();
                                   }}
-                                >✏️ Change</button>
+                                >âœï¸ Change</button>
                                 {user?.role === 'Dungeon Master' && (
                                   <button
                                     className="char-portrait-btn danger"
                                     onClick={() => setDeleteImageModal({ isOpen: true, characterId: selectedCharacterData.id })}
-                                  >🗑️ Remove</button>
+                                  >ðŸ—‘ï¸ Remove</button>
                                 )}
                               </div>
                             )}
@@ -11410,7 +10875,7 @@ const CampaignView: React.FC = () => {
                                 input.click();
                               }}
                             >
-                              <span className="char-portrait-upload-icon">📷</span>
+                              <span className="char-portrait-upload-icon">ðŸ“·</span>
                               <span>Upload Portrait</span>
                             </button>
                           ) : (
@@ -11423,12 +10888,12 @@ const CampaignView: React.FC = () => {
                       <div className="char-hero-identity">
                         <h2 className="char-name">{selectedCharacterData.name}</h2>
                         <div className="char-pills">
-                          <span className="char-pill">🏰 {selectedCharacterData.race}</span>
-                          <span className="char-pill">⚔️ {
+                          <span className="char-pill">ðŸ° {selectedCharacterData.race}</span>
+                          <span className="char-pill">âš”ï¸ {
                             user?.role !== 'Dungeon Master' && selectedCharacterData.concealed_class
                               ? selectedCharacterData.concealed_class
                               : selectedCharacterData.class
-                          }{user?.role === 'Dungeon Master' && selectedCharacterData.concealed_class ? ` 🎭` : ''}</span>
+                          }{user?.role === 'Dungeon Master' && selectedCharacterData.concealed_class ? ` ðŸŽ­` : ''}</span>
                           {/* Subclass pill */}
                           {(() => {
                             const unlockLevel = SUBCLASS_UNLOCK_LEVELS[selectedCharacterData.class];
@@ -11442,10 +10907,10 @@ const CampaignView: React.FC = () => {
                                     onClick={() => handleOpenRetroSubclass(selectedCharacterData.id)}
                                     title="Click to change subclass"
                                     style={{ cursor: 'pointer', background: 'rgba(139,92,246,0.25)', borderColor: 'rgba(139,92,246,0.5)', color: '#c4b5fd' }}
-                                  >✦ {subName} ✏️</span>
+                                  >âœ¦ {subName} âœï¸</span>
                                 ) : (
                                   <span className="char-pill" style={{ background: 'rgba(139,92,246,0.15)', borderColor: 'rgba(139,92,246,0.35)', color: '#c4b5fd' }}>
-                                    ✦ {subName}
+                                    âœ¦ {subName}
                                   </span>
                                 )
                               );
@@ -11457,33 +10922,33 @@ const CampaignView: React.FC = () => {
                                   onClick={() => handleOpenRetroSubclass(selectedCharacterData.id)}
                                   title={`Assign subclass (missed at level ${unlockLevel})`}
                                   style={{ cursor: 'pointer', background: 'rgba(100,100,100,0.2)', borderColor: 'rgba(150,150,150,0.35)', color: '#6b7280' }}
-                                >⚫ No subclass — click to assign</span>
+                                >âš« No subclass â€” click to assign</span>
                               );
                             }
                             return (
                               <span className="char-pill" style={{ background: 'rgba(100,100,100,0.15)', borderColor: 'rgba(150,150,150,0.25)', color: '#6b7280' }}>
-                                ⚫ No subclass
+                                âš« No subclass
                               </span>
                             );
                           })()}
                           <span className="char-pill char-pill-level">Lvl {selectedCharacterData.level}</span>
-                          <span className="char-pill">🎂 Age {getCharacterAge(selectedCharacterData.race, currentDay)}</span>
+                          <span className="char-pill">ðŸŽ‚ Age {getCharacterAge(selectedCharacterData.race, currentDay)}</span>
                         </div>
                         <div className="char-title-row">
                           <span className="char-field-label-sm">Title</span>
-                          <span className="char-title-value">{selectedCharacterData.background || '—'}</span>
+                          <span className="char-title-value">{selectedCharacterData.background || 'â€”'}</span>
                           {user?.role === 'Dungeon Master' && (
                             <button
                               className="char-edit-inline-btn"
                               onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'background', fieldLabel: 'Background', value: selectedCharacterData.background || '' })}
-                            >✏️</button>
+                            >âœï¸</button>
                           )}
                         </div>
                         {user?.role === 'Dungeon Master' && (
                           <button
                             className="char-delete-btn"
                             onClick={() => setDeleteModal({ isOpen: true, characterId: selectedCharacterData.id, characterName: selectedCharacterData.name })}
-                          >🗑️ Delete Character</button>
+                          >ðŸ—‘ï¸ Delete Character</button>
                         )}
                         {/* Conceal / Reveal */}
                         {user?.role === 'Dungeon Master' && !selectedCharacterData.concealed_class && revealConfirmId !== selectedCharacterData.id && (
@@ -11510,19 +10975,19 @@ const CampaignView: React.FC = () => {
                                   }
                                 }}
                               >
-                                <option value="">— pick class —</option>
+                                <option value="">â€” pick class â€”</option>
                                 {['Barbarian','Bard','Charlatan','Cleric','Druid','Fighter','Monk','Oathknight','Paladin','Primal Bond','Ranger','Reaver','Rogue','Shadow Sovereign','Sorcerer','Warlock','Wizard'].map(c => (
                                   <option key={c} value={c}>{c}</option>
                                 ))}
                               </select>
-                              <button style={{ background: 'transparent', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '0.9rem' }} onClick={() => setConcealPickerOpen(null)}>✕</button>
+                              <button style={{ background: 'transparent', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '0.9rem' }} onClick={() => setConcealPickerOpen(null)}>âœ•</button>
                             </div>
                           ) : (
                             <button
                               className="char-delete-btn"
                               style={{ marginTop: '0.4rem', background: '#2a4a6e' }}
                               onClick={() => setConcealPickerOpen(selectedCharacterData.id)}
-                            >🎭 Conceal</button>
+                            >ðŸŽ­ Conceal</button>
                           )
                         )}
                         {user?.role === 'Dungeon Master' && selectedCharacterData.concealed_class && (
@@ -11545,38 +11010,38 @@ const CampaignView: React.FC = () => {
                                     setRevealConfirmId(null);
                                   }
                                 }}
-                              >✓ OK</button>
+                              >âœ“ OK</button>
                               <button
                                 style={{ background: '#6a2d2d', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
                                 onClick={() => setRevealConfirmId(null)}
-                              >✕</button>
+                              >âœ•</button>
                             </div>
                           ) : (
                             <button
                               className="char-delete-btn"
                               style={{ marginTop: '0.4rem', background: '#4a3a1e' }}
                               onClick={() => setRevealConfirmId(selectedCharacterData.id)}
-                            >👁️ Reveal ({selectedCharacterData.concealed_class})</button>
+                            >ðŸ‘ï¸ Reveal ({selectedCharacterData.concealed_class})</button>
                           )
                         )}
                       </div>
                     </div>
 
-                    {/* ── BODY: backstory + personality ── */}
+                    {/* â”€â”€ BODY: backstory + personality â”€â”€ */}
                     <div className="char-body">
 
-                      {/* Left — Backstory */}
+                      {/* Left â€” Backstory */}
                       <div className="char-backstory-col">
                         {(selectedCharacterData.backstory || canViewAllTabs(selectedCharacterData.id)) && (
                           <>
                             <div className="char-section-header">
-                              <h6 className="text-gold" style={{ margin: 0 }}>📖 Backstory</h6>
+                              <h6 className="text-gold" style={{ margin: 0 }}>ðŸ“– Backstory</h6>
                               <div style={{ display: 'flex', gap: '0.4rem' }}>
                                 {canViewAllTabs(selectedCharacterData.id) && user?.role !== 'Dungeon Master' && !selectedCharacterData.backstory && (
                                   <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory', value: '' })}>+ Add</button>
                                 )}
                                 {user?.role === 'Dungeon Master' && selectedCharacterData.backstory && (
-                                  <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory' })}>🗑️</button>
+                                  <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'backstory', fieldLabel: 'Backstory' })}>ðŸ—‘ï¸</button>
                                 )}
                               </div>
                             </div>
@@ -11586,7 +11051,7 @@ const CampaignView: React.FC = () => {
                               return (
                                 <div className="character-backstory-panel">
                                   <div className="char-backstory-header">
-                                    <span>📖 {selectedCharacterData.name}'s Chronicle</span>
+                                    <span>ðŸ“– {selectedCharacterData.name}'s Chronicle</span>
                                     <span className="char-page-label">Page {currentPage + 1} / {pages.length}</span>
                                   </div>
                                   <div className="character-backstory-content">
@@ -11602,16 +11067,16 @@ const CampaignView: React.FC = () => {
                                   </div>
                                   {pages.length > 1 && (
                                     <div className="char-backstory-nav">
-                                      <button disabled={backstoryPage === 0} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === 0 ? 0.3 : 1 }} onClick={() => { if (backstoryPage > 0) { setPageDirection('backward'); setTimeout(() => { setBackstoryPage(backstoryPage - 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>← Prev</button>
+                                      <button disabled={backstoryPage === 0} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === 0 ? 0.3 : 1 }} onClick={() => { if (backstoryPage > 0) { setPageDirection('backward'); setTimeout(() => { setBackstoryPage(backstoryPage - 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>â† Prev</button>
                                       <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                         {pages.map((_, i) => (
                                           <button key={i} onClick={() => { if (i !== currentPage) { setPageDirection(i > currentPage ? 'forward' : 'backward'); setTimeout(() => { setBackstoryPage(i); setTimeout(() => setPageDirection(null), 600); }, 50); } }} style={{ width: 8, height: 8, borderRadius: '50%', border: 'none', background: i === currentPage ? 'var(--primary-gold)' : 'rgba(212,193,156,0.3)', cursor: 'pointer', padding: 0 }} />
                                         ))}
                                       </div>
-                                      <button disabled={backstoryPage === pages.length - 1} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === pages.length - 1 ? 0.3 : 1 }} onClick={() => { if (backstoryPage < pages.length - 1) { setPageDirection('forward'); setTimeout(() => { setBackstoryPage(backstoryPage + 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>Next →</button>
+                                      <button disabled={backstoryPage === pages.length - 1} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === pages.length - 1 ? 0.3 : 1 }} onClick={() => { if (backstoryPage < pages.length - 1) { setPageDirection('forward'); setTimeout(() => { setBackstoryPage(backstoryPage + 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>Next â†’</button>
                                     </div>
                                   )}
-                                  <div className="character-backstory-wordcount">~{selectedCharacterData.backstory.split(/\s+/).length} words · Pages split by paragraphs</div>
+                                  <div className="character-backstory-wordcount">~{selectedCharacterData.backstory.split(/\s+/).length} words Â· Pages split by paragraphs</div>
                                 </div>
                               );
                             })() : (
@@ -11621,10 +11086,10 @@ const CampaignView: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Right — Personality */}
+                      {/* Right â€” Personality */}
                       {(selectedCharacterData.personality_traits || selectedCharacterData.ideals || selectedCharacterData.bonds || selectedCharacterData.flaws || canViewAllTabs(selectedCharacterData.id)) && (
                         <div className="char-personality-col">
-                          <h6 className="text-gold" style={{ marginBottom: '1rem' }}>🎭 Personality</h6>
+                          <h6 className="text-gold" style={{ marginBottom: '1rem' }}>ðŸŽ­ Personality</h6>
 
                           {/* Personality Traits */}
                           {(selectedCharacterData.personality_traits || canViewAllTabs(selectedCharacterData.id)) && (
@@ -11636,7 +11101,7 @@ const CampaignView: React.FC = () => {
                                     <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits', value: '' })}>+</button>
                                   )}
                                   {user?.role === 'Dungeon Master' && selectedCharacterData.personality_traits && (
-                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits' })}>🗑️</button>
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'personality_traits', fieldLabel: 'Personality Traits' })}>ðŸ—‘ï¸</button>
                                   )}
                                 </div>
                               </div>
@@ -11656,7 +11121,7 @@ const CampaignView: React.FC = () => {
                                     <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals', value: '' })}>+</button>
                                   )}
                                   {user?.role === 'Dungeon Master' && selectedCharacterData.ideals && (
-                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals' })}>🗑️</button>
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'ideals', fieldLabel: 'Ideals' })}>ðŸ—‘ï¸</button>
                                   )}
                                 </div>
                               </div>
@@ -11676,7 +11141,7 @@ const CampaignView: React.FC = () => {
                                     <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds', value: '' })}>+</button>
                                   )}
                                   {user?.role === 'Dungeon Master' && selectedCharacterData.bonds && (
-                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds' })}>🗑️</button>
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'bonds', fieldLabel: 'Bonds' })}>ðŸ—‘ï¸</button>
                                   )}
                                 </div>
                               </div>
@@ -11696,7 +11161,7 @@ const CampaignView: React.FC = () => {
                                     <button className="char-add-btn" onClick={() => setEditCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws', value: '' })}>+</button>
                                   )}
                                   {user?.role === 'Dungeon Master' && selectedCharacterData.flaws && (
-                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws' })}>🗑️</button>
+                                    <button className="char-del-field-btn" onClick={() => setDeleteCharacterFieldModal({ isOpen: true, characterId: selectedCharacterData.id, field: 'flaws', fieldLabel: 'Flaws' })}>ðŸ—‘ï¸</button>
                                   )}
                                 </div>
                               </div>
@@ -11713,7 +11178,7 @@ const CampaignView: React.FC = () => {
 
                 {activeTab === 'sheet' && canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel character-sheet">
-                    <h6>📊 Character Sheet</h6>
+                    <h6>ðŸ“Š Character Sheet</h6>
                     
                     {/* Character Figure with Ability Scores and Limb Health */}
                     <div className="character-sheet-hero" style={{ 
@@ -11770,7 +11235,7 @@ const CampaignView: React.FC = () => {
                                       flex: '0 0 auto'
                                     }}
                                   >
-                                    −
+                                    âˆ’
                                   </button>
                                 )}
                                 {score}
@@ -12055,7 +11520,7 @@ const CampaignView: React.FC = () => {
                                       flex: '0 0 auto'
                                     }}
                                   >
-                                    −
+                                    âˆ’
                                   </button>
                                 )}
                                 {score}
@@ -12108,7 +11573,7 @@ const CampaignView: React.FC = () => {
                         position: 'relative',
                         cursor: 'help'
                       }}
-                      title={`Limb Health System:\n\n• Head: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.25 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (25% base + CON bonus, max 100%)\n• Torso: ${Math.floor(selectedCharacterData.hit_points * Math.min(2.0, 1.0 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (100% base + CON bonus, max 200%)\n• Hands: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.15 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (15% base + CON bonus, max 100%)\n• Legs: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.4 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (40% base + CON bonus, max 100%)\n\nCON Modifier: ${Math.floor((selectedCharacterData.abilities.con - 10) / 2) >= 0 ? '+' : ''}${Math.floor((selectedCharacterData.abilities.con - 10) / 2)}\nEach +1 CON adds 10% more HP to all limbs\nTorso can reach up to 200% of base HP!`}
+                      title={`Limb Health System:\n\nâ€¢ Head: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.25 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (25% base + CON bonus, max 100%)\nâ€¢ Torso: ${Math.floor(selectedCharacterData.hit_points * Math.min(2.0, 1.0 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (100% base + CON bonus, max 200%)\nâ€¢ Hands: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.15 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (15% base + CON bonus, max 100%)\nâ€¢ Legs: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.4 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (40% base + CON bonus, max 100%)\n\nCON Modifier: ${Math.floor((selectedCharacterData.abilities.con - 10) / 2) >= 0 ? '+' : ''}${Math.floor((selectedCharacterData.abilities.con - 10) / 2)}\nEach +1 CON adds 10% more HP to all limbs\nTorso can reach up to 200% of base HP!`}
                       >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Hit Points Base
@@ -12130,7 +11595,7 @@ const CampaignView: React.FC = () => {
                                 flex: '0 0 auto'
                               }}
                             >
-                              −
+                              âˆ’
                             </button>
                           )}
                           {selectedCharacterData.hit_points}
@@ -12168,7 +11633,7 @@ const CampaignView: React.FC = () => {
                         position: 'relative',
                         cursor: 'help'
                       }}
-                      title={`Limb-Specific Armor Class (Base AC = ${selectedCharacterData.armor_class || 10}):\n\n• Head:  100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Helmet bonus (${limbAC[selectedCharacterData.id]?.head ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.head ?? 0)}\n• Torso: 100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Chestpiece bonus (${limbAC[selectedCharacterData.id]?.chest ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.chest ?? 0)}\n• Arms:   25% AC (${Math.round((selectedCharacterData.armor_class||10)*0.25)}) + Gloves/Shield bonus (${Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}) = ${Math.round((selectedCharacterData.armor_class||10)*0.25) + Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}\n• Legs:   50% AC (${Math.round((selectedCharacterData.armor_class||10)*0.50)}) + Leggings bonus (${limbAC[selectedCharacterData.id]?.feet ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*0.50) + (limbAC[selectedCharacterData.id]?.feet ?? 0)}`}
+                      title={`Limb-Specific Armor Class (Base AC = ${selectedCharacterData.armor_class || 10}):\n\nâ€¢ Head:  100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Helmet bonus (${limbAC[selectedCharacterData.id]?.head ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.head ?? 0)}\nâ€¢ Torso: 100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Chestpiece bonus (${limbAC[selectedCharacterData.id]?.chest ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.chest ?? 0)}\nâ€¢ Arms:   25% AC (${Math.round((selectedCharacterData.armor_class||10)*0.25)}) + Gloves/Shield bonus (${Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}) = ${Math.round((selectedCharacterData.armor_class||10)*0.25) + Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}\nâ€¢ Legs:   50% AC (${Math.round((selectedCharacterData.armor_class||10)*0.50)}) + Leggings bonus (${limbAC[selectedCharacterData.id]?.feet ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*0.50) + (limbAC[selectedCharacterData.id]?.feet ?? 0)}`}
                       >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Armor Class
@@ -12198,7 +11663,7 @@ const CampaignView: React.FC = () => {
                                 flex: '0 0 auto'
                               }}
                             >
-                              −
+                              âˆ’
                             </button>
                           )}
                           {selectedCharacterData.armor_class}
@@ -12288,7 +11753,7 @@ const CampaignView: React.FC = () => {
                             const die = hitDiceMap[selectedCharacterData.class] ?? 8;
                             const remaining = hitDiceRemaining[selectedCharacterData.id] ?? selectedCharacterData.level;
                             const recovered = Math.max(1, Math.floor(selectedCharacterData.level / 2));
-                            return `${remaining} / ${selectedCharacterData.level} remaining · long rest +${recovered}d${die}`;
+                            return `${remaining} / ${selectedCharacterData.level} remaining Â· long rest +${recovered}d${die}`;
                           })()}
                         </div>
                       </div>
@@ -12328,7 +11793,7 @@ const CampaignView: React.FC = () => {
                                 flex: '0 0 auto'
                               }}
                             >
-                              −
+                              âˆ’
                             </button>
                           )}
                           {selectedCharacterData.movement_speed ?? 30}ft
@@ -12372,7 +11837,7 @@ const CampaignView: React.FC = () => {
                             textAlign: 'center'
                           }}>
                             <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                              💰 Currency
+                              ðŸ’° Currency
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '1.1rem', fontWeight: 'bold', color: 'white', marginBottom: '0.4rem' }}>
                               <span style={{ color: '#fbbf24' }}>{gp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#d4af37' }}>gp</span></span>
@@ -12387,7 +11852,7 @@ const CampaignView: React.FC = () => {
                                 onClick={() => setEditGoldModal({ isOpen: true, characterId: selectedCharacterData.id, rawValue: String(totalCp) })}
                                 style={{ background: 'rgba(212, 175, 55, 0.2)', border: '1px solid rgba(212, 175, 55, 0.5)', color: '#fbbf24', borderRadius: '6px', padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                               >
-                                ✏️ Edit
+                                âœï¸ Edit
                               </button>
                             )}
                           </div>
@@ -12395,10 +11860,10 @@ const CampaignView: React.FC = () => {
                       })()}
                     </div>
 
-                    {/* ── 3-column row: Resistances | Proficiencies | Spell Slots ── */}
+                    {/* â”€â”€ 3-column row: Resistances | Proficiencies | Spell Slots â”€â”€ */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem', marginBottom: '2rem', alignItems: 'start' }}>
 
-                      {/* LEFT — Resistances / Immunities / Vulnerabilities */}
+                      {/* LEFT â€” Resistances / Immunities / Vulnerabilities */}
                       <div>
                         {(() => {
                           const charResistances = (characterDataOverrides[selectedCharacterData.id]?.resistances ?? selectedCharacterData.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined;
@@ -12413,7 +11878,7 @@ const CampaignView: React.FC = () => {
                           if (!hasAny && !isDM) return null;
                           return (
                             <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
-                              <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>⚔️ Damage Affinities</div>
+                              <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>âš”ï¸ Damage Affinities</div>
                               {categories.map(cat => (
                                 <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
                                   <div style={{ fontSize: '0.75rem', color: cat.color, fontWeight: 'bold', marginBottom: '0.3rem' }}>{cat.label}</div>
@@ -12421,7 +11886,7 @@ const CampaignView: React.FC = () => {
                                     {resData[cat.key].map((tag: string) => (
                                       <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: cat.bg, color: cat.color, border: `1px solid ${cat.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
                                         {tag}
-                                        {isDM && <span onClick={() => { const updated = { ...resData, [cat.key]: resData[cat.key].filter((t: string) => t !== tag) }; handleUpdateResistances(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>×</span>}
+                                        {isDM && <span onClick={() => { const updated = { ...resData, [cat.key]: resData[cat.key].filter((t: string) => t !== tag) }; handleUpdateResistances(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>Ã—</span>}
                                       </span>
                                     ))}
                                     {resData[cat.key].length === 0 && !isDM && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>}
@@ -12439,7 +11904,7 @@ const CampaignView: React.FC = () => {
                         })()}
                       </div>
 
-                      {/* MIDDLE — Proficiencies (weapon / armor / tool / language) */}
+                      {/* MIDDLE â€” Proficiencies (weapon / armor / tool / language) */}
                       <div>
                         {(() => {
                           const charProficiencies = (characterDataOverrides[selectedCharacterData.id]?.proficiencies ?? selectedCharacterData.proficiencies) as { weapons: string[]; armor: string[]; tools: string[]; languages: string[] } | undefined;
@@ -12467,7 +11932,7 @@ const CampaignView: React.FC = () => {
                           if (!hasAny && !isDM) return null;
                           return (
                             <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
-                              <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>📚 Proficiencies</div>
+                              <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>ðŸ“š Proficiencies</div>
                               {categories.map(cat => (
                                 <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
                                   <div style={{ fontSize: '0.75rem', color: cat.color, fontWeight: 'bold', marginBottom: '0.3rem' }}>{cat.label}</div>
@@ -12475,7 +11940,7 @@ const CampaignView: React.FC = () => {
                                     {profData[cat.key].map((tag: string) => (
                                       <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: cat.bg, color: cat.color, border: `1px solid ${cat.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
                                         {tag}
-                                        {isDM && <span onClick={() => { const updated = { ...profData, [cat.key]: profData[cat.key].filter((t: string) => t !== tag) }; handleUpdateProficiencies(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>×</span>}
+                                        {isDM && <span onClick={() => { const updated = { ...profData, [cat.key]: profData[cat.key].filter((t: string) => t !== tag) }; handleUpdateProficiencies(selectedCharacterData.id, updated); }} style={{ cursor: 'pointer', fontWeight: 'bold', opacity: 0.7, marginLeft: '0.1rem' }}>Ã—</span>}
                                       </span>
                                     ))}
                                     {profData[cat.key].length === 0 && !isDM && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>}
@@ -12493,7 +11958,7 @@ const CampaignView: React.FC = () => {
                         })()}
                       </div>
 
-                      {/* RIGHT — Spell Slots */}
+                      {/* RIGHT â€” Spell Slots */}
                       <div>
                         {isSpellcaster(selectedCharacterData.class) && (() => {
                           const slotInfo = getSpellSlots(selectedCharacterData.class, selectedCharacterData.level);
@@ -12555,10 +12020,10 @@ const CampaignView: React.FC = () => {
                               height: '100%',
                             }}>
                               <h6 style={{ color: '#7dd3fc', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                ✨ Spell Slots
+                                âœ¨ Spell Slots
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                                  {slotInfo.type === 'pact' ? '(Pact Magic — short rest)' : '(long rest)'}
-                                  {canInteract && <span style={{ marginLeft: '0.5rem', color: '#7dd3fc' }}>· click to use/restore</span>}
+                                  {slotInfo.type === 'pact' ? '(Pact Magic â€” short rest)' : '(long rest)'}
+                                  {canInteract && <span style={{ marginLeft: '0.5rem', color: '#7dd3fc' }}>Â· click to use/restore</span>}
                                 </span>
                               </h6>
                               {slotInfo.type === 'pact' ? (
@@ -12582,7 +12047,7 @@ const CampaignView: React.FC = () => {
                           );
                         })()}
 
-                        {/* Ki Points (Monk) — grouped in third column */}
+                        {/* Ki Points (Monk) â€” grouped in third column */}
                         {selectedCharacterData.class === 'Monk' && (() => {
                           const maxKi = selectedCharacterData.level;
                           const remaining = characterKiPoints[selectedCharacterData.id] ?? maxKi;
@@ -12592,8 +12057,8 @@ const CampaignView: React.FC = () => {
                           return (
                             <div style={{ background: 'rgba(250,204,21,0.06)', border: '2px solid rgba(250,204,21,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
                               <h6 style={{ color: '#fbbf24', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                🌀 Ki Points
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short/long rest{canInteract ? ' · click to use/restore' : ''})</span>
+                                ðŸŒ€ Ki Points
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short/long rest{canInteract ? ' Â· click to use/restore' : ''})</span>
                               </h6>
                               <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                 {Array.from({ length: maxKi }).map((_, idx) => {
@@ -12611,7 +12076,7 @@ const CampaignView: React.FC = () => {
                           );
                         })()}
 
-                        {/* Charlatan Tricks — grouped in third column */}
+                        {/* Charlatan Tricks â€” grouped in third column */}
                         {selectedCharacterData.class === 'Charlatan' && (() => {
                           const lvl = selectedCharacterData.level;
                           const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
@@ -12623,8 +12088,8 @@ const CampaignView: React.FC = () => {
                           return (
                             <div style={{ background: 'rgba(251,146,60,0.06)', border: '2px solid rgba(251,146,60,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
                               <h6 style={{ color: '#fb923c', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                🃏 Tricks
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short rest{canInteract ? ' · click to use/restore' : ''})</span>
+                                ðŸƒ Tricks
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short rest{canInteract ? ' Â· click to use/restore' : ''})</span>
                               </h6>
                               <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                 {Array.from({ length: maxTricks }).map((_, idx) => {
@@ -12642,7 +12107,7 @@ const CampaignView: React.FC = () => {
                           );
                         })()}
 
-                        {/* Shadow Sovereign Resources — grouped in third column */}
+                        {/* Shadow Sovereign Resources â€” grouped in third column */}
                         {selectedCharacterData.class === 'Shadow Sovereign' && (() => {
                           const lvl = selectedCharacterData.level;
                           const abilities = selectedCharacterData.abilities || {};
@@ -12663,8 +12128,8 @@ const CampaignView: React.FC = () => {
                               {lvl >= 6 && (
                                 <div style={{ background: 'rgba(139,92,246,0.06)', border: '2px solid rgba(139,92,246,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
                                   <h6 style={{ color: '#a78bfa', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    ☽ Shadow Reap
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(long rest{canInteract ? ' · click to use/restore' : ''})</span>
+                                    â˜½ Shadow Reap
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(long rest{canInteract ? ' Â· click to use/restore' : ''})</span>
                                   </h6>
                                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                     {Array.from({ length: maxReap }).map((_, idx) => {
@@ -12683,8 +12148,8 @@ const CampaignView: React.FC = () => {
                               {maxStep > 0 && (
                                 <div style={{ background: 'rgba(99,102,241,0.06)', border: '2px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
                                   <h6 style={{ color: '#818cf8', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    👣 Shadow Step
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short rest{canInteract ? ' · click to use/restore' : ''})</span>
+                                    ðŸ‘£ Shadow Step
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short rest{canInteract ? ' Â· click to use/restore' : ''})</span>
                                   </h6>
                                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                     {Array.from({ length: maxStep }).map((_, idx) => {
@@ -12703,8 +12168,8 @@ const CampaignView: React.FC = () => {
                               {conMod > 0 && (
                                 <div style={{ background: 'rgba(239,68,68,0.06)', border: '2px solid rgba(239,68,68,0.3)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
                                   <h6 style={{ color: '#f87171', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    ◈ Active Shadows
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(max {conMod} · manage in Shadows tab)</span>
+                                    â—ˆ Active Shadows
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(max {conMod} Â· manage in Shadows tab)</span>
                                   </h6>
                                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                     {Array.from({ length: conMod }).map((_, idx) => {
@@ -12712,7 +12177,7 @@ const CampaignView: React.FC = () => {
                                       return <div key={idx} title={isActive ? 'Shadow active' : 'Slot empty'} style={{ width: '22px', height: '22px', borderRadius: '50%', background: isActive ? 'rgba(239,68,68,0.7)' : 'rgba(0,0,0,0.2)', border: '2px solid rgba(239,68,68,0.6)', opacity: isActive ? 1 : 0.35 }} />;
                                     })}
                                   </div>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{activeCount}/{conMod} active · {shadows.length - activeCount} stored</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{activeCount}/{conMod} active Â· {shadows.length - activeCount} stored</div>
                                 </div>
                               )}
                             </>
@@ -12724,7 +12189,7 @@ const CampaignView: React.FC = () => {
 
                     {/* Skills - Organized by Ability Score */}
                     <div>
-                      <h6 className="text-gold">🎯 Skills by Ability Score</h6>
+                      <h6 className="text-gold">ðŸŽ¯ Skills by Ability Score</h6>
                       <div className="character-sheet-skills" style={{ 
                         display: 'grid', 
                         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
@@ -12810,8 +12275,8 @@ const CampaignView: React.FC = () => {
                                           alignItems: 'center',
                                           gap: '0.5rem'
                                         }}>
-                                          {isExpert && <span title="Expertise">💫</span>}
-                                          {!isExpert && isProficient && <span title="Proficient">⭐</span>}
+                                          {isExpert && <span title="Expertise">ðŸ’«</span>}
+                                          {!isExpert && isProficient && <span title="Proficient">â­</span>}
                                           {skill}
                                         </span>
                                         <div style={{
@@ -12837,7 +12302,7 @@ const CampaignView: React.FC = () => {
                                                     fontWeight: 'bold'
                                                   }}
                                                 >
-                                                  {isExpert ? '−💫' : '+💫'}
+                                                  {isExpert ? 'âˆ’ðŸ’«' : '+ðŸ’«'}
                                                 </button>
                                               )}
                                               {/* Proficiency button */}
@@ -12855,7 +12320,7 @@ const CampaignView: React.FC = () => {
                                                   fontWeight: 'bold'
                                                 }}
                                               >
-                                                {isProficient ? '−' : '+'}
+                                                {isProficient ? 'âˆ’' : '+'}
                                               </button>
                                             </>
                                           )}
@@ -12896,7 +12361,7 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'skills' && canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                      <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>✨ Skills</h5>
+                      <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>âœ¨ Skills</h5>
                       <div style={{ display: 'flex', gap: '0.75rem' }}>
                         {classInfo[selectedCharacterData.class] && (
                           <button
@@ -12910,7 +12375,7 @@ const CampaignView: React.FC = () => {
                               color: 'var(--text-gold)'
                             }}
                           >
-                            📜 Class Progression
+                            ðŸ“œ Class Progression
                           </button>
                         )}
                         {user?.role === 'Dungeon Master' && (
@@ -12925,20 +12390,20 @@ const CampaignView: React.FC = () => {
                               color: '#60a5fa'
                             }}
                           >
-                            ➕ Add Skill
+                            âž• Add Skill
                           </button>
                         )}
                         {user?.role === 'Dungeon Master' && (
                           showSkillDbResetConfirm ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(239,68,68,0.1)', border: '2px solid rgba(239,68,68,0.5)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem' }}>
-                              <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 'bold' }}>⚠️ This will clear ALL skills from ALL characters. Cannot be undone!</span>
+                              <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 'bold' }}>âš ï¸ This will clear ALL skills from ALL characters. Cannot be undone!</span>
                               <button
                                 onClick={async () => {
                                   const token = localStorage.getItem('token');
                                   const r = await fetch('/api/skills/reset', { method: 'DELETE', credentials: 'include', headers: { 'Authorization': `Bearer ${token}` } });
                                   const d = await r.json();
                                   if (r.ok) {
-                                    toast(`🗑️ Skills reset: ${d.characterSkillsRemoved} links removed, ${d.customSkillsDeleted} custom skills deleted`, 6000);
+                                    toast(`ðŸ—‘ï¸ Skills reset: ${d.characterSkillsRemoved} links removed, ${d.customSkillsDeleted} custom skills deleted`, 6000);
                                     setCharacterSkills({});
                                   } else {
                                     toast('Failed to reset skills: ' + (d.error || 'unknown error'), 5000);
@@ -12961,7 +12426,7 @@ const CampaignView: React.FC = () => {
                               onClick={() => setShowSkillDbResetConfirm(true)}
                               style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', background: 'rgba(239,68,68,0.15)', border: '2px solid rgba(239,68,68,0.4)', color: '#f87171', borderRadius: '0.5rem', cursor: 'pointer' }}
                             >
-                              🗑️ DB Reset
+                              ðŸ—‘ï¸ DB Reset
                             </button>
                           )
                         )}
@@ -12997,7 +12462,7 @@ const CampaignView: React.FC = () => {
                                   fontSize: '0.75rem'
                                 }}
                               >
-                                ✕
+                                âœ•
                               </button>
                             )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
@@ -13031,7 +12496,7 @@ const CampaignView: React.FC = () => {
                                     borderRadius: '0.25rem',
                                     color: '#7dd3fc'
                                   }}>
-                                    ✨ Spellcaster Skill
+                                    âœ¨ Spellcaster Skill
                                   </span>
                                 )}
                               </div>
@@ -13073,7 +12538,7 @@ const CampaignView: React.FC = () => {
                         color: 'var(--text-muted)',
                         fontSize: '1.1rem'
                       }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✨</div>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>âœ¨</div>
                         <div>No skills learned yet</div>
                         {user?.role === 'Dungeon Master' && (
                           <div style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
@@ -13088,7 +12553,7 @@ const CampaignView: React.FC = () => {
                 {/* Companion Tab - Only for Primal Bond class with beast at appropriate level */}
                 {activeTab === 'companion' && canViewAllTabs(selectedCharacterData.id) && shouldShowCompanionTab(selectedCharacterData) && (
                   <div className="glass-panel">
-                    <h6 style={{ textAlign: 'center', marginBottom: '2rem' }}>🐾 Beast Companion</h6>
+                    <h6 style={{ textAlign: 'center', marginBottom: '2rem' }}>ðŸ¾ Beast Companion</h6>
                     
                     {(() => {
                       const beast = characterBeasts[selectedCharacterData.id];
@@ -13145,7 +12610,7 @@ const CampaignView: React.FC = () => {
                                 {beast.beast_name || beast.beast_type}
                               </h4>
                               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                                {beast.beast_type} • Level {beast.level_acquired} Companion
+                                {beast.beast_type} â€¢ Level {beast.level_acquired} Companion
                               </div>
                             </div>
 
@@ -13343,15 +12808,15 @@ const CampaignView: React.FC = () => {
 
                   return (
                     <div className="glass-panel">
-                      <h6 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#c084fc' }}>🌑 Shadows</h6>
+                      <h6 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#c084fc' }}>ðŸŒ‘ Shadows</h6>
 
                       {/* Summary bar */}
                       <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                         <span style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', color: '#fca5a5' }}>
-                          ◈ Active: {activeCount} / {maxActive}
+                          â—ˆ Active: {activeCount} / {maxActive}
                         </span>
                         <span style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.35)', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', color: '#c4b5fd' }}>
-                          ☾ Stored: {storedCount} / {maxStored}
+                          â˜¾ Stored: {storedCount} / {maxStored}
                         </span>
                         <span style={{ background: 'rgba(75,85,99,0.2)', border: '1px solid rgba(107,114,128,0.3)', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                           Total: {shadows.length}
@@ -13420,7 +12885,7 @@ const CampaignView: React.FC = () => {
                                   color: shadow.is_active ? '#fca5a5' : '#c4b5fd',
                                   border: `1px solid ${shadow.is_active ? 'rgba(239,68,68,0.4)' : 'rgba(139,92,246,0.3)'}`
                                 }}>
-                                  {shadow.is_active ? '◈ ACTIVE' : '☾ STORED'}
+                                  {shadow.is_active ? 'â—ˆ ACTIVE' : 'â˜¾ STORED'}
                                 </span>
 
                                 {/* Name + origin */}
@@ -13495,11 +12960,11 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'levelup' && canViewAllTabs(selectedCharacterData.id) && canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) && (
                   <div className="glass-panel">
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
-                      <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>⬆️</div>
+                      <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>â¬†ï¸</div>
                       <h3 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Ready to Level Up!</h3>
                       <div style={{ marginBottom: '2rem' }}>
                         <div style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                          Level {selectedCharacterData.level} → Level {selectedCharacterData.level + 1}
+                          Level {selectedCharacterData.level} â†’ Level {selectedCharacterData.level + 1}
                         </div>
                         <div style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>
                           {selectedCharacterData.experience_points || 0} / {getRequiredExpForNextLevel(selectedCharacterData.level)} EXP
@@ -13535,7 +13000,7 @@ const CampaignView: React.FC = () => {
                               fontSize: '0.9rem'
                             }}
                           >
-                            ⚔️ Choose Your {selectedCharacterData.class === 'Oathknight' ? 'Oath' : 'Subclass'} (Missed at Level {subclassLevel})
+                            âš”ï¸ Choose Your {selectedCharacterData.class === 'Oathknight' ? 'Oath' : 'Subclass'} (Missed at Level {subclassLevel})
                           </button>
                         );
                       })()}
@@ -13552,7 +13017,7 @@ const CampaignView: React.FC = () => {
                           animation: 'pulse 2s infinite'
                         }}
                       >
-                        ⬆️ Begin Level Up Process
+                        â¬†ï¸ Begin Level Up Process
                       </button>
                       <div style={{ marginTop: '2rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                         This will guide you through choosing HP increases, subclass selection (if applicable), and new features
@@ -13565,7 +13030,7 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'armies' && canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                      <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Armies</h5>
+                      <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>âš”ï¸ Armies</h5>
                       {user?.role === 'Dungeon Master' && (
                         <button
                           onClick={() => setShowAddArmyModal(true)}
@@ -13578,7 +13043,7 @@ const CampaignView: React.FC = () => {
                             color: '#4ade80'
                           }}
                         >
-                          ➕ Add New Army
+                          âž• Add New Army
                         </button>
                       )}
                     </div>
@@ -13612,27 +13077,9 @@ const CampaignView: React.FC = () => {
                                 </h6>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{army.category}</span>
-                                  {army.source_fief_id && (
-                                    <span style={{ fontSize: '0.7rem', padding: '1px 7px', borderRadius: '10px', background: (army as any).is_garrisoned ? 'rgba(248,113,113,0.15)' : 'rgba(56,189,248,0.15)', color: (army as any).is_garrisoned ? '#f87171' : '#7dd3fc', border: `1px solid ${(army as any).is_garrisoned ? 'rgba(248,113,113,0.35)' : 'rgba(56,189,248,0.35)'}` }}>
-                                      {(army as any).is_garrisoned ? '🏰 Garrisoned' : '🗡️ Field'}
-                                    </span>
-                                  )}
                                 </div>
                               </div>
                               <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                {army.source_fief_id && (
-                                  <button
-                                    onClick={async () => {
-                                      try {
-                                        const updated = await armyAPI.updateGarrisonStatus(army.id, !(army as any).is_garrisoned);
-                                        setArmies(prev => prev.map(a => a.id === army.id ? { ...a, is_garrisoned: (updated as any).is_garrisoned } as any : a));
-                                      } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed'); setTimeout(() => setToastMessage(null), 3000); }
-                                    }}
-                                    style={{ padding: '0.25rem 0.65rem', background: (army as any).is_garrisoned ? 'rgba(56,189,248,0.15)' : 'rgba(248,113,113,0.15)', border: `1px solid ${(army as any).is_garrisoned ? 'rgba(56,189,248,0.4)' : 'rgba(248,113,113,0.4)'}`, borderRadius: '0.25rem', color: (army as any).is_garrisoned ? '#7dd3fc' : '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}
-                                  >
-                                    {(army as any).is_garrisoned ? '🗡️ Deploy' : '🏰 Return'}
-                                  </button>
-                                )}
                                 {user?.role === 'Dungeon Master' && (
                                   <button
                                     onClick={() => setPendingConfirm({ msg: `Delete army "${army.name}"? This will also delete all battle history.`, onYes: async () => {
@@ -13652,7 +13099,7 @@ const CampaignView: React.FC = () => {
                                       fontSize: '0.8rem'
                                     }}
                                   >
-                                    🗑️ Delete
+                                    ðŸ—‘ï¸ Delete
                                   </button>
                                 )}
                               </div>
@@ -13668,7 +13115,7 @@ const CampaignView: React.FC = () => {
                                 border: '2px solid rgba(212, 193, 156, 0.3)'
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                                  <span style={{ fontSize: '1.5rem' }}>👥</span>
+                                  <span style={{ fontSize: '1.5rem' }}>ðŸ‘¥</span>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Troop Count</div>
                                     <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
@@ -13736,7 +13183,7 @@ const CampaignView: React.FC = () => {
                                         }}
                                         title="Set exact troop count"
                                       >
-                                        ✏️
+                                        âœï¸
                                       </button>
                                       {setTroopsArmyId === army.id && (
                                         <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', marginTop: '0.4rem', gridColumn: '1 / -1' }}>
@@ -13751,8 +13198,8 @@ const CampaignView: React.FC = () => {
                                           <button onClick={async () => {
                                             const parsed = parseInt(setTroopsVal);
                                             if (!isNaN(parsed) && parsed >= 1) { try { const up = await armyAPI.updateTroops(army.id, parsed - (army.total_troops || 0)); setArmies(armies.map(a => a.id === army.id ? up : a)); setSetTroopsArmyId(null); } catch(err) { console.error(err); } }
-                                          }} style={{ padding: '0.3rem 0.5rem', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '0.25rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.8rem' }}>✓</button>
-                                          <button onClick={() => setSetTroopsArmyId(null)} style={{ padding: '0.3rem 0.5rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.25rem', color: '#64748b', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                                          }} style={{ padding: '0.3rem 0.5rem', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '0.25rem', color: '#4ade80', cursor: 'pointer', fontSize: '0.8rem' }}>âœ“</button>
+                                          <button onClick={() => setSetTroopsArmyId(null)} style={{ padding: '0.3rem 0.5rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.25rem', color: '#64748b', cursor: 'pointer', fontSize: '0.8rem' }}>âœ•</button>
                                         </div>
                                       )}
                                     </div>
@@ -13765,11 +13212,11 @@ const CampaignView: React.FC = () => {
 
                               {/* Other Stats */}
                               {[
-                                { key: 'equipment', label: 'Equipment', icon: '⚔️', color: '#ef4444' },
-                                { key: 'discipline', label: 'Discipline', icon: '🛡️', color: '#3b82f6' },
-                                { key: 'morale', label: 'Morale', icon: '💪', color: '#10b981' },
-                                { key: 'command', label: 'Command', icon: '👑', color: '#f59e0b' },
-                                { key: 'logistics', label: 'Logistics', icon: '📦', color: '#06b6d4' }
+                                { key: 'equipment', label: 'Equipment', icon: 'âš”ï¸', color: '#ef4444' },
+                                { key: 'discipline', label: 'Discipline', icon: 'ðŸ›¡ï¸', color: '#3b82f6' },
+                                { key: 'morale', label: 'Morale', icon: 'ðŸ’ª', color: '#10b981' },
+                                { key: 'command', label: 'Command', icon: 'ðŸ‘‘', color: '#f59e0b' },
+                                { key: 'logistics', label: 'Logistics', icon: 'ðŸ“¦', color: '#06b6d4' }
                               ].map((stat) => {
                                 const value = army[stat.key as keyof Army] as number;
                                 return (
@@ -13825,7 +13272,7 @@ const CampaignView: React.FC = () => {
                                             justifyContent: 'center'
                                           }}
                                         >
-                                          −
+                                          âˆ’
                                         </button>
                                         <button
                                           onClick={async () => {
@@ -13867,7 +13314,7 @@ const CampaignView: React.FC = () => {
                             {army.battle_history && army.battle_history.length > 0 && (
                               <div style={{ borderTop: '1px solid rgba(212, 193, 156, 0.2)', paddingTop: '1rem' }}>
                                 <h6 style={{ color: 'var(--text-gold)', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
-                                  📜 Battle History ({army.battle_history.length})
+                                  ðŸ“œ Battle History ({army.battle_history.length})
                                 </h6>
                                 <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'grid', gap: '0.5rem' }}>
                                   {army.battle_history.map((history) => {
@@ -13876,9 +13323,9 @@ const CampaignView: React.FC = () => {
                                       history.result === 'defeat' ? '#ef4444' :
                                       '#94a3b8';
                                     const resultIcon = 
-                                      history.result === 'victory' ? '🏆' :
-                                      history.result === 'defeat' ? '💀' :
-                                      '🤝';
+                                      history.result === 'victory' ? 'ðŸ†' :
+                                      history.result === 'defeat' ? 'ðŸ’€' :
+                                      'ðŸ¤';
                                     
                                     return (
                                       <div
@@ -13902,12 +13349,12 @@ const CampaignView: React.FC = () => {
                                         <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
                                           <div>vs {history.enemy_name}</div>
                                           <div style={{ marginTop: '0.25rem' }}>
-                                            <span style={{ color: '#4ade80' }}>Your Score:</span> {history.start_score} → {history.end_score} 
-                                            <span style={{ marginLeft: '0.5rem', color: '#ef4444' }}>Enemy:</span> {history.enemy_start_score} → {history.enemy_end_score}
+                                            <span style={{ color: '#4ade80' }}>Your Score:</span> {history.start_score} â†’ {history.end_score} 
+                                            <span style={{ marginLeft: '0.5rem', color: '#ef4444' }}>Enemy:</span> {history.enemy_start_score} â†’ {history.enemy_end_score}
                                           </div>
                                           {history.troops_lost !== undefined && history.troops_lost > 0 && (
                                             <div style={{ marginTop: '0.25rem', color: '#ef4444', fontWeight: 'bold' }}>
-                                              💀 Casualties: {history.troops_lost.toLocaleString()} troops lost
+                                              ðŸ’€ Casualties: {history.troops_lost.toLocaleString()} troops lost
                                             </div>
                                           )}
                                           <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.7 }}>
@@ -13938,7 +13385,7 @@ const CampaignView: React.FC = () => {
                       </div>
                     ) : (
                       <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>⚔️</div>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>âš”ï¸</div>
                         <h6>No Armies Yet</h6>
                         <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
                           {user?.role === 'Dungeon Master' 
@@ -13966,14 +13413,14 @@ const CampaignView: React.FC = () => {
                   const stableMount = myMounts.filter(m => !m.is_equipped);
 
                   const statRows = (mount: Mount) => [
-                    { icon: '⚡', label: 'Speed',         value: `${mount.speed} ft` },
-                    ...(mount.fly_speed > 0 ? [{ icon: '🦅', label: 'Fly Speed', value: `${mount.fly_speed} ft` }] : []),
-                    { icon: '❤️', label: 'HP',            value: String(mount.hp) },
-                    { icon: '🛡️', label: 'AC',            value: String(mount.ac) },
-                    { icon: '📦', label: 'Carry',         value: `${mount.carrying_capacity} lbs` },
-                    { icon: '🔗', label: 'Pull',          value: `${mount.pull_strength ?? 0} lbs` },
-                    { icon: '🔋', label: 'Stamina',       value: mount.stamina ?? '—' },
-                    { icon: '⚔️', label: 'Max Armor',     value: mount.max_rider_armor ?? '—' },
+                    { icon: 'âš¡', label: 'Speed',         value: `${mount.speed} ft` },
+                    ...(mount.fly_speed > 0 ? [{ icon: 'ðŸ¦…', label: 'Fly Speed', value: `${mount.fly_speed} ft` }] : []),
+                    { icon: 'â¤ï¸', label: 'HP',            value: String(mount.hp) },
+                    { icon: 'ðŸ›¡ï¸', label: 'AC',            value: String(mount.ac) },
+                    { icon: 'ðŸ“¦', label: 'Carry',         value: `${mount.carrying_capacity} lbs` },
+                    { icon: 'ðŸ”—', label: 'Pull',          value: `${mount.pull_strength ?? 0} lbs` },
+                    { icon: 'ðŸ”‹', label: 'Stamina',       value: mount.stamina ?? 'â€”' },
+                    { icon: 'âš”ï¸', label: 'Max Armor',     value: mount.max_rider_armor ?? 'â€”' },
                   ];
 
                   const handleToggleEquip = async (mount: Mount) => {
@@ -13998,9 +13445,9 @@ const CampaignView: React.FC = () => {
 
                   return (
                     <div className="glass-panel">
-                      {/* ── Header ── */}
+                      {/* â”€â”€ Header â”€â”€ */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🐴 Mounts</h5>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>ðŸ´ Mounts</h5>
                         {isDM && (
                           <button
                             onClick={() => {
@@ -14029,7 +13476,7 @@ const CampaignView: React.FC = () => {
                         )}
                       </div>
 
-                      {/* ── EQUIPPED MOUNT hero card ── */}
+                      {/* â”€â”€ EQUIPPED MOUNT hero card â”€â”€ */}
                       {equippedMount && (() => {
                         const imgUrl = equippedMount.image_url ? getImageUrl(equippedMount.image_url) : undefined;
                         return (
@@ -14047,11 +13494,11 @@ const CampaignView: React.FC = () => {
                               padding: '0.4rem 1.2rem',
                               display: 'flex', alignItems: 'center', gap: '0.6rem'
                             }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#e9d5ff', letterSpacing: '1px' }}>▶ CURRENTLY RIDING</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#e9d5ff', letterSpacing: '1px' }}>â–¶ CURRENTLY RIDING</span>
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
-                              {/* Full image — left half */}
+                              {/* Full image â€” left half */}
                               <div style={{ position: 'relative', minHeight: '300px', background: '#0a0a15' }}>
                                 {imgUrl ? (
                                   <img
@@ -14065,11 +13512,11 @@ const CampaignView: React.FC = () => {
                                     }}
                                   />
                                 ) : (
-                                  <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem', opacity: 0.25 }}>🐴</div>
+                                  <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem', opacity: 0.25 }}>ðŸ´</div>
                                 )}
                               </div>
 
-                              {/* Stats — right half */}
+                              {/* Stats â€” right half */}
                               <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                                 {/* Name + type */}
                                 <div>
@@ -14114,14 +13561,14 @@ const CampaignView: React.FC = () => {
                                 {/* Mount Armor Slots */}
                                 {(() => {
                                   const slots: { key: 'head'|'body'|'front_legs'|'rear_legs'; label: string; icon: string }[] = [
-                                    { key: 'head',       label: 'Head',       icon: '🪖' },
-                                    { key: 'body',       label: 'Body',       icon: '🛡️' },
-                                    { key: 'front_legs', label: 'Front Legs', icon: '🦵' },
-                                    { key: 'rear_legs',  label: 'Rear Legs',  icon: '🦶' },
+                                    { key: 'head',       label: 'Head',       icon: 'ðŸª–' },
+                                    { key: 'body',       label: 'Body',       icon: 'ðŸ›¡ï¸' },
+                                    { key: 'front_legs', label: 'Front Legs', icon: 'ðŸ¦µ' },
+                                    { key: 'rear_legs',  label: 'Rear Legs',  icon: 'ðŸ¦¶' },
                                   ];
                                   return (
                                     <div style={{ marginTop: '0.5rem' }}>
-                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.4rem' }}>🛡️ Horse Armor Slots</div>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.4rem' }}>ðŸ›¡ï¸ Horse Armor Slots</div>
                                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
                                         {slots.map(slot => {
                                           const equippedName = equippedMount[`armor_${slot.key}` as keyof Mount] as string | null;
@@ -14131,7 +13578,7 @@ const CampaignView: React.FC = () => {
                                               {equippedName ? (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                                   <span style={{ fontSize: '0.7rem', color: '#c4b5fd' }}>{equippedName}</span>
-                                                  {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(equippedMount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.7rem', padding:0 }}>✕</button>}
+                                                  {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(equippedMount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.7rem', padding:0 }}>âœ•</button>}
                                                 </div>
                                               ) : (
                                                 canEquip ? (
@@ -14151,7 +13598,7 @@ const CampaignView: React.FC = () => {
 
                                 {/* Assigned to */}
                                 <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 'auto' }}>
-                                  👤 <strong style={{ color: 'var(--text-gold)' }}>{equippedMount.character_name ?? selectedCharacterData.name}</strong>
+                                  ðŸ‘¤ <strong style={{ color: 'var(--text-gold)' }}>{equippedMount.character_name ?? selectedCharacterData.name}</strong>
                                 </div>
 
                                 {/* Dismount button */}
@@ -14164,7 +13611,7 @@ const CampaignView: React.FC = () => {
                                       background: 'rgba(124,58,237,0.25)',
                                       color: '#c4b5fd', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold'
                                     }}
-                                  >⛺ Dismount</button>
+                                  >â›º Dismount</button>
                                 )}
                               </div>
                             </div>
@@ -14183,23 +13630,23 @@ const CampaignView: React.FC = () => {
                                     setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true);
                                   }}
                                   style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
-                                >✏️ Edit</button>
+                                >âœï¸ Edit</button>
                                 <button
                                   onClick={() => setPendingConfirm({ msg: `Delete "${equippedMount.name}"?`, onYes: async () => {
                                     try { await mountAPI.deleteMount(equippedMount.id); setCampaignMounts(prev => prev.filter(m => m.id !== equippedMount.id)); } catch (err) { console.error(err); }
                                   }})}
                                   style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
-                                >🗑️ Delete</button>
+                                >ðŸ—‘ï¸ Delete</button>
                               </div>
                             )}
                           </div>
                         );
                       })()}
 
-                      {/* ── No mounts yet ── */}
+                      {/* â”€â”€ No mounts yet â”€â”€ */}
                       {myMounts.length === 0 && (
                         <div style={{ minHeight: '260px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(212,193,156,0.25)', borderRadius: '0.75rem', padding: '2.5rem' }}>
-                          <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.4 }}>🐴</div>
+                          <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.4 }}>ðŸ´</div>
                           <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Mounts</h4>
                           <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '440px' }}>
                             {isDM ? 'Use the "+ Add Mount" button to give this character a mount.' : 'The Dungeon Master hasn\'t given you a mount yet.'}
@@ -14207,11 +13654,11 @@ const CampaignView: React.FC = () => {
                         </div>
                       )}
 
-                      {/* ── Stable: mounts assigned to this character (not equipped) ── */}
+                      {/* â”€â”€ Stable: mounts assigned to this character (not equipped) â”€â”€ */}
                       {stableMount.length > 0 && (
                         <div style={{ marginBottom: '1.5rem' }}>
                           <h6 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', marginBottom: '0.85rem' }}>
-                            🏠 Stable
+                            ðŸ  Stable
                           </h6>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '1rem' }}>
                             {stableMount.map((mount) => {
@@ -14221,7 +13668,7 @@ const CampaignView: React.FC = () => {
                                   {imgUrl ? (
                                     <img src={imgUrl} alt={mount.name} onClick={() => setViewImageModal({ imageUrl: imgUrl, name: mount.name })} style={{ width: '100%', height: '180px', objectFit: 'contain', objectPosition: 'center', background: '#0a0a15', cursor: 'pointer', display: 'block' }} />
                                   ) : (
-                                    <div style={{ height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', fontSize: '3.5rem', opacity: 0.3 }}>🐴</div>
+                                    <div style={{ height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', fontSize: '3.5rem', opacity: 0.3 }}>ðŸ´</div>
                                   )}
                                   <div style={{ padding: '0.85rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '0.5rem' }}>
@@ -14241,16 +13688,16 @@ const CampaignView: React.FC = () => {
                                     {/* Armor slots for stable mounts */}
                                     {(() => {
                                       const stableSlots: { key: 'head'|'body'|'front_legs'|'rear_legs'; label: string; icon: string }[] = [
-                                        { key: 'head',       label: 'Head',       icon: '🪖' },
-                                        { key: 'body',       label: 'Body',       icon: '🛡️' },
-                                        { key: 'front_legs', label: 'Front Legs', icon: '🦵' },
-                                        { key: 'rear_legs',  label: 'Rear Legs',  icon: '🦶' },
+                                        { key: 'head',       label: 'Head',       icon: 'ðŸª–' },
+                                        { key: 'body',       label: 'Body',       icon: 'ðŸ›¡ï¸' },
+                                        { key: 'front_legs', label: 'Front Legs', icon: 'ðŸ¦µ' },
+                                        { key: 'rear_legs',  label: 'Rear Legs',  icon: 'ðŸ¦¶' },
                                       ];
                                       const anyArmor = stableSlots.some(s => mount[`armor_${s.key}` as keyof Mount]);
                                       if (!anyArmor && !canEquip) return null;
                                       return (
                                         <div style={{ marginTop: '0.3rem' }}>
-                                          {anyArmor && <div style={{ fontSize: '0.65rem', color: '#c4b5fd', marginBottom: '0.2rem' }}>🛡️ Horse Armor</div>}
+                                          {anyArmor && <div style={{ fontSize: '0.65rem', color: '#c4b5fd', marginBottom: '0.2rem' }}>ðŸ›¡ï¸ Horse Armor</div>}
                                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.2rem' }}>
                                             {stableSlots.map(slot => {
                                               const equippedName = mount[`armor_${slot.key}` as keyof Mount] as string | null;
@@ -14261,7 +13708,7 @@ const CampaignView: React.FC = () => {
                                                   {equippedName ? (
                                                     <div style={{ display: 'flex', flex: 1, justifyContent: 'space-between', alignItems: 'center' }}>
                                                       <span style={{ color: '#c4b5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>{equippedName}</span>
-                                                      {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(mount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.65rem', padding:0, flexShrink:0 }}>✕</button>}
+                                                      {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(mount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.65rem', padding:0, flexShrink:0 }}>âœ•</button>}
                                                     </div>
                                                   ) : canEquip ? (
                                                     <button onClick={() => setMountArmorPicker({ mountId: mount.id, slot: slot.key })} style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '0.2rem', color: '#c4b5fd', cursor: 'pointer' }}>+</button>
@@ -14275,12 +13722,12 @@ const CampaignView: React.FC = () => {
                                     })()}
                                     <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
                                       {canEquip && (
-                                        <button onClick={() => handleToggleEquip(mount)} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(34,197,94,0.5)', background: 'rgba(34,197,94,0.15)', color: '#4ade80', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}>▶ Mount</button>
+                                        <button onClick={() => handleToggleEquip(mount)} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(34,197,94,0.5)', background: 'rgba(34,197,94,0.15)', color: '#4ade80', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}>â–¶ Mount</button>
                                       )}
                                       {isDM && (
                                         <>
-                                          <button onClick={() => { setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id); setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url }); setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true); }} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.12)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem' }}>✏️ Edit</button>
-                                          <button onClick={() => setPendingConfirm({ msg: `Delete "${mount.name}"?`, onYes: async () => { try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } }})} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>🗑️</button>
+                                          <button onClick={() => { setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id); setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url }); setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true); }} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.12)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem' }}>âœï¸ Edit</button>
+                                          <button onClick={() => setPendingConfirm({ msg: `Delete "${mount.name}"?`, onYes: async () => { try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } }})} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>ðŸ—‘ï¸</button>
                                         </>
                                       )}
                                     </div>
@@ -14321,7 +13768,7 @@ const CampaignView: React.FC = () => {
                       {/* Header */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                         <h5 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          🐾 Pets
+                          ðŸ¾ Pets
                           {charPets.length > 0 && (
                             <span style={{ background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '1rem', padding: '0.1rem 0.55rem', fontSize: '0.78rem', color: 'var(--text-gold)' }}>
                               {charPets.length}
@@ -14347,7 +13794,7 @@ const CampaignView: React.FC = () => {
                       {/* Empty state */}
                       {charPets.length === 0 && (
                         <div style={{ textAlign: 'center', padding: '3rem 1rem', border: '2px dashed rgba(212,193,156,0.2)', borderRadius: '0.75rem' }}>
-                          <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>🐾</div>
+                          <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>ðŸ¾</div>
                           <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
                             {selectedCharacterData.name} has no pets yet.
                           </p>
@@ -14383,12 +13830,12 @@ const CampaignView: React.FC = () => {
                                       onClick={() => setViewImageModal({ imageUrl: `${API_BASE}${pet.image_url}`, name: pet.name })}
                                     />
                                   ) : (
-                                    <span style={{ fontSize: '3rem' }}>🐾</span>
+                                    <span style={{ fontSize: '3rem' }}>ðŸ¾</span>
                                   )}
                                   {/* Battle pet badge overlay */}
                                   {pet.is_battle_pet && (
                                     <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(239,68,68,0.85)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.65rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      ⚔️ Battle Pet
+                                      âš”ï¸ Battle Pet
                                     </div>
                                   )}
                                 </div>
@@ -14405,7 +13852,7 @@ const CampaignView: React.FC = () => {
                                         </span>
                                         {pet.is_battle_pet && (
                                           <span style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.9rem', padding: '0.1rem 0.55rem', fontSize: '0.72rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                            ⚔️ Battle Pet
+                                            âš”ï¸ Battle Pet
                                           </span>
                                         )}
                                       </div>
@@ -14422,11 +13869,11 @@ const CampaignView: React.FC = () => {
                                             setShowAddPetModal(true);
                                           }}
                                           style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.35)', background: 'rgba(212,193,156,0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
-                                        >✏️ Edit</button>
+                                        >âœï¸ Edit</button>
                                         <button
                                           onClick={() => setPendingConfirm({ msg: `Delete "${pet.name}"?`, onYes: async () => { try { await petAPI.deletePet(pet.id); setCampaignPets(prev => prev.filter(p => p.id !== pet.id)); } catch (err) { console.error(err); } }})}
                                           style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
-                                        >🗑️</button>
+                                        >ðŸ—‘ï¸</button>
                                       </div>
                                     )}
                                   </div>
@@ -14439,10 +13886,10 @@ const CampaignView: React.FC = () => {
                                   {/* Stats row */}
                                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.7rem' }}>
                                     <span style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '0.4rem', padding: '0.2rem 0.6rem', fontSize: '0.75rem', color: '#86efac', fontWeight: 600 }}>
-                                      🛡️ AC {pet.armor_class}
+                                      ðŸ›¡ï¸ AC {pet.armor_class}
                                     </span>
                                     <span style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.4rem', padding: '0.2rem 0.6rem', fontSize: '0.75rem', color: '#93c5fd', fontWeight: 600 }}>
-                                      💨 {pet.speed} ft
+                                      ðŸ’¨ {pet.speed} ft
                                     </span>
                                   </div>
 
@@ -14526,10 +13973,10 @@ const CampaignView: React.FC = () => {
                 {/* Characters (NPCs) Tab */}
                 {activeTab === 'npcs' && canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
-                    <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>👥 Characters</h5>
+                    <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>ðŸ‘¥ Characters</h5>
                     {savedNPCsForCharacter.length === 0 ? (
                       <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.7 }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👥</div>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>ðŸ‘¥</div>
                         <p style={{ color: 'var(--text-secondary)' }}>No characters recorded yet. This section will track the people {selectedCharacterData.name} has encountered in the world.</p>
                       </div>
                     ) : (
@@ -14539,7 +13986,7 @@ const CampaignView: React.FC = () => {
                             {npc.image_url ? (
                               <img src={npc.image_url} alt={npc.name} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }} />
                             ) : (
-                              <div style={{ width: '100%', aspectRatio: '1', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem' }}>👤</div>
+                              <div style={{ width: '100%', aspectRatio: '1', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem' }}>ðŸ‘¤</div>
                             )}
                             <div style={{ padding: '0.75rem' }}>
                               <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '0.25rem' }}>{npc.name}</div>
@@ -14557,7 +14004,7 @@ const CampaignView: React.FC = () => {
                 {(activeTab === 'inventory' || activeTab === 'equip' || activeTab === 'armies' || activeTab === 'pets' || activeTab === 'npcs') && !canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
-                      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔒</div>
+                      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>ðŸ”’</div>
                       <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Access Restricted</h5>
                       <p style={{ color: 'var(--text-secondary)' }}>
                         You can only view the overview of other players' characters.
@@ -14571,7 +14018,7 @@ const CampaignView: React.FC = () => {
                   </div>
                 )}
 
-                {/* ── Notes Tab ── */}
+                {/* â”€â”€ Notes Tab â”€â”€ */}
                 {activeTab === 'notes' && (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (() => {
                   const charId = selectedCharacterData.id;
                   const notes = characterNotes[charId] ?? [];
@@ -14597,7 +14044,7 @@ const CampaignView: React.FC = () => {
                   return (
                     <div className="glass-panel">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>📝 Notes{isDM && !isOwner ? ` — ${selectedCharacterData.name}` : ''}</h5>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>ðŸ“ Notes{isDM && !isOwner ? ` â€” ${selectedCharacterData.name}` : ''}</h5>
                         {canEdit && (
                           <button
                             onClick={() => setNoteEditModal({ charId, note: null })}
@@ -14609,10 +14056,10 @@ const CampaignView: React.FC = () => {
                         )}
                       </div>
                       {notesLoading[charId] ? (
-                        <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading notes…</div>
+                        <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading notesâ€¦</div>
                       ) : notes.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '3rem 1rem', opacity: 0.6 }}>
-                          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📝</div>
+                          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>ðŸ“</div>
                           <p style={{ color: 'var(--text-secondary)' }}>{canEdit ? 'No notes yet. Click "+ New Note" to start.' : 'No notes recorded.'}</p>
                         </div>
                       ) : (
@@ -14628,8 +14075,8 @@ const CampaignView: React.FC = () => {
                               />
                               {canEdit && (
                                 <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.25rem' }}>
-                                  <button onClick={() => setNoteEditModal({ charId, note })} style={{ flex: 1, padding: '0.3rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '4px', color: '#60a5fa', cursor: 'pointer', fontSize: '0.75rem' }}>✏️ Edit</button>
-                                  <button onClick={() => deleteNote(note.id)} style={{ flex: 1, padding: '0.3rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', color: '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}>🗑️ Delete</button>
+                                  <button onClick={() => setNoteEditModal({ charId, note })} style={{ flex: 1, padding: '0.3rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '4px', color: '#60a5fa', cursor: 'pointer', fontSize: '0.75rem' }}>âœï¸ Edit</button>
+                                  <button onClick={() => deleteNote(note.id)} style={{ flex: 1, padding: '0.3rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', color: '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}>ðŸ—‘ï¸ Delete</button>
                                 </div>
                               )}
                             </div>
@@ -14641,18 +14088,18 @@ const CampaignView: React.FC = () => {
                   );
                 })()}
 
-                {/* ── Others Tab (DM only) — Custom Dice Roller ── */}
+                {/* â”€â”€ Others Tab (DM only) â€” Custom Dice Roller â”€â”€ */}
                 {activeTab === 'others' && user?.role === 'Dungeon Master' && (() => {
                   const campaignChars = currentCampaign?.characters ?? [];
                   return (
                     <div className="glass-panel">
-                      <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.25rem' }}>🎲 Custom Dice Roller</h5>
+                      <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.25rem' }}>ðŸŽ² Custom Dice Roller</h5>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>Build any dice roll and send a request to a player. They will see the standard roll modal.</p>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '420px' }}>
                         {/* Die sides */}
                         <div>
-                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.35rem' }}>Die Sides (any number ≥ 2)</p>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.35rem' }}>Die Sides (any number â‰¥ 2)</p>
                           <input
                             type="number"
                             min={2}
@@ -14660,14 +14107,14 @@ const CampaignView: React.FC = () => {
                             onChange={e => setCustomDiceSides(Math.max(2, parseInt(e.target.value) || 2))}
                             style={{ padding: '0.45rem 0.75rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '6px', color: '#e2e8f0', fontSize: '1rem', width: '120px', outline: 'none' }}
                           />
-                          <span style={{ color: 'var(--text-secondary)', marginLeft: '0.6rem', fontSize: '0.9rem' }}>→ d{customDiceSides}</span>
+                          <span style={{ color: 'var(--text-secondary)', marginLeft: '0.6rem', fontSize: '0.9rem' }}>â†’ d{customDiceSides}</span>
                         </div>
 
                         {/* Count */}
                         <div>
                           <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.35rem' }}>Number of Dice</p>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <button onClick={() => setCustomDiceCount(c => Math.max(1, c - 1))} style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>−</button>
+                            <button onClick={() => setCustomDiceCount(c => Math.max(1, c - 1))} style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>âˆ’</button>
                             <span style={{ minWidth: '2rem', textAlign: 'center', color: '#c4b5fd', fontWeight: 'bold', fontSize: '1.1rem' }}>{customDiceCount}</span>
                             <button onClick={() => setCustomDiceCount(c => Math.min(99, c + 1))} style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>+</button>
                           </div>
@@ -14692,7 +14139,7 @@ const CampaignView: React.FC = () => {
                             onChange={e => setCustomDiceTarget(Number(e.target.value) || null)}
                             style={{ padding: '0.45rem 0.75rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.9rem', cursor: 'pointer', outline: 'none', minWidth: '200px' }}
                           >
-                            <option value="">— Select a character —</option>
+                            <option value="">â€” Select a character â€”</option>
                             {campaignChars.map((c: any) => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
@@ -14723,7 +14170,7 @@ const CampaignView: React.FC = () => {
                               });
                             }}
                             style={{ padding: '0.6rem 1.5rem', background: !customDiceTarget ? 'rgba(167,139,250,0.1)' : 'linear-gradient(135deg,rgba(167,139,250,0.4),rgba(139,92,246,0.4))', border: '1px solid rgba(167,139,250,0.5)', borderRadius: '6px', color: !customDiceTarget ? 'rgba(196,181,253,0.4)' : '#c4b5fd', cursor: !customDiceTarget ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
-                          >📤 Send Roll Request</button>
+                          >ðŸ“¤ Send Roll Request</button>
                         </div>
                       </div>
                     </div>
@@ -14734,7 +14181,7 @@ const CampaignView: React.FC = () => {
             ) : (
               <div className="glass-panel">
                 <div style={{ textAlign: 'center', padding: '3rem' }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>👤</div>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>ðŸ‘¤</div>
                   <h5 className="text-muted">Select a Character</h5>
                   <p className="text-muted">Choose a character from the list to view their details.</p>
                 </div>
@@ -14770,7 +14217,7 @@ const CampaignView: React.FC = () => {
             maxHeight: '90vh',
             overflow: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📖 Create Journal Entry</h3>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>ðŸ“– Create Journal Entry</h3>
             
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>
@@ -14841,7 +14288,7 @@ const CampaignView: React.FC = () => {
               />
               {newJournalData.imageFile && (
                 <p style={{ color: 'var(--text-gold)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                  📷 {newJournalData.imageFile.name}
+                  ðŸ“· {newJournalData.imageFile.name}
                 </p>
               )}
             </div>
@@ -14941,7 +14388,7 @@ const CampaignView: React.FC = () => {
                     fontWeight: 'bold'
                   }}
                 >
-                  🗑️ Delete
+                  ðŸ—‘ï¸ Delete
                 </button>
               )}
             </div>
@@ -15021,7 +14468,7 @@ const CampaignView: React.FC = () => {
             fontWeight: 'bold',
             animation: 'slideInRight 0.3s ease-out'
           }}>
-            🎒 {toastMessage}
+            ðŸŽ’ {toastMessage}
           </div>
         )}
 
@@ -15051,7 +14498,7 @@ const CampaignView: React.FC = () => {
             }} onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <div>
-                  <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>🏁 Battle Complete</h3>
+                  <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>ðŸ Battle Complete</h3>
                   <div style={{ color: 'var(--text-secondary)', marginTop: '0.35rem' }}>{battleSummary.battleName}</div>
                 </div>
                 <button
@@ -15066,7 +14513,7 @@ const CampaignView: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  ✕ Close
+                  âœ• Close
                 </button>
               </div>
 
@@ -15178,7 +14625,7 @@ const CampaignView: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
               
@@ -15240,7 +14687,7 @@ const CampaignView: React.FC = () => {
                           {item.item_name}
                         </div>
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                          {item.category} {item.subcategory && `• ${item.subcategory}`}
+                          {item.category} {item.subcategory && `â€¢ ${item.subcategory}`}
                         </div>
                       </div>
                       <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
@@ -15282,7 +14729,7 @@ const CampaignView: React.FC = () => {
             }}>
               {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(212, 193, 156, 0.3)' }}>
-                <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.5rem', textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)' }}>✨ Create Custom Item</h4>
+                <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.5rem', textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)' }}>âœ¨ Create Custom Item</h4>
                 <button
                   onClick={() => {
                     setShowCreateCustomModal(false);
@@ -15319,7 +14766,7 @@ const CampaignView: React.FC = () => {
                     e.currentTarget.style.borderColor = 'rgba(220, 53, 69, 0.4)';
                   }}
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
               
@@ -15575,7 +15022,7 @@ const CampaignView: React.FC = () => {
                               e.currentTarget.style.background = 'none';
                             }}
                           >
-                            ×
+                            Ã—
                           </button>
                         </span>
                       ))}
@@ -15737,7 +15184,7 @@ const CampaignView: React.FC = () => {
                             : 'rgba(255, 255, 255, 0.08)';
                         }}
                       >
-                        {customItemData.stealth_disadvantage ? '⚠️ Stealth Disadvantage' : '✓ No Stealth Penalty'}
+                        {customItemData.stealth_disadvantage ? 'âš ï¸ Stealth Disadvantage' : 'âœ“ No Stealth Penalty'}
                       </button>
                     </div>
                   </div>
@@ -15858,7 +15305,7 @@ const CampaignView: React.FC = () => {
                     e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.2)';
                   }}
                 >
-                  ✨ Create & Add to Inventory
+                  âœ¨ Create & Add to Inventory
                 </button>
               </div>
             </div>
@@ -15894,7 +15341,7 @@ const CampaignView: React.FC = () => {
                 textAlign: 'center',
                 fontSize: '1.5rem'
               }}>
-                📷 Position Your Character Image
+                ðŸ“· Position Your Character Image
               </h3>
 
               {/* Preview Container */}
@@ -16058,7 +15505,7 @@ const CampaignView: React.FC = () => {
                             const croppedFile = new File([blob], imageToCrop.file.name, { type: 'image/jpeg' });
 
                             if (imageToCrop.mode === 'shadow_pending') {
-                              // Store cropped file for shadow creation — upload happens after shadow is created
+                              // Store cropped file for shadow creation â€” upload happens after shadow is created
                               setPendingShadowImageFile(croppedFile);
                               if (pendingShadowImagePreview) URL.revokeObjectURL(pendingShadowImagePreview);
                               setPendingShadowImagePreview(URL.createObjectURL(croppedFile));
@@ -16202,8 +15649,8 @@ const CampaignView: React.FC = () => {
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}
               onClick={e => { if (e.target === e.currentTarget) setEditGoldModal({ isOpen: false, characterId: null, rawValue: '' }); }}>
               <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid rgba(212,175,55,0.6)', borderRadius: '12px', padding: '2rem', maxWidth: '380px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-                <h5 style={{ color: '#fbbf24', marginBottom: '1rem', marginTop: 0 }}>💰 Set Currency</h5>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Enter the total value in <strong style={{ color: '#cd7f32' }}>copper pieces</strong>.<br/>1 gp = 100 cp &nbsp;·&nbsp; 1 sp = 10 cp</p>
+                <h5 style={{ color: '#fbbf24', marginBottom: '1rem', marginTop: 0 }}>ðŸ’° Set Currency</h5>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Enter the total value in <strong style={{ color: '#cd7f32' }}>copper pieces</strong>.<br/>1 gp = 100 cp &nbsp;Â·&nbsp; 1 sp = 10 cp</p>
                 <input
                   type="number"
                   min="0"
@@ -16232,7 +15679,7 @@ const CampaignView: React.FC = () => {
           <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
             <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid var(--primary-gold, #d4c19c)', borderRadius: '12px', padding: '2rem', maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
               <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', marginTop: 0 }}>
-                {editCharacterFieldModal.value ? '✏️ Edit ' : '+ Add '}{editCharacterFieldModal.fieldLabel}
+                {editCharacterFieldModal.value ? 'âœï¸ Edit ' : '+ Add '}{editCharacterFieldModal.fieldLabel}
               </h5>
               <textarea
                 value={editCharacterFieldModal.value}
@@ -16288,8 +15735,8 @@ const CampaignView: React.FC = () => {
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
                 <div style={{ background: 'linear-gradient(135deg,#1a1a2e,#16213e)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.5rem', width: '380px', maxWidth: '95vw' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Choose Target</h4>
-                    <button onClick={() => setShowAttackModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                    <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>âš”ï¸ Choose Target</h4>
+                    <button onClick={() => setShowAttackModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>Ã—</button>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {possibleTargets.map(t => (
@@ -16393,7 +15840,7 @@ const CampaignView: React.FC = () => {
           );
         })()}
 
-        {/* Dice Roll Modal — shown to players when DM requests a roll */}
+        {/* Dice Roll Modal â€” shown to players when DM requests a roll */}
         {pendingDiceRequest && socket && currentCampaign && (
           <DiceRollModal
             request={pendingDiceRequest}
@@ -16431,7 +15878,7 @@ const CampaignView: React.FC = () => {
           />
         )}
 
-        {/* DM Attack Request Panel — player wants to attack, DM picks dice */}
+        {/* DM Attack Request Panel â€” player wants to attack, DM picks dice */}
         {pendingAttackRequest && user?.role === 'Dungeon Master' && socket && currentCampaign && (
           <div style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
@@ -16444,8 +15891,8 @@ const CampaignView: React.FC = () => {
               boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                <h4 style={{ color: '#f87171', margin: 0 }}>⚔️ Attack Request</h4>
-                <button onClick={() => setPendingAttackRequest(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                <h4 style={{ color: '#f87171', margin: 0 }}>âš”ï¸ Attack Request</h4>
+                <button onClick={() => setPendingAttackRequest(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>Ã—</button>
               </div>
               <p style={{ color: 'var(--text-secondary)', margin: '0 0 1.25rem', fontSize: '0.95rem' }}>
                 <strong style={{ color: 'var(--text-gold)' }}>{pendingAttackRequest.attackerName}</strong> wants to attack <strong style={{ color: '#f87171' }}>{pendingAttackRequest.targetName}</strong>
@@ -16470,25 +15917,25 @@ const CampaignView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Damage die picker — supports multi-group (e.g. 2d6 + 1d8) */}
+              {/* Damage die picker â€” supports multi-group (e.g. 2d6 + 1d8) */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Damage Dice</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {dmAttackDamageGroups.map((grp, idx) => (
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
                       <button onClick={() => setDmAttackDamageGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: Math.max(1, g.count - 1) } : g))}
-                        style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0' }}>−</button>
+                        style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0' }}>âˆ’</button>
                       <span style={{ color: '#fca5a5', fontWeight: 'bold', fontSize: '0.9rem', minWidth: '16px', textAlign: 'center' }}>{grp.count}</span>
                       <button onClick={() => setDmAttackDamageGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: Math.min(10, g.count + 1) } : g))}
                         style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0' }}>+</button>
-                      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>×</span>
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>Ã—</span>
                       {['d4','d6','d8','d10','d12','d20'].map(d => (
                         <button key={d} onClick={() => setDmAttackDamageGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: d } : g))}
                           style={{ padding: '0.3rem 0.7rem', borderRadius: '0.4rem', fontSize: '0.85rem', cursor: 'pointer', background: grp.diceType === d ? 'rgba(248,113,113,0.3)' : 'rgba(255,255,255,0.05)', border: `1px solid ${grp.diceType === d ? '#f87171' : 'rgba(255,255,255,0.15)'}`, color: grp.diceType === d ? '#fca5a5' : 'rgba(255,255,255,0.5)', fontWeight: grp.diceType === d ? 'bold' : 'normal' }}>{d}</button>
                       ))}
                       {dmAttackDamageGroups.length > 1 && (
                         <button onClick={() => setDmAttackDamageGroups(prev => prev.filter((_, i) => i !== idx))}
-                          style={{ padding: '0.2rem 0.55rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171' }}>×</button>
+                          style={{ padding: '0.2rem 0.55rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171' }}>Ã—</button>
                       )}
                     </div>
                   ))}
@@ -16521,14 +15968,14 @@ const CampaignView: React.FC = () => {
                   setPendingAttackRequest(null);
                 }}
                   style={{ flex: 2, padding: '0.6rem', borderRadius: '0.5rem', background: 'linear-gradient(135deg,#f87171cc,#ef4444)', border: '2px solid #ef4444', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.95rem' }}>
-                  ⚔️ Send Roll Request ({dmAttackHitDie} hit / {dmAttackDamageGroups.map(g => `${g.count}${g.diceType}`).join('+')} dmg)
+                  âš”ï¸ Send Roll Request ({dmAttackHitDie} hit / {dmAttackDamageGroups.map(g => `${g.count}${g.diceType}`).join('+')} dmg)
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Player Attack Roll Modal — hit die first, then damage die */}
+        {/* Player Attack Roll Modal â€” hit die first, then damage die */}
         {pendingAttackDiceConfig && attackRollPhase && !awaitingHitApproval && socket && currentCampaign && (() => {
           const cfg = pendingAttackDiceConfig;
           const isHitPhase = attackRollPhase === 'hit';
@@ -16578,7 +16025,7 @@ const CampaignView: React.FC = () => {
                     hitRaw: rawRoll,
                   });
                 } else {
-                  // Both rolls done — send to server for DM
+                  // Both rolls done â€” send to server for DM
                   const hitRoll = attackHitRoll ?? { raw: rawRoll, total };
                   socket.emit('submitDiceResult', {
                     campaignId: cfg.campaignId,
@@ -16622,7 +16069,7 @@ const CampaignView: React.FC = () => {
           );
         })()}
 
-        {/* Player waiting panel — shown after confirming hit roll, before DM approves damage */}
+        {/* Player waiting panel â€” shown after confirming hit roll, before DM approves damage */}
         {awaitingHitApproval && attackHitRoll && pendingAttackDiceConfig && (
           <div style={{
             position: 'fixed', bottom: '20px', left: '20px', zIndex: 9998,
@@ -16631,7 +16078,7 @@ const CampaignView: React.FC = () => {
             borderRadius: '1rem', padding: '1.25rem', width: '270px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}>
-            <p style={{ color: '#60a5fa', fontWeight: 'bold', margin: '0 0 0.4rem', fontSize: '0.9rem' }}>🎲 Hit Roll Submitted</p>
+            <p style={{ color: '#60a5fa', fontWeight: 'bold', margin: '0 0 0.4rem', fontSize: '0.9rem' }}>ðŸŽ² Hit Roll Submitted</p>
             <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.75rem', fontSize: '0.8rem' }}>
               vs <strong style={{ color: '#e2e8f0' }}>{pendingAttackDiceConfig.targetName}</strong>
             </p>
@@ -16640,7 +16087,7 @@ const CampaignView: React.FC = () => {
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem' }}>YOUR ROLL</div>
                 <div style={{ color: '#60a5fa', fontSize: '1.6rem', fontWeight: 'bold' }}>{attackHitRoll.total}</div>
               </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>⏳ Waiting for DM to approve...</p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>â³ Waiting for DM to approve...</p>
             </div>
             <button
               onClick={() => { setAwaitingHitApproval(false); setPendingAttackDiceConfig(null); setAttackRollPhase(null); setAttackHitRoll(null); }}
@@ -16650,7 +16097,7 @@ const CampaignView: React.FC = () => {
           </div>
         )}
 
-        {/* Attack Roll Results Summary — shown to player after both rolls are submitted */}
+        {/* Attack Roll Results Summary â€” shown to player after both rolls are submitted */}
         {pendingHitRollApproval && user?.role === 'Dungeon Master' && socket && currentCampaign && (
           <div style={{
             position: 'fixed', bottom: '20px', left: '20px', zIndex: 9998,
@@ -16660,7 +16107,7 @@ const CampaignView: React.FC = () => {
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}>
             <p style={{ color: '#60a5fa', fontWeight: 'bold', margin: '0 0 0.3rem', fontSize: '0.9rem' }}>
-              ⚔️ Attack Hit Roll
+              âš”ï¸ Attack Hit Roll
             </p>
             <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.6rem', fontSize: '0.8rem' }}>
               <strong style={{ color: '#e2e8f0' }}>{pendingHitRollApproval.attackerName}</strong> attacks{' '}
@@ -16677,7 +16124,7 @@ const CampaignView: React.FC = () => {
                   setPendingHitRollApproval(null);
                 }}
                 style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(74,222,128,0.2)', border: '1px solid #4ade80', color: '#4ade80', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                ✅ Roll Damage
+                âœ… Roll Damage
               </button>
               <button
                 onClick={() => {
@@ -16685,13 +16132,13 @@ const CampaignView: React.FC = () => {
                   setPendingHitRollApproval(null);
                 }}
                 style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#f87171', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                ❌ Miss
+                âŒ Miss
               </button>
             </div>
           </div>
         )}
 
-        {/* Attack Roll Results Summary — shown to player after both rolls are submitted */}
+        {/* Attack Roll Results Summary â€” shown to player after both rolls are submitted */}
         {attackCompletedSummary && (
           <div style={{
             position: 'fixed', bottom: '20px', left: '20px', zIndex: 9998,
@@ -16701,8 +16148,8 @@ const CampaignView: React.FC = () => {
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <p style={{ color: '#f87171', fontWeight: 'bold', margin: 0, fontSize: '0.9rem' }}>⚔️ Attack Results</p>
-              <button onClick={() => setAttackCompletedSummary(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+              <p style={{ color: '#f87171', fontWeight: 'bold', margin: 0, fontSize: '0.9rem' }}>âš”ï¸ Attack Results</p>
+              <button onClick={() => setAttackCompletedSummary(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>Ã—</button>
             </div>
             <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.75rem', fontSize: '0.8rem' }}>
               vs <strong style={{ color: '#e2e8f0' }}>{attackCompletedSummary.targetName}</strong>
@@ -16730,7 +16177,7 @@ const CampaignView: React.FC = () => {
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}>
             <p style={{ color: '#fbbf24', fontWeight: 'bold', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>
-              🔄 Reroll Request
+              ðŸ”„ Reroll Request
             </p>
             <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.85rem', fontSize: '0.85rem' }}>
               <strong style={{ color: '#e2e8f0' }}>{pendingRerollRequest.rollerName}</strong> wants to reroll their{' '}
@@ -16743,7 +16190,7 @@ const CampaignView: React.FC = () => {
                   setPendingRerollRequest(null);
                 }}
                 style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(74,222,128,0.2)', border: '1px solid #4ade80', color: '#4ade80', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                ✅ Approve
+                âœ… Approve
               </button>
               <button
                 onClick={() => {
@@ -16751,7 +16198,7 @@ const CampaignView: React.FC = () => {
                   setPendingRerollRequest(null);
                 }}
                 style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#f87171', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                ❌ Deny
+                âŒ Deny
               </button>
             </div>
           </div>
@@ -16759,7 +16206,7 @@ const CampaignView: React.FC = () => {
 
 
 
-        {/* DM Roll Outcome Panel — floats top-right, shows after a player submits a roll */}
+        {/* DM Roll Outcome Panel â€” floats top-right, shows after a player submits a roll */}
         {pendingRollOutcome && user?.role === 'Dungeon Master' && socket && currentCampaign && (
           <div style={{
             position: 'fixed', top: '80px', right: '20px', zIndex: 9998,
@@ -16770,10 +16217,10 @@ const CampaignView: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
               <div>
-                <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.9rem' }}>🎲 Roll Result</div>
+                <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.9rem' }}>ðŸŽ² Roll Result</div>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{pendingRollOutcome.rollerName}</div>
               </div>
-              <button onClick={() => setPendingRollOutcome(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>×</button>
+              <button onClick={() => setPendingRollOutcome(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>Ã—</button>
             </div>
 
             {/* Roll breakdown */}
@@ -16797,7 +16244,7 @@ const CampaignView: React.FC = () => {
               <div style={{ padding: '0.6rem', background: 'rgba(212,193,156,0.07)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
                 <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   {(pendingRollOutcome.rollPurpose ?? 'ability_check').replace('_', ' ')}
-                  {pendingRollOutcome.purposeDetail ? ` • ${pendingRollOutcome.purposeDetail}` : ''}
+                  {pendingRollOutcome.purposeDetail ? ` â€¢ ${pendingRollOutcome.purposeDetail}` : ''}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: '0.2rem', columnGap: '0.5rem', marginBottom: '0.4rem' }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Die</span>
@@ -16820,7 +16267,7 @@ const CampaignView: React.FC = () => {
 
             {/* Action buttons */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              {/* Hide stealth check outcome — dedicated approve/deny */}
+              {/* Hide stealth check outcome â€” dedicated approve/deny */}
               {pendingRollOutcome.purposeDetail === 'Stealth (Hide)' && (() => {
                 const rollerCombatant = combatants.find(c => c.name === pendingRollOutcome.rollerName);
                 const rollerKey = rollerCombatant ? String(rollerCombatant.characterId) : null;
@@ -16834,12 +16281,12 @@ const CampaignView: React.FC = () => {
                       }}
                       disabled={!rollerKey}
                       style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: rollerKey ? 'pointer' : 'not-allowed', background: 'rgba(103,232,249,0.15)', border: '1px solid rgba(103,232,249,0.5)', color: '#67e8f9', fontWeight: '600', fontSize: '0.82rem' }}>
-                      👁️ Hide Succeeded — Apply Invisible
+                      ðŸ‘ï¸ Hide Succeeded â€” Apply Invisible
                     </button>
                     <button
                       onClick={() => setPendingRollOutcome(null)}
                       style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.3)', color: '#94a3b8', fontWeight: '600', fontSize: '0.82rem' }}>
-                      ✗ Hide Failed
+                      âœ— Hide Failed
                     </button>
                   </>
                 );
@@ -16853,23 +16300,23 @@ const CampaignView: React.FC = () => {
                   setPendingRollOutcome(null);
                 }}
                 style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.45)', color: '#f87171', fontWeight: '600', fontSize: '0.82rem' }}>
-                ⚔️ Deal Damage
+                âš”ï¸ Deal Damage
               </button>
               <button
                 onClick={() => { setShowHealModal({ attackerKey: '', targetKey: '' }); setPendingRollOutcome(null); }}
                 style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.45)', color: '#4ade80', fontWeight: '600', fontSize: '0.82rem' }}>
-                💚 Heal Health
+                ðŸ’š Heal Health
               </button>
               <button
                 onClick={() => { setShowStatusModal({ targetKey: '' }); setStatusTarget(''); setDotType('Burning'); setDotLimbTarget('chest'); setDotDmgMode('fixed'); setDotFixed('5'); setDotDice('d6'); setPendingRollOutcome(null); }}
                 style={{ padding: '0.45rem', borderRadius: '0.4rem', cursor: 'pointer', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.45)', color: '#a78bfa', fontWeight: '600', fontSize: '0.82rem' }}>
-                ✨ Apply Status Effect
+                âœ¨ Apply Status Effect
               </button>
             </div>
           </div>
         )}
 
-        {/* DOT Tick Panel — shown to DM at the start of an affected combatant's turn */}
+        {/* DOT Tick Panel â€” shown to DM at the start of an affected combatant's turn */}
         {pendingDotTick && user?.role === 'Dungeon Master' && socket && currentCampaign && (() => {
           const dotTick = pendingDotTick;
           // Find character target for DOT damage
@@ -16885,14 +16332,14 @@ const CampaignView: React.FC = () => {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                 <div style={{ color: '#f87171', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                  🔥 {dotTick.dotType} Tick
+                  ðŸ”¥ {dotTick.dotType} Tick
                 </div>
-                <button onClick={() => setPendingDotTick(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+                <button onClick={() => setPendingDotTick(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1rem' }}>Ã—</button>
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
-                {dotTick.combatantName}'s turn starts — {dotTick.dotType} damage
+                {dotTick.combatantName}'s turn starts â€” {dotTick.dotType} damage
                 {dotTick.limbTarget && dotTick.limbTarget !== 'chest' && (
-                  <span style={{ display: 'block', color: '#f87171', fontSize: '0.75rem', marginTop: '0.15rem' }}>→ {dotTick.limbTarget.replace('_', ' ')}</span>
+                  <span style={{ display: 'block', color: '#f87171', fontSize: '0.75rem', marginTop: '0.15rem' }}>â†’ {dotTick.limbTarget.replace('_', ' ')}</span>
                 )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -16944,7 +16391,7 @@ const CampaignView: React.FC = () => {
           );
         })()}
 
-        {/* Heal Modal — DM picks target + limb + amount, then heals */}
+        {/* Heal Modal â€” DM picks target + limb + amount, then heals */}
         {showHealModal && socket && currentCampaign && (() => {
           // If no target yet, show target picker
           if (!showHealModal.targetKey) {
@@ -16952,8 +16399,8 @@ const CampaignView: React.FC = () => {
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
                 <div style={{ background: 'linear-gradient(135deg,#0f1a0f,#1a2e1a)', border: '2px solid rgba(74,222,128,0.4)', borderRadius: '1rem', padding: '1.5rem', width: '360px', maxWidth: '95vw' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h4 style={{ color: '#4ade80', margin: 0 }}>💚 Choose Target to Heal</h4>
-                    <button onClick={() => setShowHealModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                    <h4 style={{ color: '#4ade80', margin: 0 }}>ðŸ’š Choose Target to Heal</h4>
+                    <button onClick={() => setShowHealModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>Ã—</button>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {combatants.map(t => (
@@ -17004,18 +16451,18 @@ const CampaignView: React.FC = () => {
           );
         })()}
 
-        {/* Temp HP Modal — DM assigns temporary HP to a combatant, distributed across limbs */}
+        {/* Temp HP Modal â€” DM assigns temporary HP to a combatant, distributed across limbs */}
         {showTempHpModal && user?.role === 'Dungeon Master' && socket && currentCampaign && (() => {
           const tempTarget = combatants.find(c => String(c.characterId) === showTempHpModal.targetKey);
 
-          // Step A: no target yet — show target picker
+          // Step A: no target yet â€” show target picker
           if (!tempTarget) {
             return (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
                 <div style={{ background: 'linear-gradient(135deg,#0a1020,#0f1a30)', border: '2px solid rgba(59,130,246,0.5)', borderRadius: '1rem', padding: '1.5rem', width: '360px', maxWidth: '95vw' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h4 style={{ color: '#60a5fa', margin: 0 }}>💙 Choose Temp HP Target</h4>
-                    <button onClick={() => setShowTempHpModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                    <h4 style={{ color: '#60a5fa', margin: 0 }}>ðŸ’™ Choose Temp HP Target</h4>
+                    <button onClick={() => setShowTempHpModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>Ã—</button>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {combatants.map(t => (
@@ -17031,7 +16478,7 @@ const CampaignView: React.FC = () => {
             );
           }
 
-          // Step B: target selected — show amount input
+          // Step B: target selected â€” show amount input
           const existingTemp = combatTempHealth[String(tempTarget.characterId)];
           const existingTotal = existingTemp ? Object.values(existingTemp).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
 
@@ -17039,15 +16486,15 @@ const CampaignView: React.FC = () => {
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
               <div style={{ background: 'linear-gradient(135deg,#0a1020,#0f1a30)', border: '2px solid rgba(59,130,246,0.5)', borderRadius: '1rem', padding: '1.5rem', width: '380px', maxWidth: '95vw' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h4 style={{ color: '#60a5fa', margin: 0 }}>💙 Add Temporary HP</h4>
-                  <button onClick={() => setShowTempHpModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                  <h4 style={{ color: '#60a5fa', margin: 0 }}>ðŸ’™ Add Temporary HP</h4>
+                  <button onClick={() => setShowTempHpModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>Ã—</button>
                 </div>
                 <p style={{ color: '#93c5fd', fontSize: '0.9rem', margin: '0 0 0.25rem' }}>Target: <strong>{tempTarget.name}</strong></p>
                 {existingTotal > 0 && (
                   <p style={{ color: '#60a5fa', fontSize: '0.8rem', margin: '0 0 0.75rem' }}>Current temp HP: {existingTotal} (will stack)</p>
                 )}
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0.5rem 0 0.35rem' }}>
-                  HP is distributed evenly across all limbs, prioritising head → chest → arms → legs.
+                  HP is distributed evenly across all limbs, prioritising head â†’ chest â†’ arms â†’ legs.
                 </p>
                 <input
                   type="number" min="1" placeholder="Amount"
@@ -17085,7 +16532,7 @@ const CampaignView: React.FC = () => {
           );
         })()}
 
-        {/* Status Effect Modal — DM picks target, applies D&D condition or DOT effect */}
+        {/* Status Effect Modal â€” DM picks target, applies D&D condition or DOT effect */}
         {showStatusModal && user?.role === 'Dungeon Master' && socket && currentCampaign && (() => {
           const D5E_QUICK = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
           const DOT_TYPES = ['Burning', 'Bleeding', 'Poison'] as const;
@@ -17097,8 +16544,8 @@ const CampaignView: React.FC = () => {
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
               <div style={{ background: 'linear-gradient(135deg, #0f0f1a, #1a1a2e)', border: '2px solid rgba(167,139,250,0.4)', borderRadius: '1rem', padding: '1.5rem', width: '480px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h4 style={{ color: '#a78bfa', margin: 0 }}>✨ Apply Status Effect</h4>
-                  <button onClick={() => setShowStatusModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                  <h4 style={{ color: '#a78bfa', margin: 0 }}>âœ¨ Apply Status Effect</h4>
+                  <button onClick={() => setShowStatusModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>Ã—</button>
                 </div>
 
                 {/* Target picker */}
@@ -17120,7 +16567,7 @@ const CampaignView: React.FC = () => {
 
                 {/* Section 1: Standard D&D 5e conditions */}
                 <div style={{ marginBottom: '1rem' }}>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>📋 D&D Conditions (instantly applied)</p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>ðŸ“‹ D&D Conditions (instantly applied)</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                     {D5E_QUICK.map(cond => (
                       <button key={cond}
@@ -17152,7 +16599,7 @@ const CampaignView: React.FC = () => {
 
                 {/* Section 2: DOT effects */}
                 <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.5rem' }}>
-                  <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0 0 0.6rem', fontWeight: 'bold' }}>🔥 Damage Over Time</p>
+                  <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0 0 0.6rem', fontWeight: 'bold' }}>ðŸ”¥ Damage Over Time</p>
 
                   {/* DOT type */}
                   <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.6rem' }}>
@@ -17164,7 +16611,7 @@ const CampaignView: React.FC = () => {
                           color: dotType === t ? '#fca5a5' : 'rgba(255,255,255,0.4)',
                           fontWeight: dotType === t ? 'bold' : 'normal',
                         }}>
-                        {t === 'Burning' ? '🔥' : t === 'Bleeding' ? '💉' : '☠️'} {t}
+                        {t === 'Burning' ? 'ðŸ”¥' : t === 'Bleeding' ? 'ðŸ’‰' : 'â˜ ï¸'} {t}
                       </button>
                     ))}
                   </div>
@@ -17240,7 +16687,7 @@ const CampaignView: React.FC = () => {
                       color: targetKey ? '#fca5a5' : 'rgba(255,255,255,0.3)',
                       fontWeight: 'bold', fontSize: '0.82rem',
                     }}>
-                    🔥 Apply {dotType} → {dotLimbTarget.replace('_', ' ')} ({dotDmgMode === 'fixed' ? `${dotFixed} dmg/turn` : `${dotDice}/turn${dotDmgMode === 'roll' ? ' — player rolls' : ''}`})
+                    ðŸ”¥ Apply {dotType} â†’ {dotLimbTarget.replace('_', ' ')} ({dotDmgMode === 'fixed' ? `${dotFixed} dmg/turn` : `${dotDice}/turn${dotDmgMode === 'roll' ? ' â€” player rolls' : ''}`})
                   </button>
                 </div>
               </div>
@@ -17301,7 +16748,7 @@ const CampaignView: React.FC = () => {
                   className="btn btn-secondary"
                   style={{ padding: '0.5rem 1rem' }}
                 >
-                  ✕
+                  âœ•
                 </button>
               </div>
               <div className="text-secondary" style={{ textAlign: 'left', lineHeight: '1.8' }}>
@@ -17339,14 +16786,14 @@ const CampaignView: React.FC = () => {
               maxHeight: '80vh',
               overflow: 'auto'
             }}>
-              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⚔️ Add to Combat</h3>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>âš”ï¸ Add to Combat</h3>
               
               {/* Two-column layout */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                 {/* Left Column - Player Characters */}
                 <div>
                   <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem', fontSize: '1.1rem' }}>
-                    👥 Player Characters
+                    ðŸ‘¥ Player Characters
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {currentCampaign.characters.map((character: any) => (
@@ -17404,7 +16851,7 @@ const CampaignView: React.FC = () => {
                 {/* Right Column - Monsters */}
                 <div>
                   <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem', fontSize: '1.1rem' }}>
-                    🐉 Monsters
+                    ðŸ‰ Monsters
                   </h4>
                   <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
                     <input
@@ -17437,7 +16884,7 @@ const CampaignView: React.FC = () => {
                       title={combatMonsterSortDir === 'asc' ? 'Ascending' : 'Descending'}
                       style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(217,83,79,0.3)', borderRadius: '0.5rem', color: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}
                     >
-                      {combatMonsterSortDir === 'asc' ? '↑' : '↓'}
+                      {combatMonsterSortDir === 'asc' ? 'â†‘' : 'â†“'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -17504,7 +16951,7 @@ const CampaignView: React.FC = () => {
                                 color: isAlly ? '#4ade80' : '#f87171',
                                 whiteSpace: 'nowrap',
                               }}
-                            >{isAlly ? '🤝 Ally' : '⚔️ Enemy'}</button>
+                            >{isAlly ? 'ðŸ¤ Ally' : 'âš”ï¸ Enemy'}</button>
                             {/* Add button */}
                             <button
                               onClick={() => {
@@ -17595,7 +17042,7 @@ const CampaignView: React.FC = () => {
               maxHeight: '90vh',
               overflowY: 'auto',
             }}>
-              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⚔️ Combat Invitation</h3>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>âš”ï¸ Combat Invitation</h3>
               <p style={{ color: '#ccc', marginBottom: '0.75rem', fontSize: '1.1rem' }}>
                 You've been invited to join combat with <strong style={{ color: 'var(--text-gold)' }}>{combatInvite.characterName}</strong>!
               </p>
@@ -17607,7 +17054,7 @@ const CampaignView: React.FC = () => {
               {combatInvite.battlePets.length > 0 && (
                 <div style={{ marginBottom: '1.75rem', padding: '1rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.65rem' }}>
                   <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    ⚔️ Battle Pets — choose which to bring
+                    âš”ï¸ Battle Pets â€” choose which to bring
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {combatInvite.battlePets.map(pet => {
@@ -17672,7 +17119,7 @@ const CampaignView: React.FC = () => {
                     fontSize: '1rem'
                   }}
                 >
-                  ✓ Accept
+                  âœ“ Accept
                 </button>
                 <button
                   onClick={() => {
@@ -17691,7 +17138,7 @@ const CampaignView: React.FC = () => {
                     fontSize: '1rem'
                   }}
                 >
-                  ✗ Decline
+                  âœ— Decline
                 </button>
               </div>
             </div>
@@ -17729,17 +17176,17 @@ const CampaignView: React.FC = () => {
                     {detailCharacter && (
                       <div style={{ color: '#999', fontSize: '0.85rem', marginTop: '0.25rem' }}>
                         Level {detailCharacter.level} {detailCharacter.race} {user?.role !== 'Dungeon Master' && (detailCharacter as any).concealed_class ? (detailCharacter as any).concealed_class : detailCharacter.class}
-                        {(detailCharacter as any).subclass ? ` · ${(detailCharacter as any).subclass}` : ''}
+                        {(detailCharacter as any).subclass ? ` Â· ${(detailCharacter as any).subclass}` : ''}
                       </div>
                     )}
                     {detailMonster && <div style={{ color: '#f87171', fontSize: '0.85rem', marginTop: '0.25rem' }}>Monster</div>}
                     {detailCombatant.isPet && (
                       <div style={{ color: '#a78bfa', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                        🐾 {campaignPets.find(p => p.id === detailCombatant.petId)?.species || 'Battle Pet'}
+                        ðŸ¾ {campaignPets.find(p => p.id === detailCombatant.petId)?.species || 'Battle Pet'}
                       </div>
                     )}
                   </div>
-                  <button onClick={() => setCombatantDetailModal(null)} style={{ background: 'none', border: '1px solid #555', borderRadius: '0.4rem', color: '#aaa', cursor: 'pointer', padding: '0.4rem 0.75rem', fontSize: '1rem' }}>✕</button>
+                  <button onClick={() => setCombatantDetailModal(null)} style={{ background: 'none', border: '1px solid #555', borderRadius: '0.4rem', color: '#aaa', cursor: 'pointer', padding: '0.4rem 0.75rem', fontSize: '1rem' }}>âœ•</button>
                 </div>
 
                 {/* CHARACTER layout */}
@@ -17779,7 +17226,7 @@ const CampaignView: React.FC = () => {
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
-                      {/* Left — portrait above figure */}
+                      {/* Left â€” portrait above figure */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
                         {/* Portrait */}
                         <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(212,193,156,0.3)', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -17825,7 +17272,7 @@ const CampaignView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Right — all stats */}
+                      {/* Right â€” all stats */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                         {/* Total HP */}
                         <div style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
@@ -17853,7 +17300,7 @@ const CampaignView: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* All 6 ability scores — 3 per row */}
+                        {/* All 6 ability scores â€” 3 per row */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
                           {['str', 'dex', 'con', 'int', 'wis', 'cha'].map(ab => {
                             const score = detailCharacter.abilities[ab as keyof typeof detailCharacter.abilities] as number;
@@ -17924,8 +17371,8 @@ const CampaignView: React.FC = () => {
                         <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '1rem' }}>
                           <div style={{ fontSize: '0.75rem', color: '#f87171', marginBottom: '0.4rem', fontWeight: 'bold' }}>
                             {isPlayerViewing
-                              ? `Total HP — ${Math.round(totalPct)}%`
-                              : `Total HP — ${totalCur}${monsterTotalTemp > 0 ? `+${monsterTotalTemp}` : ''}/${totalMax}`}
+                              ? `Total HP â€” ${Math.round(totalPct)}%`
+                              : `Total HP â€” ${totalCur}${monsterTotalTemp > 0 ? `+${monsterTotalTemp}` : ''}/${totalMax}`}
                           </div>
                           <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', display: 'flex' }}>
                             <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: monsterTotalTemp > 0 ? '5px 0 0 5px' : '5px', flexShrink: 0 }} />
@@ -17985,7 +17432,7 @@ const CampaignView: React.FC = () => {
                         {petData.image_url ? (
                           <img src={getImageUrl(petData.image_url)} alt={petData.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
-                          <div style={{ fontSize: '4rem', color: 'rgba(167,139,250,0.4)' }}>🐾</div>
+                          <div style={{ fontSize: '4rem', color: 'rgba(167,139,250,0.4)' }}>ðŸ¾</div>
                         )}
                       </div>
                       {/* Stats */}
@@ -18104,7 +17551,7 @@ const CampaignView: React.FC = () => {
                   );
                 })()}
 
-                {/* Active Effects — conditions and DOT states */}
+                {/* Active Effects â€” conditions and DOT states */}
                 {(() => {
                   const detailKey = String(detailCombatant.characterId);
                   const detailConditions = combatConditions[detailKey] ?? [];
@@ -18125,13 +17572,13 @@ const CampaignView: React.FC = () => {
                     Invisible:    {bg:'rgba(103,232,249,0.2)',  border:'rgba(103,232,249,0.5)',  color:'#67e8f9'},
                   };
                   const dotStyle: Record<string, {bg:string;border:string;color:string;icon:string}> = {
-                    Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'🔥'},
-                    Bleeding: {bg:'rgba(239,68,68,0.2)',   border:'rgba(239,68,68,0.6)',   color:'#f87171', icon:'🩸'},
-                    Poison:   {bg:'rgba(34,197,94,0.2)',   border:'rgba(34,197,94,0.6)',   color:'#4ade80', icon:'☠️'},
+                    Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'ðŸ”¥'},
+                    Bleeding: {bg:'rgba(239,68,68,0.2)',   border:'rgba(239,68,68,0.6)',   color:'#f87171', icon:'ðŸ©¸'},
+                    Poison:   {bg:'rgba(34,197,94,0.2)',   border:'rgba(34,197,94,0.6)',   color:'#4ade80', icon:'â˜ ï¸'},
                   };
                   return (
                     <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(212,193,156,0.2)', paddingTop: '0.75rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#d4c19c', fontWeight: 'bold', marginBottom: '0.5rem' }}>⚡ Active Effects</div>
+                      <div style={{ fontSize: '0.8rem', color: '#d4c19c', fontWeight: 'bold', marginBottom: '0.5rem' }}>âš¡ Active Effects</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                         {detailConditions.map(c => {
                           const s = condStyle[c] ?? {bg:'rgba(250,204,21,0.15)',border:'rgba(250,204,21,0.4)',color:'#fbbf24'};
@@ -18177,7 +17624,7 @@ const CampaignView: React.FC = () => {
               maxHeight: '90vh',
               overflow: 'auto'
             }}>
-              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>📚 {editingMonsterId ? 'Edit Monster' : 'Add Monster'}</h3>
+              <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>ðŸ“š {editingMonsterId ? 'Edit Monster' : 'Add Monster'}</h3>
               
               {/* Name */}
               <div style={{ marginBottom: '1rem' }}>
@@ -18360,7 +17807,7 @@ const CampaignView: React.FC = () => {
                     {(monsterFormData.resistances[category] as string[]).map((tag: string) => (
                       <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: category === 'resistances' ? 'rgba(96,165,250,0.2)' : category === 'immunities' ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)', color: category === 'resistances' ? '#93c5fd' : category === 'immunities' ? '#86efac' : '#fca5a5', border: `1px solid ${category === 'resistances' ? 'rgba(96,165,250,0.5)' : category === 'immunities' ? 'rgba(74,222,128,0.5)' : 'rgba(248,113,113,0.5)'}`, borderRadius: '0.3rem', padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}>
                         {tag}
-                        <span onClick={() => setMonsterFormData({ ...monsterFormData, resistances: { ...monsterFormData.resistances, [category]: (monsterFormData.resistances[category] as string[]).filter((t: string) => t !== tag) } })} style={{ cursor: 'pointer', marginLeft: '0.15rem', fontWeight: 'bold', opacity: 0.7 }}>×</span>
+                        <span onClick={() => setMonsterFormData({ ...monsterFormData, resistances: { ...monsterFormData.resistances, [category]: (monsterFormData.resistances[category] as string[]).filter((t: string) => t !== tag) } })} style={{ cursor: 'pointer', marginLeft: '0.15rem', fontWeight: 'bold', opacity: 0.7 }}>Ã—</span>
                       </span>
                     ))}
                   </div>
@@ -18455,7 +17902,7 @@ const CampaignView: React.FC = () => {
                     fontSize: '1rem'
                   }}
                 >
-                  {editingMonsterId ? '✓ Save Changes' : '✓ Create Monster'}
+                  {editingMonsterId ? 'âœ“ Save Changes' : 'âœ“ Create Monster'}
                 </button>
                 <button
                   onClick={() => {
@@ -18483,46 +17930,46 @@ const CampaignView: React.FC = () => {
                     fontSize: '1rem'
                   }}
                 >
-                  ✗ Cancel
+                  âœ— Cancel
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ─── ADD / EDIT MOUNT MODAL ─────────────────────────────────── */}
+        {/* â”€â”€â”€ ADD / EDIT MOUNT MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {showAddMountModal && (() => {
           // Template definitions
           const MOUNT_TEMPLATES = [
-            // ── Light / Speed horses ──
-            { type: 'Thoroughbred',    speed: 70, fly_speed: 0, hp: 25, ac: 10, carrying_capacity: 380, pull_strength: 800,  stamina: 'Low',         max_rider_armor: 'Light',  purpose: 'Racing · Courier',              description: 'The fastest horse alive — bred for racing and lightning-fast courier runs.', image: '/images/Mounts/Thoroughbred.jpg' },
-            { type: 'Arabian',         speed: 65, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 420, pull_strength: 900,  stamina: 'High',        max_rider_armor: 'Medium', purpose: 'Long Travel · Scouting',        description: 'A fierce desert breed with near-supernatural stamina and agility.', image: '/images/Mounts/Arabian.jpg' },
-            { type: 'Akhal-Teke',      speed: 65, fly_speed: 0, hp: 26, ac: 10, carrying_capacity: 400, pull_strength: 850,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Speed · Heat Endurance',        description: 'A gleaming golden-coated horse from the eastern steppes, prized for speed and heat endurance.', image: '/images/Mounts/AkhalTeke.jpg' },
-            { type: 'Barb',            speed: 60, fly_speed: 0, hp: 30, ac: 11, carrying_capacity: 440, pull_strength: 950,  stamina: 'High',        max_rider_armor: 'Medium', purpose: 'Desert Travel · Scouting',      description: 'A hardy North African breed — nimble, durable, and at home in arid terrain.', image: '/images/Mounts/Barb.jpg' },
-            { type: 'Mustang',         speed: 60, fly_speed: 0, hp: 33, ac: 11, carrying_capacity: 440, pull_strength: 1000, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Wilderness · Survival',         description: 'A wild-born free-roaming horse. Fiercely independent but devastatingly resilient.', image: '/images/Mounts/Mustang.jpg' },
-            // ── All-Rounder / Riding horses ──
-            { type: 'Quarter Horse',   speed: 60, fly_speed: 0, hp: 35, ac: 11, carrying_capacity: 480, pull_strength: 1100, stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'All-Purpose · General Riding',  description: 'The dependable workhorse of adventurers — balanced speed, strength, and temperament.', image: '/images/Mounts/QuarterHorse.jpg' },
-            { type: 'Appaloosa',       speed: 55, fly_speed: 0, hp: 30, ac: 10, carrying_capacity: 460, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'Trail Riding · Wilderness',     description: 'A spotted trail horse famously sure-footed across rough wilderness terrain.', image: '/images/Mounts/Appaloosa.jpg' },
-            { type: 'Mongolian Horse', speed: 55, fly_speed: 0, hp: 36, ac: 11, carrying_capacity: 450, pull_strength: 1050, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Endurance · Long Campaigns',    description: 'Short and stocky, bred for the endless steppe. Unmatched long-distance endurance.', image: '/images/Mounts/MongolianHorse.jpg' },
-            { type: 'Paso Fino',       speed: 50, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 380, pull_strength: 800,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Comfortable Travel · Long Roads', description: 'A smooth-gaited horse whose effortless stride makes long travel far less exhausting.', image: '/images/Mounts/PasoFino.jpg' },
-            { type: 'Marwari',         speed: 55, fly_speed: 0, hp: 38, ac: 11, carrying_capacity: 460, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry · Battle',              description: 'An Indian cavalry breed with distinctive inward-curving ears, loyal to the death.', image: '/images/Mounts/Marwari.jpg' },
-            // ── War / Battle horses ──
-            { type: 'Destrier',        speed: 60, fly_speed: 0, hp: 55, ac: 13, carrying_capacity: 520, pull_strength: 1200, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Heavy Cavalry · Front Lines',   description: 'The great medieval warhorse. Huge, fearless, trained to fight alongside its rider.', image: '/images/Mounts/Destrier.jpg' },
-            { type: 'Friesian',        speed: 55, fly_speed: 0, hp: 48, ac: 12, carrying_capacity: 500, pull_strength: 1100, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Heavy Cavalry · Intimidation',  description: 'A powerful jet-black warhorse. Imposing in appearance and deadly on the battlefield.', image: '/images/Mounts/Friesian.jpg' },
-            { type: 'Andalusian',      speed: 60, fly_speed: 0, hp: 40, ac: 12, carrying_capacity: 480, pull_strength: 1050, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry · Combat Maneuvers',    description: 'A noble battle horse of royal lineage, agile enough for both parade and war.', image: '/images/Mounts/Andalusian.jpg' },
-            { type: 'Lusitano',        speed: 55, fly_speed: 0, hp: 42, ac: 12, carrying_capacity: 480, pull_strength: 1050, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry · Combat',              description: 'A Portuguese warhorse bred to fight bulls — collected, courageous, and intensely responsive.', image: '/images/Mounts/Lusitano.jpg' },
-            { type: 'Lipizzaner',      speed: 50, fly_speed: 0, hp: 35, ac: 11, carrying_capacity: 430, pull_strength: 950,  stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'Combat Tricks · Light Cavalry', description: 'A dressage-trained cavalry horse capable of leaping and striking maneuvers in combat.', image: '/images/Mounts/Lipizzaner.jpg' },
-            // ── Draft / Cargo horses ──
-            { type: 'Shire',           speed: 40, fly_speed: 0, hp: 52, ac: 11, carrying_capacity: 640, pull_strength: 2000, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo · Hauling',               description: 'The mightiest of draft horses. Can haul staggering loads and shrug off blows.', image: '/images/Mounts/Shire.jpg' },
-            { type: 'Clydesdale',      speed: 40, fly_speed: 0, hp: 46, ac: 10, carrying_capacity: 600, pull_strength: 1800, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo · Wagon Pulling',         description: 'A feathered-footed draft horse bred to haul heavy wagons and supplies across the realm.', image: '/images/Mounts/Clydesdale.jpg' },
-            { type: 'Percheron',       speed: 45, fly_speed: 0, hp: 48, ac: 11, carrying_capacity: 580, pull_strength: 1600, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo · Heavy Cavalry',         description: 'A dapple-grey French draft horse — strength of a Shire with slightly more agility.', image: '/images/Mounts/Percheron.jpg' },
-            // ── Small / Pony breeds ──
-            { type: 'Icelandic Horse', speed: 40, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 320, pull_strength: 700,  stamina: 'Exceptional', max_rider_armor: 'Light',  purpose: 'Mountain Travel · Cold Weather', description: 'A small but extraordinarily tough mountain breed. Never gets lost, never tires in snow.', image: '/images/Mounts/IcelandicHorse.jpg' },
-            { type: 'Fell Pony',       speed: 40, fly_speed: 0, hp: 24, ac: 10, carrying_capacity: 300, pull_strength: 650,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Rough Terrain · Small Riders',  description: 'A rugged northern pony, sure-footed on moorland and resistant to harsh weather.', image: '/images/Mounts/FellPony.jpg' },
-            // ── Camels ──
-            { type: 'Dromedary Camel', speed: 50, fly_speed: 0, hp: 32, ac: 10, carrying_capacity: 520, pull_strength: 1200, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Desert Travel · Light Cargo',   description: 'A single-humped desert camel. Barely needs water and never falters in scorching heat.', image: '/images/Mounts/DromedaryCamel.jpg' },
-            { type: 'Bactrian Camel',  speed: 40, fly_speed: 0, hp: 40, ac: 10, carrying_capacity: 600, pull_strength: 1500, stamina: 'Exceptional', max_rider_armor: 'Any',    purpose: 'Cold Desert · Heavy Cargo',     description: 'A two-humped camel built for cold mountain deserts. Carries extraordinary cargo loads.', image: '/images/Mounts/BactrianCamel.jpg' },
-            // ── Custom ──
+            // â”€â”€ Light / Speed horses â”€â”€
+            { type: 'Thoroughbred',    speed: 70, fly_speed: 0, hp: 25, ac: 10, carrying_capacity: 380, pull_strength: 800,  stamina: 'Low',         max_rider_armor: 'Light',  purpose: 'Racing Â· Courier',              description: 'The fastest horse alive â€” bred for racing and lightning-fast courier runs.', image: '/images/Mounts/Thoroughbred.jpg' },
+            { type: 'Arabian',         speed: 65, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 420, pull_strength: 900,  stamina: 'High',        max_rider_armor: 'Medium', purpose: 'Long Travel Â· Scouting',        description: 'A fierce desert breed with near-supernatural stamina and agility.', image: '/images/Mounts/Arabian.jpg' },
+            { type: 'Akhal-Teke',      speed: 65, fly_speed: 0, hp: 26, ac: 10, carrying_capacity: 400, pull_strength: 850,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Speed Â· Heat Endurance',        description: 'A gleaming golden-coated horse from the eastern steppes, prized for speed and heat endurance.', image: '/images/Mounts/AkhalTeke.jpg' },
+            { type: 'Barb',            speed: 60, fly_speed: 0, hp: 30, ac: 11, carrying_capacity: 440, pull_strength: 950,  stamina: 'High',        max_rider_armor: 'Medium', purpose: 'Desert Travel Â· Scouting',      description: 'A hardy North African breed â€” nimble, durable, and at home in arid terrain.', image: '/images/Mounts/Barb.jpg' },
+            { type: 'Mustang',         speed: 60, fly_speed: 0, hp: 33, ac: 11, carrying_capacity: 440, pull_strength: 1000, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Wilderness Â· Survival',         description: 'A wild-born free-roaming horse. Fiercely independent but devastatingly resilient.', image: '/images/Mounts/Mustang.jpg' },
+            // â”€â”€ All-Rounder / Riding horses â”€â”€
+            { type: 'Quarter Horse',   speed: 60, fly_speed: 0, hp: 35, ac: 11, carrying_capacity: 480, pull_strength: 1100, stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'All-Purpose Â· General Riding',  description: 'The dependable workhorse of adventurers â€” balanced speed, strength, and temperament.', image: '/images/Mounts/QuarterHorse.jpg' },
+            { type: 'Appaloosa',       speed: 55, fly_speed: 0, hp: 30, ac: 10, carrying_capacity: 460, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'Trail Riding Â· Wilderness',     description: 'A spotted trail horse famously sure-footed across rough wilderness terrain.', image: '/images/Mounts/Appaloosa.jpg' },
+            { type: 'Mongolian Horse', speed: 55, fly_speed: 0, hp: 36, ac: 11, carrying_capacity: 450, pull_strength: 1050, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Endurance Â· Long Campaigns',    description: 'Short and stocky, bred for the endless steppe. Unmatched long-distance endurance.', image: '/images/Mounts/MongolianHorse.jpg' },
+            { type: 'Paso Fino',       speed: 50, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 380, pull_strength: 800,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Comfortable Travel Â· Long Roads', description: 'A smooth-gaited horse whose effortless stride makes long travel far less exhausting.', image: '/images/Mounts/PasoFino.jpg' },
+            { type: 'Marwari',         speed: 55, fly_speed: 0, hp: 38, ac: 11, carrying_capacity: 460, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry Â· Battle',              description: 'An Indian cavalry breed with distinctive inward-curving ears, loyal to the death.', image: '/images/Mounts/Marwari.jpg' },
+            // â”€â”€ War / Battle horses â”€â”€
+            { type: 'Destrier',        speed: 60, fly_speed: 0, hp: 55, ac: 13, carrying_capacity: 520, pull_strength: 1200, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Heavy Cavalry Â· Front Lines',   description: 'The great medieval warhorse. Huge, fearless, trained to fight alongside its rider.', image: '/images/Mounts/Destrier.jpg' },
+            { type: 'Friesian',        speed: 55, fly_speed: 0, hp: 48, ac: 12, carrying_capacity: 500, pull_strength: 1100, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Heavy Cavalry Â· Intimidation',  description: 'A powerful jet-black warhorse. Imposing in appearance and deadly on the battlefield.', image: '/images/Mounts/Friesian.jpg' },
+            { type: 'Andalusian',      speed: 60, fly_speed: 0, hp: 40, ac: 12, carrying_capacity: 480, pull_strength: 1050, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry Â· Combat Maneuvers',    description: 'A noble battle horse of royal lineage, agile enough for both parade and war.', image: '/images/Mounts/Andalusian.jpg' },
+            { type: 'Lusitano',        speed: 55, fly_speed: 0, hp: 42, ac: 12, carrying_capacity: 480, pull_strength: 1050, stamina: 'Medium',      max_rider_armor: 'Heavy',  purpose: 'Cavalry Â· Combat',              description: 'A Portuguese warhorse bred to fight bulls â€” collected, courageous, and intensely responsive.', image: '/images/Mounts/Lusitano.jpg' },
+            { type: 'Lipizzaner',      speed: 50, fly_speed: 0, hp: 35, ac: 11, carrying_capacity: 430, pull_strength: 950,  stamina: 'Medium',      max_rider_armor: 'Medium', purpose: 'Combat Tricks Â· Light Cavalry', description: 'A dressage-trained cavalry horse capable of leaping and striking maneuvers in combat.', image: '/images/Mounts/Lipizzaner.jpg' },
+            // â”€â”€ Draft / Cargo horses â”€â”€
+            { type: 'Shire',           speed: 40, fly_speed: 0, hp: 52, ac: 11, carrying_capacity: 640, pull_strength: 2000, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo Â· Hauling',               description: 'The mightiest of draft horses. Can haul staggering loads and shrug off blows.', image: '/images/Mounts/Shire.jpg' },
+            { type: 'Clydesdale',      speed: 40, fly_speed: 0, hp: 46, ac: 10, carrying_capacity: 600, pull_strength: 1800, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo Â· Wagon Pulling',         description: 'A feathered-footed draft horse bred to haul heavy wagons and supplies across the realm.', image: '/images/Mounts/Clydesdale.jpg' },
+            { type: 'Percheron',       speed: 45, fly_speed: 0, hp: 48, ac: 11, carrying_capacity: 580, pull_strength: 1600, stamina: 'Low',         max_rider_armor: 'Any',    purpose: 'Cargo Â· Heavy Cavalry',         description: 'A dapple-grey French draft horse â€” strength of a Shire with slightly more agility.', image: '/images/Mounts/Percheron.jpg' },
+            // â”€â”€ Small / Pony breeds â”€â”€
+            { type: 'Icelandic Horse', speed: 40, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 320, pull_strength: 700,  stamina: 'Exceptional', max_rider_armor: 'Light',  purpose: 'Mountain Travel Â· Cold Weather', description: 'A small but extraordinarily tough mountain breed. Never gets lost, never tires in snow.', image: '/images/Mounts/IcelandicHorse.jpg' },
+            { type: 'Fell Pony',       speed: 40, fly_speed: 0, hp: 24, ac: 10, carrying_capacity: 300, pull_strength: 650,  stamina: 'High',        max_rider_armor: 'Light',  purpose: 'Rough Terrain Â· Small Riders',  description: 'A rugged northern pony, sure-footed on moorland and resistant to harsh weather.', image: '/images/Mounts/FellPony.jpg' },
+            // â”€â”€ Camels â”€â”€
+            { type: 'Dromedary Camel', speed: 50, fly_speed: 0, hp: 32, ac: 10, carrying_capacity: 520, pull_strength: 1200, stamina: 'Exceptional', max_rider_armor: 'Medium', purpose: 'Desert Travel Â· Light Cargo',   description: 'A single-humped desert camel. Barely needs water and never falters in scorching heat.', image: '/images/Mounts/DromedaryCamel.jpg' },
+            { type: 'Bactrian Camel',  speed: 40, fly_speed: 0, hp: 40, ac: 10, carrying_capacity: 600, pull_strength: 1500, stamina: 'Exceptional', max_rider_armor: 'Any',    purpose: 'Cold Desert Â· Heavy Cargo',     description: 'A two-humped camel built for cold mountain deserts. Carries extraordinary cargo loads.', image: '/images/Mounts/BactrianCamel.jpg' },
+            // â”€â”€ Custom â”€â”€
             { type: 'Custom',          speed: 60, fly_speed: 0, hp: 30, ac: 10, carrying_capacity: 480, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Any',    purpose: '',                              description: '', image: null }
           ];
 
@@ -18560,7 +18007,7 @@ const CampaignView: React.FC = () => {
                   await mountAPI.uploadMountImage(newMount.id, mountImageFile);
                 }
               } else if (mountModalMode === 'edit' && editingMountId) {
-                // Edit — state is updated via socket 'mountUpdated' broadcast
+                // Edit â€” state is updated via socket 'mountUpdated' broadcast
                 await mountAPI.updateMount(editingMountId, mountFormData);
                 if (mountImageFile) {
                   await mountAPI.uploadMountImage(editingMountId, mountImageFile);
@@ -18597,15 +18044,15 @@ const CampaignView: React.FC = () => {
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                   <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>
-                    {mountModalMode === 'edit' ? '✏️ Edit Mount' : mountModalStep === 'choose' ? '🐴 Choose Mount Type' : '🐴 Configure Mount'}
+                    {mountModalMode === 'edit' ? 'âœï¸ Edit Mount' : mountModalStep === 'choose' ? 'ðŸ´ Choose Mount Type' : 'ðŸ´ Configure Mount'}
                   </h4>
                   <button
                     onClick={() => setShowAddMountModal(false)}
                     style={{ background: 'none', border: 'none', color: '#777', fontSize: '1.4rem', cursor: 'pointer' }}
-                  >×</button>
+                  >Ã—</button>
                 </div>
 
-                {/* ── STEP 1: Choose template ── */}
+                {/* â”€â”€ STEP 1: Choose template â”€â”€ */}
                 {mountModalStep === 'choose' && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.85rem' }}>
                     {MOUNT_TEMPLATES.map(tpl => (
@@ -18666,7 +18113,7 @@ const CampaignView: React.FC = () => {
                             fontSize: '3rem',
                             background: 'rgba(124,58,237,0.1)'
                           }}>
-                            ✨
+                            âœ¨
                           </div>
                         )}
                         <div style={{ padding: '0.75rem' }}>
@@ -18689,14 +18136,14 @@ const CampaignView: React.FC = () => {
                           </div>
                           <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
                             {[
-                              `⚡${tpl.speed}ft`,
-                              ...(tpl.fly_speed > 0 ? [`🦅${tpl.fly_speed}ft`] : []),
-                              `❤️${tpl.hp} HP`,
-                              `🛡️AC ${tpl.ac}`,
-                              `📦${tpl.carrying_capacity}lbs`,
-                              ...(tpl.pull_strength > 0 ? [`🔗${tpl.pull_strength}lbs pull`] : []),
-                              `🔋${tpl.stamina}`,
-                              `⚔️${tpl.max_rider_armor} armor`
+                              `âš¡${tpl.speed}ft`,
+                              ...(tpl.fly_speed > 0 ? [`ðŸ¦…${tpl.fly_speed}ft`] : []),
+                              `â¤ï¸${tpl.hp} HP`,
+                              `ðŸ›¡ï¸AC ${tpl.ac}`,
+                              `ðŸ“¦${tpl.carrying_capacity}lbs`,
+                              ...(tpl.pull_strength > 0 ? [`ðŸ”—${tpl.pull_strength}lbs pull`] : []),
+                              `ðŸ”‹${tpl.stamina}`,
+                              `âš”ï¸${tpl.max_rider_armor} armor`
                             ].map(s => (
                               <span key={s} style={{
                                 fontSize: '0.68rem', padding: '0.1rem 0.4rem',
@@ -18713,7 +18160,7 @@ const CampaignView: React.FC = () => {
                   </div>
                 )}
 
-                {/* ── STEP 2: Configure ── */}
+                {/* â”€â”€ STEP 2: Configure â”€â”€ */}
                 {mountModalStep === 'configure' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {/* Image preview */}
@@ -18747,7 +18194,7 @@ const CampaignView: React.FC = () => {
                         value={mountFormData.description || ''}
                         onChange={e => setMountFormData(p => ({ ...p, description: e.target.value }))}
                         rows={2}
-                        placeholder="Brief description…"
+                        placeholder="Brief descriptionâ€¦"
                         style={{ ...inputStyle, resize: 'vertical' }}
                       />
                     </div>
@@ -18755,12 +18202,12 @@ const CampaignView: React.FC = () => {
                     {/* Stats row */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px,1fr))', gap: '0.75rem' }}>
                       {[
-                        { key: 'speed', label: '⚡ Speed (ft)', min: 0 },
-                        { key: 'fly_speed', label: '🦅 Fly Speed (ft)', min: 0 },
-                        { key: 'hp', label: '❤️ HP', min: 1 },
-                        { key: 'ac', label: '🛡️ AC', min: 1 },
-                        { key: 'carrying_capacity', label: '📦 Carry (lbs)', min: 0 },
-                        { key: 'pull_strength', label: '🔗 Pull (lbs)', min: 0 }
+                        { key: 'speed', label: 'âš¡ Speed (ft)', min: 0 },
+                        { key: 'fly_speed', label: 'ðŸ¦… Fly Speed (ft)', min: 0 },
+                        { key: 'hp', label: 'â¤ï¸ HP', min: 1 },
+                        { key: 'ac', label: 'ðŸ›¡ï¸ AC', min: 1 },
+                        { key: 'carrying_capacity', label: 'ðŸ“¦ Carry (lbs)', min: 0 },
+                        { key: 'pull_strength', label: 'ðŸ”— Pull (lbs)', min: 0 }
                       ].map(({ key, label, min }) => (
                         <div key={key}>
                           <label style={labelStyle}>{label}</label>
@@ -18778,20 +18225,20 @@ const CampaignView: React.FC = () => {
                     {/* Stamina & Max Rider Armor */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                       <div>
-                        <label style={labelStyle}>🔋 Stamina</label>
+                        <label style={labelStyle}>ðŸ”‹ Stamina</label>
                         <select
                           value={mountFormData.stamina ?? 'Medium'}
                           onChange={e => setMountFormData(p => ({ ...p, stamina: e.target.value }))}
                           style={{ ...inputStyle, cursor: 'pointer' }}
                         >
-                          <option value="Low">Low — short bursts only</option>
-                          <option value="Medium">Medium — typical travel</option>
-                          <option value="High">High — long journeys</option>
-                          <option value="Exceptional">Exceptional — endless endurance</option>
+                          <option value="Low">Low â€” short bursts only</option>
+                          <option value="Medium">Medium â€” typical travel</option>
+                          <option value="High">High â€” long journeys</option>
+                          <option value="Exceptional">Exceptional â€” endless endurance</option>
                         </select>
                       </div>
                       <div>
-                        <label style={labelStyle}>⚔️ Max Rider Armor</label>
+                        <label style={labelStyle}>âš”ï¸ Max Rider Armor</label>
                         <select
                           value={mountFormData.max_rider_armor ?? 'Any'}
                           onChange={e => setMountFormData(p => ({ ...p, max_rider_armor: e.target.value }))}
@@ -18807,11 +18254,11 @@ const CampaignView: React.FC = () => {
 
                     {/* Purpose hint */}
                     <div>
-                      <label style={labelStyle}>🏷️ Purpose Hint</label>
+                      <label style={labelStyle}>ðŸ·ï¸ Purpose Hint</label>
                       <input
                         value={mountFormData.purpose ?? ''}
                         onChange={e => setMountFormData(p => ({ ...p, purpose: e.target.value }))}
-                        placeholder="e.g. Heavy Cavalry · Combat"
+                        placeholder="e.g. Heavy Cavalry Â· Combat"
                         style={inputStyle}
                       />
                     </div>
@@ -18850,7 +18297,7 @@ const CampaignView: React.FC = () => {
                             fontSize: '0.9rem'
                           }}
                         >
-                          ← Back
+                          â† Back
                         </button>
                       )}
                       <button
@@ -18867,7 +18314,7 @@ const CampaignView: React.FC = () => {
                           fontSize: '0.95rem'
                         }}
                       >
-                        {mountModalMode === 'edit' ? '💾 Save Changes' : '✓ Create Mount'}
+                        {mountModalMode === 'edit' ? 'ðŸ’¾ Save Changes' : 'âœ“ Create Mount'}
                       </button>
                       <button
                         onClick={() => { setShowAddMountModal(false); setMountImageFile(null); setMountImagePreviewUrl(null); }}
@@ -18891,7 +18338,7 @@ const CampaignView: React.FC = () => {
           );
         })()}
 
-        {/* ── Add / Edit Pet Modal ──────────────────────────────────────── */}
+        {/* â”€â”€ Add / Edit Pet Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {showAddPetModal && (() => {
           const isEdit = editingPet !== null;
           const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
@@ -18930,8 +18377,8 @@ const CampaignView: React.FC = () => {
               <div style={{ background: 'linear-gradient(135deg, rgba(15,15,20,0.97), rgba(25,20,30,0.97))', border: '2px solid var(--text-gold)', borderRadius: '1rem', padding: '2rem', maxWidth: 640, width: '95%', maxHeight: '92vh', overflowY: 'auto' }}>
                 {/* Modal header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                  <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>{isEdit ? '✏️ Edit Pet' : '🐾 Add Pet'}</h3>
-                  <button onClick={() => { setShowAddPetModal(false); setEditingPet(null); }} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>✕</button>
+                  <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>{isEdit ? 'âœï¸ Edit Pet' : 'ðŸ¾ Add Pet'}</h3>
+                  <button onClick={() => { setShowAddPetModal(false); setEditingPet(null); }} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>âœ•</button>
                 </div>
 
                 {/* Image upload */}
@@ -18942,7 +18389,7 @@ const CampaignView: React.FC = () => {
                     ) : (editingPet?.image_url ? (
                       <img src={`${API_BASE}${editingPet.image_url}`} alt={editingPet.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
-                      <span style={{ fontSize: '2.5rem' }}>🐾</span>
+                      <span style={{ fontSize: '2.5rem' }}>ðŸ¾</span>
                     ))}
                   </div>
                   <div style={{ flex: 1 }}>
@@ -18956,7 +18403,7 @@ const CampaignView: React.FC = () => {
                         reader.readAsDataURL(f);
                       }
                     }} style={{ ...inputStyle, padding: '0.4rem' }} />
-                    <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', margin: '0.3rem 0 0' }}>JPG, PNG, GIF, WebP — max 5 MB</p>
+                    <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', margin: '0.3rem 0 0' }}>JPG, PNG, GIF, WebP â€” max 5 MB</p>
                   </div>
                 </div>
 
@@ -19024,7 +18471,7 @@ const CampaignView: React.FC = () => {
                 {/* Is Battle Pet toggle */}
                 <div style={{ marginBottom: '1.5rem', padding: '0.85rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.15rem' }}>⚔️ Battle Pet</div>
+                    <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.15rem' }}>âš”ï¸ Battle Pet</div>
                     <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem' }}>When enabled, this pet can join combat alongside the character.</div>
                   </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flexShrink: 0 }}>
@@ -19047,7 +18494,7 @@ const CampaignView: React.FC = () => {
                     disabled={!petFormData.name?.trim() || !petFormData.species?.trim()}
                     style={{ flex: 1, padding: '0.7rem 1.25rem', background: 'linear-gradient(135deg, rgba(212,193,156,0.25), rgba(212,193,156,0.12))', border: '1px solid var(--text-gold)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem', opacity: (!petFormData.name?.trim() || !petFormData.species?.trim()) ? 0.5 : 1 }}
                   >
-                    {isEdit ? '💾 Save Changes' : '🐾 Add Pet'}
+                    {isEdit ? 'ðŸ’¾ Save Changes' : 'ðŸ¾ Add Pet'}
                   </button>
                   <button
                     onClick={() => { setShowAddPetModal(false); setEditingPet(null); setPetFormData(defaultPetForm()); setPetImageFile(null); setPetImagePreviewUrl(null); }}
@@ -19128,11 +18575,11 @@ const CampaignView: React.FC = () => {
                     e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
                   }}
                 >
-                  ✕ Close
+                  âœ• Close
                 </button>
               </div>
 
-              {/* Image — full width */}
+              {/* Image â€” full width */}
               <img
                 src={viewImageModal.imageUrl}
                 alt={viewImageModal.name}
@@ -19194,7 +18641,7 @@ const CampaignView: React.FC = () => {
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
             }}>
               <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
-                ⚔️ Create New Army
+                âš”ï¸ Create New Army
               </h3>
 
               {/* Army Name */}
@@ -19291,11 +18738,11 @@ const CampaignView: React.FC = () => {
                   You can adjust these stats after creation using the +/- buttons
                 </div>
                 {[
-                  { key: 'equipment', label: 'Equipment', icon: '⚔️' },
-                  { key: 'discipline', label: 'Discipline', icon: '🛡️' },
-                  { key: 'morale', label: 'Morale', icon: '💪' },
-                  { key: 'command', label: 'Command', icon: '👑' },
-                  { key: 'logistics', label: 'Logistics', icon: '📦' }
+                  { key: 'equipment', label: 'Equipment', icon: 'âš”ï¸' },
+                  { key: 'discipline', label: 'Discipline', icon: 'ðŸ›¡ï¸' },
+                  { key: 'morale', label: 'Morale', icon: 'ðŸ’ª' },
+                  { key: 'command', label: 'Command', icon: 'ðŸ‘‘' },
+                  { key: 'logistics', label: 'Logistics', icon: 'ðŸ“¦' }
                 ].map((stat) => (
                   <div key={stat.key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <span style={{ fontSize: '1.1rem', width: '24px' }}>{stat.icon}</span>
@@ -19395,7 +18842,7 @@ const CampaignView: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  ✓ Create Army
+                  âœ“ Create Army
                 </button>
               </div>
             </div>
@@ -19442,7 +18889,7 @@ const CampaignView: React.FC = () => {
                 borderBottom: '2px solid var(--border-gold)',
                 paddingBottom: '0.75rem'
               }}>
-                ⚔️ Create New Battle
+                âš”ï¸ Create New Battle
               </h2>
 
               {/* Battle Name */}
@@ -19527,7 +18974,7 @@ const CampaignView: React.FC = () => {
                 fontSize: '0.85rem',
                 color: 'var(--text-secondary)'
               }}>
-                <div style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>ℹ️ Battle Flow</div>
+                <div style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>â„¹ï¸ Battle Flow</div>
                 <div>1. <strong>Planning Phase:</strong> Add participants and set up teams</div>
                 <div>2. <strong>Resolution:</strong> Advance rounds and move armies</div>
                 <div>3. <strong>Completion:</strong> End battle when ready</div>
@@ -19572,7 +19019,7 @@ const CampaignView: React.FC = () => {
                     cursor: newBattleData.name.trim() ? 'pointer' : 'not-allowed'
                   }}
                 >
-                  ⚔️ Create Battle
+                  âš”ï¸ Create Battle
                 </button>
               </div>
             </div>
@@ -19619,7 +19066,7 @@ const CampaignView: React.FC = () => {
                 borderBottom: '2px solid var(--border-gold)',
                 paddingBottom: '0.75rem'
               }}>
-                🎭 Add AI/Temporary Army
+                ðŸŽ­ Add AI/Temporary Army
               </h2>
 
               <div style={{
@@ -19794,11 +19241,11 @@ const CampaignView: React.FC = () => {
                       Temporary Army Stats (1-10, default: 5)
                     </label>
                     {[
-                      { key: 'equipment', label: 'Equipment', icon: '⚔️' },
-                      { key: 'discipline', label: 'Discipline', icon: '🛡️' },
-                      { key: 'morale', label: 'Morale', icon: '💪' },
-                      { key: 'command', label: 'Command', icon: '👑' },
-                      { key: 'logistics', label: 'Logistics', icon: '📦' }
+                      { key: 'equipment', label: 'Equipment', icon: 'âš”ï¸' },
+                      { key: 'discipline', label: 'Discipline', icon: 'ðŸ›¡ï¸' },
+                      { key: 'morale', label: 'Morale', icon: 'ðŸ’ª' },
+                      { key: 'command', label: 'Command', icon: 'ðŸ‘‘' },
+                      { key: 'logistics', label: 'Logistics', icon: 'ðŸ“¦' }
                     ].map((stat) => (
                       <div key={stat.key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
                         <span style={{ fontSize: '1.1rem', width: '24px' }}>{stat.icon}</span>
@@ -19911,7 +19358,7 @@ const CampaignView: React.FC = () => {
                     cursor: (newParticipantData.tempArmyName.trim() && newParticipantData.team.trim()) ? 'pointer' : 'not-allowed'
                   }}
                 >
-                  ✓ Add AI Army
+                  âœ“ Add AI Army
                 </button>
               </div>
             </div>
@@ -19958,7 +19405,7 @@ const CampaignView: React.FC = () => {
                 borderBottom: '2px solid var(--border-gold)',
                 paddingBottom: '0.75rem'
               }}>
-                📨 Invite Players to Battle
+                ðŸ“¨ Invite Players to Battle
               </h2>
 
               <div style={{
@@ -20157,7 +19604,7 @@ const CampaignView: React.FC = () => {
                     cursor: (selectedPlayersToInvite.length > 0 && inviteTeamName.trim()) ? 'pointer' : 'not-allowed'
                   }}
                 >
-                  📨 Send Invitations
+                  ðŸ“¨ Send Invitations
                 </button>
               </div>
             </div>
@@ -20204,7 +19651,7 @@ const CampaignView: React.FC = () => {
                 borderBottom: '2px solid var(--border-gold)',
                 paddingBottom: '0.75rem'
               }}>
-                ⚔️ Battle Invitations
+                âš”ï¸ Battle Invitations
               </h2>
 
               <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', textAlign: 'center' }}>
@@ -20376,7 +19823,7 @@ const CampaignView: React.FC = () => {
                         fontSize: '0.85rem'
                       }}
                     >
-                      ✓ Accept & Join
+                      âœ“ Accept & Join
                     </button>
                   </div>
                 </div>
@@ -20423,7 +19870,7 @@ const CampaignView: React.FC = () => {
             overflow: 'auto',
             padding: '2rem'
           }}>
-            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⭐ Grant Experience</h3>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>â­ Grant Experience</h3>
             
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -20523,7 +19970,7 @@ const CampaignView: React.FC = () => {
                   opacity: selectedCharactersForExp.length === 0 || expAmount <= 0 ? 0.5 : 1
                 }}
               >
-                ⭐ Grant {expAmount} EXP
+                â­ Grant {expAmount} EXP
               </button>
               <button
                 onClick={() => {
@@ -20551,7 +19998,7 @@ const CampaignView: React.FC = () => {
       {showHealthModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, backdropFilter: 'blur(8px)' }}>
           <div className="glass-panel" style={{ maxWidth: '620px', width: '90%', maxHeight: '85vh', overflow: 'auto', padding: '2rem' }}>
-            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>🩹 Adjust Health</h3>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>ðŸ©¹ Adjust Health</h3>
 
             {/* Character selector */}
             <div style={{ marginBottom: '1.25rem' }}>
@@ -20609,7 +20056,7 @@ const CampaignView: React.FC = () => {
                     onClick={() => setHealthMode(mode)}
                     style={{ flex: 1, padding: '0.6rem', background: healthMode === mode ? (mode === 'heal' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)') : 'rgba(255,255,255,0.05)', border: healthMode === mode ? `2px solid ${mode === 'heal' ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'}` : '1px solid rgba(255,255,255,0.1)', borderRadius: '0.4rem', color: healthMode === mode ? (mode === 'heal' ? '#4ade80' : '#f87171') : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold', textTransform: 'capitalize' }}
                   >
-                    {mode === 'heal' ? '🩹 Heal' : '⚔️ Damage'}
+                    {mode === 'heal' ? 'ðŸ©¹ Heal' : 'âš”ï¸ Damage'}
                   </button>
                 ))}
               </div>
@@ -20648,7 +20095,7 @@ const CampaignView: React.FC = () => {
                 disabled={!healthCharacterId || healthAmount <= 0}
                 style={{ flex: 1, padding: '0.75rem', background: !healthCharacterId || healthAmount <= 0 ? 'rgba(100,116,139,0.3)' : healthMode === 'heal' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)', border: `2px solid ${!healthCharacterId || healthAmount <= 0 ? 'rgba(100,116,139,0.4)' : healthMode === 'heal' ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}`, borderRadius: '0.4rem', color: !healthCharacterId || healthAmount <= 0 ? '#64748b' : healthMode === 'heal' ? '#4ade80' : '#f87171', cursor: !healthCharacterId || healthAmount <= 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1rem', opacity: !healthCharacterId || healthAmount <= 0 ? 0.5 : 1 }}
               >
-                {healthMode === 'heal' ? `🩹 Heal ${healthAmount || 0} HP` : `⚔️ Deal ${healthAmount || 0} Damage`}
+                {healthMode === 'heal' ? `ðŸ©¹ Heal ${healthAmount || 0} HP` : `âš”ï¸ Deal ${healthAmount || 0} Damage`}
               </button>
               <button
                 onClick={() => { setShowHealthModal(false); setHealthCharacterId(null); setHealthLimb('all'); setHealthAmount(0); setHealthMode('heal'); }}
@@ -20685,7 +20132,7 @@ const CampaignView: React.FC = () => {
           }}>
             {/* Header row with title, create button, and close button */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>✨ Add Skill</h3>
+              <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>âœ¨ Add Skill</h3>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <button
                   onClick={() => setShowCreateSkillModal(true)}
@@ -20700,7 +20147,7 @@ const CampaignView: React.FC = () => {
                     fontWeight: 'bold'
                   }}
                 >
-                  ➕ Create New Skill
+                  âž• Create New Skill
                 </button>
                 <button
                   onClick={() => { setShowAddSkillModal(false); setSkillSearchQuery(''); setSkillClassFilter('All'); }}
@@ -20715,7 +20162,7 @@ const CampaignView: React.FC = () => {
                     fontWeight: 'bold'
                   }}
                 >
-                  ✕ Close
+                  âœ• Close
                 </button>
               </div>
             </div>
@@ -20724,7 +20171,7 @@ const CampaignView: React.FC = () => {
             <div style={{ marginBottom: '0.75rem' }}>
               <input
                 type="text"
-                placeholder="🔍 Search skills..."
+                placeholder="ðŸ” Search skills..."
                 value={skillSearchQuery}
                 onChange={(e) => setSkillSearchQuery(e.target.value)}
                 style={{
@@ -20848,7 +20295,7 @@ const CampaignView: React.FC = () => {
                             fontWeight: 'bold'
                           }}
                         >
-                          {alreadyHas ? '✓ Added' : '+ Add'}
+                          {alreadyHas ? 'âœ“ Added' : '+ Add'}
                         </button>
                       </div>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
@@ -20892,7 +20339,7 @@ const CampaignView: React.FC = () => {
             overflow: 'auto',
             padding: '2rem'
           }}>
-            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>✨ Create New Skill</h3>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>âœ¨ Create New Skill</h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
@@ -21066,7 +20513,7 @@ const CampaignView: React.FC = () => {
                       fontSize: '1rem'
                     }}
                   >
-                    <option value="" style={{ background: '#1a1a2e', color: '#d4c19c' }}>— Select frequency —</option>
+                    <option value="" style={{ background: '#1a1a2e', color: '#d4c19c' }}>â€” Select frequency â€”</option>
                     <option value="At Will" style={{ background: '#1a1a2e', color: '#d4c19c' }}>At Will</option>
                     <option value="Spell Slots" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Spell Slots</option>
                     <option value="Once per short rest" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Once per short rest</option>
@@ -21095,7 +20542,7 @@ const CampaignView: React.FC = () => {
                   opacity: !newSkillData.name || !newSkillData.description ? 0.5 : 1
                 }}
               >
-                ✨ Create Skill
+                âœ¨ Create Skill
               </button>
               <button
                 onClick={() => {
@@ -21157,7 +20604,7 @@ const CampaignView: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem', textAlign: 'center' }}>
-              ⬆️ Level Up: {levelUpInfo.currentLevel} → {levelUpInfo.newLevel}
+              â¬†ï¸ Level Up: {levelUpInfo.currentLevel} â†’ {levelUpInfo.newLevel}
             </h4>
             
             {/* Progress Indicator */}
@@ -21191,16 +20638,16 @@ const CampaignView: React.FC = () => {
             {levelUpStep === 'hp' && (
               <div>
                 <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
-                  ❤️ Hit Points Increase
+                  â¤ï¸ Hit Points Increase
                 </h5>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: levelUpData.hpChoiceLocked ? '0.75rem' : '2rem', textAlign: 'center' }}>
                   {levelUpData.hpChoiceLocked
-                    ? '🔒 Choice locked — cannot be changed'
+                    ? 'ðŸ”’ Choice locked â€” cannot be changed'
                     : `Choose how to increase your maximum HP (Hit Die: d${levelUpInfo.hitDie})`}
                 </p>
                 {levelUpData.hpChoiceLocked && (
                   <div style={{ textAlign: 'center', marginBottom: '1.5rem', padding: '0.5rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.5rem', fontSize: '0.85rem', color: '#f87171' }}>
-                    ⚠️ This decision is permanent and cannot be re-rolled or changed.
+                    âš ï¸ This decision is permanent and cannot be re-rolled or changed.
                   </div>
                 )}
 
@@ -21228,7 +20675,7 @@ const CampaignView: React.FC = () => {
                       e.currentTarget.style.borderColor = levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
                     }}
                   >
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎲</div>
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>ðŸŽ²</div>
                     <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
                       Roll for HP
                     </div>
@@ -21237,7 +20684,7 @@ const CampaignView: React.FC = () => {
                     </div>
                     {levelUpData.hpRolled !== null && (
                       <div style={{ fontSize: '2rem', color: '#4ade80', fontWeight: 'bold' }}>
-                        +{levelUpData.hpIncrease} HP {levelUpData.hpChoiceLocked && '🔒'}
+                        +{levelUpData.hpIncrease} HP {levelUpData.hpChoiceLocked && 'ðŸ”’'}
                       </div>
                     )}
                   </div>
@@ -21265,7 +20712,7 @@ const CampaignView: React.FC = () => {
                       e.currentTarget.style.borderColor = levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
                     }}
                   >
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>ðŸ“Š</div>
                     <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
                       Take Average
                     </div>
@@ -21273,7 +20720,7 @@ const CampaignView: React.FC = () => {
                       Guaranteed {levelUpInfo.hitDieAverage} + CON modifier
                     </div>
                     <div style={{ fontSize: '2rem', color: '#4ade80', fontWeight: 'bold' }}>
-                      +{levelUpInfo.hitDieAverage} HP {levelUpData.hpChoiceLocked && levelUpData.hpRolled === null && '🔒'}
+                      +{levelUpInfo.hitDieAverage} HP {levelUpData.hpChoiceLocked && levelUpData.hpRolled === null && 'ðŸ”’'}
                     </div>
                   </div>
                 </div>
@@ -21281,7 +20728,7 @@ const CampaignView: React.FC = () => {
                 <div style={{ textAlign: 'center', marginBottom: '2rem', padding: '1rem', background: 'rgba(212, 193, 156, 0.1)', borderRadius: '0.5rem' }}>
                   <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>
                     {levelUpData.hpChoiceLocked
-                      ? <>Current HP: {levelUpInfo.currentHP} → New HP: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{levelUpInfo.currentHP + levelUpData.hpIncrease}</span> (+{levelUpData.hpIncrease})</>
+                      ? <>Current HP: {levelUpInfo.currentHP} â†’ New HP: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{levelUpInfo.currentHP + levelUpData.hpIncrease}</span> (+{levelUpData.hpIncrease})</>
                       : 'Click a card above to lock in your HP choice'}
                   </div>
                 </div>
@@ -21311,7 +20758,7 @@ const CampaignView: React.FC = () => {
                     opacity: !levelUpData.hpChoiceLocked ? 0.5 : 1
                   }}
                 >
-                  Continue →
+                  Continue â†’
                 </button>
               </div>
             )}
@@ -21320,7 +20767,7 @@ const CampaignView: React.FC = () => {
             {levelUpStep === 'subclass' && levelUpInfo.needsSubclass && (
               <div>
                 <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
-                  🎯 Choose Your Subclass
+                  ðŸŽ¯ Choose Your Subclass
                 </h5>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
                   This is a permanent choice that defines your character's specialization
@@ -21370,7 +20817,7 @@ const CampaignView: React.FC = () => {
                       color: '#94a3b8'
                     }}
                   >
-                    ← Back
+                    â† Back
                   </button>
                   <button
                     onClick={() => {
@@ -21394,7 +20841,7 @@ const CampaignView: React.FC = () => {
                       opacity: !levelUpData.subclassId ? 0.5 : 1
                     }}
                   >
-                    Continue →
+                    Continue â†’
                   </button>
                 </div>
               </div>
@@ -21404,7 +20851,7 @@ const CampaignView: React.FC = () => {
             {levelUpStep === 'beast' && levelUpInfo.needsBeastSelection && (
               <div>
                 <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
-                  🐾 Choose Your Beast Companion
+                  ðŸ¾ Choose Your Beast Companion
                 </h5>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
                   Your bond manifests a powerful beast companion that will fight at your side
@@ -21474,7 +20921,7 @@ const CampaignView: React.FC = () => {
                               parent.style.alignItems = 'center';
                               parent.style.justifyContent = 'center';
                               parent.style.background = 'rgba(100, 116, 139, 0.3)';
-                              parent.innerHTML = '<span style="font-size: 3rem;">🐾</span>';
+                              parent.innerHTML = '<span style="font-size: 3rem;">ðŸ¾</span>';
                             }
                           }}
                         />
@@ -21509,7 +20956,7 @@ const CampaignView: React.FC = () => {
                       color: '#94a3b8'
                     }}
                   >
-                    ← Back
+                    â† Back
                   </button>
                   <button
                     onClick={() => {
@@ -21531,7 +20978,7 @@ const CampaignView: React.FC = () => {
                       opacity: !levelUpData.beastSelection ? 0.5 : 1
                     }}
                   >
-                    Continue →
+                    Continue â†’
                   </button>
                 </div>
               </div>
@@ -21541,7 +20988,7 @@ const CampaignView: React.FC = () => {
             {levelUpStep === 'choices' && levelUpInfo.choiceFeatures.length > 0 && (
               <div>
                 <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
-                  ✨ Make Your Choices
+                  âœ¨ Make Your Choices
                 </h5>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
                   Select from available options for your class features
@@ -21560,7 +21007,7 @@ const CampaignView: React.FC = () => {
                       {feature.choice_type === 'asi_or_feat' && (
                         <div style={{ padding: '1.5rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
                           <p style={{ color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '1rem', fontSize: '1.1rem' }}>
-                            📊 Ability Score Improvement
+                            ðŸ“Š Ability Score Improvement
                           </p>
                           <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                             Increase one ability by +2, or two abilities by +1 each (max 20 without special abilities)
@@ -21589,7 +21036,7 @@ const CampaignView: React.FC = () => {
                                         {abilityNames[ability as keyof typeof abilityNames]}
                                       </div>
                                       <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: increase > 0 ? '#4ade80' : 'var(--text-gold)', marginBottom: '0.75rem' }}>
-                                        {currentValue} {increase > 0 && `→ ${newValue}`}
+                                        {currentValue} {increase > 0 && `â†’ ${newValue}`}
                                       </div>
                                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                                         <button
@@ -21614,7 +21061,7 @@ const CampaignView: React.FC = () => {
                                             opacity: increase === 0 ? 0.3 : 1
                                           }}
                                         >
-                                          −
+                                          âˆ’
                                         </button>
                                         <button
                                           onClick={() => {
@@ -21721,7 +21168,7 @@ const CampaignView: React.FC = () => {
                       color: '#94a3b8'
                     }}
                   >
-                    ← Back
+                    â† Back
                   </button>
                   <button
                     onClick={() => setLevelUpStep('summary')}
@@ -21734,7 +21181,7 @@ const CampaignView: React.FC = () => {
                       color: '#4ade80'
                     }}
                   >
-                    Continue →
+                    Continue â†’
                   </button>
                 </div>
               </div>
@@ -21744,7 +21191,7 @@ const CampaignView: React.FC = () => {
             {levelUpStep === 'summary' && (
               <div>
                 <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
-                  📜 Level Up Summary
+                  ðŸ“œ Level Up Summary
                 </h5>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
                   Review your choices before confirming
@@ -21753,12 +21200,12 @@ const CampaignView: React.FC = () => {
                 <div style={{ marginBottom: '2rem' }}>
                   {/* HP Summary */}
                   <div style={{ padding: '1rem', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(34, 197, 94, 0.3)' }}>
-                    <div style={{ fontWeight: 'bold', color: '#4ade80', marginBottom: '0.5rem' }}>❤️ Hit Points</div>
+                    <div style={{ fontWeight: 'bold', color: '#4ade80', marginBottom: '0.5rem' }}>â¤ï¸ Hit Points</div>
                     <div style={{ color: 'var(--text-secondary)' }}>
                       +{levelUpData.hpIncrease} HP ({levelUpData.hpRolled !== null ? `Rolled: ${levelUpData.hpRolled}` : 'Took Average'})
                     </div>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                      {levelUpInfo.currentHP} → {levelUpInfo.currentHP + levelUpData.hpIncrease}
+                      {levelUpInfo.currentHP} â†’ {levelUpInfo.currentHP + levelUpData.hpIncrease}
                     </div>
                   </div>
 
@@ -21768,9 +21215,9 @@ const CampaignView: React.FC = () => {
                     if (!changes.length) return null;
                     return (
                       <div style={{ padding: '1rem', background: 'rgba(99, 202, 255, 0.08)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(99, 202, 255, 0.35)' }}>
-                        <div style={{ fontWeight: 'bold', color: '#7dd3fc', marginBottom: '0.5rem' }}>✨ Spell Slots</div>
+                        <div style={{ fontWeight: 'bold', color: '#7dd3fc', marginBottom: '0.5rem' }}>âœ¨ Spell Slots</div>
                         {changes.map((change, idx) => (
-                          <div key={idx} style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>• {change}</div>
+                          <div key={idx} style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>â€¢ {change}</div>
                         ))}
                       </div>
                     );
@@ -21779,7 +21226,7 @@ const CampaignView: React.FC = () => {
                   {/* Subclass Summary */}
                   {levelUpData.subclassId && (
                     <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
-                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>🎯 Subclass</div>
+                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>ðŸŽ¯ Subclass</div>
                       <div style={{ color: 'var(--text-secondary)' }}>
                         {levelUpInfo.availableSubclasses.find((s: any) => s.id === levelUpData.subclassId)?.name}
                       </div>
@@ -21800,10 +21247,10 @@ const CampaignView: React.FC = () => {
                   {/* Auto Features */}
                   {levelUpInfo.autoFeatures.length > 0 && (
                     <div style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(59, 130, 246, 0.3)' }}>
-                      <div style={{ fontWeight: 'bold', color: '#60a5fa', marginBottom: '0.5rem' }}>✨ Features Gained</div>
+                      <div style={{ fontWeight: 'bold', color: '#60a5fa', marginBottom: '0.5rem' }}>âœ¨ Features Gained</div>
                       {levelUpInfo.autoFeatures.map((feature: any) => (
                         <div key={feature.id} style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                          • {feature.name}
+                          â€¢ {feature.name}
                         </div>
                       ))}
                     </div>
@@ -21812,7 +21259,7 @@ const CampaignView: React.FC = () => {
                   {/* Skill Gained - only show if not a duplicate of auto features and not empty */}
                   {levelUpInfo.skillGained && !levelUpInfo.autoFeatures.some((f: any) => f.name === levelUpInfo.skillGained.name) && (
                     <div style={{ padding: '1rem', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(168, 85, 247, 0.3)' }}>
-                      <div style={{ fontWeight: 'bold', color: '#a78bfa', marginBottom: '0.5rem' }}>⚔️ Skill Learned</div>
+                      <div style={{ fontWeight: 'bold', color: '#a78bfa', marginBottom: '0.5rem' }}>âš”ï¸ Skill Learned</div>
                       <div style={{ color: 'var(--text-secondary)' }}>
                         {levelUpInfo.skillGained.name}
                       </div>
@@ -21822,7 +21269,7 @@ const CampaignView: React.FC = () => {
                   {/* Beast Selection Summary */}
                   {levelUpData.beastSelection && (
                     <div style={{ padding: '1rem', background: 'rgba(251, 146, 60, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(251, 146, 60, 0.3)' }}>
-                      <div style={{ fontWeight: 'bold', color: '#fb923c', marginBottom: '0.5rem' }}>🐾 Beast Companion</div>
+                      <div style={{ fontWeight: 'bold', color: '#fb923c', marginBottom: '0.5rem' }}>ðŸ¾ Beast Companion</div>
                       <div style={{ color: 'var(--text-secondary)' }}>
                         {levelUpData.beastSelection.beastName}
                       </div>
@@ -21832,10 +21279,10 @@ const CampaignView: React.FC = () => {
                   {/* Feature Choices */}
                   {levelUpData.featureChoices.length > 0 && (
                     <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
-                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>🎯 Choices Made</div>
+                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>ðŸŽ¯ Choices Made</div>
                       {levelUpData.featureChoices.map((choice: any, idx: number) => (
                         <div key={idx} style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                          • {choice.choiceName}
+                          â€¢ {choice.choiceName}
                         </div>
                       ))}
                     </div>
@@ -21864,7 +21311,7 @@ const CampaignView: React.FC = () => {
                       color: '#94a3b8'
                     }}
                   >
-                    ← Back
+                    â† Back
                   </button>
                   <button
                     onClick={handleCompleteLevelUp}
@@ -21879,7 +21326,7 @@ const CampaignView: React.FC = () => {
                       fontWeight: 'bold'
                     }}
                   >
-                    ⬆️ Confirm Level Up
+                    â¬†ï¸ Confirm Level Up
                   </button>
                 </div>
               </div>
@@ -21907,7 +21354,7 @@ const CampaignView: React.FC = () => {
                 justifyContent: 'center'
               }}
             >
-              ×
+              Ã—
             </button>
           </div>
         </div>
@@ -21941,7 +21388,7 @@ const CampaignView: React.FC = () => {
             onClick={e => e.stopPropagation()}
           >
             <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem', textAlign: 'center' }}>
-              ⚔️ Choose Your Subclass
+              âš”ï¸ Choose Your Subclass
             </h4>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
               This is a permanent choice that defines your character's specialization
@@ -21995,7 +21442,7 @@ const CampaignView: React.FC = () => {
                   fontWeight: 'bold'
                 }}
               >
-                Confirm Choice →
+                Confirm Choice â†’
               </button>
             </div>
             <button
@@ -22009,7 +21456,7 @@ const CampaignView: React.FC = () => {
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}
             >
-              ×
+              Ã—
             </button>
           </div>
         </div>
@@ -22056,7 +21503,7 @@ const CampaignView: React.FC = () => {
                 className="btn btn-secondary"
                 style={{ padding: '0.5rem 1rem' }}
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -22208,7 +21655,7 @@ const CampaignView: React.FC = () => {
 
                 return (
                   <div>
-                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Level Progression (1–20)</h4>
+                    <h4 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>Level Progression (1â€“20)</h4>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem', fontStyle: 'italic' }}>
                       Hover over highlighted feature names to see skill details.
                     </p>
@@ -22230,7 +21677,7 @@ const CampaignView: React.FC = () => {
                                 fontWeight: isCurrent ? 'bold' : 'normal',
                                 minWidth: '80px', display: 'flex', alignItems: 'center', gap: '0.4rem'
                               }}>
-                                {isCurrent && <span style={{ fontSize: '0.75rem' }}>▶</span>}
+                                {isCurrent && <span style={{ fontSize: '0.75rem' }}>â–¶</span>}
                                 Level {lvl.level}:
                               </span>
                               <span style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
@@ -22250,7 +21697,7 @@ const CampaignView: React.FC = () => {
         </div>
       )}
 
-      {/* Class Progression skill tooltip — rendered at root level to escape backdrop-filter stacking context */}
+      {/* Class Progression skill tooltip â€” rendered at root level to escape backdrop-filter stacking context */}
       {showClassProgressionModal && progressionHoveredSkill && skillDataMap[progressionHoveredSkill] && (
         <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 30000, pointerEvents: 'none' }}>
           <div style={{
@@ -22287,94 +21734,12 @@ const CampaignView: React.FC = () => {
       )}
     </div>
 
-      {/* Player: Name Your Kingdom Modal - rendered at root level so it shows on any tab/view */}
-      {pendingKingdomId !== null && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.8)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div className="glass-panel" style={{ minWidth: '340px', maxWidth: '480px', padding: '2rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👑</div>
-            <h5 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Congratulations!</h5>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-              You have been granted a kingdom! Name your kingdom and your starting village to establish it.
-            </p>
-            <input
-              type="text"
-              value={kingdomNameInput}
-              onChange={(e) => setKingdomNameInput(e.target.value)}
-              placeholder="Kingdom name..."
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(212,193,156,0.4)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '1rem',
-                marginBottom: '0.75rem',
-                boxSizing: 'border-box'
-              }}
-              autoFocus
-            />
-            <input
-              type="text"
-              value={fiefNameInput}
-              onChange={(e) => setFiefNameInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && kingdomNameInput.trim() && fiefNameInput.trim() && socket && currentCampaign) {
-                  socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, kingdomName: kingdomNameInput.trim(), fiefName: fiefNameInput.trim() });
-                  setPendingKingdomId(null);
-                  setKingdomNameInput('');
-                  setFiefNameInput('');
-                }
-              }}
-              placeholder="Starting village name..."
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(212,193,156,0.4)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '1rem',
-                marginBottom: '1.25rem',
-                boxSizing: 'border-box'
-              }}
-            />
-            <button
-              disabled={!kingdomNameInput.trim() || !fiefNameInput.trim()}
-              onClick={() => {
-                if (!kingdomNameInput.trim() || !fiefNameInput.trim() || !socket || !currentCampaign) return;
-                socket.emit('nameKingdom', { campaignId: currentCampaign.campaign.id, kingdomId: pendingKingdomId, kingdomName: kingdomNameInput.trim(), fiefName: fiefNameInput.trim() });
-                setPendingKingdomId(null);
-                setKingdomNameInput('');
-                setFiefNameInput('');
-              }}
-              style={{
-                padding: '10px 28px',
-                backgroundColor: (kingdomNameInput.trim() && fiefNameInput.trim()) ? '#f59e0b' : '#555',
-                color: '#000',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '1rem',
-                fontWeight: 'bold',
-                cursor: (kingdomNameInput.trim() && fiefNameInput.trim()) ? 'pointer' : 'default',
-                transition: 'all 0.2s'
-              }}
-            >
-              Establish Kingdom
-            </button>
-          </div>
-        </div>
-      )}
 
-      {/* ── Rest Modal ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Rest Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showRestModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.4)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <h3 style={{ margin: 0, color: '#7dd3fc', fontSize: '1.1rem' }}>💤 Rest — Day {currentDay}</h3>
+            <h3 style={{ margin: 0, color: '#7dd3fc', fontSize: '1.1rem' }}>ðŸ’¤ Rest â€” Day {currentDay}</h3>
 
             {/* Rest type selection */}
             {(['short', 'long', 'custom'] as const).map(type => (
@@ -22388,9 +21753,9 @@ const CampaignView: React.FC = () => {
                   color: restType === type ? '#7dd3fc' : '#cbd5e1',
                 }}
               >
-                {type === 'short' && <><strong>Short Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— No days pass. Characters recover; no kingdom production.</span></>}
-                {type === 'long' && <><strong>Long Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance 1 day. Kingdom produces resources &amp; population grows.</span></>}
-                {type === 'custom' && <><strong>Custom Skip</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>— Advance N days.</span></>}
+                {type === 'short' && <><strong>Short Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>â€” No days pass. Characters recover; no kingdom production.</span></>}
+                {type === 'long' && <><strong>Long Rest</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>â€” Advance 1 day. Kingdom produces resources &amp; population grows.</span></>}
+                {type === 'custom' && <><strong>Custom Skip</strong> <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>â€” Advance N days.</span></>}
               </button>
             ))}
 
@@ -22405,12 +21770,12 @@ const CampaignView: React.FC = () => {
                   onChange={e => setCustomRestDays(Math.max(1, parseInt(e.target.value) || 1))}
                   style={{ width: '80px', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }}
                 />
-                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Day {currentDay + customRestDays}</span>
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>â†’ Day {currentDay + customRestDays}</span>
               </div>
             )}
 
             {restType === 'long' && (
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Will advance to Day {currentDay + 1}</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>â†’ Will advance to Day {currentDay + 1}</div>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
@@ -22436,7 +21801,7 @@ const CampaignView: React.FC = () => {
                     if (summary.completedBuildings?.length) parts.push(`${summary.completedBuildings.length} building(s) completed`);
                     const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc, r) => acc + (r.gold || 0), 0);
                     if (totalGold > 0) parts.push(`+${totalGold} gold produced`);
-                    setToastMessage(parts.join(' • ') || 'Rest complete');
+                    setToastMessage(parts.join(' â€¢ ') || 'Rest complete');
                     setTimeout(() => setToastMessage(null), 5000);
                     setShowRestModal(false);
                     // Trigger rest handlers for the whole campaign.
@@ -22457,14 +21822,14 @@ const CampaignView: React.FC = () => {
                 }}
                 style={{ padding: '0.5rem 1.25rem', background: 'rgba(56,189,248,0.2)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '6px', color: '#7dd3fc', cursor: restLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
               >
-                {restLoading ? 'Processing…' : 'Confirm Rest'}
+                {restLoading ? 'Processingâ€¦' : 'Confirm Rest'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Quick Roll Modal (DM requests skill/save from target player) ── */}
+      {/* â”€â”€ Quick Roll Modal (DM requests skill/save from target player) â”€â”€ */}
       {showQuickRollModal && socket && currentCampaign && (() => {
         const charId = Number(showQuickRollModal);
         const char = currentCampaign.characters.find((c: any) => Number(c.id) === charId);
@@ -22522,8 +21887,8 @@ const CampaignView: React.FC = () => {
           >
             <div style={{ background: 'linear-gradient(135deg,#0f1a1f,#1a2e2e)', border: '2px solid rgba(167,139,250,0.5)', borderRadius: '1rem', padding: '1.5rem', width: '540px', maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 0 40px rgba(167,139,250,0.2)', overflow: 'hidden' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ color: '#c4b5fd', margin: 0 }}>🎲 Quick Roll — {char.name}</h3>
-                <button onClick={() => setShowQuickRollModal(null)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+                <h3 style={{ color: '#c4b5fd', margin: 0 }}>ðŸŽ² Quick Roll â€” {char.name}</h3>
+                <button onClick={() => setShowQuickRollModal(null)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer', lineHeight: 1 }}>Ã—</button>
               </div>
               <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0 }}>Click any skill or save to request that roll. Modifiers are auto-calculated from the character sheet.</p>
               <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
@@ -22571,13 +21936,13 @@ const CampaignView: React.FC = () => {
         );
       })()}
 
-      {/* ── Short Rest Hit Dice Prompt ── */}
+      {/* â”€â”€ Short Rest Hit Dice Prompt â”€â”€ */}
       {shortRestPrompt && socket && currentCampaign && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: 'linear-gradient(135deg,#0f1a1f,#1a2e2e)', border: '2px solid rgba(56,189,248,0.5)', borderRadius: '1rem', padding: '1.75rem', width: '380px', maxWidth: '95vw', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 0 40px rgba(56,189,248,0.2)' }}>
-            <h3 style={{ color: '#7dd3fc', margin: 0, textAlign: 'center' }}>💊 Short Rest — {shortRestPrompt.name}</h3>
+            <h3 style={{ color: '#7dd3fc', margin: 0, textAlign: 'center' }}>ðŸ’Š Short Rest â€” {shortRestPrompt.name}</h3>
             <div style={{ background: 'rgba(56,189,248,0.08)', borderRadius: '0.5rem', padding: '0.75rem', fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center' }}>
-              d{shortRestPrompt.die} Hit Die · CON {shortRestPrompt.conMod >= 0 ? '+' : ''}{shortRestPrompt.conMod} · HP {shortRestPrompt.currentHp}/{shortRestPrompt.maxHp}
+              d{shortRestPrompt.die} Hit Die Â· CON {shortRestPrompt.conMod >= 0 ? '+' : ''}{shortRestPrompt.conMod} Â· HP {shortRestPrompt.currentHp}/{shortRestPrompt.maxHp}
             </div>
             <div>
               <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 0.5rem', textAlign: 'center' }}>
@@ -22587,7 +21952,7 @@ const CampaignView: React.FC = () => {
                 <button
                   onClick={() => setShortRestDiceChoice(Math.max(0, shortRestDiceChoice - 1))}
                   style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#7dd3fc', fontSize: '1.2rem', cursor: 'pointer' }}>
-                  −
+                  âˆ’
                 </button>
                 <input
                   type="number" min={0} max={shortRestPrompt.hitDiceRemaining}
@@ -22602,7 +21967,7 @@ const CampaignView: React.FC = () => {
                 </button>
               </div>
               <p style={{ color: '#475569', fontSize: '0.7rem', marginTop: '0.5rem', textAlign: 'center' }}>
-                ⚠️ The server rolls your dice — result is final, no rerolls
+                âš ï¸ The server rolls your dice â€” result is final, no rerolls
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
@@ -22615,14 +21980,14 @@ const CampaignView: React.FC = () => {
                 onClick={() => { if (shortRestDiceChoice > 0) socket.emit('spendHitDice', { campaignId: currentCampaign.campaign.id, characterId: shortRestPrompt.characterId, diceToSpend: shortRestDiceChoice }); }}
                 disabled={shortRestDiceChoice < 1}
                 style={{ padding: '0.5rem 1.25rem', background: shortRestDiceChoice > 0 ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.04)', border: `2px solid ${shortRestDiceChoice > 0 ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', color: shortRestDiceChoice > 0 ? '#7dd3fc' : 'rgba(255,255,255,0.3)', cursor: shortRestDiceChoice > 0 ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                💊 Spend {shortRestDiceChoice}d{shortRestPrompt.die}
+                ðŸ’Š Spend {shortRestDiceChoice}d{shortRestPrompt.die}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Global Confirm Modal (replaces all window.confirm popups) ── */}
+      {/* â”€â”€ Global Confirm Modal (replaces all window.confirm popups) â”€â”€ */}
       {pendingConfirm && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
           onClick={e => { if (e.target === e.currentTarget) setPendingConfirm(null); }}>
@@ -22636,7 +22001,7 @@ const CampaignView: React.FC = () => {
         </div>
       )}
 
-      {/* ── Campaign Chat Panel ── */}
+      {/* â”€â”€ Campaign Chat Panel â”€â”€ */}
       {currentCampaign && (
         <>
           <ChatPanel
@@ -22685,30 +22050,10 @@ const CampaignView: React.FC = () => {
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             ) : null}
-            💬
+            ðŸ’¬
           </button>
 
-          {/* Grant Kingdom Modal */}
-          <GrantKingdomModal
-            isOpen={showGrantKingdomModal}
-            onClose={() => setShowGrantKingdomModal(false)}
-            onGrant={(targetPlayerId, availableResources, waterAccess, buildableLand) => {
-              if (!socket || !currentCampaign) return;
-              socket.emit('createKingdom', {
-                campaignId: currentCampaign.campaign.id,
-                targetPlayerId,
-                availableResources,
-                waterAccess,
-                buildableLand,
-              });
-              setShowGrantKingdomModal(false);
-            }}
-            onlinePlayers={currentCampaign?.characters
-              .filter(c => c.player_id && onlineUserIds.has(c.player_id))
-              .map(c => ({ userId: c.player_id as number, characterName: c.name })) ?? []}
-          />
-
-          {/* OOC Dice Roll Modal — shown to players when DM requests an out-of-combat roll */}
+          {/* OOC Dice Roll Modal â€” shown to players when DM requests an out-of-combat roll */}
           {pendingOOCRoll && socket && (
             <DiceRollModal
               request={{
@@ -22755,8 +22100,8 @@ const CampaignView: React.FC = () => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 12000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
           <div style={{ background: '#1a1a2e', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '360px', width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#f87171', margin: 0 }}>⚔️ Damage {mountDamageModal.mountName}</h5>
-              <button onClick={() => setMountDamageModal(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+              <h5 style={{ color: '#f87171', margin: 0 }}>âš”ï¸ Damage {mountDamageModal.mountName}</h5>
+              <button onClick={() => setMountDamageModal(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>âœ•</button>
             </div>
             <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Enter the amount of damage to deal to this mount.</p>
             <input
@@ -22796,8 +22141,8 @@ const CampaignView: React.FC = () => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 11000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
           <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '500px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#d4c19c', margin: 0 }}>🛡️ Equip Armor — {mountArmorPicker.slot.replace(/_/g, ' ')}</h5>
-              <button onClick={() => setMountArmorPicker(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+              <h5 style={{ color: '#d4c19c', margin: 0 }}>ðŸ›¡ï¸ Equip Armor â€” {mountArmorPicker.slot.replace(/_/g, ' ')}</h5>
+              <button onClick={() => setMountArmorPicker(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>âœ•</button>
             </div>
             <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Select an armor item from the character's inventory to equip to this mount slot.</p>
             {(() => {
@@ -22839,8 +22184,8 @@ const CampaignView: React.FC = () => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
           <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#d4c19c', margin: 0 }}>🗺️ Select Battlefield Map</h5>
-              <button onClick={() => setShowBattlefieldMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+              <h5 style={{ color: '#d4c19c', margin: 0 }}>ðŸ—ºï¸ Select Battlefield Map</h5>
+              <button onClick={() => setShowBattlefieldMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>âœ•</button>
             </div>
 
             {/* Upload Section */}
@@ -22876,7 +22221,7 @@ const CampaignView: React.FC = () => {
                   }}
                   disabled={!mapUploadFile || !mapUploadName.trim()}
                   style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(212,193,156,0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
-                >⬆️ Upload</button>
+                >â¬†ï¸ Upload</button>
               </div>
             </div>
 
@@ -22910,7 +22255,7 @@ const CampaignView: React.FC = () => {
                           } catch (e) { console.error(e); }
                         }}
                         style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.9rem', paddingLeft: '0.4rem' }}
-                      >🗑️</button>
+                      >ðŸ—‘ï¸</button>
                     </div>
                   </div>
                 ))}
@@ -22925,8 +22270,8 @@ const CampaignView: React.FC = () => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
           <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#d4c19c', margin: 0 }}>🗺️ Select Battle Map</h5>
-              <button onClick={() => setShowMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+              <h5 style={{ color: '#d4c19c', margin: 0 }}>ðŸ—ºï¸ Select Battle Map</h5>
+              <button onClick={() => setShowMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>âœ•</button>
             </div>
 
             {/* Upload Section */}
@@ -22962,7 +22307,7 @@ const CampaignView: React.FC = () => {
                   }}
                   disabled={!mapUploadFile || !mapUploadName.trim()}
                   style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(212,193,156,0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
-                >⬆️ Upload</button>
+                >â¬†ï¸ Upload</button>
               </div>
             </div>
 
@@ -22996,7 +22341,7 @@ const CampaignView: React.FC = () => {
                           } catch (e) { console.error(e); }
                         }}
                         style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.9rem', paddingLeft: '0.4rem' }}
-                      >🗑️</button>
+                      >ðŸ—‘ï¸</button>
                     </div>
                   </div>
                 ))}
@@ -23013,8 +22358,8 @@ const CampaignView: React.FC = () => {
         >
           <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-              <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>📝 {noteViewModal.title}</h4>
-              <button onClick={() => setNoteViewModal(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: 0, flexShrink: 0 }}>✕</button>
+              <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>ðŸ“ {noteViewModal.title}</h4>
+              <button onClick={() => setNoteViewModal(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: 0, flexShrink: 0 }}>âœ•</button>
             </div>
             <div
               style={{ overflowY: 'auto', flex: 1, color: '#e2e8f0', fontSize: '0.92rem', lineHeight: 1.7, wordBreak: 'break-word' }}
@@ -23025,7 +22370,7 @@ const CampaignView: React.FC = () => {
         document.body
       )}
 
-      {/* Note edit/create modal — portal so it escapes any CSS transform stacking context */}
+      {/* Note edit/create modal â€” portal so it escapes any CSS transform stacking context */}
       {noteEditModal && ReactDOM.createPortal(
         <NoteEditorModal
           isNew={noteEditModal.note === null}

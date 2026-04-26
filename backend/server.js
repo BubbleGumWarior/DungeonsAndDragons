@@ -23,10 +23,6 @@ const shadowRoutes = require('./routes/shadows');
 const mountRoutes = require('./routes/mounts');
 const battleMapsRoutes = require('./routes/battleMaps');
 const petRoutes = require('./routes/pets');
-const kingdomRoutes = require('./routes/kingdoms');
-const fiefRoutes = require('./routes/fiefs');
-const kingdomEventRoutes = require('./routes/kingdom-events');
-const kingdomActionRoutes = require('./routes/kingdom-actions');
 const npcRoutes = require('./routes/npcs');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
@@ -163,10 +159,6 @@ app.use('/api/shadows', shadowRoutes);
 app.use('/api/mounts', mountRoutes);
 app.use('/api/battle-maps', battleMapsRoutes);
 app.use('/api/pets', petRoutes);
-app.use('/api/kingdoms', kingdomRoutes);
-app.use('/api', fiefRoutes);
-app.use('/api/kingdoms', kingdomEventRoutes);
-app.use('/api/kingdoms', kingdomActionRoutes);
 app.use('/api', npcRoutes);
 
 // Health check endpoint
@@ -313,19 +305,8 @@ const startServer = async () => {
         { name: 'addMonsterAbilities', fn: addMonsterAbilities },
         { name: 'addMonsterCR', fn: addMonsterCR },
         { name: 'seedDefaultMonsters', fn: seedDefaultMonsters },
-        { name: 'addKingdomSystem', fn: require('./migrations/add_kingdom_system') },
-        { name: 'addFiefConstruction', fn: require('./migrations/add_fief_construction') },
-        { name: 'fiefStatsDefaultOne', fn: require('./migrations/fief_stats_default_one') },
-        { name: 'addWorkerAssignments', fn: require('./migrations/add_worker_assignments') },
-        { name: 'addTierUpgradeTimer', fn: require('./migrations/add_tier_upgrade_timer') },
-        { name: 'addGarrisonTraining', fn: require('./migrations/add_garrison_training') },
-        { name: 'addFaithColumn', fn: require('./migrations/add_faith_column') },
         { name: 'addPlayerArmyTraining', fn: require('./migrations/add_player_army_training') },
         { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') },
-        { name: 'addResearchSystem', fn: require('./migrations/add_research_system') },
-        { name: 'addBuildQueue', fn: require('./migrations/add_build_queue') },
-        { name: 'addActiveDisasters', fn: require('./migrations/add_active_disasters') },
-        { name: 'addKingdomTier1Fields', fn: require('./migrations/add_kingdom_tier1_fields') },
         { name: 'addCombatSystem', fn: addCombatSystem },
         { name: 'addCampaignChat', fn: require('./migrations/add_campaign_chat') },
         { name: 'addResistancesToCharacters', fn: require('./migrations/add_resistances_to_characters') },
@@ -351,6 +332,7 @@ const startServer = async () => {
         { name: 'addCharacterGold', fn: require('./migrations/add_character_gold') },
         { name: 'rebalanceArmorAc', fn: require('./migrations/rebalance_armor_ac') },
         { name: 'populateOathknightData', fn: require('./migrations/populate_oathknight_data') },
+        { name: 'dropKingdomTables', fn: require('./migrations/drop_kingdom_tables') },
       ];
       
       for (const migration of migrations) {
