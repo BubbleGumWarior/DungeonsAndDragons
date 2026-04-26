@@ -21794,7 +21794,7 @@ const CampaignView: React.FC = () => {
                     const parts: string[] = [];
                     if (restType !== 'short') parts.push(`Advanced to Day ${summary.newDay}`);
                     if (summary.completedBuildings?.length) parts.push(`${summary.completedBuildings.length} building(s) completed`);
-                    const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc, r) => acc + ((r as { gold?: number }).gold || 0), 0);
+                    const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc: number, r) => acc + ((r as { gold?: number }).gold || 0), 0);
                     if (totalGold > 0) parts.push(`+${totalGold} gold produced`);
                     setToastMessage(parts.join(' • ') || 'Rest complete');
                     setTimeout(() => setToastMessage(null), 5000);
