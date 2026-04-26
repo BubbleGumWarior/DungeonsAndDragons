@@ -1,11 +1,4 @@
-const { Pool } = require('pg');
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'dungeonlair',
-  password: 'admin',
-  port: 5432,
-});
+const { pool } = require('../models/database');
 
 async function populateOathknightData() {
   const client = await pool.connect();
@@ -179,8 +172,13 @@ async function populateOathknightData() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-populateOathknightData();
+module.exports = populateOathknightData;
+
+if (require.main === module) {
+  populateOathknightData()
+    .then(() => { console.log('Migration completed'); process.exit(0); })
+    .catch(err => { console.error('Migration failed:', err); process.exit(1); });
+}

@@ -474,6 +474,15 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({ isNew, initialTitle, 
   );
 };
 
+// Subclass unlock levels per class — used to detect missing subclass selection
+const SUBCLASS_UNLOCK_LEVELS: Record<string, number> = {
+  'Cleric': 1, 'Sorcerer': 1, 'Warlock': 1,
+  'Druid': 2, 'Wizard': 2,
+  'Barbarian': 3, 'Bard': 3, 'Fighter': 3, 'Monk': 3, 'Oathknight': 3,
+  'Paladin': 3, 'Ranger': 3, 'Reaver': 3, 'Rogue': 3,
+  'Primal Bond': 3, 'Shadow Sovereign': 3, 'Charlatan': 3,
+};
+
 const CampaignView: React.FC = () => {
   const { campaignName } = useParams<{ campaignName: string }>();
   const navigate = useNavigate();
@@ -1456,6 +1465,10 @@ const CampaignView: React.FC = () => {
   const [levelUpInfo, setLevelUpInfo] = useState<any | null>(null);
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [levelUpStep, setLevelUpStep] = useState<'hp' | 'subclass' | 'beast' | 'choices' | 'summary'>('hp');
+  const [showRetroSubclassModal, setShowRetroSubclassModal] = useState(false);
+  const [retroSubclassCharId, setRetroSubclassCharId] = useState<number | null>(null);
+  const [retroSubclassId, setRetroSubclassId] = useState<number | null>(null);
+  const [retroAvailableSubclasses, setRetroAvailableSubclasses] = useState<any[]>([]);
   const [levelUpData, setLevelUpData] = useState<{
     hpIncrease: number;
     hpRolled: number | null;
@@ -2623,6 +2636,37 @@ const CampaignView: React.FC = () => {
     } catch (err) {
       console.error('Failed to adjust health:', err);
       toast('Failed to adjust health');
+    }
+  };
+
+  const handleOpenRetroSubclass = async (characterId: number) => {
+    try {
+      const subclasses = await skillAPI.getAvailableSubclasses(characterId);
+      setRetroAvailableSubclasses(subclasses || []);
+      setRetroSubclassCharId(characterId);
+      setRetroSubclassId(null);
+      setShowRetroSubclassModal(true);
+    } catch (error) {
+      console.error('Error loading subclasses:', error);
+      toast('Failed to load subclass options');
+    }
+  };
+
+  const handleConfirmRetroSubclass = async () => {
+    if (!retroSubclassCharId || !retroSubclassId) return;
+    const charId = retroSubclassCharId;
+    try {
+      await skillAPI.selectSubclass(charId, retroSubclassId);
+      setShowRetroSubclassModal(false);
+      setRetroSubclassCharId(null);
+      setRetroSubclassId(null);
+      setRetroAvailableSubclasses([]);
+      await loadCampaign(campaignName!);
+      await loadCharacterSkills(charId);
+      toast('Oath chosen! Subclass features granted.');
+    } catch (error: any) {
+      console.error('Error selecting subclass:', error);
+      toast(error?.response?.data?.error || 'Failed to select subclass');
     }
   };
 
@@ -5073,7 +5117,7 @@ const CampaignView: React.FC = () => {
                             )}
                             {item.armor_class && (
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)' }}>
-                                AC {item.armor_class}
+                                +{item.armor_class} AC
                               </div>
                             )}
                             {item.weight && (
@@ -5389,7 +5433,7 @@ const CampaignView: React.FC = () => {
                               AC
                             </div>
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.2' }}>
-                              {itemDetails.armor_class > 10 ? itemDetails.armor_class : `+${itemDetails.armor_class}`}
+                              {`+${itemDetails.armor_class}`}
                             </div>
                           </div>
                         )}
@@ -6028,6 +6072,33 @@ const CampaignView: React.FC = () => {
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                       Lvl {character.level} {character.race} {user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class}
                     </div>
+                    {/* Subclass sanity-check indicator */}
+                    {(() => {
+                      const unlockLevel = SUBCLASS_UNLOCK_LEVELS[character.class];
+                      if (!unlockLevel || character.level < unlockLevel) return null;
+                      if (character.subclass_name) {
+                        return (
+                          <div style={{ fontSize: '0.68rem', color: '#a78bfa', marginTop: '0.1rem' }}>
+                            ✦ {character.subclass_name}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          onClick={user?.role === 'Dungeon Master' ? (e) => { e.stopPropagation(); handleOpenRetroSubclass(character.id); } : undefined}
+                          title={user?.role === 'Dungeon Master' ? `Click to assign ${character.class} subclass (missed at level ${unlockLevel})` : 'No subclass chosen'}
+                          style={{
+                            fontSize: '0.68rem',
+                            color: '#6b7280',
+                            marginTop: '0.1rem',
+                            cursor: user?.role === 'Dungeon Master' ? 'pointer' : 'default',
+                            textDecoration: user?.role === 'Dungeon Master' ? 'underline dotted' : 'none',
+                          }}
+                        >
+                          ⚫ No subclass
+                        </div>
+                      );
+                    })()}
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                       Age: {getCharacterAge(character.race, currentDay)}
                     </div>
@@ -11358,6 +11429,43 @@ const CampaignView: React.FC = () => {
                               ? selectedCharacterData.concealed_class
                               : selectedCharacterData.class
                           }{user?.role === 'Dungeon Master' && selectedCharacterData.concealed_class ? ` 🎭` : ''}</span>
+                          {/* Subclass pill */}
+                          {(() => {
+                            const unlockLevel = SUBCLASS_UNLOCK_LEVELS[selectedCharacterData.class];
+                            if (!unlockLevel || selectedCharacterData.level < unlockLevel) return null;
+                            const subName = (selectedCharacterData as any).subclass_name;
+                            if (subName) {
+                              return (
+                                user?.role === 'Dungeon Master' ? (
+                                  <span
+                                    className="char-pill"
+                                    onClick={() => handleOpenRetroSubclass(selectedCharacterData.id)}
+                                    title="Click to change subclass"
+                                    style={{ cursor: 'pointer', background: 'rgba(139,92,246,0.25)', borderColor: 'rgba(139,92,246,0.5)', color: '#c4b5fd' }}
+                                  >✦ {subName} ✏️</span>
+                                ) : (
+                                  <span className="char-pill" style={{ background: 'rgba(139,92,246,0.15)', borderColor: 'rgba(139,92,246,0.35)', color: '#c4b5fd' }}>
+                                    ✦ {subName}
+                                  </span>
+                                )
+                              );
+                            }
+                            if (user?.role === 'Dungeon Master') {
+                              return (
+                                <span
+                                  className="char-pill"
+                                  onClick={() => handleOpenRetroSubclass(selectedCharacterData.id)}
+                                  title={`Assign subclass (missed at level ${unlockLevel})`}
+                                  style={{ cursor: 'pointer', background: 'rgba(100,100,100,0.2)', borderColor: 'rgba(150,150,150,0.35)', color: '#6b7280' }}
+                                >⚫ No subclass — click to assign</span>
+                              );
+                            }
+                            return (
+                              <span className="char-pill" style={{ background: 'rgba(100,100,100,0.15)', borderColor: 'rgba(150,150,150,0.25)', color: '#6b7280' }}>
+                                ⚫ No subclass
+                              </span>
+                            );
+                          })()}
                           <span className="char-pill char-pill-level">Lvl {selectedCharacterData.level}</span>
                           <span className="char-pill">🎂 Age {getCharacterAge(selectedCharacterData.race, currentDay)}</span>
                         </div>
@@ -11742,14 +11850,14 @@ const CampaignView: React.FC = () => {
                           const mainHandAC  = rawLimbAC?.main_hand ?? 0;
                           const offHandAC   = rawLimbAC?.off_hand  ?? 0;
                           const feetAC      = rawLimbAC?.feet      ?? 0;
-                          // Armor SETS the limb AC (not additive). Shields in hand slots still ADD.
+                          // All armor is additive: base limb AC + equipped item bonus.
                           const characterLimbAC = {
-                            head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.20),
-                            chest:     chestAC > 0 ? chestAC : Math.round(baseAC * 1.00),
+                            head:      Math.round(baseAC * 1.20) + helmAC,
+                            chest:     Math.round(baseAC * 1.00) + chestAC,
                             hands:     Math.round(baseAC * 0.25) + Math.max(mainHandAC, offHandAC),
                             main_hand: Math.round(baseAC * 0.25) + mainHandAC,
                             off_hand:  Math.round(baseAC * 0.25) + offHandAC,
-                            feet:      feetAC  > 0 ? feetAC  : Math.round(baseAC * 0.50)
+                            feet:      Math.round(baseAC * 0.50) + feetAC
                           };
                           
                           // Helper function to get health color based on percentage
@@ -13397,6 +13505,40 @@ const CampaignView: React.FC = () => {
                           {selectedCharacterData.experience_points || 0} / {getRequiredExpForNextLevel(selectedCharacterData.level)} EXP
                         </div>
                       </div>
+                      {selectedCharacterData && (() => {
+                        const subclassLevels: Record<string, number> = {
+                          'Oathknight': 3, 'Barbarian': 3, 'Bard': 3, 'Fighter': 3,
+                          'Monk': 3, 'Paladin': 3, 'Ranger': 3, 'Reaver': 3, 'Rogue': 3,
+                          'Druid': 2, 'Wizard': 2, 'Cleric': 1, 'Sorcerer': 1, 'Warlock': 1,
+                          'Primal Bond': 3, 'Shadow Sovereign': 3, 'Charlatan': 3
+                        };
+                        const subclassLevel = subclassLevels[selectedCharacterData.class];
+                        if (!subclassLevel || selectedCharacterData.level < subclassLevel) return null;
+                        const charSubclassSkills = (characterSkills[selectedCharacterData.id] || []);
+                        const hasSubclassSkill = charSubclassSkills.some((s: any) =>
+                          s.name && /\(.*\)/.test(s.name) && s.class_restriction === selectedCharacterData.class
+                        );
+                        if (hasSubclassSkill) return null;
+                        return (
+                          <button
+                            onClick={() => handleOpenRetroSubclass(selectedCharacterData.id)}
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              marginBottom: '0.5rem',
+                              background: 'linear-gradient(135deg, rgba(234,179,8,0.3), rgba(180,130,0,0.3))',
+                              border: '2px solid rgba(234,179,8,0.6)',
+                              borderRadius: '0.5rem',
+                              color: '#fbbf24',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            ⚔️ Choose Your {selectedCharacterData.class === 'Oathknight' ? 'Oath' : 'Subclass'} (Missed at Level {subclassLevel})
+                          </button>
+                        );
+                      })()}
                       <button
                         onClick={() => handleLevelUp(selectedCharacterData.id)}
                         className="btn btn-primary"
@@ -17626,12 +17768,13 @@ const CampaignView: React.FC = () => {
                   const mainHandAC = rawLimbAC?.main_hand ?? 0;
                   const offHandAC  = rawLimbAC?.off_hand  ?? 0;
                   const feetAC     = rawLimbAC?.feet      ?? 0;
+                  // All armor is additive: base limb AC + equipped item bonus.
                   const cLimbAC = {
-                    head:      helmAC  > 0 ? helmAC  : Math.round(baseAC * 1.20),
-                    chest:     chestAC > 0 ? chestAC : Math.round(baseAC * 1.00),
+                    head:      Math.round(baseAC * 1.20) + helmAC,
+                    chest:     Math.round(baseAC * 1.00) + chestAC,
                     main_hand: Math.round(baseAC * 0.25) + mainHandAC,
                     off_hand:  Math.round(baseAC * 0.25) + offHandAC,
-                    feet:      feetAC  > 0 ? feetAC  : Math.round(baseAC * 0.50)
+                    feet:      Math.round(baseAC * 0.50) + feetAC
                   };
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
@@ -21762,6 +21905,108 @@ const CampaignView: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Retroactive Subclass Selection Modal */}
+      {showRetroSubclassModal && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.8)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 10000
+          }}
+          onClick={() => setShowRetroSubclassModal(false)}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              background: 'linear-gradient(135deg, rgba(17,24,39,0.98) 0%, rgba(31,41,55,0.98) 100%)',
+              border: '3px solid rgba(234,179,8,0.5)',
+              padding: '2.5rem',
+              borderRadius: '1rem',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 0 50px rgba(234,179,8,0.3)',
+              position: 'relative'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem', textAlign: 'center' }}>
+              ⚔️ Choose Your Subclass
+            </h4>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
+              This is a permanent choice that defines your character's specialization
+            </p>
+            <div style={{ display: 'grid', gap: '1rem', marginBottom: '2rem' }}>
+              {retroAvailableSubclasses.map((subclass: any) => (
+                <div
+                  key={subclass.id}
+                  onClick={() => setRetroSubclassId(subclass.id)}
+                  style={{
+                    padding: '1.5rem',
+                    background: retroSubclassId === subclass.id ? 'rgba(234,179,8,0.2)' : 'rgba(212,193,156,0.1)',
+                    border: `3px solid ${retroSubclassId === subclass.id ? 'rgba(234,179,8,0.6)' : 'rgba(212,193,156,0.3)'}`,
+                    borderRadius: '0.75rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
+                    {subclass.name}
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                    {subclass.description}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={() => setShowRetroSubclassModal(false)}
+                style={{
+                  flex: 1, padding: '1rem',
+                  background: 'rgba(100,116,139,0.3)',
+                  border: '2px solid rgba(100,116,139,0.5)',
+                  borderRadius: '0.5rem', color: '#94a3b8', cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmRetroSubclass}
+                disabled={!retroSubclassId}
+                style={{
+                  flex: 2, padding: '1rem',
+                  background: !retroSubclassId ? 'rgba(100,116,139,0.3)' : 'linear-gradient(135deg, rgba(34,197,94,0.3), rgba(22,163,74,0.3))',
+                  border: '2px solid rgba(34,197,94,0.5)',
+                  borderRadius: '0.5rem',
+                  color: !retroSubclassId ? '#64748b' : '#4ade80',
+                  cursor: !retroSubclassId ? 'not-allowed' : 'pointer',
+                  opacity: !retroSubclassId ? 0.5 : 1,
+                  fontWeight: 'bold'
+                }}
+              >
+                Confirm Choice →
+              </button>
+            </div>
+            <button
+              onClick={() => setShowRetroSubclassModal(false)}
+              style={{
+                position: 'absolute', top: '1rem', right: '1rem',
+                background: 'rgba(239,68,68,0.3)',
+                border: '2px solid rgba(239,68,68,0.5)',
+                color: '#ef4444', width: '40px', height: '40px',
+                borderRadius: '50%', fontSize: '1.5rem', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}
             >
               ×

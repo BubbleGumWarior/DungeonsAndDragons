@@ -182,9 +182,11 @@ class Character {
   static async getByCampaign(campaignId) {
     try {
       const result = await pool.query(
-        `SELECT ch.*, u.username as player_name 
+        `SELECT ch.*, u.username as player_name, s.name as subclass_name
          FROM characters ch
          JOIN users u ON ch.player_id = u.id
+         LEFT JOIN character_subclasses cs ON cs.character_id = ch.id
+         LEFT JOIN subclasses s ON s.id = cs.subclass_id
          WHERE ch.campaign_id = $1 
          ORDER BY ch.name`,
         [campaignId]

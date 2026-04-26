@@ -115,6 +115,7 @@ export interface Character {
   proficiencies?: { weapons: string[]; armor: string[]; tools: string[]; languages: string[] };
   concealed_class?: string | null;
   gold?: number;
+  subclass_name?: string | null;
 }
 
 export interface EquippedItems {
@@ -971,6 +972,16 @@ export const skillAPI = {
   }): Promise<any> => {
     const response = await api.post(`/skills/level-up/${characterId}`, levelUpData);
     return response.data;
+  },
+
+  selectSubclass: async (characterId: number, subclassId: number): Promise<any> => {
+    const response = await api.post(`/skills/select-subclass/${characterId}`, { subclassId });
+    return response.data;
+  },
+
+  getAvailableSubclasses: async (characterId: number): Promise<any[]> => {
+    const response = await api.get(`/skills/available-subclasses/${characterId}`);
+    return response.data.subclasses;
   }
 };
 

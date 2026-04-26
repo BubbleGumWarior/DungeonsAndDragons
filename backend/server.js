@@ -349,6 +349,8 @@ const startServer = async () => {
         { name: 'addCampaignGoals', fn: require('./migrations/add_campaign_goals') },
         { name: 'addProficienciesToCharacters', fn: require('./migrations/add_proficiencies_to_characters') },
         { name: 'addCharacterGold', fn: require('./migrations/add_character_gold') },
+        { name: 'rebalanceArmorAc', fn: require('./migrations/rebalance_armor_ac') },
+        { name: 'populateOathknightData', fn: require('./migrations/populate_oathknight_data') },
       ];
       
       for (const migration of migrations) {

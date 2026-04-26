@@ -295,15 +295,17 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
         const subclassName = subclassResult.rows[0].name;
         // Strip a leading "The " so "The High Roller" → "High Roller" to match "Skill (High Roller)"
         const shortSubclassName = subclassName.replace(/^The\s+/i, '');
+        const lastSubclassWord = subclassName.trim().split(/\s+/).pop() || '';
         
         // Look for skills that have the subclass name in the name (e.g., "Crusader Might (Vanguard)")
+        // Also try matching just the last word (e.g. "Vanguard" from "Oath of the Vanguard")
         skillResult = await pool.query(`
           SELECT * FROM skills
           WHERE class_restriction = $1 
             AND level_requirement = $2
-            AND (name ILIKE $3 OR name ILIKE $4)
+            AND (name ILIKE $3 OR name ILIKE $4 OR name ILIKE $5)
           LIMIT 1
-        `, [character.class, newLevel, `%(${shortSubclassName})%`, `%${subclassName}%`]);
+        `, [character.class, newLevel, `%(${shortSubclassName})%`, `%${subclassName}%`, `%(${lastSubclassWord})%`]);
       }
     }
     
@@ -563,9 +565,11 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         const className = subclassResult.rows[0].class;
         // Strip a leading "The " so "The High Roller" → "High Roller" to match "Skill (High Roller)"
         const shortSubclassName = subclassName.replace(/^The\s+/i, '');
+        const lastSubclassWord = subclassName.trim().split(/\s+/).pop() || '';
         
         // Special handling for Primal Bond subclasses (they use beast names in skills)
-        let searchPatterns = [`%(${shortSubclassName})%`, `%${subclassName}%`];
+        // Also include last word pattern (e.g. "Vanguard" from "Oath of the Vanguard")
+        let searchPatterns = [`%(${shortSubclassName})%`, `%${subclassName}%`, `%(${lastSubclassWord})%`];
         
         if (className === 'Primal Bond' && beastSelection && beastSelection.beastType) {
           // For Primal Bond, use the specific beast type selected
@@ -802,6 +806,123 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error leveling up character:', error);
     res.status(500).json({ error: 'Failed to level up character' });
+  }
+});
+
+// Get available subclasses for a character's class (used for retroactive assignment)
+router.get('/available-subclasses/:characterId', authenticateToken, async (req, res) => {
+  try {
+    const { characterId } = req.params;
+
+    const charResult = await pool.query(
+      `SELECT c.id, c.class, c.player_id FROM characters c WHERE c.id = $1`,
+      [characterId]
+    );
+    if (charResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    const character = charResult.rows[0];
+
+    if (character.player_id !== req.user.id && req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const subclassesResult = await pool.query(
+      `SELECT * FROM subclasses WHERE class = $1 ORDER BY name`,
+      [character.class]
+    );
+
+    return res.json({ subclasses: subclassesResult.rows });
+  } catch (error) {
+    console.error('Error fetching available subclasses:', error);
+    return res.status(500).json({ error: 'Failed to fetch subclasses' });
+  }
+});
+
+// Retroactive subclass selection (for characters who missed subclass at level-up)
+router.post('/select-subclass/:characterId', authenticateToken, async (req, res) => {
+  try {
+    const { characterId } = req.params;
+    const { subclassId } = req.body;
+
+    if (!subclassId) {
+      return res.status(400).json({ error: 'subclassId is required' });
+    }
+
+    const charResult = await pool.query(`
+      SELECT c.*, cs.subclass_id AS existing_subclass_id
+      FROM characters c
+      LEFT JOIN character_subclasses cs ON c.id = cs.character_id
+      WHERE c.id = $1
+    `, [characterId]);
+
+    if (charResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    const character = charResult.rows[0];
+
+    if (character.player_id !== req.user.id && req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'You can only update your own character' });
+    }
+
+    if (character.existing_subclass_id && req.user.role !== 'Dungeon Master') {
+      return res.status(400).json({ error: 'Character already has a subclass selected' });
+    }
+
+    const subclassResult = await pool.query(`
+      SELECT name FROM subclasses WHERE id = $1 AND class = $2
+    `, [subclassId, character.class]);
+
+    if (subclassResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid subclass for this character class' });
+    }
+
+    const subclassName = subclassResult.rows[0].name;
+
+    await pool.query(`
+      INSERT INTO character_subclasses (character_id, subclass_id)
+      VALUES ($1, $2)
+      ON CONFLICT (character_id) DO UPDATE SET subclass_id = $2
+    `, [characterId, subclassId]);
+
+    // Find the level at which this class selects its subclass
+    const subclassLevelResult = await pool.query(`
+      SELECT level FROM class_features
+      WHERE class = $1 AND is_choice = true AND choice_type = 'subclass'
+      LIMIT 1
+    `, [character.class]);
+
+    const subclassLevel = subclassLevelResult.rows.length > 0 ? subclassLevelResult.rows[0].level : null;
+
+    // Award the subclass-specific skill for that level
+    let skillGranted = null;
+    if (subclassLevel) {
+      const shortSubclassName = subclassName.replace(/^The\s+/i, '');
+      const lastSubclassWord = subclassName.trim().split(/\s+/).pop() || '';
+      const skillResult = await pool.query(`
+        SELECT * FROM skills
+        WHERE class_restriction = $1
+          AND level_requirement = $2
+          AND (name ILIKE $3 OR name ILIKE $4 OR name ILIKE $5)
+        LIMIT 1
+      `, [character.class, subclassLevel, `%(${shortSubclassName})%`, `%${subclassName}%`, `%(${lastSubclassWord})%`]);
+
+      if (skillResult.rows.length > 0) {
+        const skill = skillResult.rows[0];
+        await pool.query(`
+          INSERT INTO character_skills (character_id, skill_id)
+          VALUES ($1, $2)
+          ON CONFLICT DO NOTHING
+        `, [characterId, skill.id]);
+        skillGranted = skill;
+      }
+    }
+
+    res.json({ success: true, subclassName, skillGranted });
+  } catch (error) {
+    console.error('Error selecting subclass retroactively:', error);
+    res.status(500).json({ error: 'Failed to select subclass' });
   }
 });
 
