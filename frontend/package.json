@@ -24,7 +24,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "prebuild": "node ../fix_encoding.js src/components/CampaignView.tsx",
+    "prebuild": "node ../fix_encoding.js src/components/CampaignView.tsx src/services/api.ts",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

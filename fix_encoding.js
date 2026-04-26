@@ -101,7 +101,9 @@ if (filesToFix.length === 0) {
 
 for (const filePath of filesToFix) {
   const abs = path.resolve(filePath);
-  const content = fs.readFileSync(abs, 'utf8');
+  let content = fs.readFileSync(abs, 'utf8');
+  // Strip UTF-8 BOM (U+FEFF) if present
+  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
   const fixed = fixMojibake(content);
   if (fixed !== content) {
     fs.writeFileSync(abs, fixed, 'utf8');
