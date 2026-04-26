@@ -3730,8 +3730,8 @@ const CampaignView: React.FC = () => {
           setToastMessage(`${data.name}: rolled ${data.diceSpent}d${data.die} [${rollStr}] ${conStr} CON = +${data.totalHealed} HP`);
           setTimeout(() => setToastMessage(null), 6000);
         }
-        // Only close the prompt for the player whose character was resolved
-        setShortRestPrompt(prev => prev?.characterId === data.characterId ? null : prev);
+        // Event is now targeted to this player's socket only — always close the prompt
+        setShortRestPrompt(null);
       });
 
       // Long rest — all characters fully restored

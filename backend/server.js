@@ -2388,7 +2388,7 @@ const startServer = async () => {
           const { campaignId, characterId, diceToSpend } = data;
           const charId = parseInt(characterId, 10);
           const res = await pool.query(
-            `SELECT id, name, hit_points,
+            `SELECT id, name, hit_points, player_id,
                     CASE WHEN hit_points_max IS NULL OR hit_points_max <= 0 THEN GREATEST(hit_points, 1) ELSE hit_points_max END as max_hp,
                     level, class, abilities, COALESCE(hit_dice_remaining, level) as hdr,
                     limb_health
@@ -2488,9 +2488,13 @@ const startServer = async () => {
             io.to(`campaign_${campaignId}`).emit('combatLogUpdated', { log });
           }
 
-          io.to(`campaign_${campaignId}`).emit('shortRestResult', {
+          // Send only to the owning player — each player manages their own prompt independently
+          const playerSocketId = userSocketMap.get(ch.player_id);
+          const shortRestResultTarget = playerSocketId ? io.to(playerSocketId) : io.to(`campaign_${campaignId}`);
+          shortRestResultTarget.emit('shortRestResult', {
             characterId: charId,
             name: ch.name,
+            class: ch.class,
             die,
             diceSpent: clampedDice,
             rolls,
