@@ -10778,11 +10778,6 @@ const CampaignView: React.FC = () => {
 
             </div>
               </div>
-
-
-
-            </div>
-              </div>
           )}
 
         {/* Character Content (existing) */}
