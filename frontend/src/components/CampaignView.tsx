@@ -14405,7 +14405,6 @@ const CampaignView: React.FC = () => {
                 {activeTab === 'pets' && canViewAllTabs(selectedCharacterData.id) && (() => {
                   const isDM = user?.role === 'Dungeon Master';
                   const charPets = campaignPets.filter(p => p.character_id === selectedCharacterData.id);
-                  const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
 
                   const hpColor = (cur: number, max: number) => {
                     const pct = max > 0 ? (cur / max) * 100 : 0;
@@ -19187,7 +19186,6 @@ const CampaignView: React.FC = () => {
         {/* ── Add / Edit Pet Modal ──────────────────────────────────────── */}
         {showAddPetModal && (() => {
           const isEdit = editingPet !== null;
-          const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
           const ABILITY_KEYS: (keyof Pet['abilities'])[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
           const ABILITY_LABELS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 
