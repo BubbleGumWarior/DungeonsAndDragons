@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, kingdomAPI } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -22,6 +22,7 @@ import { CombatActionsPanel } from './campaign/CombatActionsPanel';
 import ChatPanel from './campaign/ChatPanel';
 import ScoresTab from './campaign/ScoresTab';
 import GoalsTab from './campaign/GoalsTab';
+import KingdomTab from './campaign/KingdomTab';
 import { CombatLogEntry, DeathSaves, ActionEconomy, CombatDiceRequest, CombatRollOutcome, DotCondition, AttackRequest, AttackDiceConfig, ChatMessage, OutOfCombatRollRequest, CampaignNPC } from '../types/campaignTypes';
 
 // Journal Entry Interface
@@ -34,6 +35,16 @@ interface JournalEntry {
   created_by: number;
   created_at: string;
   updated_at?: string;
+}
+
+// Lighting node placed on combat or battlefield map by the DM
+interface LightingNode {
+  id: string;
+  type: 'light' | 'dark';
+  x: number; // % position on map
+  y: number; // % position on map
+  strength: number; // 0-1
+  tab: 'combat' | 'battlefield';
 }
 
 // Helper function to get army category icon — driven by UNIT_TEMPLATES
@@ -357,7 +368,7 @@ function renderNoteMarkdown(raw: string): string {
   if (!raw) return '';
   const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const applyInline = (s: string) =>
-    s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/_(.+?)_/g, '<em style=\'color:var(--text-gold,#d4c19c)\'>$1</em>');
+    s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/_(.+?)_/g, '<em style=\'color:var(--text-gold,var(--text-gold))\'>$1</em>');
   const lines = esc.split('\n');
   let html = '';
   let inUl = false;
@@ -439,14 +450,14 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({ isNew, initialTitle, 
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '0.9rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
+      <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(var(--theme-accent-rgb),0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '0.9rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
         <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>{isNew ? '📝 New Note' : '✏️ Edit Note'}</h4>
         <input
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder="Title…"
           autoFocus
-          style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.95rem', outline: 'none' }}
+          style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.95rem', outline: 'none' }}
         />
         <div style={{ display: 'flex', gap: '0.35rem', padding: '0.4rem 0.55rem', background: 'rgba(0,0,0,0.25)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)', flexWrap: 'wrap', alignItems: 'center' }}>
           <button style={{ ...tbBtn, fontWeight: 'bold' }} onMouseDown={e => { e.preventDefault(); wrapSelection('**', '**'); }} title="Bold"><strong>B</strong></button>
@@ -461,7 +472,7 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({ isNew, initialTitle, 
           onChange={e => setContent(e.target.value)}
           placeholder="Write your note here…"
           rows={10}
-          style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.88rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit', minHeight: '160px' }}
+          style={{ padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.88rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit', minHeight: '160px' }}
         />
         <div style={{ color: '#475569', fontSize: '0.71rem' }}>Tip: select text then click <strong style={{ color: '#94a3b8' }}>B</strong> / <em style={{ color: '#94a3b8' }}>I</em>. Bullet/Numbered prefixes each selected line.</div>
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
@@ -523,7 +534,7 @@ const CampaignView: React.FC = () => {
   const [customDiceTarget, setCustomDiceTarget] = useState<number | null>(null);
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
-  const [campaignTab, setCampaignTab] = useState<'map' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'goals'>('map');
+  const [campaignTab, setCampaignTab] = useState<'map' | 'kingdom' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'goals'>('map');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
   const [showMobileCharacters, setShowMobileCharacters] = useState(false);
@@ -606,6 +617,13 @@ const CampaignView: React.FC = () => {
   const [remainingArmyMovement, setRemainingArmyMovement] = useState<Record<number, number>>({});
   // Darkness: 0 = fully lit, 1 = pitch black. DM sees at half opacity, players see full black.
   const [darknessLevel, setDarknessLevel] = useState(0);
+  // Lighting nodes (light sources and darkness fields)
+  const [lightingNodes, setLightingNodes] = useState<LightingNode[]>([]);
+  const [showLightingModal, setShowLightingModal] = useState<'combat' | 'battlefield' | null>(null);
+  const [pendingPlacementNode, setPendingPlacementNode] = useState<{ type: 'light' | 'dark'; strength: number; tab: 'combat' | 'battlefield' } | null>(null);
+  const [lightingAddType, setLightingAddType] = useState<'light' | 'dark' | null>(null);
+  const [lightingAddStrength, setLightingAddStrength] = useState(0.5);
+  const [draggedLightingNodeId, setDraggedLightingNodeId] = useState<string | null>(null);
   // Character skills — declared early because darkness useEffect depends on it
   const [characterSkills, setCharacterSkills] = useState<Record<number, Skill[]>>({});
   const darknessCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -629,12 +647,79 @@ const CampaignView: React.FC = () => {
   const [restType, setRestType] = useState<'short' | 'long' | 'custom'>('long');
   const [customRestDays, setCustomRestDays] = useState(1);
   const [currentDay, setCurrentDay] = useState(1);
+  const [currentDayOfYear, setCurrentDayOfYear] = useState(1);
+  const [currentSeason, setCurrentSeason] = useState<'Spring' | 'Summer' | 'Autumn' | 'Winter'>('Winter');
   const [restLoading, setRestLoading] = useState(false);
+  const [showKingdomNamingModal, setShowKingdomNamingModal] = useState(false);
+  const [pendingKingdomId, setPendingKingdomId] = useState<number | null>(null);
+  const [pendingKingdomName, setPendingKingdomName] = useState('');
+  const [pendingCapitalName, setPendingCapitalName] = useState('');
+  const [kingdomNamingLoading, setKingdomNamingLoading] = useState(false);
+
+  const getSeasonInfoForDay = (day: number) => {
+    const dayOfYear = ((day - 1) % 365 + 365) % 365 + 1;
+    let season: 'Spring' | 'Summer' | 'Autumn' | 'Winter' = 'Winter';
+    if (dayOfYear >= 60 && dayOfYear <= 151) season = 'Spring';
+    else if (dayOfYear >= 152 && dayOfYear <= 243) season = 'Summer';
+    else if (dayOfYear >= 244 && dayOfYear <= 334) season = 'Autumn';
+    return { dayOfYear, season };
+  };
+
+  const getSeasonIcon = (season: string): string => {
+    if (season === 'Spring') return '🌱';
+    if (season === 'Summer') return '☀️';
+    if (season === 'Autumn') return '🍂';
+    return '❄️';
+  };
+
+  const getSeasonBenefits = (season: string): { text: string; vegetables: number; meat: number; research: number; births: number } => {
+    if (season === 'Spring') return { text: 'Vegetables +20%, Meat +5%, Wood +5%', vegetables: 0.2, meat: 0.05, research: 0, births: 1.0 };
+    if (season === 'Summer') return { text: 'Vegetables +30%, Meat +10%, Wood -5%', vegetables: 0.3, meat: 0.1, research: 0, births: 1.0 };
+    if (season === 'Autumn') return { text: 'Wood +20%, Stone +10%', vegetables: 0, meat: 0, research: 0, births: 1.0 };
+    return { text: 'Vegetables -40%, Wood -10%, Meat -15%, Faith +15%, Births +25%', vegetables: -0.4, meat: -0.15, research: 0, births: 1.25 };
+  };
+
+  const normalizeSeasonThemeKey = (season: string | null | undefined): 'spring' | 'summer' | 'autumn' | 'winter' | null => {
+    const value = String(season || '').trim().toLowerCase();
+    if (value === 'spring' || value === 'summer' || value === 'autumn' || value === 'winter') return value;
+    return null;
+  };
 
   const getCharacterAge = (race: string, day: number): number => {
     const base = race?.toLowerCase().includes('thri-kreen') ? 3 : 13;
     return base + Math.floor((day - 1) / 365);
   };
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!currentCampaign) {
+      root.removeAttribute('data-season');
+      root.removeAttribute('data-day-ritual');
+      return;
+    }
+
+    const seasonKey = normalizeSeasonThemeKey(currentSeason);
+    if (seasonKey) {
+      root.setAttribute('data-season', seasonKey);
+    } else {
+      root.removeAttribute('data-season');
+    }
+
+    const numericDay = Number(currentDay);
+    if (Number.isFinite(numericDay) && numericDay > 0 && numericDay % 11 === 0) {
+      root.setAttribute('data-day-ritual', 'silence');
+    } else {
+      root.removeAttribute('data-day-ritual');
+    }
+  }, [currentCampaign, currentSeason, currentDay]);
+
+  useEffect(() => {
+    return () => {
+      const root = document.documentElement;
+      root.removeAttribute('data-season');
+      root.removeAttribute('data-day-ritual');
+    };
+  }, []);
 
   // Combat state
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
@@ -1094,7 +1179,17 @@ const CampaignView: React.FC = () => {
       });
       const shouldApplyVisionOverlay = isDM ? darknessLevel > 0 : (darknessLevel > 0 || hasBlindedOwnCombatant);
 
-      if (!shouldApplyVisionOverlay) return;
+      // Lighting nodes for this tab
+      const MAX_NODE_RADIUS_PCT = 25;
+      const tabNodes = lightingNodes.filter(n => n.tab === 'combat');
+      const tabLightNodes = tabNodes.filter(n => n.type === 'light');
+      const tabDarkNodes = tabNodes.filter(n => n.type === 'dark');
+      const hasFogBase = shouldApplyVisionOverlay;
+      const shouldDrawOverlay = isDM
+        ? darknessLevel > 0 || tabNodes.length > 0
+        : darknessLevel > 0 || hasBlindedOwnCombatant || tabDarkNodes.length > 0;
+
+      if (!shouldDrawOverlay) return;
 
       // For players: collect only their own characters.
       // For DM: collect all combatants to preview what units can see.
@@ -1116,6 +1211,7 @@ const CampaignView: React.FC = () => {
         ownCombatantPositions.push({ x: pos.x, y: pos.y, visionRadius });
       });
 
+      if (hasFogBase) {
       if (isDM) {
         // DM: stable faded veil over entire map
         ctx.fillStyle = `rgba(0, 0, 0, ${DM_FOG_OPACITY})`;
@@ -1142,6 +1238,28 @@ const CampaignView: React.FC = () => {
           ctx.fillStyle = gradient;
           ctx.beginPath();
           ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        });
+
+        // Light source nodes: bright inner zone + dim outer zone (matches unit vision)
+        tabLightNodes.forEach(({ x, y, strength }) => {
+          const cx = (x / 100) * canvas.width;
+          const cy = (y / 100) * canvas.height;
+          const brightPx = (strength * MAX_NODE_RADIUS_PCT / 100) * canvas.width;
+          const dimPx = brightPx * 2; // dim light extends equal distance beyond bright
+          const brightStop = brightPx / dimPx;
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.globalAlpha = 1;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, dimPx);
+          grad.addColorStop(0, 'rgba(0,0,0,1)');
+          grad.addColorStop(brightStop * 0.9, 'rgba(0,0,0,1)');  // full clear in bright zone
+          grad.addColorStop(brightStop, 'rgba(0,0,0,0.5)');       // dim light — 50% fog remains
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, dimPx, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalCompositeOperation = 'source-over';
           ctx.globalAlpha = 1;
@@ -1174,7 +1292,48 @@ const CampaignView: React.FC = () => {
           });
           ctx.globalCompositeOperation = 'source-over';
         }
+
+        // Light source nodes: bright inner zone + dim outer zone
+        tabLightNodes.forEach(({ x, y, strength }) => {
+          const cx = (x / 100) * canvas.width;
+          const cy = (y / 100) * canvas.height;
+          const brightPx = (strength * MAX_NODE_RADIUS_PCT / 100) * canvas.width;
+          const dimPx = brightPx * 2;
+          const brightStop = brightPx / dimPx;
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.globalAlpha = 1;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, dimPx);
+          grad.addColorStop(0, 'rgba(0,0,0,1)');
+          grad.addColorStop(brightStop * 0.9, 'rgba(0,0,0,1)');
+          grad.addColorStop(brightStop, 'rgba(0,0,0,0.5)');
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, dimPx, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        });
       }
+      } // end hasFogBase
+
+      // Darkness field nodes: applied last, wins over all clearings
+      tabDarkNodes.forEach(({ x, y, strength }) => {
+        const cx = (x / 100) * canvas.width;
+        const cy = (y / 100) * canvas.height;
+        const radiusPx = (strength * MAX_NODE_RADIUS_PCT / 100) * canvas.width;
+        const opacity = isDM ? 0.75 : 1;
+        ctx.globalCompositeOperation = 'source-over';
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
+        grad.addColorStop(0, `rgba(0,0,0,${opacity})`);
+        grad.addColorStop(0.7, `rgba(0,0,0,${opacity})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
     };
 
     drawDarknessOverlay();
@@ -1183,28 +1342,21 @@ const CampaignView: React.FC = () => {
     const observer = new ResizeObserver(() => drawDarknessOverlay());
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [darknessLevel, battlePositions, combatants, combatConditions, user, characterSkills]);
+  }, [darknessLevel, lightingNodes, battlePositions, combatants, combatConditions, user, characterSkills]);
 
   // ── Battlefield darkness overlay (army/mass-combat tab) ─────────────────────
-  // Same two-zone logic as combat: inner=fully lit, partial=silhouette zone, outer=full dark.
-  // Army vision base radius ≈ 150ft. 1% of map ≈ BATTLEFIELD_FEET_PER_PERCENT ft.
+  // Identical behaviour to combat darkness: vision radius shrinks with darknessLevel,
+  // DM sees faded fog (0.55 opacity) with a crisper inner-edge gradient (0.9 stop),
+  // players see full-black fog with a slightly softer inner edge (0.85 stop).
+  // Army base vision radius ≈ 150ft. 1% of map ≈ BATTLEFIELD_FEET_PER_PERCENT ft.
   useEffect(() => {
     const canvas = battlefieldDarknessCanvasRef.current;
-    if (!canvas || !activeBattle || darknessLevel <= 0) {
-      // Clear canvas when not needed
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-      return;
-    }
-
-    const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT; // ≈22.5%
-    const isDM = user?.role === 'Dungeon Master';
+    if (!canvas) return;
 
     const drawBattlefieldOverlay = () => {
       const rect = canvas.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
+      // Resize to current CSS dimensions (fixes stale-size bug on resize)
       canvas.width = rect.width;
       canvas.height = rect.height;
 
@@ -1213,51 +1365,168 @@ const CampaignView: React.FC = () => {
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const PLAYER_FOG_OPACITY = isDM ? 0.55 : 1;
+      const isDM = user?.role === 'Dungeon Master';
+      const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT; // ≈22.5%
+      const DM_FOG_OPACITY = 0.55;
+      const PLAYER_FOG_OPACITY = 1;
+      // Vision radius shrinks as darkness increases — same formula as combat overlay
+      const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
+      const shouldApplyVisionOverlay = darknessLevel > 0;
 
-      // Collect observer armies: DM sees via all armies, player sees via own armies
+      // Lighting nodes for this tab
+      const MAX_NODE_RADIUS_PCT = 25;
+      const tabNodes = lightingNodes.filter(n => n.tab === 'battlefield');
+      const tabLightNodesBF = tabNodes.filter(n => n.type === 'light');
+      const tabDarkNodesBF = tabNodes.filter(n => n.type === 'dark');
+      const shouldDrawOverlayBF = isDM
+        ? darknessLevel > 0 || tabNodes.length > 0
+        : darknessLevel > 0 || tabDarkNodesBF.length > 0;
+
+      if (!shouldDrawOverlayBF) return;
+
+      // Collect observer armies: DM sees via all armies, players see via own armies
       const observers: { x: number; y: number; visionRadius: number }[] = [];
-      (activeBattle.participants ?? []).forEach(p => {
+      (activeBattle?.participants ?? []).forEach(p => {
         const isOwn = isDM || p.user_id === user?.id;
         if (!isOwn) return;
         const x = p.position_x ?? 50;
         const y = p.position_y ?? 50;
-        observers.push({ x, y, visionRadius: BASE_ARMY_VISION_RADIUS_PCT });
+        // Scale radius by darkness multiplier — matches combat behaviour
+        observers.push({ x, y, visionRadius: BASE_ARMY_VISION_RADIUS_PCT * darknessRadiusMultiplier });
       });
 
-      ctx.fillStyle = `rgba(0, 0, 0, ${PLAYER_FOG_OPACITY})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (darknessLevel > 0) {
+      if (isDM) {
+        // DM: stable faded veil over entire map
+        ctx.fillStyle = `rgba(0, 0, 0, ${DM_FOG_OPACITY})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      if (observers.length > 0) {
-        ctx.globalCompositeOperation = 'destination-out';
+        // DM: reveal unit-vision areas — full inner zone + dimmed partial zone
         observers.forEach(({ x, y, visionRadius }) => {
           const cx = (x / 100) * canvas.width;
           const cy = (y / 100) * canvas.height;
           const innerPx = (visionRadius / 100) * canvas.width;
-          const outerPx = innerPx * 2;
-          const innerStop = innerPx / outerPx;
+          const outerPx = innerPx * 2; // partial zone extends to 2× vision radius
+          const innerStop = innerPx / outerPx; // normalised position of inner edge
 
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.globalAlpha = 1;
+
+          // Gradient: full removal in inner zone, half removal in partial zone, none beyond
           const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPx);
           gradient.addColorStop(0,               'rgba(0, 0, 0, 1)');
-          gradient.addColorStop(innerStop * 0.85,'rgba(0, 0, 0, 1)');
-          gradient.addColorStop(innerStop,       'rgba(0, 0, 0, 0.5)');
-          gradient.addColorStop(1,               'rgba(0, 0, 0, 0)');
+          gradient.addColorStop(innerStop * 0.9, 'rgba(0, 0, 0, 1)');   // full lit up to inner edge
+          gradient.addColorStop(innerStop,       'rgba(0, 0, 0, 0.5)'); // start partial zone
+          gradient.addColorStop(1,               'rgba(0, 0, 0, 0)');   // edge of partial zone
 
           ctx.fillStyle = gradient;
           ctx.beginPath();
           ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
           ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
         });
-        ctx.globalCompositeOperation = 'source-over';
+
+        // Light source nodes: bright inner zone + dim outer zone
+        tabLightNodesBF.forEach(({ x, y, strength }) => {
+          const cx = (x / 100) * canvas.width;
+          const cy = (y / 100) * canvas.height;
+          const brightPx = (strength * MAX_NODE_RADIUS_PCT / 100) * canvas.width;
+          const dimPx = brightPx * 2;
+          const brightStop = brightPx / dimPx;
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.globalAlpha = 1;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, dimPx);
+          grad.addColorStop(0, 'rgba(0,0,0,1)');
+          grad.addColorStop(brightStop * 0.9, 'rgba(0,0,0,1)');
+          grad.addColorStop(brightStop, 'rgba(0,0,0,0.5)');
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, dimPx, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        });
+      } else {
+        // Players: full-black fog with two-zone clearings
+        ctx.fillStyle = `rgba(0, 0, 0, ${PLAYER_FOG_OPACITY})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (observers.length > 0) {
+          ctx.globalCompositeOperation = 'destination-out';
+          observers.forEach(({ x, y, visionRadius }) => {
+            const cx = (x / 100) * canvas.width;
+            const cy = (y / 100) * canvas.height;
+            const innerPx = (visionRadius / 100) * canvas.width;
+            const outerPx = innerPx * 2; // partial zone extends to 2× vision radius
+            const innerStop = innerPx / outerPx;
+
+            // Gradient: full removal in inner zone (clear sight), 50% removal in partial zone (dim silhouette)
+            const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPx);
+            gradient.addColorStop(0,                'rgba(0, 0, 0, 1)');
+            gradient.addColorStop(innerStop * 0.85, 'rgba(0, 0, 0, 1)');   // crisp inner edge
+            gradient.addColorStop(innerStop,        'rgba(0, 0, 0, 0.5)'); // partial zone (50% fog → silhouette visible)
+            gradient.addColorStop(1,                'rgba(0, 0, 0, 0)');    // fade to full dark
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Light source nodes: bright inner zone + dim outer zone
+        tabLightNodesBF.forEach(({ x, y, strength }) => {
+          const cx = (x / 100) * canvas.width;
+          const cy = (y / 100) * canvas.height;
+          const brightPx = (strength * MAX_NODE_RADIUS_PCT / 100) * canvas.width;
+          const dimPx = brightPx * 2;
+          const brightStop = brightPx / dimPx;
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.globalAlpha = 1;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, dimPx);
+          grad.addColorStop(0, 'rgba(0,0,0,1)');
+          grad.addColorStop(brightStop * 0.9, 'rgba(0,0,0,1)');
+          grad.addColorStop(brightStop, 'rgba(0,0,0,0.5)');
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, dimPx, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        });
       }
+      } // end darknessLevel > 0
+
+      // Darkness field nodes: applied last, wins over all clearings
+      tabDarkNodesBF.forEach(({ x, y, strength }) => {
+        const cx = (x / 100) * canvas.width;
+        const cy = (y / 100) * canvas.height;
+        const radiusPx = (strength * MAX_NODE_RADIUS_PCT / 100) * canvas.width;
+        const opacity = isDM ? 0.75 : 1;
+        ctx.globalCompositeOperation = 'source-over';
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
+        grad.addColorStop(0, `rgba(0,0,0,${opacity})`);
+        grad.addColorStop(0.7, `rgba(0,0,0,${opacity})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
     };
 
     drawBattlefieldOverlay();
 
+    // Re-draw whenever the canvas element is resized (fixes multi-screen / panel-resize bug)
     const observer = new ResizeObserver(() => drawBattlefieldOverlay());
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [darknessLevel, activeBattle, user]);
+  }, [darknessLevel, lightingNodes, activeBattle, user]);
 
   const shouldUseSingleOverlayPanel = (() => {
     if (!overlayViewportWidth) return false;
@@ -1637,6 +1906,9 @@ const CampaignView: React.FC = () => {
         try {
           const dayData = await campaignAPI.getCurrentDay(currentCampaign.campaign.id);
           setCurrentDay(dayData.current_day);
+          const fallback = getSeasonInfoForDay(dayData.current_day);
+          setCurrentDayOfYear(dayData.day_of_year ?? fallback.dayOfYear);
+          setCurrentSeason(dayData.season ?? fallback.season);
         } catch {
           // column may not exist yet (pre-migration), default to 1
         }
@@ -2864,6 +3136,16 @@ const CampaignView: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [selectedCharacter, currentCampaign, backstoryPage, paginateBackstory]);
 
+  // Cancel pending lighting node placement on Escape
+  useEffect(() => {
+    if (!pendingPlacementNode) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPendingPlacementNode(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [pendingPlacementNode]);
+
   const handleBackToDashboard = () => {
     navigate('/dashboard');
   };
@@ -3426,6 +3708,10 @@ const CampaignView: React.FC = () => {
         if ((data as any).activeBattlefieldMapId !== undefined) {
           setActiveBattlefieldMapId((data as any).activeBattlefieldMapId ?? null);
         }
+        // Seed lighting nodes from server state
+        if (Array.isArray((data as any).lightingNodes)) {
+          setLightingNodes((data as any).lightingNodes as LightingNode[]);
+        }
       });
 
       // Listen for next turn event (DM resets all movement)
@@ -3907,6 +4193,11 @@ const CampaignView: React.FC = () => {
       // Darkness level updated by DM
       newSocket.on('darknessUpdated', (data: { darknessLevel: number; campaignId: number }) => {
         setDarknessLevel(data.darknessLevel);
+      });
+
+      // Lighting nodes updated by DM (or cleared on combat reset / battle end)
+      newSocket.on('lightingNodesUpdated', (data: { nodes: LightingNode[]; campaignId: number }) => {
+        setLightingNodes(data.nodes);
       });
 
       // Active battle map changed by DM
@@ -4498,6 +4789,49 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('dayAdvanced', (data: AdvanceDaysSummary & { campaignId: number }) => {
         setCurrentDay(data.newDay);
+        const fallback = getSeasonInfoForDay(data.newDay);
+        setCurrentDayOfYear(data.dayOfYear ?? fallback.dayOfYear);
+        setCurrentSeason(data.season ?? fallback.season);
+      });
+
+      newSocket.on('kingdomNameRequest', (data: { kingdomId: number; targetPlayerId: number }) => {
+        if (Number(data?.targetPlayerId) !== Number(user?.id)) return;
+        setPendingKingdomId(Number(data.kingdomId));
+        setPendingKingdomName('');
+        setPendingCapitalName('');
+        setShowKingdomNamingModal(true);
+      });
+
+      newSocket.on('kingdomProgressToast', (data: {
+        campaignId: number;
+        type: 'research' | 'tier';
+        fiefName?: string;
+        researchId?: string;
+        newTier?: number;
+      }) => {
+        if (Number(data?.campaignId) !== Number(currentCampaign.campaign.id)) return;
+
+        if (data.type === 'research') {
+          const readableResearch = String(data.researchId || '')
+            .split('_')
+            .filter(Boolean)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+          const message = data.fiefName
+            ? `Research completed in ${data.fiefName}: ${readableResearch || 'Unknown Research'}`
+            : `Research completed: ${readableResearch || 'Unknown Research'}`;
+          setToastMessage(message);
+          setTimeout(() => setToastMessage(null), 5000);
+          return;
+        }
+
+        if (data.type === 'tier') {
+          const message = data.fiefName
+            ? `${data.fiefName} advanced to Tier ${Number(data.newTier || 2)}`
+            : `A fief advanced to Tier ${Number(data.newTier || 2)}`;
+          setToastMessage(message);
+          setTimeout(() => setToastMessage(null), 5000);
+        }
       });
 
       // Listen for NPC reveals
@@ -4523,6 +4857,32 @@ const CampaignView: React.FC = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCampaign?.campaign.id, user?.id]); // Only recreate socket when campaign or user changes
+
+  useEffect(() => {
+    if (!currentCampaign || !user) return;
+    if (user.role === 'Dungeon Master') return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await kingdomAPI.getCampaignKingdoms(currentCampaign.campaign.id);
+        if (cancelled) return;
+        const mine = (data.kingdoms || []).find((k) => Number(k.player_id) === Number(user.id) && !k.is_active);
+        if (mine) {
+          setPendingKingdomId(Number(mine.id));
+          setPendingKingdomName('');
+          setPendingCapitalName('');
+          setShowKingdomNamingModal(true);
+        }
+      } catch {
+        // ignore load failures for modal pre-check
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCampaign?.campaign.id, user?.id, user?.role]);
 
   // Load equipped items when character changes
   useEffect(() => {
@@ -4864,7 +5224,7 @@ const CampaignView: React.FC = () => {
                   style={{ 
                     width: '100%', 
                     height: 'auto',
-                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     background: 'rgba(255, 255, 255, 0.05)',
                     display: 'block'
@@ -4922,7 +5282,7 @@ const CampaignView: React.FC = () => {
             {/* Equipment List */}
             <div className="equipment-list-wrapper">
               <div style={{ marginBottom: '1rem' }}>
-                <h6 style={{ marginBottom: '0.5rem', color: 'rgba(212, 193, 156, 0.9)' }}>Equippable Items</h6>
+                <h6 style={{ marginBottom: '0.5rem', color: 'rgba(var(--theme-accent-rgb), 0.9)' }}>Equippable Items</h6>
                 
                 {/* Filter Buttons */}
                 <div className="inventory-filter">
@@ -4964,7 +5324,7 @@ const CampaignView: React.FC = () => {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(212, 193, 156, 0.2)',
+                        backgroundColor: 'rgba(var(--theme-accent-rgb), 0.2)',
                         border: '3px dashed var(--primary-gold)',
                         borderRadius: '8px',
                         display: 'flex',
@@ -4985,7 +5345,7 @@ const CampaignView: React.FC = () => {
                           fontWeight: 'bold',
                           textAlign: 'center',
                           border: '1px solid var(--primary-gold)',
-                          boxShadow: '0 0 20px rgba(212, 193, 156, 0.5)'
+                          boxShadow: '0 0 20px rgba(var(--theme-accent-rgb), 0.5)'
                         }}
                       >
                         🎒 Drop here to unequip
@@ -5003,7 +5363,7 @@ const CampaignView: React.FC = () => {
                           padding: '0.75rem', 
                           background: 'rgba(255, 255, 255, 0.08)',
                           borderRadius: '0.5rem',
-                          border: '1px solid rgba(212, 193, 156, 0.2)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                           cursor: isEquippable ? 'grab' : 'default',
                           transition: 'all 0.2s ease'
                         }}
@@ -5075,7 +5435,7 @@ const CampaignView: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   height: '200px',
-                  border: '2px dashed rgba(212, 193, 156, 0.3)',
+                  border: '2px dashed rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.5rem',
                   background: 'rgba(255, 255, 255, 0.02)',
                   transition: 'background 0.2s',
@@ -5212,7 +5572,7 @@ const CampaignView: React.FC = () => {
                     padding: '0.875rem', 
                     background: 'rgba(255, 255, 255, 0.08)',
                     borderRadius: '0.5rem',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     flexDirection: 'column',
@@ -5220,11 +5580,11 @@ const CampaignView: React.FC = () => {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.5)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
                   }}
                   >
                     {/* Item Header */}
@@ -5253,7 +5613,7 @@ const CampaignView: React.FC = () => {
                               borderRadius: '0.75rem',
                               background: itemDetails.rarity === 'Rare' ? 'rgba(59, 130, 246, 0.2)' : 
                                         itemDetails.rarity === 'Uncommon' ? 'rgba(34, 197, 94, 0.2)' : 
-                                        'rgba(212, 193, 156, 0.2)',
+                                        'rgba(var(--theme-accent-rgb), 0.2)',
                               color: itemDetails.rarity === 'Rare' ? '#60a5fa' : 
                                    itemDetails.rarity === 'Uncommon' ? '#4ade80' : 
                                    'var(--text-gold)',
@@ -5341,7 +5701,7 @@ const CampaignView: React.FC = () => {
                         padding: '0.5rem',
                         background: 'rgba(255, 255, 255, 0.05)',
                         borderRadius: '0.375rem',
-                        border: '1px solid rgba(212, 193, 156, 0.2)'
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                       }}>
                         {itemDetails.damage_dice && (
                           <div>
@@ -5404,10 +5764,10 @@ const CampaignView: React.FC = () => {
                             <span key={propIndex} style={{
                               fontSize: '0.65rem',
                               padding: '0.2rem 0.4rem',
-                              background: 'rgba(212, 193, 156, 0.2)',
+                              background: 'rgba(var(--theme-accent-rgb), 0.2)',
                               color: 'var(--text-gold)',
                               borderRadius: '0.5rem',
-                              border: '1px solid rgba(212, 193, 156, 0.3)',
+                              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                               lineHeight: '1'
                             }}>
                               {prop}
@@ -5443,7 +5803,7 @@ const CampaignView: React.FC = () => {
               alignItems: 'center',
               justifyContent: 'center',
               padding: '3rem',
-              border: '2px dashed rgba(212, 193, 156, 0.3)',
+              border: '2px dashed rgba(var(--theme-accent-rgb), 0.3)',
               borderRadius: '1rem',
               background: 'rgba(255, 255, 255, 0.02)'
             }}>
@@ -5463,7 +5823,7 @@ const CampaignView: React.FC = () => {
               alignItems: 'center',
               justifyContent: 'center',
               padding: '3rem',
-              border: '2px dashed rgba(212, 193, 156, 0.3)',
+              border: '2px dashed rgba(var(--theme-accent-rgb), 0.3)',
               borderRadius: '1rem',
               background: 'rgba(255, 255, 255, 0.02)'
             }}>
@@ -5564,6 +5924,7 @@ const CampaignView: React.FC = () => {
 
   const campaignTabs = [
     { key: 'map', label: 'Map', icon: '🗺️' },
+    { key: 'kingdom', label: 'Kingdom', icon: '👑' },
     { key: 'scores', label: 'Scores', icon: '🏆' },
     { key: 'combat', label: 'Combat', icon: '⚔️' },
     { key: 'battlefield', label: 'Battlefield', icon: '🏹' },
@@ -5786,6 +6147,39 @@ const CampaignView: React.FC = () => {
           </div>
         </div>
 
+        {/* Day of Silence Banner */}
+        {Number.isFinite(Number(currentDay)) && Number(currentDay) > 0 && Number(currentDay) % 11 === 0 && (
+          <div style={{
+            width: '100%',
+            padding: '1rem',
+            textAlign: 'center',
+            background: `linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.3), rgba(var(--theme-accent-rgb), 0.2))`,
+            border: '2px solid rgba(var(--theme-accent-rgb), 0.4)',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+            borderRadius: '0 0 8px 8px',
+          }}>
+            <div style={{
+              fontSize: '2.2rem',
+              fontWeight: 700,
+              color: 'var(--text-gold)',
+              letterSpacing: '0.08em',
+              textShadow: '0 2px 8px rgba(0, 0, 0, 0.8), 0 0 20px rgba(var(--theme-accent-rgb), 0.3)',
+              fontFamily: 'var(--font-fantasy)',
+            }}>
+              ✦ Today is a Day of Silence ✦
+            </div>
+            <div style={{
+              fontSize: '0.95rem',
+              color: 'rgba(255, 255, 255, 0.7)',
+              marginTop: '0.5rem',
+              fontStyle: 'italic',
+              fontFamily: 'var(--font-primary)',
+            }}>
+              A moment of contemplation and reflection
+            </div>
+          </div>
+        )}
+
         {/* ── Top Navigation Bar ───────────────────────────────────────────── */}
         <nav className="campaign-topnav campaign-desktop-header">
           {/* Brand / Back */}
@@ -5838,13 +6232,16 @@ const CampaignView: React.FC = () => {
           {/* Actions */}
           <div className="campaign-topnav-actions">
             <span className="campaign-topnav-day">
-              📅 Day {currentDay}
+              📅 Day {currentDay} • <span title={getSeasonBenefits(currentSeason).text} style={{ cursor: 'help', textDecoration: 'underline dotted' }}>{getSeasonIcon(currentSeason)} {currentSeason}</span> (DoY {currentDayOfYear})
               {user?.role === 'Dungeon Master' && (
                 <button
                   onClick={() => setPendingConfirm({ msg: 'Reset the campaign day back to Day 1? This cannot be undone.', onYes: async () => {
                     try {
                       const d = await campaignAPI.resetDay(currentCampaign!.campaign.id);
                       setCurrentDay(d.current_day);
+                      const fallback = getSeasonInfoForDay(d.current_day);
+                      setCurrentDayOfYear(d.day_of_year ?? fallback.dayOfYear);
+                      setCurrentSeason(d.season ?? fallback.season);
                     } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed to reset day'); setTimeout(() => setToastMessage(null), 3000); }
                   }})}
                   style={{ marginLeft: '0.4rem', padding: '1px 4px', fontSize: '0.6rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '3px', color: '#f87171', cursor: 'pointer' }}
@@ -5887,8 +6284,8 @@ const CampaignView: React.FC = () => {
                   alignSelf: 'center',
                   marginBottom: '0.75rem',
                   padding: '0.4rem 0.8rem',
-                  background: 'rgba(212, 193, 156, 0.15)',
-                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  background: 'rgba(var(--theme-accent-rgb), 0.15)',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.375rem',
                   color: 'var(--text-gold)',
                   cursor: 'pointer',
@@ -5899,12 +6296,12 @@ const CampaignView: React.FC = () => {
                   fontWeight: 'bold'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(212, 193, 156, 0.25)';
-                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                  e.currentTarget.style.background = 'rgba(var(--theme-accent-rgb), 0.25)';
+                  e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.5)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(212, 193, 156, 0.15)';
-                  e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                  e.currentTarget.style.background = 'rgba(var(--theme-accent-rgb), 0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
                 }}
               >
                 {characterListCollapsed ? '▼ Show' : '▲ Hide'}
@@ -5938,18 +6335,18 @@ const CampaignView: React.FC = () => {
                     style={{
                       padding: '0.75rem',
                       background: selectedCharacter === character.id 
-                        ? 'rgba(212, 193, 156, 0.2)' 
+                        ? 'rgba(var(--theme-accent-rgb), 0.2)' 
                         : 'rgba(255, 255, 255, 0.08)',
                       border: selectedCharacter === character.id 
                         ? '2px solid var(--primary-gold)' 
-                        : '1px solid rgba(212, 193, 156, 0.2)',
+                        : '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                       borderRadius: '0.5rem',
                       cursor: 'pointer',
                       transition: 'all var(--transition-normal)',
                       boxShadow: selectedCharacter === character.id && isKeyboardNavigating
-                        ? '0 0 20px rgba(212, 193, 156, 0.6)'
+                        ? '0 0 20px rgba(var(--theme-accent-rgb), 0.6)'
                         : selectedCharacter === character.id
-                        ? '0 0 10px rgba(212, 193, 156, 0.3)'
+                        ? '0 0 10px rgba(var(--theme-accent-rgb), 0.3)'
                         : 'none',
                       textAlign: 'left',
                       width: '100%',
@@ -5960,13 +6357,13 @@ const CampaignView: React.FC = () => {
                     onMouseEnter={(e) => {
                       if (selectedCharacter !== character.id) {
                         e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                        e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.4)';
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (selectedCharacter !== character.id) {
                         e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                        e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.2)';
                       }
                     }}
                   >
@@ -5978,10 +6375,10 @@ const CampaignView: React.FC = () => {
                         <div style={{ 
                           fontSize: '0.65rem', 
                           color: 'var(--text-muted)',
-                          backgroundColor: 'rgba(212, 193, 156, 0.1)',
+                          backgroundColor: 'rgba(var(--theme-accent-rgb), 0.1)',
                           padding: '0.2rem 0.4rem',
                           borderRadius: '10px',
-                          border: '1px solid rgba(212, 193, 156, 0.2)'
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                         }}>
                           {characters.findIndex(c => c.id === character.id) + 1}/{characters.length}
                         </div>
@@ -6001,7 +6398,7 @@ const CampaignView: React.FC = () => {
                       if (!unlockLevel || character.level < unlockLevel) return null;
                       if (character.subclass_name) {
                         return (
-                          <div style={{ fontSize: '0.68rem', color: '#a78bfa', marginTop: '0.1rem' }}>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--accent-highlight)', marginTop: '0.1rem' }}>
                             ✦ {character.subclass_name}
                           </div>
                         );
@@ -6075,7 +6472,7 @@ const CampaignView: React.FC = () => {
                               background: 'rgba(0, 0, 0, 0.4)',
                               borderRadius: '6px',
                               overflow: 'hidden',
-                              border: '1px solid rgba(212, 193, 156, 0.3)',
+                              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                               position: 'relative'
                             }}>
                               {/* Health Bar Fill */}
@@ -6130,7 +6527,7 @@ const CampaignView: React.FC = () => {
                               {/* EXP Icon */}
                               <div style={{ 
                                 fontSize: '0.9rem',
-                                filter: 'drop-shadow(0 0 4px rgba(168, 85, 247, 0.6))'
+                                filter: 'drop-shadow(0 0 4px rgba(15, 76, 92, 0.6))'
                               }} title="Experience">
                                 ⭐
                               </div>
@@ -6142,16 +6539,16 @@ const CampaignView: React.FC = () => {
                                 background: 'rgba(0, 0, 0, 0.4)',
                                 borderRadius: '5px',
                                 overflow: 'hidden',
-                                border: '1px solid rgba(168, 85, 247, 0.3)',
+                                border: '1px solid rgba(var(--accent-highlight), 0.5)',
                                 position: 'relative'
                               }}>
                                 {/* EXP Bar Fill */}
                                 <div style={{
                                   width: `${getLevelProgress(character.level, character.experience_points || 0)}%`,
                                   height: '100%',
-                                  background: 'linear-gradient(90deg, #a855f7 0%, #c084fc 100%)',
+                                  background: `linear-gradient(90deg, var(--accent-highlight) 0%, var(--accent-highlight) 100%)`,
                                   transition: 'width 0.3s ease',
-                                  boxShadow: '0 0 8px rgba(168, 85, 247, 0.5)'
+                                  boxShadow: '0 0 8px var(--accent-highlight)'
                                 }} />
                                 
                                 {/* EXP Text Overlay */}
@@ -6178,7 +6575,7 @@ const CampaignView: React.FC = () => {
                             {/* EXP Percentage or Level Cap */}
                             <div style={{
                               fontSize: '0.65rem',
-                              color: character.level >= 20 ? '#fbbf24' : '#c084fc',
+                              color: character.level >= 20 ? 'var(--text-gold)' : 'var(--accent-highlight)',
                               textAlign: 'right',
                               fontWeight: 'bold'
                             }}>
@@ -6386,7 +6783,7 @@ const CampaignView: React.FC = () => {
                               background: 'rgba(0, 0, 0, 0.4)',
                               borderRadius: '4px',
                               overflow: 'hidden',
-                              border: '1px solid rgba(212, 193, 156, 0.3)',
+                              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                               position: 'relative'
                             }}>
                               <div style={{
@@ -6410,17 +6807,17 @@ const CampaignView: React.FC = () => {
                               background: 'rgba(0, 0, 0, 0.4)',
                               borderRadius: '4px',
                               overflow: 'hidden',
-                              border: '1px solid rgba(168, 85, 247, 0.3)',
+                              border: '1px solid rgba(var(--accent-highlight), 0.5)',
                               position: 'relative'
                             }}>
                               <div style={{
                                 width: `${getLevelProgress(character.level, character.experience_points || 0)}%`,
                                 height: '100%',
-                                background: 'linear-gradient(90deg, #a855f7 0%, #c084fc 100%)',
-                                boxShadow: '0 0 4px rgba(168, 85, 247, 0.5)'
+                                background: 'linear-gradient(90deg, var(--accent-highlight) 0%, var(--accent-highlight) 100%)',
+                                boxShadow: '0 0 4px var(--accent-highlight)'
                               }} />
                             </div>
-                            <div style={{ fontSize: '0.6rem', color: '#c084fc', fontWeight: 'bold', minWidth: '20px' }}>
+                            <div style={{ fontSize: '0.6rem', color: 'var(--accent-highlight)', fontWeight: 'bold', minWidth: '20px' }}>
                               {getLevelProgress(character.level, character.experience_points || 0).toFixed(0)}%
                             </div>
                           </div>
@@ -6448,7 +6845,7 @@ const CampaignView: React.FC = () => {
                   borderRadius: '0.75rem',
                   overflow: 'hidden',
                   background: 'rgba(0, 0, 0, 0.3)',
-                  border: '2px solid rgba(212, 193, 156, 0.3)'
+                  border: '2px solid rgba(var(--theme-accent-rgb), 0.3)'
                 }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
@@ -6514,7 +6911,7 @@ const CampaignView: React.FC = () => {
                         zIndex: 1200,
                         padding: '0.5rem 0.9rem',
                         borderRadius: '0.6rem',
-                        border: '1px solid rgba(212, 193, 156, 0.45)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.45)',
                         background: 'rgba(0, 0, 0, 0.75)',
                         color: 'var(--text-gold)',
                         fontWeight: 700,
@@ -6619,7 +7016,7 @@ const CampaignView: React.FC = () => {
                             borderRadius: '50%',
                             border: '3px solid var(--primary-gold)',
                             boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
-                            background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)',
+                            background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.3) 0%, rgba(var(--theme-accent-rgb), 0.2) 100%)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -6641,7 +7038,7 @@ const CampaignView: React.FC = () => {
                           padding: '2px 6px',
                           borderRadius: '4px',
                           fontSize: '0.7rem',
-                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                           pointerEvents: 'none'
                         }}>
                           {character.name}
@@ -6738,7 +7135,7 @@ const CampaignView: React.FC = () => {
                         padding: '2px 6px',
                         borderRadius: '4px',
                         fontSize: '0.7rem',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         pointerEvents: 'none',
                         clipPath: 'none'
                       }}>
@@ -6763,7 +7160,7 @@ const CampaignView: React.FC = () => {
                       </div>
                       <div className="modal-content" style={{ padding: '1rem' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                          <div style={{ border: '1px solid rgba(212, 193, 156, 0.25)', borderRadius: '0.75rem', padding: '0.75rem' }}>
+                          <div style={{ border: '1px solid rgba(var(--theme-accent-rgb), 0.25)', borderRadius: '0.75rem', padding: '0.75rem' }}>
                             <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Available Players</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
                               {availablePartyCharacters.length === 0 ? (
@@ -6778,7 +7175,7 @@ const CampaignView: React.FC = () => {
                                       justifyContent: 'space-between',
                                       gap: '0.75rem',
                                       padding: '0.5rem 0.6rem',
-                                      border: '1px solid rgba(212, 193, 156, 0.2)',
+                                      border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                                       borderRadius: '0.5rem',
                                       background: 'rgba(255, 255, 255, 0.05)'
                                     }}
@@ -6797,7 +7194,7 @@ const CampaignView: React.FC = () => {
                             </div>
                           </div>
 
-                          <div style={{ border: '1px solid rgba(212, 193, 156, 0.25)', borderRadius: '0.75rem', padding: '0.75rem' }}>
+                          <div style={{ border: '1px solid rgba(var(--theme-accent-rgb), 0.25)', borderRadius: '0.75rem', padding: '0.75rem' }}>
                             <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.75rem' }}>Party</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
                               {partyMembers.length === 0 ? (
@@ -6812,9 +7209,9 @@ const CampaignView: React.FC = () => {
                                       justifyContent: 'space-between',
                                       gap: '0.75rem',
                                       padding: '0.5rem 0.6rem',
-                                      border: '1px solid rgba(212, 193, 156, 0.2)',
+                                      border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                                       borderRadius: '0.5rem',
-                                      background: 'rgba(212, 193, 156, 0.08)'
+                                      background: 'rgba(var(--theme-accent-rgb), 0.08)'
                                     }}
                                   >
                                     <span style={{ color: 'var(--text-secondary)' }}>{character.name}</span>
@@ -6852,7 +7249,7 @@ const CampaignView: React.FC = () => {
                               key={`party-member-${character.id}`}
                               style={{
                                 padding: '0.55rem 0.7rem',
-                                border: '1px solid rgba(212, 193, 156, 0.2)',
+                                border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                                 borderRadius: '0.55rem',
                                 background: 'rgba(255, 255, 255, 0.04)',
                                 color: 'var(--text-secondary)'
@@ -6910,7 +7307,7 @@ const CampaignView: React.FC = () => {
                             maxHeight: '75vh',
                             objectFit: 'contain',
                             borderRadius: '0.6rem',
-                            border: '2px solid rgba(212, 193, 156, 0.35)',
+                            border: '2px solid rgba(var(--theme-accent-rgb), 0.35)',
                             cursor: 'pointer',
                           }}
                         />
@@ -6939,6 +7336,17 @@ const CampaignView: React.FC = () => {
                 )}
                 characters={currentCampaign.characters}
                 isDungeonMaster={user?.role === 'Dungeon Master'}
+                socket={socket}
+              />
+            )}
+
+            {campaignTab === 'kingdom' && currentCampaign && (
+              <KingdomTab
+                campaignId={currentCampaign.campaign.id}
+                players={currentCampaign.players}
+                characters={currentCampaign.characters}
+                isDungeonMaster={user?.role === 'Dungeon Master'}
+                userId={user?.id}
                 socket={socket}
               />
             )}
@@ -6979,7 +7387,7 @@ const CampaignView: React.FC = () => {
                               padding: '0.5rem 1rem',
                               background: currentTurnIndex === -1 
                                 ? 'linear-gradient(135deg, #61c961, #5ab85a)'
-                                : 'linear-gradient(135deg, #c9a961, #b8935a)',
+                                : 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.35), rgba(var(--theme-accent-rgb), 0.22))',
                               border: currentTurnIndex === -1
                                 ? '2px solid #4a4'
                                 : '2px solid var(--text-gold)',
@@ -7008,30 +7416,24 @@ const CampaignView: React.FC = () => {
                             🔄 Reset Combat
                           </button>
 
-                          {/* DM Darkness slider */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', width: '100%' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              {darknessLevel === 0 ? '☀️' : darknessLevel < 0.5 ? '🌙' : '🌑'} Darkness Radius
-                            </span>
-                            <input
-                              type="range"
-                              min={0}
-                              max={1}
-                              step={0.05}
-                              value={darknessLevel}
-                              onChange={e => {
-                                const val = parseFloat(e.target.value);
-                                setDarknessLevel(val);
-                                if (socket && currentCampaign) {
-                                  socket.emit('setDarkness', { campaignId: currentCampaign.campaign.id, darknessLevel: val });
-                                }
-                              }}
-                              style={{ flex: 1, accentColor: '#60a5fa', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '0.75rem', color: '#60a5fa', minWidth: '56px', textAlign: 'right' }}>
-                              {Math.round(Math.max(15, (1 - darknessLevel * 0.85) * 100))}% vis
-                            </span>
-                          </div>
+                          {/* DM Lighting button */}
+                          <button
+                            onClick={() => setShowLightingModal('combat')}
+                            style={{
+                              marginTop: '0.5rem',
+                              padding: '0.4rem 1rem',
+                              background: 'rgba(251,191,36,0.15)',
+                              border: '1px solid rgba(251,191,36,0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#fbbf24',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              width: '100%',
+                            }}
+                          >
+                            💡 Lighting
+                          </button>
                         </>
                       )}
                     </div>
@@ -7044,7 +7446,7 @@ const CampaignView: React.FC = () => {
                     marginBottom: '1.5rem',
                     padding: '1rem',
                     background: 'rgba(0, 0, 0, 0.4)',
-                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.75rem'
                   }}>
                     <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -7127,6 +7529,42 @@ const CampaignView: React.FC = () => {
                             }
                           }
                         }
+                        // ── Lighting node overrides for initiative list ──────────────────
+                        if (!isDMView) {
+                          const MAX_NODE_RADIUS_PCT = 25;
+                          const combatLightNodes = lightingNodes.filter(n => n.tab === 'combat' && n.type === 'light');
+                          const combatDarkNodes  = lightingNodes.filter(n => n.tab === 'combat' && n.type === 'dark');
+                          const tokenPos = battlePositions[combatant.characterId];
+
+                          if (tokenPos && initiativeVisibility !== 'visible') {
+                            for (const ln of combatLightNodes) {
+                              const dx = tokenPos.x - ln.x;
+                              const dy = tokenPos.y - ln.y;
+                              const dist = Math.sqrt(dx * dx + dy * dy);
+                              const brightRadius = ln.strength * MAX_NODE_RADIUS_PCT;
+                              if (dist <= brightRadius) {
+                                initiativeVisibility = 'visible';
+                                break;
+                              } else if (dist <= brightRadius * 2 && initiativeVisibility === 'hidden') {
+                                initiativeVisibility = 'partial';
+                              }
+                            }
+                          }
+
+                          if (tokenPos) {
+                            for (const dn of combatDarkNodes) {
+                              const dx = tokenPos.x - dn.x;
+                              const dy = tokenPos.y - dn.y;
+                              const dist = Math.sqrt(dx * dx + dy * dy);
+                              if (dist <= dn.strength * MAX_NODE_RADIUS_PCT) {
+                                initiativeVisibility = 'hidden';
+                                break;
+                              }
+                            }
+                          }
+                        }
+                        // ────────────────────────────────────────────────────────────────
+
                         // Convenience alias for existing render code
                         const initiativeHidden = initiativeVisibility === 'partial';
                         if (initiativeVisibility === 'hidden') return null;
@@ -7197,7 +7635,7 @@ const CampaignView: React.FC = () => {
                         })();
                         const tempPct = limbMaxForBar > 0 ? Math.min(100, (tempHpTotalForBar / limbMaxForBar) * 100) : 0;
 
-                        const hpBarColor = healthPct > 66 ? '#4ade80' : healthPct > 33 ? '#fbbf24' : '#ef4444';
+                        const hpBarColor = healthPct > 66 ? '#4ade80' : healthPct > 33 ? 'var(--text-gold)' : '#ef4444';
                         const conditions = combatConditions[combatantKey] ?? [];
                         const economy = combatActionEconomy[combatantKey] ?? { action_used: false, bonus_action_used: false, reaction_used: false };
                         const ds = !combatant.isMonster ? deathSaves[Number(combatant.characterId)] : undefined;
@@ -7217,12 +7655,12 @@ const CampaignView: React.FC = () => {
                                 ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.2), rgba(90, 184, 90, 0.2))'
                                 : isSelected
                                   ? 'rgba(167,139,250,0.12)'
-                                  : 'rgba(212, 193, 156, 0.05)',
+                                  : 'rgba(var(--theme-accent-rgb), 0.05)',
                               border: isCurrentTurn 
                                 ? '2px solid #4a4'
                                 : isSelected
                                   ? '2px solid rgba(167,139,250,0.7)'
-                                  : '1px solid rgba(212, 193, 156, 0.2)',
+                                  : '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                               borderRadius: '0.5rem',
                               display: 'flex',
                               alignItems: 'center',
@@ -7232,8 +7670,8 @@ const CampaignView: React.FC = () => {
                               opacity: isDead ? 0.5 : 1,
                               filter: isDead ? 'grayscale(0.7)' : 'none',
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.3), rgba(90, 184, 90, 0.3))' : 'rgba(212, 193, 156, 0.1)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.2), rgba(90, 184, 90, 0.2))' : 'rgba(212, 193, 156, 0.05)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.3), rgba(90, 184, 90, 0.3))' : 'rgba(var(--theme-accent-rgb), 0.1)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentTurn ? 'linear-gradient(135deg, rgba(97, 201, 97, 0.2), rgba(90, 184, 90, 0.2))' : 'rgba(var(--theme-accent-rgb), 0.05)'; }}
                           >
                             <div style={{
                               minWidth: '2rem',
@@ -7241,7 +7679,7 @@ const CampaignView: React.FC = () => {
                               borderRadius: '50%',
                               background: isCurrentTurn 
                                 ? 'linear-gradient(135deg, #61c961, #5ab85a)'
-                                : 'rgba(212, 193, 156, 0.2)',
+                                : 'rgba(var(--theme-accent-rgb), 0.2)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -7302,10 +7740,10 @@ const CampaignView: React.FC = () => {
                                     Charmed:      {bg:'rgba(244,114,182,0.2)', border:'rgba(244,114,182,0.5)', color:'#f472b6'},
                                     Invisible:    {bg:'rgba(103,232,249,0.2)', border:'rgba(103,232,249,0.5)', color:'#67e8f9'},
                                   };
-                                  const s = condStyle[c] ?? {bg:'rgba(250,204,21,0.15)',border:'rgba(250,204,21,0.4)',color:'#fbbf24'};
+                                  const s = condStyle[c] ?? {bg:'rgba(var(--theme-accent-rgb),0.15)',border:'rgba(var(--theme-accent-rgb),0.4)',color:'var(--text-gold)'};
                                   return <span key={c} style={{ fontSize: '0.65rem', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '0.25rem', padding: '0 0.25rem', color: s.color }}>{c}</span>;
                                 })}
-                                {!initiativeHidden && !isSelected && conditions.length > 3 && <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>+{conditions.length-3}</span>}
+                                {!initiativeHidden && !isSelected && conditions.length > 3 && <span style={{ fontSize: '0.65rem', color: 'var(--text-gold)' }}>+{conditions.length-3}</span>}
                                 {!initiativeHidden && (dotConditions[combatantKey] ?? []).map(dot => {
                                   const dotStyle: Record<string, {bg:string;border:string;color:string;icon:string}> = {
                                     Burning:  {bg:'rgba(249,115,22,0.2)',  border:'rgba(249,115,22,0.6)',  color:'#fb923c', icon:'🔥'},
@@ -7378,7 +7816,7 @@ const CampaignView: React.FC = () => {
                                 const mount = campaignMounts.find(m => m.id === (combatant as any).mountId);
                                 const mountHpMax: number = mount?.hp ?? mountHpCur;
                                 const mountHpPct = mountHpMax > 0 ? Math.min(100, (mountHpCur / mountHpMax) * 100) : 0;
-                                const mountHpColor = mountHpPct > 66 ? '#4ade80' : mountHpPct > 33 ? '#fbbf24' : '#ef4444';
+                                const mountHpColor = mountHpPct > 66 ? '#4ade80' : mountHpPct > 33 ? 'var(--text-gold)' : '#ef4444';
                                 return (
                                   <div style={{ marginTop: '0.15rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.15rem' }}>
@@ -7455,7 +7893,7 @@ const CampaignView: React.FC = () => {
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                       {/* Actions panel */}
-                      <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '0.75rem', padding: '1rem' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.75rem', padding: '1rem' }}>
                         <h6 style={{ color: 'var(--text-gold)', margin: '0 0 0.75rem', fontSize: '0.9rem' }}>
                           ⚡ Actions{activeCombatantData ? ` — ${activeCombatantData.name}` : ''}
                           {!activeCombatantData && <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal' }}> (select a combatant)</span>}
@@ -7671,7 +8109,7 @@ const CampaignView: React.FC = () => {
                         } catch (e) { console.error(e); }
                         setShowMapPickerModal(true);
                       }}
-                      style={{ padding: '0.4rem 0.9rem', background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.4rem', color: '#d4c19c', cursor: 'pointer', fontSize: '0.85rem' }}
+                      style={{ padding: '0.4rem 0.9rem', background: 'rgba(var(--theme-accent-rgb),0.15)', border: '1px solid rgba(var(--theme-accent-rgb),0.4)', borderRadius: '0.4rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.85rem' }}
                     >🗺️ Select Map</button>
                     {activeMapId && (
                       <button
@@ -7689,10 +8127,11 @@ const CampaignView: React.FC = () => {
                   position: 'relative',
                   width: '100%',
                   minHeight: '600px',
-                  border: '2px solid rgba(212, 193, 156, 0.3)',
+                  border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.75rem',
                   overflow: 'hidden',
-                  background: 'rgba(0, 0, 0, 0.3)'
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  cursor: pendingPlacementNode?.tab === 'combat' ? 'crosshair' : undefined,
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -7712,8 +8151,37 @@ const CampaignView: React.FC = () => {
                     setCurrentDragPosition(null);
                   }
                 }}
+                onClick={(e) => {
+                  if (!pendingPlacementNode || pendingPlacementNode.tab !== 'combat') return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width) * 100;
+                  const y = ((e.clientY - rect.top) / rect.height) * 100;
+                  const newNode: LightingNode = {
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    type: pendingPlacementNode.type,
+                    strength: pendingPlacementNode.strength,
+                    tab: 'combat',
+                    x, y,
+                  };
+                  const updated = [...lightingNodes, newNode];
+                  setLightingNodes(updated);
+                  if (socket && currentCampaign) socket.emit('setLightingNodes', { campaignId: currentCampaign.campaign.id, nodes: updated });
+                  setPendingPlacementNode(null);
+                }}
                 onDrop={(e) => {
                   e.preventDefault();
+                  // Handle dragged lighting node
+                  const lightNodeId = e.dataTransfer.getData('lightingNodeId');
+                  if (lightNodeId) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    const updated = lightingNodes.map(n => n.id === lightNodeId ? { ...n, x, y } : n);
+                    setLightingNodes(updated);
+                    if (socket && currentCampaign) socket.emit('setLightingNodes', { campaignId: currentCampaign.campaign.id, nodes: updated });
+                    setDraggedLightingNodeId(null);
+                    return;
+                  }
                   if (draggedCharacter !== null && dragStartPosition) {
                     const rect = e.currentTarget.getBoundingClientRect();
                     const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -7804,7 +8272,7 @@ const CampaignView: React.FC = () => {
                       style={{ width: '100%', height: 'auto', display: 'block', userSelect: 'none', pointerEvents: 'none' }}
                     />
                   ) : (
-                    <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(212,193,156,0.5)', fontSize: '1.1rem' }}>
+                    <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(var(--theme-accent-rgb),0.5)', fontSize: '1.1rem' }}>
                       {user?.role === 'Dungeon Master' ? '🗺️ No map selected — use "Select Map" above' : '🗺️ Awaiting battle map...'}
                     </div>
                   )}
@@ -7982,6 +8450,44 @@ const CampaignView: React.FC = () => {
                         // else stays 'full'
                       }
                     }
+
+                    // ── Lighting node overrides ─────────────────────────────────────────
+                    // Light sources reveal tokens inside them; dark fields hide tokens.
+                    // This runs for non-DM regardless of global darknessLevel.
+                    if (!isDM) {
+                      const MAX_NODE_RADIUS_PCT = 25;
+                      const combatLightNodes = lightingNodes.filter(n => n.tab === 'combat' && n.type === 'light');
+                      const combatDarkNodes  = lightingNodes.filter(n => n.tab === 'combat' && n.type === 'dark');
+
+                      // Upgrade visibility if token is inside a light source
+                      if (tokenVisibility !== 'full') {
+                        for (const ln of combatLightNodes) {
+                          const dx = position.x - ln.x;
+                          const dy = position.y - ln.y;
+                          const dist = Math.sqrt(dx * dx + dy * dy);
+                          const brightRadius = ln.strength * MAX_NODE_RADIUS_PCT;
+                          if (dist <= brightRadius) {
+                            tokenVisibility = 'full';
+                            break;
+                          } else if (dist <= brightRadius * 2 && tokenVisibility === 'hidden') {
+                            tokenVisibility = 'partial'; // dim light → silhouette
+                          }
+                        }
+                      }
+
+                      // Darkness field forces hidden regardless of light sources
+                      for (const dn of combatDarkNodes) {
+                        const dx = position.x - dn.x;
+                        const dy = position.y - dn.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist <= dn.strength * MAX_NODE_RADIUS_PCT) {
+                          tokenVisibility = 'hidden';
+                          break;
+                        }
+                      }
+                    }
+                    // ───────────────────────────────────────────────────────────────────
+
                     if (tokenVisibility === 'hidden') return null;
 
                     // Render silhouette for partially-dark tokens
@@ -8112,8 +8618,8 @@ const CampaignView: React.FC = () => {
                             borderRadius: '50%',
                             border: isTheirTurn 
                               ? `3px solid ${remaining > 0 ? '#4a4' : remaining === 0 ? '#888' : '#f44336'}`
-                              : `3px solid ${isMonster ? '#d9534f' : remaining > 0 ? 'var(--text-gold)' : remaining === 0 ? '#888' : '#f44336'}`,
-                            backgroundColor: isMonster ? 'rgba(180, 60, 60, 0.85)' : 'rgba(101, 67, 33, 0.85)',
+                              : `3px solid ${isMonster ? (combatant.isAlly ? '#4ade80' : '#d9534f') : remaining > 0 ? 'var(--text-gold)' : remaining === 0 ? '#888' : '#f44336'}`,
+                            backgroundColor: isMonster ? (combatant.isAlly ? 'rgba(60, 160, 80, 0.85)' : 'rgba(180, 60, 60, 0.85)') : 'rgba(101, 67, 33, 0.85)',
                             backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
@@ -8128,7 +8634,7 @@ const CampaignView: React.FC = () => {
                             boxShadow: isTheirTurn ? '0 0 12px rgba(74, 164, 74, 0.6)' : '0 4px 8px rgba(0, 0, 0, 0.3)',
                             transition: 'all 0.3s ease',
                           }}
-                          title={`${displayName} - ${remaining.toFixed(2)}ft remaining${!combatStarted ? ' (Combat not started - DM only)' : !isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? ' (Monster)' : ''}`}
+                          title={`${displayName} - ${remaining.toFixed(2)}ft remaining${!combatStarted ? ' (Combat not started - DM only)' : !isTheirTurn && !isDM ? ' (Not your turn)' : ''}${isDM && remaining <= 0 ? ' (DM Override)' : ''}${isMonster ? (combatant.isAlly ? ' (Ally)' : ' (Monster)') : ''}`}
                         >
                           {!imageUrl && name.charAt(0).toUpperCase()}
                         </div>
@@ -8137,7 +8643,7 @@ const CampaignView: React.FC = () => {
                           padding: '2px 6px',
                           background: isTheirTurn
                             ? (remaining > 0 ? 'rgba(74, 164, 74, 0.9)' : remaining === 0 ? 'rgba(136, 136, 136, 0.9)' : 'rgba(244, 67, 54, 0.9)')
-                            : (remaining > 0 ? (isMonster ? 'rgba(217, 83, 79, 0.9)' : 'rgba(212, 193, 156, 0.9)') : remaining === 0 ? 'rgba(136, 136, 136, 0.9)' : 'rgba(244, 67, 54, 0.9)'),
+                            : (remaining > 0 ? (isMonster ? 'rgba(217, 83, 79, 0.9)' : 'rgba(var(--theme-accent-rgb), 0.9)') : remaining === 0 ? 'rgba(136, 136, 136, 0.9)' : 'rgba(244, 67, 54, 0.9)'),
                           borderRadius: '4px',
                           fontSize: '0.7rem',
                           fontWeight: 'bold',
@@ -8149,6 +8655,39 @@ const CampaignView: React.FC = () => {
                       </div>
                     );
                   })}
+
+                  {/* DM-only lighting node dots on combat map */}
+                  {user?.role === 'Dungeon Master' && lightingNodes
+                    .filter(n => n.tab === 'combat')
+                    .map(n => (
+                      <div
+                        key={n.id}
+                        draggable
+                        onDragStart={e => {
+                          setDraggedLightingNodeId(n.id);
+                          e.dataTransfer.setData('lightingNodeId', n.id);
+                          e.stopPropagation();
+                        }}
+                        onDragEnd={() => setDraggedLightingNodeId(null)}
+                        style={{
+                          position: 'absolute',
+                          left: `${n.x}%`,
+                          top: `${n.y}%`,
+                          transform: 'translate(-50%, -50%)',
+                          width: 18, height: 18,
+                          borderRadius: '50%',
+                          background: n.type === 'light' ? '#ef4444' : '#1a1a1a',
+                          border: '2px solid rgba(255,255,255,0.5)',
+                          cursor: 'move',
+                          zIndex: 999,
+                          boxShadow: n.type === 'light' ? '0 0 8px #ef4444' : '0 0 8px #444',
+                          pointerEvents: 'auto',
+                          opacity: draggedLightingNodeId === n.id ? 0.4 : 1,
+                        }}
+                        title={`${n.type === 'light' ? 'Light Source' : 'Darkness Field'} — ${Math.round(n.strength * 100)}% strength`}
+                      />
+                    ))
+                  }
                 </div>
               </div>
             )}
@@ -8182,7 +8721,7 @@ const CampaignView: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '2px dashed rgba(212, 193, 156, 0.3)',
+                    border: '2px dashed rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.75rem',
                     background: 'rgba(255, 255, 255, 0.02)',
                     padding: '3rem'
@@ -8199,8 +8738,8 @@ const CampaignView: React.FC = () => {
                   <div>
                     {/* Battle Info Header */}
                     <div style={{
-                      background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.75rem',
                       padding: '1.5rem',
                       marginBottom: '1.5rem'
@@ -8228,7 +8767,7 @@ const CampaignView: React.FC = () => {
                               'rgba(34, 197, 94, 0.5)'}`,
                             borderRadius: '0.5rem',
                             color: activeBattle.status === 'planning' ? '#60a5fa' :
-                                   activeBattle.status === 'goal_selection' ? '#facc15' :
+                                   activeBattle.status === 'goal_selection' ? 'var(--text-gold)' :
                                    activeBattle.status === 'resolution' ? '#f87171' :
                                    '#4ade80',
                             fontSize: '0.85rem',
@@ -8256,7 +8795,7 @@ const CampaignView: React.FC = () => {
                               } catch (e) { console.error(e); }
                               setShowBattlefieldMapPickerModal(true);
                             }}
-                            style={{ padding: '0.5rem 1rem', background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.5rem', color: '#d4c19c', cursor: 'pointer', fontSize: '0.85rem' }}
+                            style={{ padding: '0.5rem 1rem', background: 'rgba(var(--theme-accent-rgb),0.15)', border: '1px solid rgba(var(--theme-accent-rgb),0.4)', borderRadius: '0.5rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.85rem' }}
                           >🗺️ Select Battlefield Map</button>
                           {activeBattlefieldMapId && (
                             <button
@@ -8367,7 +8906,7 @@ const CampaignView: React.FC = () => {
                                 background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.3), rgba(202, 138, 4, 0.3))',
                                 border: '2px solid rgba(234, 179, 8, 0.5)',
                                 borderRadius: '0.5rem',
-                                color: '#facc15',
+                                color: 'var(--text-gold)',
                                 cursor: (user?.role === 'Dungeon Master' || (activeBattle.participants || []).filter(p => (p.current_troops || 0) > 0).every(p => p.has_selected_goal || new Set(battleGoals.map(goal => goal.participant_id)).has(p.id))) ? 'pointer' : 'not-allowed',
                                 fontSize: '0.85rem',
                                 fontWeight: 'bold',
@@ -8454,6 +8993,25 @@ const CampaignView: React.FC = () => {
                               🏁 Complete Battle
                             </button>
                           )}
+
+                          {/* DM Lighting button — battlefield */}
+                          <button
+                            onClick={() => setShowLightingModal('battlefield')}
+                            style={{
+                              marginTop: '0.5rem',
+                              padding: '0.4rem 1rem',
+                              background: 'rgba(251,191,36,0.15)',
+                              border: '1px solid rgba(251,191,36,0.5)',
+                              borderRadius: '0.5rem',
+                              color: '#fbbf24',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              width: '100%',
+                            }}
+                          >
+                            💡 Lighting
+                          </button>
                         </div>
                       )}
                     </div>
@@ -8469,7 +9027,8 @@ const CampaignView: React.FC = () => {
                         border: '3px solid var(--border-gold)',
                         borderRadius: '0.75rem',
                         overflow: 'hidden',
-                        background: 'rgba(0, 0, 0, 0.3)'
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        cursor: pendingPlacementNode?.tab === 'battlefield' ? 'crosshair' : undefined,
                       }}
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -8483,8 +9042,37 @@ const CampaignView: React.FC = () => {
                           setCurrentDragPosition({ x, y });
                         }
                       }}
+                      onClick={(e) => {
+                        if (!pendingPlacementNode || pendingPlacementNode.tab !== 'battlefield') return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = ((e.clientX - rect.left) / rect.width) * 100;
+                        const y = ((e.clientY - rect.top) / rect.height) * 100;
+                        const newNode: LightingNode = {
+                          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                          type: pendingPlacementNode.type,
+                          strength: pendingPlacementNode.strength,
+                          tab: 'battlefield',
+                          x, y,
+                        };
+                        const updated = [...lightingNodes, newNode];
+                        setLightingNodes(updated);
+                        if (socket && currentCampaign) socket.emit('setLightingNodes', { campaignId: currentCampaign.campaign.id, nodes: updated });
+                        setPendingPlacementNode(null);
+                      }}
                       onDrop={async (e) => {
                         e.preventDefault();
+                        // Handle dragged lighting node
+                        const lightNodeId = e.dataTransfer.getData('lightingNodeId');
+                        if (lightNodeId) {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = ((e.clientX - rect.left) / rect.width) * 100;
+                          const y = ((e.clientY - rect.top) / rect.height) * 100;
+                          const updated = lightingNodes.map(n => n.id === lightNodeId ? { ...n, x, y } : n);
+                          setLightingNodes(updated);
+                          if (socket && currentCampaign) socket.emit('setLightingNodes', { campaignId: currentCampaign.campaign.id, nodes: updated });
+                          setDraggedLightingNodeId(null);
+                          return;
+                        }
                         const participantId = parseInt(e.dataTransfer.getData('participantId'));
                         const startX = parseFloat(e.dataTransfer.getData('startX'));
                         const startY = parseFloat(e.dataTransfer.getData('startY'));
@@ -8565,7 +9153,7 @@ const CampaignView: React.FC = () => {
                               style={{ width: '100%', height: 'auto', display: 'block', userSelect: 'none', pointerEvents: 'none' }}
                             />
                           ) : (
-                            <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(212,193,156,0.5)', fontSize: '1.1rem' }}>
+                            <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(var(--theme-accent-rgb),0.5)', fontSize: '1.1rem' }}>
                               {user?.role === 'Dungeon Master' ? '🗺️ No map selected — use \'Select Battlefield Map\' above' : '🗺️ Awaiting battlefield map...'}
                             </div>
                           )}
@@ -8577,7 +9165,7 @@ const CampaignView: React.FC = () => {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            backgroundImage: 'linear-gradient(rgba(212, 193, 156, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(212, 193, 156, 0.1) 1px, transparent 1px)',
+                            backgroundImage: 'linear-gradient(rgba(var(--theme-accent-rgb), 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(var(--theme-accent-rgb), 0.1) 1px, transparent 1px)',
                             backgroundSize: '50px 50px',
                             pointerEvents: 'none'
                           }} />
@@ -8902,6 +9490,39 @@ const CampaignView: React.FC = () => {
                             </div>
                           );})}
 
+                          {/* DM-only lighting node dots on battlefield map */}
+                          {user?.role === 'Dungeon Master' && lightingNodes
+                            .filter(n => n.tab === 'battlefield')
+                            .map(n => (
+                              <div
+                                key={n.id}
+                                draggable
+                                onDragStart={e => {
+                                  setDraggedLightingNodeId(n.id);
+                                  e.dataTransfer.setData('lightingNodeId', n.id);
+                                  e.stopPropagation();
+                                }}
+                                onDragEnd={() => setDraggedLightingNodeId(null)}
+                                style={{
+                                  position: 'absolute',
+                                  left: `${n.x}%`,
+                                  top: `${n.y}%`,
+                                  transform: 'translate(-50%, -50%)',
+                                  width: 18, height: 18,
+                                  borderRadius: '50%',
+                                  background: n.type === 'light' ? '#ef4444' : '#1a1a1a',
+                                  border: '2px solid rgba(255,255,255,0.5)',
+                                  cursor: 'move',
+                                  zIndex: 999,
+                                  boxShadow: n.type === 'light' ? '0 0 8px #ef4444' : '0 0 8px #444',
+                                  pointerEvents: 'auto',
+                                  opacity: draggedLightingNodeId === n.id ? 0.4 : 1,
+                                }}
+                                title={`${n.type === 'light' ? 'Light Source' : 'Darkness Field'} — ${Math.round(n.strength * 100)}% strength`}
+                              />
+                            ))
+                          }
+
                         {/* Overlay Control Buttons */}
                         <div style={{
                           position: 'absolute',
@@ -8917,7 +9538,7 @@ const CampaignView: React.FC = () => {
                               style={{
                                 padding: '0.75rem 1rem',
                                 background: showBattlefieldParticipants 
-                                  ? 'rgba(212, 193, 156, 0.9)' 
+                                  ? 'rgba(var(--theme-accent-rgb), 0.9)' 
                                   : 'rgba(0, 0, 0, 0.8)',
                                 border: '2px solid var(--border-gold)',
                                 borderRadius: '0.5rem',
@@ -8938,7 +9559,7 @@ const CampaignView: React.FC = () => {
                               style={{
                                 padding: '0.75rem 1rem',
                                 background: showGoalSelectionModal
-                                  ? 'rgba(212, 193, 156, 0.9)'
+                                  ? 'rgba(var(--theme-accent-rgb), 0.9)'
                                   : 'rgba(0, 0, 0, 0.8)',
                                 border: '2px solid var(--border-gold)',
                                 borderRadius: '0.5rem',
@@ -8959,7 +9580,7 @@ const CampaignView: React.FC = () => {
                               style={{
                                 padding: '0.75rem 1rem',
                                 background: showGoalResolutionModal
-                                  ? 'rgba(212, 193, 156, 0.9)'
+                                  ? 'rgba(var(--theme-accent-rgb), 0.9)'
                                   : 'rgba(0, 0, 0, 0.8)',
                                 border: '2px solid var(--border-gold)',
                                 borderRadius: '0.5rem',
@@ -9146,7 +9767,7 @@ const CampaignView: React.FC = () => {
                                               style={{
                                                 padding: '1rem',
                                                 background: 'rgba(0, 0, 0, 0.3)',
-                                                border: '2px solid rgba(212, 193, 156, 0.3)',
+                                                border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                                                 borderRadius: '0.5rem'
                                               }}
                                             >
@@ -9346,7 +9967,7 @@ const CampaignView: React.FC = () => {
                                             background: 'rgba(234, 179, 8, 0.15)',
                                             border: '1px solid rgba(234, 179, 8, 0.4)',
                                             borderRadius: '999px',
-                                            color: '#facc15',
+                                            color: 'var(--text-gold)',
                                             fontSize: '0.75rem',
                                             fontWeight: 'bold'
                                           }}>
@@ -9366,7 +9987,7 @@ const CampaignView: React.FC = () => {
                                               border: `1px solid ${stats.selected === stats.total ? 'rgba(34, 197, 94, 0.45)' : 'rgba(234, 179, 8, 0.4)'}`,
                                             }}>
                                               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: stats.color, boxShadow: `0 0 6px ${stats.color}` }} />
-                                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: stats.selected === stats.total ? '#4ade80' : '#facc15' }}>
+                                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: stats.selected === stats.total ? '#4ade80' : 'var(--text-gold)' }}>
                                                 {teamName}: {stats.selected}/{stats.total}
                                               </span>
                                             </div>
@@ -9432,7 +10053,7 @@ const CampaignView: React.FC = () => {
                                                 <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                   {getBattleParticipantName(participant)}
                                                 </div>
-                                                <div style={{ fontSize: '0.72rem', color: participant.has_selected_goal ? '#4ade80' : '#facc15', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                                <div style={{ fontSize: '0.72rem', color: participant.has_selected_goal ? '#4ade80' : 'var(--text-gold)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                                                   {participant.has_selected_goal ? '✅ Locked' : '⏳ Needs goal'}
                                                 </div>
                                                 <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.1rem' }}>
@@ -9454,7 +10075,7 @@ const CampaignView: React.FC = () => {
                                               gap: '0.75rem',
                                               padding: '0.65rem 1rem',
                                               background: 'rgba(0,0,0,0.3)',
-                                              border: `1px solid ${selectedParticipant.faction_color || 'rgba(212,193,156,0.25)'}`,
+                                              border: `1px solid ${selectedParticipant.faction_color || 'rgba(var(--theme-accent-rgb),0.25)'}`,
                                               borderRadius: '0.6rem',
                                               flexWrap: 'wrap'
                                             }}>
@@ -9903,7 +10524,7 @@ const CampaignView: React.FC = () => {
                                       >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                                           <div style={{ fontWeight: 'bold', color: 'var(--text-gold)' }}>{goal.goal_name}</div>
-                                          <div style={{ fontSize: '0.75rem', color: goal.status === 'resolved' ? '#4ade80' : goal.status === 'applied' ? '#60a5fa' : '#facc15' }}>
+                                          <div style={{ fontSize: '0.75rem', color: goal.status === 'resolved' ? '#4ade80' : goal.status === 'applied' ? '#60a5fa' : 'var(--text-gold)' }}>
                                             {goal.status}
                                           </div>
                                         </div>
@@ -9912,7 +10533,7 @@ const CampaignView: React.FC = () => {
                                           {targetName ? ` → ${targetName}` : ''}
                                         </div>
                                         {goal.advantage && goal.advantage !== 'none' && (
-                                          <div style={{ fontSize: '0.75rem', color: '#facc15' }}>Advantage: {goal.advantage}</div>
+                                          <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)' }}>Advantage: {goal.advantage}</div>
                                         )}
                                         {goal.attacker_roll && (
                                           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Attacker roll: {goal.attacker_roll} · Defender roll: {goal.defender_roll}</div>
@@ -10245,7 +10866,7 @@ const CampaignView: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '2px dashed rgba(212, 193, 156, 0.3)',
+                    border: '2px dashed rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.75rem',
                     background: 'rgba(255, 255, 255, 0.02)',
                     padding: '2.5rem'
@@ -10272,7 +10893,7 @@ const CampaignView: React.FC = () => {
                           gap: '1rem',
                           padding: '1rem',
                           background: 'rgba(0, 0, 0, 0.25)',
-                          border: '1px solid rgba(212, 193, 156, 0.2)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                           borderRadius: '0.75rem',
                           cursor: 'pointer',
                           transition: 'all 0.2s'
@@ -10282,7 +10903,7 @@ const CampaignView: React.FC = () => {
                           e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.4)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                          e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.2)';
                           e.currentTarget.style.boxShadow = 'none';
                         }}
                       >
@@ -10295,7 +10916,7 @@ const CampaignView: React.FC = () => {
                             backgroundImage: `url(${entry.image_url})`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
-                            border: '1px solid rgba(212, 193, 156, 0.2)'
+                            border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                           }} />
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -10365,7 +10986,7 @@ const CampaignView: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '2px dashed rgba(212, 193, 156, 0.3)',
+                    border: '2px dashed rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.75rem',
                     background: 'rgba(255, 255, 255, 0.02)',
                     padding: '3rem'
@@ -10397,7 +11018,7 @@ const CampaignView: React.FC = () => {
                           overflow: 'hidden',
                           cursor: 'pointer',
                           transition: 'all 0.2s',
-                          border: '1px solid rgba(212, 193, 156, 0.2)'
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.transform = 'translateY(-4px)';
@@ -10406,7 +11027,7 @@ const CampaignView: React.FC = () => {
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                          e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.2)';
                           e.currentTarget.style.boxShadow = 'none';
                         }}
                       >
@@ -10487,7 +11108,7 @@ const CampaignView: React.FC = () => {
                         flex: '1 1 200px',
                         padding: '0.5rem 0.75rem',
                         background: 'rgba(0,0,0,0.3)',
-                        border: '1px solid rgba(212,193,156,0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
                         borderRadius: '0.5rem',
                         color: '#fff',
                         fontSize: '0.9rem'
@@ -10499,9 +11120,9 @@ const CampaignView: React.FC = () => {
                       style={{
                         padding: '0.5rem 0.75rem',
                         background: 'rgba(0,0,0,0.5)',
-                        border: '1px solid rgba(212,193,156,0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
                         borderRadius: '0.5rem',
-                        color: '#d4c19c',
+                        color: 'var(--text-gold)',
                         fontSize: '0.9rem',
                         cursor: 'pointer'
                       }}
@@ -10516,10 +11137,10 @@ const CampaignView: React.FC = () => {
                       title={encyclopediaSortDir === 'asc' ? 'Ascending' : 'Descending'}
                       style={{
                         padding: '0.5rem 0.75rem',
-                        background: 'rgba(212,193,156,0.1)',
-                        border: '1px solid rgba(212,193,156,0.3)',
+                        background: 'rgba(var(--theme-accent-rgb),0.1)',
+                        border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
                         borderRadius: '0.5rem',
-                        color: '#d4c19c',
+                        color: 'var(--text-gold)',
                         cursor: 'pointer',
                         fontSize: '1rem'
                       }}
@@ -10556,7 +11177,7 @@ const CampaignView: React.FC = () => {
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        border: '2px dashed rgba(212, 193, 156, 0.3)',
+                        border: '2px dashed rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.75rem',
                         background: 'rgba(255, 255, 255, 0.02)',
                         padding: '2.5rem'
@@ -10588,7 +11209,7 @@ const CampaignView: React.FC = () => {
                           key={monster.id}
                           style={{
                             background: 'rgba(0, 0, 0, 0.25)',
-                            border: '1px solid rgba(212, 193, 156, 0.2)',
+                            border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                             borderRadius: '0.75rem',
                             overflow: 'hidden',
                             display: 'flex',
@@ -10642,8 +11263,8 @@ const CampaignView: React.FC = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.2rem' }}>
                                   {(['head', 'chest', 'left_arm', 'right_arm', 'left_leg', 'right_leg'] as const).map(limb => (
                                     <div key={limb} style={{
-                                      background: 'rgba(212,193,156,0.06)',
-                                      border: '1px solid rgba(212,193,156,0.15)',
+                                      background: 'rgba(var(--theme-accent-rgb),0.06)',
+                                      border: '1px solid rgba(var(--theme-accent-rgb),0.15)',
                                       borderRadius: '3px',
                                       padding: '2px 4px',
                                       textAlign: 'center'
@@ -10662,7 +11283,7 @@ const CampaignView: React.FC = () => {
                             {monster.abilities && (
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.25rem', marginTop: '0.25rem' }}>
                                 {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(ab => (
-                                  <div key={ab} style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '3px', padding: '2px 0', textAlign: 'center' }}>
+                                  <div key={ab} style={{ background: 'rgba(var(--theme-accent-rgb),0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '3px', padding: '2px 0', textAlign: 'center' }}>
                                     <div style={{ fontSize: '0.55rem', color: 'var(--text-gold)' }}>{ab.toUpperCase()}</div>
                                     <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#fff' }}>{(monster.abilities as any)[ab]}</div>
                                   </div>
@@ -10685,7 +11306,7 @@ const CampaignView: React.FC = () => {
                               display: 'flex',
                               gap: '0.5rem',
                               padding: '0.75rem 1rem 1rem',
-                              borderTop: '1px solid rgba(212, 193, 156, 0.15)'
+                              borderTop: '1px solid rgba(var(--theme-accent-rgb), 0.15)'
                             }}>
                               <button
                                 onClick={() => handleToggleMonsterVisibility(monster.id)}
@@ -10693,8 +11314,8 @@ const CampaignView: React.FC = () => {
                                   flex: 1,
                                   padding: '0.4rem 0.6rem',
                                   borderRadius: '0.5rem',
-                                  border: '1px solid rgba(212, 193, 156, 0.4)',
-                                  background: 'rgba(212, 193, 156, 0.15)',
+                                  border: '1px solid rgba(var(--theme-accent-rgb), 0.4)',
+                                  background: 'rgba(var(--theme-accent-rgb), 0.15)',
                                   color: 'var(--text-gold)',
                                   cursor: 'pointer',
                                   fontSize: '0.8rem'
@@ -11065,7 +11686,7 @@ const CampaignView: React.FC = () => {
                                       <button disabled={backstoryPage === 0} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === 0 ? 0.3 : 1 }} onClick={() => { if (backstoryPage > 0) { setPageDirection('backward'); setTimeout(() => { setBackstoryPage(backstoryPage - 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>← Prev</button>
                                       <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                         {pages.map((_, i) => (
-                                          <button key={i} onClick={() => { if (i !== currentPage) { setPageDirection(i > currentPage ? 'forward' : 'backward'); setTimeout(() => { setBackstoryPage(i); setTimeout(() => setPageDirection(null), 600); }, 50); } }} style={{ width: 8, height: 8, borderRadius: '50%', border: 'none', background: i === currentPage ? 'var(--primary-gold)' : 'rgba(212,193,156,0.3)', cursor: 'pointer', padding: 0 }} />
+                                          <button key={i} onClick={() => { if (i !== currentPage) { setPageDirection(i > currentPage ? 'forward' : 'backward'); setTimeout(() => { setBackstoryPage(i); setTimeout(() => setPageDirection(null), 600); }, 50); } }} style={{ width: 8, height: 8, borderRadius: '50%', border: 'none', background: i === currentPage ? 'var(--primary-gold)' : 'rgba(var(--theme-accent-rgb),0.3)', cursor: 'pointer', padding: 0 }} />
                                         ))}
                                       </div>
                                       <button disabled={backstoryPage === pages.length - 1} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', minHeight: 'auto', opacity: backstoryPage === pages.length - 1 ? 0.3 : 1 }} onClick={() => { if (backstoryPage < pages.length - 1) { setPageDirection('forward'); setTimeout(() => { setBackstoryPage(backstoryPage + 1); setTimeout(() => setPageDirection(null), 600); }, 50); } }}>Next →</button>
@@ -11190,8 +11811,8 @@ const CampaignView: React.FC = () => {
                           const modifier = Math.floor((score - 10) / 2);
                           return (
                             <div key={ability} style={{
-                              background: 'rgba(212, 193, 156, 0.1)',
-                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              background: 'rgba(var(--theme-accent-rgb), 0.1)',
+                              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                               borderRadius: '8px',
                               padding: '0.75rem',
                               textAlign: 'center'
@@ -11274,7 +11895,7 @@ const CampaignView: React.FC = () => {
                           style={{ 
                             width: '100%', 
                             height: 'auto',
-                            border: '2px solid rgba(212, 193, 156, 0.3)',
+                            border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                             borderRadius: '0.5rem',
                             background: 'rgba(255, 255, 255, 0.05)',
                             display: 'block'
@@ -11324,7 +11945,7 @@ const CampaignView: React.FC = () => {
                           const getHealthColor = (current: number, max: number) => {
                             const percentage = (current / max) * 100;
                             if (percentage > 66) return '#4ade80'; // Green
-                            if (percentage > 33) return '#fbbf24'; // Yellow
+                            if (percentage > 33) return 'var(--text-gold)'; // Yellow
                             return '#ef4444'; // Red
                           };
 
@@ -11475,8 +12096,8 @@ const CampaignView: React.FC = () => {
                           const modifier = Math.floor((score - 10) / 2);
                           return (
                             <div key={ability} style={{
-                              background: 'rgba(212, 193, 156, 0.1)',
-                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              background: 'rgba(var(--theme-accent-rgb), 0.1)',
+                              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                               borderRadius: '8px',
                               padding: '0.75rem',
                               textAlign: 'center'
@@ -11835,7 +12456,7 @@ const CampaignView: React.FC = () => {
                               💰 Currency
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '1.1rem', fontWeight: 'bold', color: 'white', marginBottom: '0.4rem' }}>
-                              <span style={{ color: '#fbbf24' }}>{gp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#d4af37' }}>gp</span></span>
+                              <span style={{ color: 'var(--text-gold)' }}>{gp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#d4af37' }}>gp</span></span>
                               <span style={{ color: '#c0c0c0' }}>{sp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#aaa' }}>sp</span></span>
                               <span style={{ color: '#cd7f32' }}>{cp}<span style={{ fontSize: '0.75rem', marginLeft: '2px', color: '#a0522d' }}>cp</span></span>
                             </div>
@@ -11845,7 +12466,7 @@ const CampaignView: React.FC = () => {
                             {user?.role === 'Dungeon Master' && (
                               <button
                                 onClick={() => setEditGoldModal({ isOpen: true, characterId: selectedCharacterData.id, rawValue: String(totalCp) })}
-                                style={{ background: 'rgba(212, 175, 55, 0.2)', border: '1px solid rgba(212, 175, 55, 0.5)', color: '#fbbf24', borderRadius: '6px', padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                                style={{ background: 'rgba(212, 175, 55, 0.2)', border: '1px solid rgba(212, 175, 55, 0.5)', color: 'var(--text-gold)', borderRadius: '6px', padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                               >
                                 ✏️ Edit
                               </button>
@@ -11872,7 +12493,7 @@ const CampaignView: React.FC = () => {
                           const hasAny = resData.resistances.length > 0 || resData.immunities.length > 0 || resData.vulnerabilities.length > 0;
                           if (!hasAny && !isDM) return null;
                           return (
-                            <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
+                            <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
                               <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>⚔️ Damage Affinities</div>
                               {categories.map(cat => (
                                 <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
@@ -11926,7 +12547,7 @@ const CampaignView: React.FC = () => {
                           const hasAny = profData.weapons.length > 0 || profData.armor.length > 0 || profData.tools.length > 0 || profData.languages.length > 0;
                           if (!hasAny && !isDM) return null;
                           return (
-                            <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
+                            <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.75rem', padding: '1rem', height: '100%' }}>
                               <div style={{ color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>📚 Proficiencies</div>
                               {categories.map(cat => (
                                 <div key={cat.key} style={{ marginBottom: '0.6rem' }}>
@@ -12050,8 +12671,8 @@ const CampaignView: React.FC = () => {
                           const isOwner = Number(selectedCharacterData.player_id) === Number(user?.id);
                           const canInteract = isDM || isOwner;
                           return (
-                            <div style={{ background: 'rgba(250,204,21,0.06)', border: '2px solid rgba(250,204,21,0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
-                              <h6 style={{ color: '#fbbf24', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ background: 'rgba(var(--theme-accent-rgb),0.06)', border: '2px solid rgba(var(--theme-accent-rgb),0.35)', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
+                              <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 🌀 Ki Points
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(short/long rest{canInteract ? ' · click to use/restore' : ''})</span>
                               </h6>
@@ -12062,7 +12683,7 @@ const CampaignView: React.FC = () => {
                                     <div key={idx}
                                       title={isUsed ? (isDM ? 'Click to restore' : 'Used') : (canInteract ? 'Click to use' : 'Available')}
                                       onClick={() => { if (!canInteract) return; socket?.emit(isUsed ? 'restoreKiPoint' : 'useKiPoint', { campaignId: currentCampaign?.campaign.id, characterId: selectedCharacterData.id }); }}
-                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(250,204,21,0.7)', border: '2px solid rgba(250,204,21,0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.35 : 1, transition: 'opacity 0.2s' }} />
+                                      style={{ width: '22px', height: '22px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(var(--theme-accent-rgb),0.7)', border: '2px solid rgba(var(--theme-accent-rgb),0.8)', cursor: canInteract ? 'pointer' : 'default', opacity: isUsed ? 0.35 : 1, transition: 'opacity 0.2s' }} />
                                   );
                                 })}
                               </div>
@@ -12215,7 +12836,7 @@ const CampaignView: React.FC = () => {
                             return (
                               <div key={abilityKey} style={{
                                 background: 'rgba(0, 0, 0, 0.3)',
-                                border: '1px solid rgba(212, 193, 156, 0.4)',
+                                border: '1px solid rgba(var(--theme-accent-rgb), 0.4)',
                                 borderRadius: '8px',
                                 padding: '1rem',
                                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
@@ -12248,12 +12869,12 @@ const CampaignView: React.FC = () => {
                                         background: isExpert
                                           ? 'rgba(139, 92, 246, 0.15)'
                                           : isProficient
-                                            ? 'rgba(212, 193, 156, 0.15)'
+                                            ? 'rgba(var(--theme-accent-rgb), 0.15)'
                                             : 'rgba(255, 255, 255, 0.05)',
                                         border: isExpert
                                           ? '1px solid rgba(139, 92, 246, 0.5)'
                                           : isProficient
-                                            ? '1px solid rgba(212, 193, 156, 0.4)'
+                                            ? '1px solid rgba(var(--theme-accent-rgb), 0.4)'
                                             : '1px solid rgba(255, 255, 255, 0.1)',
                                         borderRadius: '4px',
                                         padding: '0.6rem 0.75rem',
@@ -12365,8 +12986,8 @@ const CampaignView: React.FC = () => {
                             style={{
                               padding: '0.5rem 1rem',
                               fontSize: '0.9rem',
-                              background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.2), rgba(180, 160, 120, 0.2))',
-                              border: '2px solid rgba(212, 193, 156, 0.5)',
+                              background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.2), rgba(180, 160, 120, 0.2))',
+                              border: '2px solid rgba(var(--theme-accent-rgb), 0.5)',
                               color: 'var(--text-gold)'
                             }}
                           >
@@ -12435,8 +13056,8 @@ const CampaignView: React.FC = () => {
                             key={skill.id}
                             className="glass-panel"
                             style={{
-                              background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
-                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                               padding: '1rem',
                               position: 'relative'
                             }}
@@ -12623,7 +13244,7 @@ const CampaignView: React.FC = () => {
                                 background: 'rgba(0, 0, 0, 0.3)',
                                 borderRadius: '12px',
                                 overflow: 'hidden',
-                                border: '2px solid rgba(212, 193, 156, 0.3)'
+                                border: '2px solid rgba(var(--theme-accent-rgb), 0.3)'
                               }}>
                                 <div style={{
                                   width: `${(beast.hit_points_current / beast.hit_points_max) * 100}%`,
@@ -12651,7 +13272,7 @@ const CampaignView: React.FC = () => {
                                       flex: 1,
                                       padding: '0.5rem',
                                       background: 'rgba(255, 255, 255, 0.05)',
-                                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                                      border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                                       borderRadius: '0.5rem',
                                       color: 'var(--text-primary)',
                                       fontSize: '0.9rem'
@@ -12677,7 +13298,7 @@ const CampaignView: React.FC = () => {
                                   padding: '1rem',
                                   background: 'rgba(255, 255, 255, 0.05)',
                                   borderRadius: '0.5rem',
-                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                  border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                                 }}>
                                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
                                     Armor Class
@@ -12690,7 +13311,7 @@ const CampaignView: React.FC = () => {
                                   padding: '1rem',
                                   background: 'rgba(255, 255, 255, 0.05)',
                                   borderRadius: '0.5rem',
-                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                  border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                                 }}>
                                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
                                     Speed
@@ -12703,7 +13324,7 @@ const CampaignView: React.FC = () => {
                                   padding: '1rem',
                                   background: 'rgba(255, 255, 255, 0.05)',
                                   borderRadius: '0.5rem',
-                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                  border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                                 }}>
                                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
                                     Attack Bonus
@@ -12716,7 +13337,7 @@ const CampaignView: React.FC = () => {
                                   padding: '1rem',
                                   background: 'rgba(255, 255, 255, 0.05)',
                                   borderRadius: '0.5rem',
-                                  border: '1px solid rgba(212, 193, 156, 0.2)'
+                                  border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
                                 }}>
                                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
                                     Damage
@@ -12746,7 +13367,7 @@ const CampaignView: React.FC = () => {
                                     padding: '0.75rem',
                                     background: 'rgba(255, 255, 255, 0.05)',
                                     borderRadius: '0.5rem',
-                                    border: '1px solid rgba(212, 193, 156, 0.2)',
+                                    border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                                     textAlign: 'center'
                                   }}>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
@@ -12773,7 +13394,7 @@ const CampaignView: React.FC = () => {
                                   padding: '1rem',
                                   background: 'rgba(255, 255, 255, 0.05)',
                                   borderRadius: '0.5rem',
-                                  border: '1px solid rgba(212, 193, 156, 0.2)',
+                                  border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                                   fontSize: '0.9rem',
                                   lineHeight: '1.6',
                                   color: 'var(--text-secondary)',
@@ -12989,7 +13610,7 @@ const CampaignView: React.FC = () => {
                               background: 'linear-gradient(135deg, rgba(234,179,8,0.3), rgba(180,130,0,0.3))',
                               border: '2px solid rgba(234,179,8,0.6)',
                               borderRadius: '0.5rem',
-                              color: '#fbbf24',
+                              color: 'var(--text-gold)',
                               cursor: 'pointer',
                               fontWeight: 'bold',
                               fontSize: '0.9rem'
@@ -13007,7 +13628,7 @@ const CampaignView: React.FC = () => {
                           fontSize: '1.2rem',
                           background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.4), rgba(202, 138, 4, 0.4))',
                           border: '3px solid rgba(234, 179, 8, 0.6)',
-                          color: '#fbbf24',
+                          color: 'var(--text-gold)',
                           boxShadow: '0 0 30px rgba(234, 179, 8, 0.3)',
                           animation: 'pulse 2s infinite'
                         }}
@@ -13050,17 +13671,17 @@ const CampaignView: React.FC = () => {
                             key={army.id}
                             className="glass-panel"
                             style={{
-                              background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
-                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                               padding: '1.5rem',
                               transition: 'all 0.3s ease'
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
-                              e.currentTarget.style.boxShadow = '0 8px 24px rgba(212, 193, 156, 0.2)';
+                              e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.5)';
+                              e.currentTarget.style.boxShadow = '0 8px 24px rgba(var(--theme-accent-rgb), 0.2)';
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                              e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
                               e.currentTarget.style.boxShadow = 'none';
                             }}
                           >
@@ -13105,9 +13726,9 @@ const CampaignView: React.FC = () => {
                               {/* Troop Count Display */}
                               <div style={{ 
                                 padding: '1rem', 
-                                background: 'rgba(212, 193, 156, 0.1)', 
+                                background: 'rgba(var(--theme-accent-rgb), 0.1)', 
                                 borderRadius: '0.5rem',
-                                border: '2px solid rgba(212, 193, 156, 0.3)'
+                                border: '2px solid rgba(var(--theme-accent-rgb), 0.3)'
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                                   <span style={{ fontSize: '1.5rem' }}>👥</span>
@@ -13307,7 +13928,7 @@ const CampaignView: React.FC = () => {
 
                             {/* Battle History */}
                             {army.battle_history && army.battle_history.length > 0 && (
-                              <div style={{ borderTop: '1px solid rgba(212, 193, 156, 0.2)', paddingTop: '1rem' }}>
+                              <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb), 0.2)', paddingTop: '1rem' }}>
                                 <h6 style={{ color: 'var(--text-gold)', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
                                   📜 Battle History ({army.battle_history.length})
                                 </h6>
@@ -13365,7 +13986,7 @@ const CampaignView: React.FC = () => {
 
                             {(!army.battle_history || army.battle_history.length === 0) && (
                               <div style={{ 
-                                borderTop: '1px solid rgba(212, 193, 156, 0.2)', 
+                                borderTop: '1px solid rgba(var(--theme-accent-rgb), 0.2)', 
                                 paddingTop: '1rem',
                                 textAlign: 'center',
                                 color: 'var(--text-muted)',
@@ -13518,7 +14139,7 @@ const CampaignView: React.FC = () => {
                                   <h3 style={{ margin: '0 0 0.3rem', color: 'var(--text-gold)', fontSize: '1.4rem' }}>{equippedMount.name}</h3>
                                   <span style={{
                                     fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '999px',
-                                    background: 'rgba(212,193,156,0.1)', border: '1px solid rgba(212,193,156,0.3)',
+                                    background: 'rgba(var(--theme-accent-rgb),0.1)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
                                     color: 'var(--text-muted)'
                                   }}>{equippedMount.mount_type}</span>
                                 </div>
@@ -13545,7 +14166,7 @@ const CampaignView: React.FC = () => {
                                     <div key={label} style={{
                                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                       background: 'rgba(255,255,255,0.04)', borderRadius: '0.4rem',
-                                      padding: '0.3rem 0.6rem', border: '1px solid rgba(212,193,156,0.1)'
+                                      padding: '0.3rem 0.6rem', border: '1px solid rgba(var(--theme-accent-rgb),0.1)'
                                     }}>
                                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{icon} {label}</span>
                                       <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{value}</span>
@@ -13568,7 +14189,7 @@ const CampaignView: React.FC = () => {
                                         {slots.map(slot => {
                                           const equippedName = equippedMount[`armor_${slot.key}` as keyof Mount] as string | null;
                                           return (
-                                            <div key={slot.key} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,193,156,0.15)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3rem' }}>
+                                            <div key={slot.key} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3rem' }}>
                                               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{slot.icon} {slot.label}</span>
                                               {equippedName ? (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -13615,7 +14236,7 @@ const CampaignView: React.FC = () => {
                             {isDM && (
                               <div style={{
                                 display: 'flex', gap: '0.5rem', padding: '0.6rem 1rem',
-                                borderTop: '1px solid rgba(212,193,156,0.1)', background: 'rgba(0,0,0,0.2)'
+                                borderTop: '1px solid rgba(var(--theme-accent-rgb),0.1)', background: 'rgba(0,0,0,0.2)'
                               }}>
                                 <button
                                   onClick={() => {
@@ -13624,7 +14245,7 @@ const CampaignView: React.FC = () => {
                                     setMountFormData({ name: equippedMount.name, mount_type: equippedMount.mount_type, description: equippedMount.description || '', speed: equippedMount.speed, fly_speed: equippedMount.fly_speed, hp: equippedMount.hp, ac: equippedMount.ac, carrying_capacity: equippedMount.carrying_capacity, pull_strength: equippedMount.pull_strength ?? 1000, stamina: equippedMount.stamina ?? 'Medium', max_rider_armor: equippedMount.max_rider_armor ?? 'Any', purpose: equippedMount.purpose ?? '', assigned_to_character_id: equippedMount.assigned_to_character_id ?? null, image_url: equippedMount.image_url });
                                     setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true);
                                   }}
-                                  style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
+                                  style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(var(--theme-accent-rgb),0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
                                 >✏️ Edit</button>
                                 <button
                                   onClick={() => setPendingConfirm({ msg: `Delete "${equippedMount.name}"?`, onYes: async () => {
@@ -13640,7 +14261,7 @@ const CampaignView: React.FC = () => {
 
                       {/* ── No mounts yet ── */}
                       {myMounts.length === 0 && (
-                        <div style={{ minHeight: '260px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(212,193,156,0.25)', borderRadius: '0.75rem', padding: '2.5rem' }}>
+                        <div style={{ minHeight: '260px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.75rem', padding: '2.5rem' }}>
                           <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.4 }}>🐴</div>
                           <h4 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>No Mounts</h4>
                           <p style={{ color: 'var(--text-muted)', textAlign: 'center', maxWidth: '440px' }}>
@@ -13659,7 +14280,7 @@ const CampaignView: React.FC = () => {
                             {stableMount.map((mount) => {
                               const imgUrl = mount.image_url ? getImageUrl(mount.image_url) : undefined;
                               return (
-                                <div key={mount.id} style={{ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(212,193,156,0.18)', borderRadius: '0.75rem', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                <div key={mount.id} style={{ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(var(--theme-accent-rgb),0.18)', borderRadius: '0.75rem', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                                   {imgUrl ? (
                                     <img src={imgUrl} alt={mount.name} onClick={() => setViewImageModal({ imageUrl: imgUrl, name: mount.name })} style={{ width: '100%', height: '180px', objectFit: 'contain', objectPosition: 'center', background: '#0a0a15', cursor: 'pointer', display: 'block' }} />
                                   ) : (
@@ -13668,7 +14289,7 @@ const CampaignView: React.FC = () => {
                                   <div style={{ padding: '0.85rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '0.5rem' }}>
                                       <h4 style={{ margin: 0, color: 'var(--text-gold)', fontSize: '0.95rem' }}>{mount.name}</h4>
-                                      <span style={{ fontSize: '0.67rem', padding: '0.15rem 0.45rem', borderRadius: '999px', background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{mount.mount_type}</span>
+                                      <span style={{ fontSize: '0.67rem', padding: '0.15rem 0.45rem', borderRadius: '999px', background: 'rgba(var(--theme-accent-rgb),0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{mount.mount_type}</span>
                                     </div>
                                     {mount.purpose && <div style={{ fontSize: '0.7rem', color: '#c4b5fd', background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: '999px', padding: '0.1rem 0.5rem', display: 'inline-block', alignSelf: 'flex-start' }}>{mount.purpose}</div>}
                                     {mount.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{mount.description}</div>}
@@ -13721,7 +14342,7 @@ const CampaignView: React.FC = () => {
                                       )}
                                       {isDM && (
                                         <>
-                                          <button onClick={() => { setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id); setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url }); setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true); }} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.4)', background: 'rgba(212,193,156,0.12)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem' }}>✏️ Edit</button>
+                                          <button onClick={() => { setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id); setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url }); setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true); }} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(var(--theme-accent-rgb),0.12)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem' }}>✏️ Edit</button>
                                           <button onClick={() => setPendingConfirm({ msg: `Delete "${mount.name}"?`, onYes: async () => { try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } }})} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>🗑️</button>
                                         </>
                                       )}
@@ -13746,7 +14367,7 @@ const CampaignView: React.FC = () => {
                   const hpColor = (cur: number, max: number) => {
                     const pct = max > 0 ? (cur / max) * 100 : 0;
                     if (pct > 66) return '#4ade80';
-                    if (pct > 33) return '#fbbf24';
+                    if (pct > 33) return 'var(--text-gold)';
                     return '#ef4444';
                   };
 
@@ -13765,7 +14386,7 @@ const CampaignView: React.FC = () => {
                         <h5 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           🐾 Pets
                           {charPets.length > 0 && (
-                            <span style={{ background: 'rgba(212,193,156,0.15)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '1rem', padding: '0.1rem 0.55rem', fontSize: '0.78rem', color: 'var(--text-gold)' }}>
+                            <span style={{ background: 'rgba(var(--theme-accent-rgb),0.15)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '1rem', padding: '0.1rem 0.55rem', fontSize: '0.78rem', color: 'var(--text-gold)' }}>
                               {charPets.length}
                             </span>
                           )}
@@ -13779,7 +14400,7 @@ const CampaignView: React.FC = () => {
                               setEditingPet(null);
                               setShowAddPetModal(true);
                             }}
-                            style={{ padding: '0.45rem 1rem', background: 'linear-gradient(135deg, rgba(212,193,156,0.18), rgba(212,193,156,0.08))', border: '1px solid rgba(212,193,156,0.4)', borderRadius: '0.5rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                            style={{ padding: '0.45rem 1rem', background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.18), rgba(var(--theme-accent-rgb),0.08))', border: '1px solid rgba(var(--theme-accent-rgb),0.4)', borderRadius: '0.5rem', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
                           >
                             + Add Pet
                           </button>
@@ -13788,12 +14409,12 @@ const CampaignView: React.FC = () => {
 
                       {/* Empty state */}
                       {charPets.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '3rem 1rem', border: '2px dashed rgba(212,193,156,0.2)', borderRadius: '0.75rem' }}>
+                        <div style={{ textAlign: 'center', padding: '3rem 1rem', border: '2px dashed rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.75rem' }}>
                           <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>🐾</div>
                           <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
                             {selectedCharacterData.name} has no pets yet.
                           </p>
-                          {isDM && <p style={{ color: 'rgba(212,193,156,0.5)', fontSize: '0.85rem' }}>Use "+ Add Pet" to assign a pet to this character.</p>}
+                          {isDM && <p style={{ color: 'rgba(var(--theme-accent-rgb),0.5)', fontSize: '0.85rem' }}>Use "+ Add Pet" to assign a pet to this character.</p>}
                         </div>
                       )}
 
@@ -13812,7 +14433,7 @@ const CampaignView: React.FC = () => {
                           ];
 
                           return (
-                            <div key={pet.id} style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(212,193,156,0.18)', borderRadius: '0.85rem', overflow: 'hidden' }}>
+                            <div key={pet.id} style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(var(--theme-accent-rgb),0.18)', borderRadius: '0.85rem', overflow: 'hidden' }}>
                               {/* Card top: image + core info */}
                               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 0 }}>
                                 {/* Image column */}
@@ -13863,7 +14484,7 @@ const CampaignView: React.FC = () => {
                                             setPetImagePreviewUrl(null);
                                             setShowAddPetModal(true);
                                           }}
-                                          style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(212,193,156,0.35)', background: 'rgba(212,193,156,0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
+                                          style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(var(--theme-accent-rgb),0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
                                         >✏️ Edit</button>
                                         <button
                                           onClick={() => setPendingConfirm({ msg: `Delete "${pet.name}"?`, onYes: async () => { try { await petAPI.deletePet(pet.id); setCampaignPets(prev => prev.filter(p => p.id !== pet.id)); } catch (err) { console.error(err); } }})}
@@ -13906,7 +14527,7 @@ const CampaignView: React.FC = () => {
                                                 setCampaignPets(prev => prev.map(p => p.id === updated.id ? updated : p));
                                               } catch (err) { console.error(err); }
                                             }}
-                                            style={{ width: 50, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: hpColor(pet.hit_points_current, pet.hit_points), fontSize: '0.82rem', padding: '0.1rem 0.3rem', textAlign: 'center' }}
+                                            style={{ width: 50, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: hpColor(pet.hit_points_current, pet.hit_points), fontSize: '0.82rem', padding: '0.1rem 0.3rem', textAlign: 'center' }}
                                           />
                                         ) : (
                                           <span style={{ color: hpColor(pet.hit_points_current, pet.hit_points), fontWeight: 700, fontSize: '0.85rem' }}>{pet.hit_points_current}</span>
@@ -13922,10 +14543,10 @@ const CampaignView: React.FC = () => {
                               </div>
 
                               {/* Bottom strip: ability scores + limb health */}
-                              <div style={{ borderTop: '1px solid rgba(212,193,156,0.12)', padding: '0.75rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                              <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.12)', padding: '0.75rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                 {/* Ability scores */}
                                 <div>
-                                  <div style={{ color: 'rgba(212,193,156,0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Abilities</div>
+                                  <div style={{ color: 'rgba(var(--theme-accent-rgb),0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Abilities</div>
                                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem' }}>
                                     {ABILITY_KEYS.map((key, i) => {
                                       const score = pet.abilities?.[key] ?? 10;
@@ -13943,7 +14564,7 @@ const CampaignView: React.FC = () => {
 
                                 {/* Limb health grid */}
                                 <div>
-                                  <div style={{ color: 'rgba(212,193,156,0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Limb Vitality</div>
+                                  <div style={{ color: 'rgba(var(--theme-accent-rgb),0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Limb Vitality</div>
                                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.3rem' }}>
                                     {LIMB_LABELS.map(({ key, label }) => {
                                       const maxVal = limbMax[key as keyof typeof limbMax] || 1;
@@ -13977,7 +14598,7 @@ const CampaignView: React.FC = () => {
                     ) : (
                       <div className="npc-characters-grid">
                         {savedNPCsForCharacter.map(npc => (
-                          <div key={npc.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                          <div key={npc.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             {npc.image_url ? (
                               <img src={npc.image_url} alt={npc.name} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }} />
                             ) : (
@@ -14060,7 +14681,7 @@ const CampaignView: React.FC = () => {
                       ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
                           {notes.filter(Boolean).map(note => (
-                            <div key={note.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,193,156,0.22)', borderRadius: '8px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <div key={note.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--theme-accent-rgb),0.22)', borderRadius: '8px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                               <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.9rem' }}>{note.title || 'Untitled'}</div>
                               <div
                                 onClick={() => setNoteViewModal({ title: note.title || 'Untitled', content: note.content })}
@@ -14227,7 +14848,7 @@ const CampaignView: React.FC = () => {
                   width: '100%',
                   padding: '0.75rem',
                   background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.5rem',
                   color: '#fff',
                   fontSize: '1rem'
@@ -14248,7 +14869,7 @@ const CampaignView: React.FC = () => {
                   width: '100%',
                   padding: '0.75rem',
                   background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.5rem',
                   color: '#fff',
                   fontSize: '1rem',
@@ -14275,7 +14896,7 @@ const CampaignView: React.FC = () => {
                   width: '100%',
                   padding: '0.75rem',
                   background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.5rem',
                   color: '#ccc',
                   fontSize: '0.9rem'
@@ -14312,7 +14933,7 @@ const CampaignView: React.FC = () => {
                 disabled={!newJournalData.title.trim()}
                 style={{
                   padding: '0.75rem 1.5rem',
-                  background: newJournalData.title.trim() ? 'var(--text-gold)' : 'rgba(212, 193, 156, 0.3)',
+                  background: newJournalData.title.trim() ? 'var(--text-gold)' : 'rgba(var(--theme-accent-rgb), 0.3)',
                   border: 'none',
                   borderRadius: '0.5rem',
                   color: newJournalData.title.trim() ? '#1a1a1a' : '#666',
@@ -14467,6 +15088,23 @@ const CampaignView: React.FC = () => {
           </div>
         )}
 
+        {/* Lighting node placement hint banner */}
+        {pendingPlacementNode && (
+          <div style={{
+            position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 3000, padding: '0.6rem 1.25rem',
+            background: pendingPlacementNode.type === 'light' ? 'rgba(239,68,68,0.9)' : 'rgba(40,40,40,0.95)',
+            border: `1px solid ${pendingPlacementNode.type === 'light' ? '#ef4444' : '#6b7280'}`,
+            borderRadius: '0.6rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', gap: '0.6rem',
+          }}>
+            {pendingPlacementNode.type === 'light' ? '🔴' : '⬛'}
+            Click on the {pendingPlacementNode.tab} map to place —{' '}
+            <span style={{ color: '#fbbf24' }}>Esc to cancel</span>
+          </div>
+        )}
+
         {showBattleSummaryModal && battleSummary && (
           <div style={{
             position: 'fixed',
@@ -14483,7 +15121,7 @@ const CampaignView: React.FC = () => {
           }} onClick={() => setShowBattleSummaryModal(false)}>
             <div style={{
               background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98) 0%, rgba(30, 30, 40, 0.98) 100%)',
-              border: '2px solid rgba(212, 193, 156, 0.5)',
+              border: '2px solid rgba(var(--theme-accent-rgb), 0.5)',
               borderRadius: '1rem',
               padding: '2rem',
               width: 'min(900px, 95vw)',
@@ -14529,7 +15167,7 @@ const CampaignView: React.FC = () => {
                     <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '1.1rem' }}>
                       {battleSummary.summary.winningTeam || 'Unknown'}
                     </div>
-                    <div style={{ color: '#facc15', fontSize: '0.9rem' }}>
+                    <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem' }}>
                       {battleSummary.summary.winningScore ?? 0} score
                     </div>
                   </div>
@@ -14559,7 +15197,7 @@ const CampaignView: React.FC = () => {
                     <div key={participant.id} style={{
                       padding: '0.75rem 1rem',
                       borderRadius: '0.7rem',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                       background: 'rgba(15, 23, 42, 0.35)',
                       display: 'grid',
                       gridTemplateColumns: '1.5fr 1fr 1fr 1fr',
@@ -14606,7 +15244,7 @@ const CampaignView: React.FC = () => {
               maxWidth: '600px',
               maxHeight: '80vh',
               overflow: 'auto',
-              border: '1px solid rgba(212, 193, 156, 0.3)'
+              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>Add Item to Inventory</h4>
@@ -14634,7 +15272,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '0.9rem'
@@ -14662,17 +15300,17 @@ const CampaignView: React.FC = () => {
                       padding: '1rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '0.5rem',
-                      border: '1px solid rgba(212, 193, 156, 0.2)',
+                      border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease'
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                      e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.4)';
+                      e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.4)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                      e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.2)';
+                      e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.2)';
                     }}
                     onClick={() => selectedCharacterData && handleAddItemToInventory(selectedCharacterData.id, item.item_name)}
                   >
@@ -14719,11 +15357,11 @@ const CampaignView: React.FC = () => {
               maxWidth: '900px',
               maxHeight: '85vh',
               overflow: 'auto',
-              border: '2px solid rgba(212, 193, 156, 0.4)',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(212, 193, 156, 0.1)'
+              border: '2px solid rgba(var(--theme-accent-rgb), 0.4)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(var(--theme-accent-rgb), 0.1)'
             }}>
               {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(212, 193, 156, 0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(var(--theme-accent-rgb), 0.3)' }}>
                 <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.5rem', textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)' }}>✨ Create Custom Item</h4>
                 <button
                   onClick={() => {
@@ -14783,18 +15421,18 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(255, 255, 255, 0.08)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '0.9rem',
                         transition: 'all 0.2s ease'
                       }}
                       onFocus={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.6)';
+                        e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.6)';
                         e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
                       }}
                       onBlur={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                        e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
                         e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
                       }}
                     />
@@ -14823,7 +15461,7 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(0, 0, 0, 0.5)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '0.9rem',
@@ -14851,7 +15489,7 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(0, 0, 0, 0.5)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '0.9rem',
@@ -14877,7 +15515,7 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(0, 0, 0, 0.5)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '0.9rem',
@@ -14909,7 +15547,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '0.9rem',
@@ -14918,11 +15556,11 @@ const CampaignView: React.FC = () => {
                     transition: 'all 0.2s ease'
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.6)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.6)';
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
                   }}
                 />
@@ -14951,7 +15589,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.5)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'white',
                       fontSize: '0.9rem',
@@ -14973,7 +15611,7 @@ const CampaignView: React.FC = () => {
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                       Selected Properties
                     </label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '0.5rem', border: '1px solid rgba(212, 193, 156, 0.2)' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb), 0.2)' }}>
                       {customItemData.properties.map((prop, index) => (
                         <span key={index} style={{
                           display: 'flex',
@@ -14981,10 +15619,10 @@ const CampaignView: React.FC = () => {
                           gap: '0.375rem',
                           fontSize: '0.8rem',
                           padding: '0.375rem 0.625rem',
-                          background: 'rgba(212, 193, 156, 0.2)',
+                          background: 'rgba(var(--theme-accent-rgb), 0.2)',
                           color: 'var(--text-gold)',
                           borderRadius: '1rem',
-                          border: '1px solid rgba(212, 193, 156, 0.3)'
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.3)'
                         }}>
                           {prop}
                           <button
@@ -15051,7 +15689,7 @@ const CampaignView: React.FC = () => {
                             width: '60px',
                             padding: '0.75rem',
                             background: 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(212, 193, 156, 0.3)',
+                            border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                             borderRadius: '0.5rem',
                             color: 'white',
                             fontSize: '0.9rem',
@@ -15071,7 +15709,7 @@ const CampaignView: React.FC = () => {
                             width: '60px',
                             padding: '0.75rem',
                             background: 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(212, 193, 156, 0.3)',
+                            border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                             borderRadius: '0.5rem',
                             color: 'white',
                             fontSize: '0.9rem',
@@ -15093,7 +15731,7 @@ const CampaignView: React.FC = () => {
                           width: '100%',
                           padding: '0.75rem',
                           background: 'rgba(0, 0, 0, 0.5)',
-                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                           borderRadius: '0.5rem',
                           color: 'white',
                           fontSize: '0.9rem',
@@ -15130,7 +15768,7 @@ const CampaignView: React.FC = () => {
                           width: '100%',
                           padding: '0.75rem',
                           background: 'rgba(255, 255, 255, 0.08)',
-                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                           borderRadius: '0.5rem',
                           color: 'white',
                           fontSize: '0.9rem'
@@ -15156,7 +15794,7 @@ const CampaignView: React.FC = () => {
                             : 'rgba(255, 255, 255, 0.08)',
                           border: customItemData.stealth_disadvantage 
                             ? '2px solid rgba(239, 68, 68, 0.5)' 
-                            : '1px solid rgba(212, 193, 156, 0.3)',
+                            : '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                           borderRadius: '0.5rem',
                           color: customItemData.stealth_disadvantage ? '#fca5a5' : 'var(--text-secondary)',
                           fontSize: '0.9rem',
@@ -15205,7 +15843,7 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(255, 255, 255, 0.08)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '0.9rem'
@@ -15227,7 +15865,7 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(255, 255, 255, 0.08)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '0.9rem'
@@ -15238,7 +15876,7 @@ const CampaignView: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem', paddingTop: '1.5rem', borderTop: '2px solid rgba(212, 193, 156, 0.2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem', paddingTop: '1.5rem', borderTop: '2px solid rgba(var(--theme-accent-rgb), 0.2)' }}>
                 <button
                   onClick={() => {
                     setShowCreateCustomModal(false);
@@ -15255,7 +15893,7 @@ const CampaignView: React.FC = () => {
                   style={{
                     padding: '0.875rem 1.75rem',
                     background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     color: 'var(--text-secondary)',
                     borderRadius: '0.5rem',
                     fontSize: '0.95rem',
@@ -15265,11 +15903,11 @@ const CampaignView: React.FC = () => {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.5)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
                   }}
                 >
                   Cancel
@@ -15327,7 +15965,7 @@ const CampaignView: React.FC = () => {
               padding: '2rem',
               maxWidth: '600px',
               width: '90%',
-              border: '2px solid rgba(212, 193, 156, 0.3)',
+              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
             }}>
               <h3 style={{ 
@@ -15345,7 +15983,7 @@ const CampaignView: React.FC = () => {
                 width: '400px',
                 height: '400px',
                 margin: '0 auto 1.5rem',
-                border: '3px solid rgba(212, 193, 156, 0.4)',
+                border: '3px solid rgba(var(--theme-accent-rgb), 0.4)',
                 borderRadius: '12px',
                 overflow: 'hidden',
                 backgroundColor: 'rgba(0, 0, 0, 0.3)'
@@ -15434,7 +16072,7 @@ const CampaignView: React.FC = () => {
                   style={{
                     padding: '0.75rem 1.5rem',
                     background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '8px',
                     color: 'var(--text-secondary)',
                     cursor: 'pointer',
@@ -15443,11 +16081,11 @@ const CampaignView: React.FC = () => {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.5)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.5)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                    e.currentTarget.style.borderColor = 'rgba(212, 193, 156, 0.3)';
+                    e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
                   }}
                 >
                   Cancel
@@ -15534,7 +16172,7 @@ const CampaignView: React.FC = () => {
                   }}
                   style={{
                     padding: '0.75rem 1.5rem',
-                    background: 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)',
+                    background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.3) 0%, rgba(var(--theme-accent-rgb), 0.2) 100%)',
                     border: '2px solid var(--primary-gold)',
                     borderRadius: '8px',
                     color: 'var(--text-gold)',
@@ -15544,11 +16182,11 @@ const CampaignView: React.FC = () => {
                     transition: 'all 0.2s ease'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(212, 193, 156, 0.4) 0%, rgba(212, 193, 156, 0.3) 100%)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(212, 193, 156, 0.3)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.4) 0%, rgba(var(--theme-accent-rgb), 0.3) 100%)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(var(--theme-accent-rgb), 0.3)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(212, 193, 156, 0.3) 0%, rgba(212, 193, 156, 0.2) 100%)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.3) 0%, rgba(var(--theme-accent-rgb), 0.2) 100%)';
                     (e.currentTarget.style.boxShadow as any) = '0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
                   }}
                 >
@@ -15644,7 +16282,7 @@ const CampaignView: React.FC = () => {
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}
               onClick={e => { if (e.target === e.currentTarget) setEditGoldModal({ isOpen: false, characterId: null, rawValue: '' }); }}>
               <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid rgba(212,175,55,0.6)', borderRadius: '12px', padding: '2rem', maxWidth: '380px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-                <h5 style={{ color: '#fbbf24', marginBottom: '1rem', marginTop: 0 }}>💰 Set Currency</h5>
+                <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', marginTop: 0 }}>💰 Set Currency</h5>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Enter the total value in <strong style={{ color: '#cd7f32' }}>copper pieces</strong>.<br/>1 gp = 100 cp &nbsp;·&nbsp; 1 sp = 10 cp</p>
                 <input
                   type="number"
@@ -15657,7 +16295,7 @@ const CampaignView: React.FC = () => {
                   style={{ width: '100%', padding: '0.6rem 0.75rem', backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(212,175,55,0.4)', borderRadius: '8px', fontSize: '1.1rem', boxSizing: 'border-box', outline: 'none', marginBottom: '0.75rem' }}
                 />
                 <div style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)', borderRadius: '8px', padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.95rem', display: 'flex', justifyContent: 'center', gap: '1.25rem' }}>
-                  <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{pgp}<span style={{ fontSize: '0.7rem', marginLeft: '2px' }}>gp</span></span>
+                  <span style={{ color: 'var(--text-gold)', fontWeight: 'bold' }}>{pgp}<span style={{ fontSize: '0.7rem', marginLeft: '2px' }}>gp</span></span>
                   <span style={{ color: '#c0c0c0', fontWeight: 'bold' }}>{psp}<span style={{ fontSize: '0.7rem', marginLeft: '2px' }}>sp</span></span>
                   <span style={{ color: '#cd7f32', fontWeight: 'bold' }}>{pcp}<span style={{ fontSize: '0.7rem', marginLeft: '2px' }}>cp</span></span>
                 </div>
@@ -15672,7 +16310,7 @@ const CampaignView: React.FC = () => {
 
         {editCharacterFieldModal.isOpen && (
           <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
-            <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid var(--primary-gold, #d4c19c)', borderRadius: '12px', padding: '2rem', maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+            <div style={{ background: 'var(--bg-panel, #1a1a2e)', border: '1px solid var(--primary-gold)', borderRadius: '12px', padding: '2rem', maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
               <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', marginTop: 0 }}>
                 {editCharacterFieldModal.value ? '✏️ Edit ' : '+ Add '}{editCharacterFieldModal.fieldLabel}
               </h5>
@@ -15680,7 +16318,7 @@ const CampaignView: React.FC = () => {
                 value={editCharacterFieldModal.value}
                 onChange={(e) => setEditCharacterFieldModal(prev => ({ ...prev, value: e.target.value }))}
                 placeholder={`Enter ${editCharacterFieldModal.fieldLabel.toLowerCase()}...`}
-                style={{ width: '100%', minHeight: '200px', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-primary, #e8e0d0)', border: '1px solid rgba(212, 193, 156, 0.3)', borderRadius: '8px', fontSize: '0.95rem', fontFamily: 'inherit', resize: 'vertical', lineHeight: '1.6', boxSizing: 'border-box', outline: 'none' }}
+                style={{ width: '100%', minHeight: '200px', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-primary, #e8e0d0)', border: '1px solid rgba(var(--theme-accent-rgb), 0.3)', borderRadius: '8px', fontSize: '0.95rem', fontFamily: 'inherit', resize: 'vertical', lineHeight: '1.6', boxSizing: 'border-box', outline: 'none' }}
               />
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                 <button
@@ -15728,7 +16366,7 @@ const CampaignView: React.FC = () => {
             const possibleTargets = combatants.filter(c => String(c.characterId) !== showAttackModal.attackerKey);
             return (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-                <div style={{ background: 'linear-gradient(135deg,#1a1a2e,#16213e)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.5rem', width: '380px', maxWidth: '95vw' }}>
+                <div style={{ background: 'linear-gradient(135deg,#1a1a2e,#16213e)', border: '2px solid rgba(var(--theme-accent-rgb),0.4)', borderRadius: '1rem', padding: '1.5rem', width: '380px', maxWidth: '95vw' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Choose Target</h4>
                     <button onClick={() => setShowAttackModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
@@ -15754,7 +16392,7 @@ const CampaignView: React.FC = () => {
                             setShowAttackModal(null);
                           }
                         }}
-                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster ? 'rgba(248,113,113,0.5)' : 'rgba(212,193,156,0.3)'}`, color: t.isMonster ? '#f87171' : 'var(--text-gold)', cursor: 'pointer', textAlign: 'left' }}>
+                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster && !t.isAlly ? 'rgba(248,113,113,0.5)' : 'rgba(var(--theme-accent-rgb),0.3)'}`, color: t.isMonster && !t.isAlly ? '#f87171' : 'var(--text-gold)', cursor: 'pointer', textAlign: 'left' }}>
                         {t.name}
                       </button>
                     ))}
@@ -16171,12 +16809,12 @@ const CampaignView: React.FC = () => {
             borderRadius: '1rem', padding: '1.25rem', width: '280px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}>
-            <p style={{ color: '#fbbf24', fontWeight: 'bold', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>
+            <p style={{ color: 'var(--text-gold)', fontWeight: 'bold', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>
               🔄 Reroll Request
             </p>
             <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.85rem', fontSize: '0.85rem' }}>
               <strong style={{ color: '#e2e8f0' }}>{pendingRerollRequest.rollerName}</strong> wants to reroll their{' '}
-              <strong style={{ color: '#fbbf24' }}>{pendingRerollRequest.diceType}</strong>
+              <strong style={{ color: 'var(--text-gold)' }}>{pendingRerollRequest.diceType}</strong>
             </p>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
@@ -16206,7 +16844,7 @@ const CampaignView: React.FC = () => {
           <div style={{
             position: 'fixed', top: '80px', right: '20px', zIndex: 9998,
             background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
-            border: '2px solid rgba(212, 193, 156, 0.5)',
+            border: '2px solid rgba(var(--theme-accent-rgb), 0.5)',
             borderRadius: '1rem', padding: '1.25rem', width: '300px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}>
@@ -16236,7 +16874,7 @@ const CampaignView: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div style={{ padding: '0.6rem', background: 'rgba(212,193,156,0.07)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+              <div style={{ padding: '0.6rem', background: 'rgba(var(--theme-accent-rgb),0.07)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
                 <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   {(pendingRollOutcome.rollPurpose ?? 'ability_check').replace('_', ' ')}
                   {pendingRollOutcome.purposeDetail ? ` • ${pendingRollOutcome.purposeDetail}` : ''}
@@ -16401,7 +17039,7 @@ const CampaignView: React.FC = () => {
                     {combatants.map(t => (
                       <button key={t.characterId}
                         onClick={() => setShowHealModal(prev => prev ? { ...prev, targetKey: String(t.characterId) } : null)}
-                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster ? 'rgba(248,113,113,0.5)' : 'rgba(74,222,128,0.4)'}`, color: t.isMonster ? '#f87171' : '#4ade80', cursor: 'pointer', textAlign: 'left' }}>
+                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster && !t.isAlly ? 'rgba(248,113,113,0.5)' : 'rgba(74,222,128,0.4)'}`, color: t.isMonster && !t.isAlly ? '#f87171' : '#4ade80', cursor: 'pointer', textAlign: 'left' }}>
                         {t.name}
                       </button>
                     ))}
@@ -16463,7 +17101,7 @@ const CampaignView: React.FC = () => {
                     {combatants.map(t => (
                       <button key={t.characterId}
                         onClick={() => setShowTempHpModal({ targetKey: String(t.characterId) })}
-                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster ? 'rgba(248,113,113,0.4)' : 'rgba(59,130,246,0.45)'}`, color: t.isMonster ? '#f87171' : '#60a5fa', cursor: 'pointer', textAlign: 'left' }}>
+                        style={{ padding: '0.6rem 1rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.isMonster && !t.isAlly ? 'rgba(248,113,113,0.4)' : 'rgba(59,130,246,0.45)'}`, color: t.isMonster && !t.isAlly ? '#f87171' : '#60a5fa', cursor: 'pointer', textAlign: 'left' }}>
                         {t.name}
                       </button>
                     ))}
@@ -16578,8 +17216,8 @@ const CampaignView: React.FC = () => {
                           setShowStatusModal(null);
                         }}
                         style={{ padding: '0.25rem 0.55rem', borderRadius: '0.4rem', fontSize: '0.75rem', cursor: targetKey ? 'pointer' : 'not-allowed',
-                          background: 'rgba(250,204,21,0.1)', border: '1px solid rgba(250,204,21,0.35)',
-                          color: targetKey ? '#fbbf24' : 'rgba(251,191,36,0.3)',
+                          background: 'rgba(var(--theme-accent-rgb),0.1)', border: '1px solid rgba(var(--theme-accent-rgb),0.35)',
+                          color: targetKey ? 'var(--text-gold)' : 'rgba(251,191,36,0.3)',
                         }}>
                         {cond}
                         {cond === 'Stunned' && ' (skip turn)'}
@@ -16651,7 +17289,7 @@ const CampaignView: React.FC = () => {
                         <button key={d} onClick={() => setDotDice(d)}
                           style={{ flex: 1, padding: '0.25rem', borderRadius: '0.3rem', fontSize: '0.75rem', cursor: 'pointer',
                             background: dotDice === d ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.04)',
-                            border: `1px solid ${dotDice === d ? '#fbbf24' : 'rgba(255,255,255,0.12)'}`,
+                            border: `1px solid ${dotDice === d ? 'var(--text-gold)' : 'rgba(255,255,255,0.12)'}`,
                             color: dotDice === d ? '#fde68a' : 'rgba(255,255,255,0.4)',
                           }}>
                           {d}
@@ -17055,7 +17693,7 @@ const CampaignView: React.FC = () => {
                     {combatInvite.battlePets.map(pet => {
                       const isSelected = combatPetSelections.includes(pet.id);
                       const hpPct = pet.hit_points > 0 ? (pet.hit_points_current / pet.hit_points) * 100 : 0;
-                      const hpCol = hpPct > 66 ? '#4ade80' : hpPct > 33 ? '#fbbf24' : '#ef4444';
+                      const hpCol = hpPct > 66 ? '#4ade80' : hpPct > 33 ? 'var(--text-gold)' : '#ef4444';
                       const dexMod = Math.floor(((pet.abilities?.dex ?? 10) - 10) / 2);
                       return (
                         <label key={pet.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: isSelected ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.25)', border: `1px solid ${isSelected ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '0.5rem', cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -17153,7 +17791,7 @@ const CampaignView: React.FC = () => {
             : null;
 
           const getHealthColor = (pct: number) =>
-            pct > 66 ? '#4ade80' : pct > 33 ? '#fbbf24' : '#ef4444';
+            pct > 66 ? '#4ade80' : pct > 33 ? 'var(--text-gold)' : '#ef4444';
 
           return (
             <div
@@ -17224,16 +17862,16 @@ const CampaignView: React.FC = () => {
                       {/* Left — portrait above figure */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
                         {/* Portrait */}
-                        <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(212,193,156,0.3)', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(var(--theme-accent-rgb),0.3)', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           {detailCharacter.image_url && !imageLoadError[detailCharacter.id] ? (
                             <img src={getImageUrl(detailCharacter.image_url)} alt={detailCharacter.name} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }} onError={() => setImageLoadError(prev => ({ ...prev, [detailCharacter.id]: true }))} />
                           ) : (
-                            <div style={{ width: '180px', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '4rem', color: 'rgba(212,193,156,0.3)' }}>{detailCharacter.name.charAt(0)}</div>
+                            <div style={{ width: '180px', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '4rem', color: 'rgba(var(--theme-accent-rgb),0.3)' }}>{detailCharacter.name.charAt(0)}</div>
                           )}
                         </div>
                         {/* Figure with limb overlays */}
                         <div style={{ position: 'relative', width: '180px', flexShrink: 0 }}>
-                          <img src={detailCharacter?.race === 'Thri-kreen' ? Figure4ArmsImage : FigureImage} alt="Figure" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '0.5rem', border: '1px solid rgba(212,193,156,0.2)' }} />
+                          <img src={detailCharacter?.race === 'Thri-kreen' ? Figure4ArmsImage : FigureImage} alt="Figure" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)' }} />
                           {/* Head */}
                           <div style={{ position: 'absolute', top: '6%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.85)', border: `1px solid ${tempLimbs?.head ? '#3b82f6' : 'var(--primary-gold)'}`, borderRadius: '4px', padding: '2px 5px', textAlign: 'center', minWidth: '46px' }}>
                             <div style={{ fontSize: '0.6rem', color: getHealthColor(limbMaxValues.head > 0 ? (curLimbs.head / limbMaxValues.head) * 100 : 100) }}>{curLimbs.head}/{limbMaxValues.head}{tempLimbs?.head ? <span style={{ color: '#60a5fa' }}>+{tempLimbs.head}</span> : null}</div>
@@ -17270,7 +17908,7 @@ const CampaignView: React.FC = () => {
                       {/* Right — all stats */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                         {/* Total HP */}
-                        <div style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
+                        <div style={{ background: 'rgba(var(--theme-accent-rgb),0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', marginBottom: '0.4rem', fontWeight: 'bold' }}>Total HP</div>
                           <div style={{ height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden', marginBottom: '0.3rem', display: 'flex' }}>
                             <div style={{ width: `${totalPct}%`, height: '100%', background: getHealthColor(totalPct), borderRadius: totalTemp > 0 ? '5px 0 0 5px' : '5px', flexShrink: 0 }} />
@@ -17287,7 +17925,7 @@ const CampaignView: React.FC = () => {
                             <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginBottom: '0.2rem' }}>Base AC</div>
                             <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#93c5fd' }}>{baseAC}</div>
                           </div>
-                          <div style={{ background: 'rgba(212,193,156,0.05)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
+                          <div style={{ background: 'rgba(var(--theme-accent-rgb),0.05)', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
                             <div style={{ fontSize: '0.7rem', color: '#999', marginBottom: '0.2rem' }}>Movement</div>
                             <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>
                               {(remainingMovement[detailCombatant.characterId] ?? detailCombatant.movement_speed).toFixed(0)}<span style={{ fontSize: '0.7rem', color: '#999' }}>/{detailCombatant.movement_speed}ft</span>
@@ -17301,7 +17939,7 @@ const CampaignView: React.FC = () => {
                             const score = detailCharacter.abilities[ab as keyof typeof detailCharacter.abilities] as number;
                             const mod = Math.floor((score - 10) / 2);
                             return (
-                              <div key={ab} style={{ background: 'rgba(212,193,156,0.08)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.4rem', padding: '0.5rem 0.25rem', textAlign: 'center' }}>
+                              <div key={ab} style={{ background: 'rgba(var(--theme-accent-rgb),0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.4rem', padding: '0.5rem 0.25rem', textAlign: 'center' }}>
                                 <div style={{ fontSize: '0.6rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.2rem' }}>{ab.toUpperCase()}</div>
                                 <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#fff', lineHeight: 1 }}>{score}</div>
                                 <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '0.15rem' }}>{mod >= 0 ? '+' : ''}{mod}</div>
@@ -17313,7 +17951,7 @@ const CampaignView: React.FC = () => {
                           const charRes = (characterDataOverrides[Number(detailCharacter.id)]?.resistances ?? detailCharacter.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined;
                           if (!charRes || (charRes.resistances.length === 0 && charRes.immunities.length === 0 && charRes.vulnerabilities.length === 0)) return null;
                           return (
-                            <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
+                            <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.75rem' }}>
                               {charRes.resistances.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#93c5fd', fontWeight: 'bold' }}>RESIST:</span>{charRes.resistances.map(r => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
                               {charRes.immunities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#86efac', fontWeight: 'bold' }}>IMMUNE:</span>{charRes.immunities.map(r => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', color: '#86efac', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
                               {charRes.vulnerabilities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}><span style={{ fontSize: '0.7rem', color: '#fca5a5', fontWeight: 'bold' }}>VULN:</span>{charRes.vulnerabilities.map(r => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(248,113,113,0.15)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
@@ -17397,12 +18035,12 @@ const CampaignView: React.FC = () => {
                           })}
                         </div>
                         {detailMonster.description && (
-                          <div style={{ marginTop: '1rem', color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
+                          <div style={{ marginTop: '1rem', color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.75rem' }}>
                             {detailMonster.description}
                           </div>
                         )}
                         {detailMonster.resistances && (detailMonster.resistances.resistances.length > 0 || detailMonster.resistances.immunities.length > 0 || detailMonster.resistances.vulnerabilities.length > 0) && (
-                          <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(212,193,156,0.15)', paddingTop: '0.75rem' }}>
+                          <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.75rem' }}>
                             {detailMonster.resistances.resistances.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#93c5fd', fontWeight: 'bold' }}>RESIST:</span>{detailMonster.resistances.resistances.map((r: string) => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
                             {detailMonster.resistances.immunities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.3rem' }}><span style={{ fontSize: '0.7rem', color: '#86efac', fontWeight: 'bold' }}>IMMUNE:</span>{detailMonster.resistances.immunities.map((r: string) => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(74,222,128,0.15)', color: '#86efac', border: '1px solid rgba(74,222,128,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
                             {detailMonster.resistances.vulnerabilities.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}><span style={{ fontSize: '0.7rem', color: '#fca5a5', fontWeight: 'bold' }}>VULN:</span>{detailMonster.resistances.vulnerabilities.map((r: string) => <span key={r} style={{ fontSize: '0.7rem', background: 'rgba(248,113,113,0.15)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '3px', padding: '0.1rem 0.35rem' }}>{r}</span>)}</div>}
@@ -17419,7 +18057,7 @@ const CampaignView: React.FC = () => {
                   if (!petData) return <div style={{ color: '#999', textAlign: 'center', padding: '2rem' }}>Pet data not found</div>;
                   const limbMaxValues = calcCharacterLimbHealthMax(petData.hit_points, petData.abilities?.con ?? 10);
                   const hpPct = petData.hit_points > 0 ? Math.min(100, (petData.hit_points_current / petData.hit_points) * 100) : 0;
-                  const petHealthColor = (pct: number) => pct > 66 ? '#4ade80' : pct > 33 ? '#fbbf24' : '#ef4444';
+                  const petHealthColor = (pct: number) => pct > 66 ? '#4ade80' : pct > 33 ? 'var(--text-gold)' : '#ef4444';
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
                       {/* Portrait */}
@@ -17446,7 +18084,7 @@ const CampaignView: React.FC = () => {
                             <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginBottom: '0.2rem' }}>AC</div>
                             <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#93c5fd' }}>{petData.armor_class}</div>
                           </div>
-                          <div style={{ background: 'rgba(212,193,156,0.05)', border: '1px solid rgba(212,193,156,0.2)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
+                          <div style={{ background: 'rgba(var(--theme-accent-rgb),0.05)', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
                             <div style={{ fontSize: '0.7rem', color: '#999', marginBottom: '0.2rem' }}>Speed</div>
                             <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-gold)' }}>{petData.speed}<span style={{ fontSize: '0.7rem', color: '#999' }}>ft</span></div>
                           </div>
@@ -17498,7 +18136,7 @@ const CampaignView: React.FC = () => {
                   const ab = shadowData.abilities || { str: 10, dex: 14, con: 10, int: 6, wis: 10, cha: 6 };
                   const abilityMod = (v: number) => { const m = Math.floor((v - 10) / 2); return m >= 0 ? `+${m}` : `${m}`; };
                   const hpPct = shadowData.hit_points_max > 0 ? Math.min(100, (shadowData.hit_points_current / shadowData.hit_points_max) * 100) : 0;
-                  const shadowHealthColor = (pct: number) => pct > 66 ? '#4ade80' : pct > 33 ? '#fbbf24' : '#ef4444';
+                  const shadowHealthColor = (pct: number) => pct > 66 ? '#4ade80' : pct > 33 ? 'var(--text-gold)' : '#ef4444';
                   const shadowImgSrc = shadowData.image_url ? getImageUrl(shadowData.image_url) : '/images/ShadowBase.jpg';
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
@@ -17572,11 +18210,11 @@ const CampaignView: React.FC = () => {
                     Poison:   {bg:'rgba(34,197,94,0.2)',   border:'rgba(34,197,94,0.6)',   color:'#4ade80', icon:'☠️'},
                   };
                   return (
-                    <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(212,193,156,0.2)', paddingTop: '0.75rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#d4c19c', fontWeight: 'bold', marginBottom: '0.5rem' }}>⚡ Active Effects</div>
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.2)', paddingTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.5rem' }}>⚡ Active Effects</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                         {detailConditions.map(c => {
-                          const s = condStyle[c] ?? {bg:'rgba(250,204,21,0.15)',border:'rgba(250,204,21,0.4)',color:'#fbbf24'};
+                          const s = condStyle[c] ?? {bg:'rgba(var(--theme-accent-rgb),0.15)',border:'rgba(var(--theme-accent-rgb),0.4)',color:'var(--text-gold)'};
                           return <span key={c} style={{ fontSize: '0.8rem', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.5rem', color: s.color }}>{c}</span>;
                         })}
                         {detailDots.map(dot => {
@@ -17634,7 +18272,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: '#fff',
                     fontSize: '1rem'
@@ -17655,7 +18293,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: '#fff',
                     fontSize: '0.9rem',
@@ -17688,7 +18326,7 @@ const CampaignView: React.FC = () => {
                           width: '100%',
                           padding: '0.5rem',
                           background: 'rgba(0, 0, 0, 0.3)',
-                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                           borderRadius: '0.25rem',
                           color: '#fff',
                           fontSize: '0.9rem'
@@ -17721,7 +18359,7 @@ const CampaignView: React.FC = () => {
                           width: '100%',
                           padding: '0.5rem',
                           background: 'rgba(0, 0, 0, 0.3)',
-                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                           borderRadius: '0.25rem',
                           color: '#fff',
                           fontSize: '0.9rem'
@@ -17756,7 +18394,7 @@ const CampaignView: React.FC = () => {
                           width: '100%',
                           padding: '0.5rem',
                           background: 'rgba(0, 0, 0, 0.3)',
-                          border: '1px solid rgba(212, 193, 156, 0.3)',
+                          border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                           borderRadius: '0.25rem',
                           color: '#fff',
                           fontSize: '0.9rem'
@@ -17784,7 +18422,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: '#fff',
                     fontSize: '0.9rem'
@@ -17806,7 +18444,7 @@ const CampaignView: React.FC = () => {
                       </span>
                     ))}
                   </div>
-                  <select onChange={e => { if (!e.target.value) return; const val = e.target.value; if (!(monsterFormData.resistances[category] as string[]).includes(val)) setMonsterFormData({ ...monsterFormData, resistances: { ...monsterFormData.resistances, [category]: [...(monsterFormData.resistances[category] as string[]), val] } }); e.target.value = ''; }} style={{ padding: '0.4rem', borderRadius: '0.3rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,193,156,0.3)', color: '#ccc', fontSize: '0.8rem', width: '100%' }}>
+                  <select onChange={e => { if (!e.target.value) return; const val = e.target.value; if (!(monsterFormData.resistances[category] as string[]).includes(val)) setMonsterFormData({ ...monsterFormData, resistances: { ...monsterFormData.resistances, [category]: [...(monsterFormData.resistances[category] as string[]), val] } }); e.target.value = ''; }} style={{ padding: '0.4rem', borderRadius: '0.3rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', color: '#ccc', fontSize: '0.8rem', width: '100%' }}>
                     <option value="">+ Add {category.slice(0, -1)}...</option>
                     {['Acid','Bludgeoning','Cold','Fire','Force','Lightning','Necrotic','Piercing','Poison','Psychic','Radiant','Slashing','Thunder','Nonmagical Bludgeoning','Nonmagical Piercing','Nonmagical Slashing'].map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
@@ -17830,7 +18468,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: '#ccc',
                     fontSize: '0.9rem'
@@ -17972,7 +18610,7 @@ const CampaignView: React.FC = () => {
             width: '100%',
             padding: '0.6rem 0.75rem',
             background: 'rgba(0,0,0,0.35)',
-            border: '1px solid rgba(212,193,156,0.3)',
+            border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
             borderRadius: '0.5rem',
             color: '#eee',
             fontSize: '0.9rem',
@@ -18074,7 +18712,7 @@ const CampaignView: React.FC = () => {
                         }}
                         style={{
                           background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(212,193,156,0.2)',
+                          border: '1px solid rgba(var(--theme-accent-rgb),0.2)',
                           borderRadius: '0.75rem',
                           padding: 0,
                           cursor: 'pointer',
@@ -18089,7 +18727,7 @@ const CampaignView: React.FC = () => {
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                          e.currentTarget.style.borderColor = 'rgba(212,193,156,0.2)';
+                          e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb),0.2)';
                         }}
                       >
                         {tpl.image ? (
@@ -18144,7 +18782,7 @@ const CampaignView: React.FC = () => {
                                 fontSize: '0.68rem', padding: '0.1rem 0.4rem',
                                 borderRadius: '999px',
                                 background: 'rgba(255,255,255,0.06)',
-                                border: '1px solid rgba(212,193,156,0.15)',
+                                border: '1px solid rgba(var(--theme-accent-rgb),0.15)',
                                 color: 'var(--text-secondary)'
                               }}>{s}</span>
                             ))}
@@ -18361,8 +18999,8 @@ const CampaignView: React.FC = () => {
             }
           };
 
-          const inputStyle: React.CSSProperties = { width: '100%', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(212,193,156,0.25)', borderRadius: '0.4rem', color: '#fff', padding: '0.5rem 0.65rem', fontSize: '0.88rem', boxSizing: 'border-box' };
-          const labelStyle: React.CSSProperties = { color: 'rgba(212,193,156,0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' };
+          const inputStyle: React.CSSProperties = { width: '100%', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.4rem', color: '#fff', padding: '0.5rem 0.65rem', fontSize: '0.88rem', boxSizing: 'border-box' };
+          const labelStyle: React.CSSProperties = { color: 'rgba(var(--theme-accent-rgb),0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' };
 
           return (
             <div
@@ -18378,7 +19016,7 @@ const CampaignView: React.FC = () => {
 
                 {/* Image upload */}
                 <div style={{ marginBottom: '1.25rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                  <div style={{ width: 90, height: 90, borderRadius: '0.5rem', overflow: 'hidden', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,193,156,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{ width: 90, height: 90, borderRadius: '0.5rem', overflow: 'hidden', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {petImagePreviewUrl ? (
                       <img src={petImagePreviewUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (editingPet?.image_url ? (
@@ -18487,7 +19125,7 @@ const CampaignView: React.FC = () => {
                   <button
                     onClick={handleSave}
                     disabled={!petFormData.name?.trim() || !petFormData.species?.trim()}
-                    style={{ flex: 1, padding: '0.7rem 1.25rem', background: 'linear-gradient(135deg, rgba(212,193,156,0.25), rgba(212,193,156,0.12))', border: '1px solid var(--text-gold)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem', opacity: (!petFormData.name?.trim() || !petFormData.species?.trim()) ? 0.5 : 1 }}
+                    style={{ flex: 1, padding: '0.7rem 1.25rem', background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.25), rgba(var(--theme-accent-rgb),0.12))', border: '1px solid var(--text-gold)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem', opacity: (!petFormData.name?.trim() || !petFormData.species?.trim()) ? 0.5 : 1 }}
                   >
                     {isEdit ? '💾 Save Changes' : '🐾 Add Pet'}
                   </button>
@@ -18632,7 +19270,7 @@ const CampaignView: React.FC = () => {
               padding: '2rem',
               maxWidth: '500px',
               width: '90%',
-              border: '2px solid rgba(212, 193, 156, 0.3)',
+              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
             }}>
               <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem', textAlign: 'center' }}>
@@ -18653,7 +19291,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem'
@@ -18676,7 +19314,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.6)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem',
@@ -18718,7 +19356,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem',
@@ -18782,7 +19420,7 @@ const CampaignView: React.FC = () => {
                   style={{
                     padding: '0.75rem 1.5rem',
                     background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'var(--text-secondary)',
                     cursor: 'pointer'
@@ -18872,7 +19510,7 @@ const CampaignView: React.FC = () => {
                 maxWidth: '600px',
                 maxHeight: '80vh',
                 overflowY: 'auto',
-                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+                boxShadow: '0 8px 32px rgba(var(--theme-accent-rgb), 0.3)'
               }}
             >
               <h2 style={{ 
@@ -18901,7 +19539,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.4)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem'
@@ -18923,7 +19561,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.4)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '0.95rem',
@@ -18948,7 +19586,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.4)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem'
@@ -19049,7 +19687,7 @@ const CampaignView: React.FC = () => {
                 maxWidth: '600px',
                 maxHeight: '80vh',
                 overflowY: 'auto',
-                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+                boxShadow: '0 8px 32px rgba(var(--theme-accent-rgb), 0.3)'
               }}
             >
               <h2 style={{ 
@@ -19099,7 +19737,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.6)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem',
@@ -19129,7 +19767,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.4)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'white',
                       fontSize: '1rem',
@@ -19156,7 +19794,7 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(0, 0, 0, 0.4)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '1rem'
@@ -19183,7 +19821,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.6)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem',
@@ -19224,7 +19862,7 @@ const CampaignView: React.FC = () => {
                         width: '100%',
                         padding: '0.75rem',
                         background: 'rgba(0, 0, 0, 0.4)',
-                        border: '1px solid rgba(212, 193, 156, 0.3)',
+                        border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                         borderRadius: '0.5rem',
                         color: 'white',
                         fontSize: '1rem',
@@ -19388,7 +20026,7 @@ const CampaignView: React.FC = () => {
                 maxWidth: '600px',
                 maxHeight: '80vh',
                 overflowY: 'auto',
-                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+                boxShadow: '0 8px 32px rgba(var(--theme-accent-rgb), 0.3)'
               }}
             >
               <h2 style={{
@@ -19438,7 +20076,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.6)',
-                    border: '1px solid rgba(212, 193, 156, 0.3)',
+                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'white',
                     fontSize: '1rem',
@@ -19468,7 +20106,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.4)',
-                      border: '1px solid rgba(212, 193, 156, 0.3)',
+                      border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'white',
                       fontSize: '1rem',
@@ -19488,7 +20126,7 @@ const CampaignView: React.FC = () => {
                 </label>
                 <div style={{
                   background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(212, 193, 156, 0.3)',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.5rem',
                   padding: '1rem',
                   maxHeight: '300px',
@@ -19634,7 +20272,7 @@ const CampaignView: React.FC = () => {
                 maxWidth: '700px',
                 maxHeight: '80vh',
                 overflowY: 'auto',
-                boxShadow: '0 8px 32px rgba(212, 193, 156, 0.3)'
+                boxShadow: '0 8px 32px rgba(var(--theme-accent-rgb), 0.3)'
               }}
             >
               <h2 style={{
@@ -19659,7 +20297,7 @@ const CampaignView: React.FC = () => {
                   style={{
                     padding: '1.5rem',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.75rem',
                     marginBottom: index < pendingInvitations.length - 1 ? '1rem' : 0
                   }}
@@ -19692,7 +20330,7 @@ const CampaignView: React.FC = () => {
                     </label>
                     <div style={{
                       background: 'rgba(0, 0, 0, 0.4)',
-                      border: '1px solid rgba(212, 193, 156, 0.2)',
+                      border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
                       borderRadius: '0.5rem',
                       padding: '0.75rem',
                       maxHeight: '200px',
@@ -19938,7 +20576,7 @@ const CampaignView: React.FC = () => {
                   width: '100%',
                   padding: '0.75rem',
                   background: 'rgba(0, 0, 0, 0.3)',
-                  border: '2px solid rgba(212, 193, 156, 0.3)',
+                  border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                   borderRadius: '0.5rem',
                   color: 'var(--text-gold)',
                   fontSize: '1.2rem',
@@ -20063,10 +20701,10 @@ const CampaignView: React.FC = () => {
               <select
                 value={healthLimb}
                 onChange={e => setHealthLimb(e.target.value)}
-                style={{ width: '100%', padding: '0.65rem', background: '#1a1a2e', border: '2px solid rgba(212,193,156,0.3)', borderRadius: '0.5rem', color: '#d4c19c', fontSize: '1rem' }}
+                style={{ width: '100%', padding: '0.65rem', background: '#1a1a2e', border: '2px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontSize: '1rem' }}
               >
-                <option value="all" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Overall (all limbs, proportional)</option>
-                {healthModalLimbKeys.map(k => <option key={k} value={k} style={{ background: '#1a1a2e', color: '#d4c19c' }}>{healthModalLimbLabels[k]}</option>)}
+                <option value="all" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>Overall (all limbs, proportional)</option>
+                {healthModalLimbKeys.map(k => <option key={k} value={k} style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>{healthModalLimbLabels[k]}</option>)}
               </select>
             </div>
 
@@ -20079,7 +20717,7 @@ const CampaignView: React.FC = () => {
                 onChange={e => setHealthAmount(Math.max(0, parseInt(e.target.value) || 0))}
                 min="1"
                 placeholder="0"
-                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.3)', border: '2px solid rgba(212,193,156,0.3)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center' }}
+                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.3)', border: '2px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center' }}
               />
             </div>
 
@@ -20173,7 +20811,7 @@ const CampaignView: React.FC = () => {
                   width: '100%',
                   padding: '0.6rem 0.9rem',
                   background: 'rgba(255, 255, 255, 0.07)',
-                  border: '1px solid rgba(212, 193, 156, 0.35)',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.35)',
                   borderRadius: '0.5rem',
                   color: 'var(--text-primary)',
                   fontSize: '0.9rem',
@@ -20235,10 +20873,10 @@ const CampaignView: React.FC = () => {
                       style={{
                         background: alreadyHas 
                           ? 'rgba(100, 116, 139, 0.1)'
-                          : 'linear-gradient(135deg, rgba(212, 193, 156, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                          : 'linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
                         border: alreadyHas 
                           ? '1px solid rgba(100, 116, 139, 0.3)'
-                          : '2px solid rgba(212, 193, 156, 0.3)',
+                          : '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                         padding: '1rem',
                         opacity: alreadyHas ? 0.6 : 1
                       }}
@@ -20350,7 +20988,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'var(--text-gold)',
                     fontSize: '1rem'
@@ -20371,7 +21009,7 @@ const CampaignView: React.FC = () => {
                     width: '100%',
                     padding: '0.75rem',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '2px solid rgba(212, 193, 156, 0.3)',
+                    border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.5rem',
                     color: 'var(--text-secondary)',
                     fontSize: '0.95rem',
@@ -20395,7 +21033,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.3)',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'var(--text-gold)',
                       fontSize: '1rem'
@@ -20416,7 +21054,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.3)',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'var(--text-gold)',
                       fontSize: '1rem'
@@ -20439,7 +21077,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.3)',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'var(--text-gold)',
                       fontSize: '1rem'
@@ -20460,7 +21098,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.3)',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'var(--text-gold)',
                       fontSize: '1rem'
@@ -20483,7 +21121,7 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.3)',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: 'var(--text-gold)',
                       fontSize: '1rem'
@@ -20502,19 +21140,19 @@ const CampaignView: React.FC = () => {
                       width: '100%',
                       padding: '0.75rem',
                       background: 'rgba(0, 0, 0, 0.3)',
-                      border: '2px solid rgba(212, 193, 156, 0.3)',
+                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                       borderRadius: '0.5rem',
                       color: newSkillData.usage_frequency ? 'var(--text-gold)' : 'var(--text-muted)',
                       fontSize: '1rem'
                     }}
                   >
-                    <option value="" style={{ background: '#1a1a2e', color: '#d4c19c' }}>— Select frequency —</option>
-                    <option value="At Will" style={{ background: '#1a1a2e', color: '#d4c19c' }}>At Will</option>
-                    <option value="Spell Slots" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Spell Slots</option>
-                    <option value="Once per short rest" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Once per short rest</option>
-                    <option value="Once per long rest" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Once per long rest</option>
-                    <option value="Once per day" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Once per day</option>
-                    <option value="Passive" style={{ background: '#1a1a2e', color: '#d4c19c' }}>Passive</option>
+                    <option value="" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>— Select frequency —</option>
+                    <option value="At Will" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>At Will</option>
+                    <option value="Spell Slots" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>Spell Slots</option>
+                    <option value="Once per short rest" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>Once per short rest</option>
+                    <option value="Once per long rest" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>Once per long rest</option>
+                    <option value="Once per day" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>Once per day</option>
+                    <option value="Passive" style={{ background: '#1a1a2e', color: 'var(--text-gold)' }}>Passive</option>
                   </select>
                 </div>
               </div>
@@ -20619,7 +21257,7 @@ const CampaignView: React.FC = () => {
                     background: isActive ? 'rgba(234, 179, 8, 0.3)' : 'rgba(100, 116, 139, 0.2)',
                     border: `2px solid ${isActive ? 'rgba(234, 179, 8, 0.6)' : 'rgba(100, 116, 139, 0.3)'}`,
                     borderRadius: '0.5rem',
-                    color: isActive ? '#fbbf24' : '#94a3b8',
+                    color: isActive ? 'var(--text-gold)' : '#94a3b8',
                     fontSize: '0.9rem',
                     fontWeight: isActive ? 'bold' : 'normal'
                   }}>
@@ -20651,8 +21289,8 @@ const CampaignView: React.FC = () => {
                     onClick={handleRollHP}
                     style={{
                       padding: '2rem',
-                      background: levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.2)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.1)' : 'rgba(212, 193, 156, 0.1)'),
-                      border: `3px solid ${levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.2)' : 'rgba(212, 193, 156, 0.3)')}`,
+                      background: levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.2)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.1)' : 'rgba(var(--theme-accent-rgb), 0.1)'),
+                      border: `3px solid ${levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.2)' : 'rgba(var(--theme-accent-rgb), 0.3)')}`,
                       borderRadius: '0.75rem',
                       cursor: levelUpData.hpChoiceLocked ? 'not-allowed' : 'pointer',
                       textAlign: 'center',
@@ -20667,7 +21305,7 @@ const CampaignView: React.FC = () => {
                     onMouseLeave={(e) => {
                       if (levelUpData.hpChoiceLocked) return;
                       e.currentTarget.style.transform = 'scale(1)';
-                      e.currentTarget.style.borderColor = levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                      e.currentTarget.style.borderColor = levelUpData.hpRolled !== null ? 'rgba(234, 179, 8, 0.6)' : 'rgba(var(--theme-accent-rgb), 0.3)';
                     }}
                   >
                     <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎲</div>
@@ -20688,8 +21326,8 @@ const CampaignView: React.FC = () => {
                     onClick={handleTakeAverage}
                     style={{
                       padding: '2rem',
-                      background: levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.2)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.1)' : 'rgba(212, 193, 156, 0.1)'),
-                      border: `3px solid ${levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.6)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.2)' : 'rgba(212, 193, 156, 0.3)')}`,
+                      background: levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.2)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.1)' : 'rgba(var(--theme-accent-rgb), 0.1)'),
+                      border: `3px solid ${levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.6)' : (levelUpData.hpChoiceLocked ? 'rgba(100,116,139,0.2)' : 'rgba(var(--theme-accent-rgb), 0.3)')}`,
                       borderRadius: '0.75rem',
                       cursor: levelUpData.hpChoiceLocked ? 'not-allowed' : 'pointer',
                       textAlign: 'center',
@@ -20704,7 +21342,7 @@ const CampaignView: React.FC = () => {
                     onMouseLeave={(e) => {
                       if (levelUpData.hpChoiceLocked) return;
                       e.currentTarget.style.transform = 'scale(1)';
-                      e.currentTarget.style.borderColor = levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                      e.currentTarget.style.borderColor = levelUpData.hpRolled === null && levelUpData.hpChoiceLocked ? 'rgba(234, 179, 8, 0.6)' : 'rgba(var(--theme-accent-rgb), 0.3)';
                     }}
                   >
                     <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
@@ -20720,7 +21358,7 @@ const CampaignView: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{ textAlign: 'center', marginBottom: '2rem', padding: '1rem', background: 'rgba(212, 193, 156, 0.1)', borderRadius: '0.5rem' }}>
+                <div style={{ textAlign: 'center', marginBottom: '2rem', padding: '1rem', background: 'rgba(var(--theme-accent-rgb), 0.1)', borderRadius: '0.5rem' }}>
                   <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>
                     {levelUpData.hpChoiceLocked
                       ? <>Current HP: {levelUpInfo.currentHP} → New HP: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{levelUpInfo.currentHP + levelUpData.hpIncrease}</span> (+{levelUpData.hpIncrease})</>
@@ -20775,8 +21413,8 @@ const CampaignView: React.FC = () => {
                       onClick={() => setLevelUpData(prev => ({ ...prev, subclassId: subclass.id }))}
                       style={{
                         padding: '1.5rem',
-                        background: levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
-                        border: `3px solid ${levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                        background: levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.2)' : 'rgba(var(--theme-accent-rgb), 0.1)',
+                        border: `3px solid ${levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(var(--theme-accent-rgb), 0.3)'}`,
                         borderRadius: '0.75rem',
                         cursor: 'pointer',
                         transition: 'all 0.3s ease'
@@ -20787,7 +21425,7 @@ const CampaignView: React.FC = () => {
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'translateX(0)';
-                        e.currentTarget.style.borderColor = levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                        e.currentTarget.style.borderColor = levelUpData.subclassId === subclass.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(var(--theme-accent-rgb), 0.3)';
                       }}
                     >
                       <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
@@ -20872,8 +21510,8 @@ const CampaignView: React.FC = () => {
                       }))}
                       style={{
                         padding: '1.5rem',
-                        background: levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.2)' : 'rgba(212, 193, 156, 0.1)',
-                        border: `3px solid ${levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)'}`,
+                        background: levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.2)' : 'rgba(var(--theme-accent-rgb), 0.1)',
+                        border: `3px solid ${levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.6)' : 'rgba(var(--theme-accent-rgb), 0.3)'}`,
                         borderRadius: '0.75rem',
                         cursor: 'pointer',
                         transition: 'all 0.3s ease',
@@ -20887,7 +21525,7 @@ const CampaignView: React.FC = () => {
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'translateX(0)';
-                        e.currentTarget.style.borderColor = levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.6)' : 'rgba(212, 193, 156, 0.3)';
+                        e.currentTarget.style.borderColor = levelUpData.beastSelection?.beastType === beast.type ? 'rgba(234, 179, 8, 0.6)' : 'rgba(var(--theme-accent-rgb), 0.3)';
                       }}
                     >
                       <div style={{ 
@@ -20895,7 +21533,7 @@ const CampaignView: React.FC = () => {
                         height: '100px', 
                         borderRadius: '0.5rem',
                         overflow: 'hidden',
-                        border: '2px solid rgba(212, 193, 156, 0.3)',
+                        border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                         flexShrink: 0,
                         backgroundColor: '#000'
                       }}>
@@ -20991,7 +21629,7 @@ const CampaignView: React.FC = () => {
 
                 <div style={{ marginBottom: '2rem' }}>
                   {levelUpInfo.choiceFeatures.map((feature: any) => (
-                    <div key={feature.id} style={{ marginBottom: '2rem', padding: '1.5rem', background: 'rgba(212, 193, 156, 0.1)', borderRadius: '0.75rem', border: '2px solid rgba(212, 193, 156, 0.3)' }}>
+                    <div key={feature.id} style={{ marginBottom: '2rem', padding: '1.5rem', background: 'rgba(var(--theme-accent-rgb), 0.1)', borderRadius: '0.75rem', border: '2px solid rgba(var(--theme-accent-rgb), 0.3)' }}>
                       <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>
                         {feature.name}
                       </div>
@@ -21024,7 +21662,7 @@ const CampaignView: React.FC = () => {
                                     <div key={ability} style={{
                                       padding: '1rem',
                                       background: increase > 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(0, 0, 0, 0.3)',
-                                      border: `2px solid ${increase > 0 ? 'rgba(34, 197, 94, 0.5)' : 'rgba(212, 193, 156, 0.3)'}`,
+                                      border: `2px solid ${increase > 0 ? 'rgba(34, 197, 94, 0.5)' : 'rgba(var(--theme-accent-rgb), 0.3)'}`,
                                       borderRadius: '0.5rem'
                                     }}>
                                       <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
@@ -21118,7 +21756,7 @@ const CampaignView: React.FC = () => {
                               width: '100%',
                               padding: '0.75rem',
                               background: 'rgba(0, 0, 0, 0.3)',
-                              border: '2px solid rgba(212, 193, 156, 0.3)',
+                              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                               borderRadius: '0.5rem',
                               color: 'var(--text-gold)'
                             }}
@@ -21221,7 +21859,7 @@ const CampaignView: React.FC = () => {
                   {/* Subclass Summary */}
                   {levelUpData.subclassId && (
                     <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
-                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>🎯 Subclass</div>
+                      <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>🎯 Subclass</div>
                       <div style={{ color: 'var(--text-secondary)' }}>
                         {levelUpInfo.availableSubclasses.find((s: any) => s.id === levelUpData.subclassId)?.name}
                       </div>
@@ -21274,7 +21912,7 @@ const CampaignView: React.FC = () => {
                   {/* Feature Choices */}
                   {levelUpData.featureChoices.length > 0 && (
                     <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(234, 179, 8, 0.3)' }}>
-                      <div style={{ fontWeight: 'bold', color: '#fbbf24', marginBottom: '0.5rem' }}>🎯 Choices Made</div>
+                      <div style={{ fontWeight: 'bold', color: 'var(--text-gold)', marginBottom: '0.5rem' }}>🎯 Choices Made</div>
                       {levelUpData.featureChoices.map((choice: any, idx: number) => (
                         <div key={idx} style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
                           • {choice.choiceName}
@@ -21395,8 +22033,8 @@ const CampaignView: React.FC = () => {
                   onClick={() => setRetroSubclassId(subclass.id)}
                   style={{
                     padding: '1.5rem',
-                    background: retroSubclassId === subclass.id ? 'rgba(234,179,8,0.2)' : 'rgba(212,193,156,0.1)',
-                    border: `3px solid ${retroSubclassId === subclass.id ? 'rgba(234,179,8,0.6)' : 'rgba(212,193,156,0.3)'}`,
+                    background: retroSubclassId === subclass.id ? 'rgba(234,179,8,0.2)' : 'rgba(var(--theme-accent-rgb),0.1)',
+                    border: `3px solid ${retroSubclassId === subclass.id ? 'rgba(234,179,8,0.6)' : 'rgba(var(--theme-accent-rgb),0.3)'}`,
                     borderRadius: '0.75rem',
                     cursor: 'pointer',
                     transition: 'all 0.3s ease'
@@ -21661,14 +22299,14 @@ const CampaignView: React.FC = () => {
                         return (
                           <div key={lvl.level} style={{
                             padding: '0.75rem',
-                            background: isCurrent ? 'rgba(212,193,156,0.15)' : isPast ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
+                            background: isCurrent ? 'rgba(var(--theme-accent-rgb),0.15)' : isPast ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
                             borderRadius: '6px',
-                            border: isCurrent ? '2px solid rgba(212,193,156,0.6)' : isPast ? '1px solid rgba(212,193,156,0.1)' : '1px solid rgba(212,193,156,0.2)',
+                            border: isCurrent ? '2px solid rgba(var(--theme-accent-rgb),0.6)' : isPast ? '1px solid rgba(var(--theme-accent-rgb),0.1)' : '1px solid rgba(var(--theme-accent-rgb),0.2)',
                             opacity: isPast ? 0.65 : 1
                           }}>
                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'baseline' }}>
                               <span style={{
-                                color: isCurrent ? '#fbbf24' : 'var(--text-gold)',
+                                color: isCurrent ? 'var(--text-gold)' : 'var(--text-gold)',
                                 fontWeight: isCurrent ? 'bold' : 'normal',
                                 minWidth: '80px', display: 'flex', alignItems: 'center', gap: '0.4rem'
                               }}>
@@ -21734,7 +22372,7 @@ const CampaignView: React.FC = () => {
       {showRestModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.4)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <h3 style={{ margin: 0, color: '#7dd3fc', fontSize: '1.1rem' }}>💤 Rest — Day {currentDay}</h3>
+            <h3 style={{ margin: 0, color: '#7dd3fc', fontSize: '1.1rem' }}>💤 Rest — Day {currentDay} • {currentSeason} (DoY {currentDayOfYear})</h3>
 
             {/* Rest type selection */}
             {(['short', 'long', 'custom'] as const).map(type => (
@@ -21765,12 +22403,12 @@ const CampaignView: React.FC = () => {
                   onChange={e => setCustomRestDays(Math.max(1, parseInt(e.target.value) || 1))}
                   style={{ width: '80px', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#f1f5f9', fontSize: '0.9rem' }}
                 />
-                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Day {currentDay + customRestDays}</span>
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Day {currentDay + customRestDays} • {getSeasonInfoForDay(currentDay + customRestDays).season}</span>
               </div>
             )}
 
             {restType === 'long' && (
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Will advance to Day {currentDay + 1}</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>→ Will advance to Day {currentDay + 1} • {getSeasonInfoForDay(currentDay + 1).season}</div>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
@@ -21790,9 +22428,15 @@ const CampaignView: React.FC = () => {
                     const days = restType === 'short' ? 0 : restType === 'long' ? 1 : customRestDays;
                     const summary = await campaignAPI.advanceDays(currentCampaign.campaign.id, days, restType);
                     setCurrentDay(summary.newDay);
+                    const fallback = getSeasonInfoForDay(summary.newDay);
+                    setCurrentDayOfYear(summary.dayOfYear ?? fallback.dayOfYear);
+                    setCurrentSeason(summary.season ?? fallback.season);
                     // Build toast
                     const parts: string[] = [];
                     if (restType !== 'short') parts.push(`Advanced to Day ${summary.newDay}`);
+                    if (summary.seasonChanged && summary.previousSeason && summary.season) {
+                      parts.push(`Season changed: ${summary.previousSeason} -> ${summary.season}`);
+                    }
                     if (summary.completedBuildings?.length) parts.push(`${summary.completedBuildings.length} building(s) completed`);
                     const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc: number, r) => acc + ((r as { gold?: number }).gold || 0), 0);
                     if (totalGold > 0) parts.push(`+${totalGold} gold produced`);
@@ -21822,6 +22466,85 @@ const CampaignView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showKingdomNamingModal && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            zIndex: 10002,
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            padding: '2rem 1rem',
+            overflowY: 'auto',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !kingdomNamingLoading) setShowKingdomNamingModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: 'rgba(18, 18, 18, 0.96)',
+              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
+              borderRadius: '12px',
+              boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+              width: '100%',
+              maxWidth: '500px',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3 className="modal-title">Name Your Kingdom</h3>
+              <button className="modal-close" onClick={() => setShowKingdomNamingModal(false)} aria-label="Close">×</button>
+            </div>
+            <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <input
+                value={pendingKingdomName}
+                onChange={(e) => setPendingKingdomName(e.target.value)}
+                placeholder="Kingdom name"
+                style={{ padding: '0.55rem', borderRadius: '0.45rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.65)', color: '#e2e8f0' }}
+              />
+              <input
+                value={pendingCapitalName}
+                onChange={(e) => setPendingCapitalName(e.target.value)}
+                placeholder="Capital name"
+                style={{ padding: '0.55rem', borderRadius: '0.45rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.65)', color: '#e2e8f0' }}
+              />
+              <div style={{ marginTop: '0.4rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button className="btn btn-secondary" onClick={() => setShowKingdomNamingModal(false)} disabled={kingdomNamingLoading}>Cancel</button>
+                <button
+                  className="btn btn-primary"
+                  disabled={kingdomNamingLoading || !pendingKingdomId || !pendingKingdomName.trim() || !pendingCapitalName.trim()}
+                  onClick={async () => {
+                    if (!pendingKingdomId) return;
+                    setKingdomNamingLoading(true);
+                    try {
+                      await kingdomAPI.nameKingdom(pendingKingdomId, pendingKingdomName.trim(), pendingCapitalName.trim());
+                      setShowKingdomNamingModal(false);
+                      setPendingKingdomId(null);
+                      setPendingKingdomName('');
+                      setPendingCapitalName('');
+                      setToastMessage('Kingdom established successfully');
+                      setTimeout(() => setToastMessage(null), 3000);
+                    } catch (e: any) {
+                      setToastMessage(e?.response?.data?.error || 'Failed to name kingdom');
+                      setTimeout(() => setToastMessage(null), 3500);
+                    } finally {
+                      setKingdomNamingLoading(false);
+                    }
+                  }}
+                >
+                  {kingdomNamingLoading ? 'Saving...' : 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Quick Roll Modal (DM requests skill/save from target player) ── */}
@@ -21901,7 +22624,7 @@ const CampaignView: React.FC = () => {
                           style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', cursor: 'pointer', background: isExpert ? 'rgba(251,191,36,0.12)' : isProf ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isExpert ? 'rgba(251,191,36,0.4)' : isProf ? 'rgba(167,139,250,0.35)' : 'rgba(255,255,255,0.1)'}`, color: '#e2e8f0', fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem', textAlign: 'left' }}
                         >
                           <span style={{ flex: 1 }}>{name}</span>
-                          <span style={{ color: isExpert ? '#fbbf24' : isProf ? '#c4b5fd' : '#94a3b8', fontWeight: 'bold', fontSize: '0.8rem' }}>{fmtMod(mod)}</span>
+                          <span style={{ color: isExpert ? 'var(--text-gold)' : isProf ? '#c4b5fd' : '#94a3b8', fontWeight: 'bold', fontSize: '0.8rem' }}>{fmtMod(mod)}</span>
                         </button>
                       );
                     })}
@@ -22134,9 +22857,9 @@ const CampaignView: React.FC = () => {
 
       {mountArmorPicker && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 11000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
-          <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '500px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid rgba(var(--theme-accent-rgb),0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '500px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#d4c19c', margin: 0 }}>🛡️ Equip Armor — {mountArmorPicker.slot.replace(/_/g, ' ')}</h5>
+              <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🛡️ Equip Armor — {mountArmorPicker.slot.replace(/_/g, ' ')}</h5>
               <button onClick={() => setMountArmorPicker(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
             </div>
             <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Select an armor item from the character's inventory to equip to this mount slot.</p>
@@ -22177,22 +22900,22 @@ const CampaignView: React.FC = () => {
       {/* Battlefield Map Picker Modal (DM only) */}
       {showBattlefieldMapPickerModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
-          <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid rgba(var(--theme-accent-rgb),0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#d4c19c', margin: 0 }}>🗺️ Select Battlefield Map</h5>
+              <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🗺️ Select Battlefield Map</h5>
               <button onClick={() => setShowBattlefieldMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
             </div>
 
             {/* Upload Section */}
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-              <h6 style={{ color: '#d4c19c', margin: '0 0 0.5rem' }}>Upload New Map</h6>
+              <h6 style={{ color: 'var(--text-gold)', margin: '0 0 0.5rem' }}>Upload New Map</h6>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <input
                   type="text"
                   placeholder="Map name..."
                   value={mapUploadName}
                   onChange={e => setMapUploadName(e.target.value)}
-                  style={{ padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', minWidth: '160px' }}
+                  style={{ padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: 'var(--text-gold)', minWidth: '160px' }}
                 />
                 <input
                   type="file"
@@ -22215,7 +22938,7 @@ const CampaignView: React.FC = () => {
                     } catch (e) { console.error(e); }
                   }}
                   disabled={!mapUploadFile || !mapUploadName.trim()}
-                  style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(212,193,156,0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
+                  style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(var(--theme-accent-rgb),0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: 'var(--text-gold)', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
                 >⬆️ Upload</button>
               </div>
             </div>
@@ -22228,7 +22951,7 @@ const CampaignView: React.FC = () => {
                 {campaignBattleMaps.map(bm => (
                   <div
                     key={bm.id}
-                    style={{ border: activeBattlefieldMapId === bm.id ? '2px solid #d4c19c' : '2px solid rgba(212,193,156,0.2)', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: '#111', transition: 'border-color 0.2s' }}
+                    style={{ border: activeBattlefieldMapId === bm.id ? '2px solid var(--text-gold)' : '2px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: '#111', transition: 'border-color 0.2s' }}
                     onClick={() => {
                       if (!socket || !currentCampaign) return;
                       socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: bm.id, mapType: 'battlefield' });
@@ -22237,7 +22960,7 @@ const CampaignView: React.FC = () => {
                   >
                     <img src={battleMapsAPI.getMapImageUrl(bm.id)} alt={bm.display_name} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
                     <div style={{ padding: '0.4rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#d4c19c', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
+                      <span style={{ color: 'var(--text-gold)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -22263,22 +22986,22 @@ const CampaignView: React.FC = () => {
       {/* Battle Map Picker Modal (DM only) */}
       {showMapPickerModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
-          <div style={{ background: '#1a1a2e', border: '1px solid rgba(212,193,156,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid rgba(var(--theme-accent-rgb),0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '800px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#d4c19c', margin: 0 }}>🗺️ Select Battle Map</h5>
+              <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🗺️ Select Battle Map</h5>
               <button onClick={() => setShowMapPickerModal(false)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
             </div>
 
             {/* Upload Section */}
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-              <h6 style={{ color: '#d4c19c', margin: '0 0 0.5rem' }}>Upload New Map</h6>
+              <h6 style={{ color: 'var(--text-gold)', margin: '0 0 0.5rem' }}>Upload New Map</h6>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <input
                   type="text"
                   placeholder="Map name..."
                   value={mapUploadName}
                   onChange={e => setMapUploadName(e.target.value)}
-                  style={{ padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', minWidth: '160px' }}
+                  style={{ padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: 'var(--text-gold)', minWidth: '160px' }}
                 />
                 <input
                   type="file"
@@ -22301,7 +23024,7 @@ const CampaignView: React.FC = () => {
                     } catch (e) { console.error(e); }
                   }}
                   disabled={!mapUploadFile || !mapUploadName.trim()}
-                  style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(212,193,156,0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '0.3rem', color: '#d4c19c', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
+                  style={{ padding: '0.4rem 0.9rem', background: mapUploadFile && mapUploadName.trim() ? 'rgba(var(--theme-accent-rgb),0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: 'var(--text-gold)', cursor: mapUploadFile && mapUploadName.trim() ? 'pointer' : 'default' }}
                 >⬆️ Upload</button>
               </div>
             </div>
@@ -22314,7 +23037,7 @@ const CampaignView: React.FC = () => {
                 {campaignBattleMaps.map(bm => (
                   <div
                     key={bm.id}
-                    style={{ border: activeMapId === bm.id ? '2px solid #d4c19c' : '2px solid rgba(212,193,156,0.2)', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: '#111', transition: 'border-color 0.2s' }}
+                    style={{ border: activeMapId === bm.id ? '2px solid var(--text-gold)' : '2px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: '#111', transition: 'border-color 0.2s' }}
                     onClick={() => {
                       if (!socket || !currentCampaign) return;
                       socket.emit('setActiveMap', { campaignId: currentCampaign.campaign.id, mapId: bm.id, mapType: 'combat' });
@@ -22323,7 +23046,7 @@ const CampaignView: React.FC = () => {
                   >
                     <img src={battleMapsAPI.getMapImageUrl(bm.id)} alt={bm.display_name} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
                     <div style={{ padding: '0.4rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#d4c19c', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
+                      <span style={{ color: 'var(--text-gold)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -22351,7 +23074,7 @@ const CampaignView: React.FC = () => {
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
           onClick={e => { if (e.target === e.currentTarget) setNoteViewModal(null); }}
         >
-          <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(212,193,156,0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
+          <div style={{ background: 'rgba(15,15,20,0.98)', border: '2px solid rgba(var(--theme-accent-rgb),0.4)', borderRadius: '1rem', padding: '1.75rem', width: '560px', maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
               <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.1rem' }}>📝 {noteViewModal.title}</h4>
               <button onClick={() => setNoteViewModal(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: 0, flexShrink: 0 }}>✕</button>
@@ -22402,6 +23125,195 @@ const CampaignView: React.FC = () => {
           }}
         />,
         document.body
+      )}
+
+      {/* ── Lighting Modal ──────────────────────────────────────────── */}
+      {showLightingModal !== null && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2000, padding: '1rem',
+          }}
+          onClick={() => setShowLightingModal(null)}
+        >
+          <div
+            style={{
+              background: 'linear-gradient(135deg,rgba(18,18,28,0.99) 0%,rgba(28,28,42,0.99) 100%)',
+              border: '2px solid rgba(251,191,36,0.4)',
+              borderRadius: '1rem',
+              padding: '1.5rem',
+              width: 'min(460px,95vw)',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h4 style={{ margin: 0, color: '#fbbf24', fontSize: '1.1rem' }}>
+                💡 Lighting — {showLightingModal === 'combat' ? 'Combat' : 'Battlefield'}
+              </h4>
+              <button
+                onClick={() => setShowLightingModal(null)}
+                style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}
+              >✕</button>
+            </div>
+
+            {/* Darkness slider */}
+            <div style={{ marginBottom: '1.25rem', padding: '0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  {darknessLevel === 0 ? '☀️' : darknessLevel < 0.5 ? '🌙' : '🌑'} Global Darkness
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#60a5fa' }}>
+                  {Math.round(Math.max(15, (1 - darknessLevel * 0.85) * 100))}% visibility
+                </span>
+              </div>
+              <input
+                type="range" min={0} max={1} step={0.05} value={darknessLevel}
+                onChange={e => {
+                  const val = parseFloat(e.target.value);
+                  setDarknessLevel(val);
+                  if (socket && currentCampaign) socket.emit('setDarkness', { campaignId: currentCampaign.campaign.id, darknessLevel: val });
+                }}
+                style={{ width: '100%', accentColor: '#60a5fa', cursor: 'pointer' }}
+              />
+            </div>
+
+            {/* Add Light Source */}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <button
+                onClick={() => setLightingAddType(prev => prev === 'light' ? null : 'light')}
+                style={{
+                  width: '100%', padding: '0.5rem', textAlign: 'left',
+                  background: lightingAddType === 'light' ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.08)',
+                  border: `1px solid ${lightingAddType === 'light' ? 'rgba(239,68,68,0.6)' : 'rgba(239,68,68,0.25)'}`,
+                  borderRadius: '0.5rem', color: '#fca5a5', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600,
+                }}
+              >
+                🔴 Add Light Source {lightingAddType === 'light' ? '▲' : '▼'}
+              </button>
+              {lightingAddType === 'light' && (
+                <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: '0 0 0.5rem 0.5rem', border: '1px solid rgba(239,68,68,0.2)', borderTop: 'none' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Strength</span>
+                    <span style={{ fontSize: '0.75rem', color: '#fca5a5' }}>{Math.round(lightingAddStrength * 100)}%</span>
+                  </div>
+                  <input
+                    type="range" min={0.1} max={1} step={0.05} value={lightingAddStrength}
+                    onChange={e => setLightingAddStrength(parseFloat(e.target.value))}
+                    style={{ width: '100%', accentColor: '#ef4444', cursor: 'pointer', marginBottom: '0.5rem' }}
+                  />
+                  <button
+                    onClick={() => {
+                      setPendingPlacementNode({ type: 'light', strength: lightingAddStrength, tab: showLightingModal! });
+                      setLightingAddType(null);
+                      setShowLightingModal(null);
+                    }}
+                    style={{
+                      width: '100%', padding: '0.4rem',
+                      background: 'rgba(239,68,68,0.3)', border: '1px solid rgba(239,68,68,0.6)',
+                      borderRadius: '0.4rem', color: '#fca5a5', cursor: 'pointer', fontSize: '0.85rem',
+                    }}
+                  >
+                    Place on Map →
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Add Darkness Field */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <button
+                onClick={() => setLightingAddType(prev => prev === 'dark' ? null : 'dark')}
+                style={{
+                  width: '100%', padding: '0.5rem', textAlign: 'left',
+                  background: lightingAddType === 'dark' ? 'rgba(100,100,100,0.3)' : 'rgba(100,100,100,0.1)',
+                  border: `1px solid ${lightingAddType === 'dark' ? 'rgba(180,180,180,0.4)' : 'rgba(120,120,120,0.25)'}`,
+                  borderRadius: '0.5rem', color: '#d1d5db', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600,
+                }}
+              >
+                ⬛ Add Darkness Field {lightingAddType === 'dark' ? '▲' : '▼'}
+              </button>
+              {lightingAddType === 'dark' && (
+                <div style={{ padding: '0.75rem', background: 'rgba(80,80,80,0.1)', borderRadius: '0 0 0.5rem 0.5rem', border: '1px solid rgba(120,120,120,0.2)', borderTop: 'none' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Strength</span>
+                    <span style={{ fontSize: '0.75rem', color: '#d1d5db' }}>{Math.round(lightingAddStrength * 100)}%</span>
+                  </div>
+                  <input
+                    type="range" min={0.1} max={1} step={0.05} value={lightingAddStrength}
+                    onChange={e => setLightingAddStrength(parseFloat(e.target.value))}
+                    style={{ width: '100%', accentColor: '#6b7280', cursor: 'pointer', marginBottom: '0.5rem' }}
+                  />
+                  <button
+                    onClick={() => {
+                      setPendingPlacementNode({ type: 'dark', strength: lightingAddStrength, tab: showLightingModal! });
+                      setLightingAddType(null);
+                      setShowLightingModal(null);
+                    }}
+                    style={{
+                      width: '100%', padding: '0.4rem',
+                      background: 'rgba(80,80,80,0.3)', border: '1px solid rgba(120,120,120,0.4)',
+                      borderRadius: '0.4rem', color: '#d1d5db', cursor: 'pointer', fontSize: '0.85rem',
+                    }}
+                  >
+                    Place on Map →
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Placed nodes grid */}
+            <div>
+              <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Placed Nodes
+              </p>
+              {lightingNodes.filter(n => n.tab === showLightingModal).length === 0 ? (
+                <p style={{ fontSize: '0.85rem', color: '#666', textAlign: 'center', padding: '1rem 0' }}>
+                  No nodes placed yet
+                </p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  {lightingNodes.filter(n => n.tab === showLightingModal).map(n => (
+                    <div
+                      key={n.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        padding: '0.4rem 0.5rem',
+                        background: n.type === 'light' ? 'rgba(239,68,68,0.1)' : 'rgba(80,80,80,0.15)',
+                        border: `1px solid ${n.type === 'light' ? 'rgba(239,68,68,0.3)' : 'rgba(120,120,120,0.3)'}`,
+                        borderRadius: '0.4rem',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.85rem' }}>{n.type === 'light' ? '🔴' : '⬛'}</span>
+                      <span style={{ fontSize: '0.78rem', color: n.type === 'light' ? '#fca5a5' : '#d1d5db', flex: 1 }}>
+                        {n.type === 'light' ? 'Light' : 'Dark'} {Math.round(n.strength * 100)}%
+                      </span>
+                      <button
+                        onClick={() => {
+                          const updated = lightingNodes.filter(x => x.id !== n.id);
+                          setLightingNodes(updated);
+                          if (socket && currentCampaign) {
+                            socket.emit('setLightingNodes', { campaignId: currentCampaign.campaign.id, nodes: updated });
+                          }
+                        }}
+                        style={{
+                          background: 'none', border: '1px solid rgba(255,100,100,0.3)',
+                          borderRadius: '0.3rem', color: '#f87171', cursor: 'pointer',
+                          padding: '0.1rem 0.35rem', fontSize: '0.75rem',
+                        }}
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

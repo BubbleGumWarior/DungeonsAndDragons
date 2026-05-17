@@ -83,14 +83,14 @@ const DICE_TYPES = ['d2', 'd3', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
 const MESSAGE_STYLES: Record<string, React.CSSProperties> = {
   player: { background: 'rgba(255,255,255,0.04)', borderLeft: '3px solid rgba(255,255,255,0.15)' },
-  dm:     { background: 'rgba(251,191,36,0.07)',  borderLeft: '3px solid #fbbf24' },
+  dm:     { background: 'rgba(251,191,36,0.07)',  borderLeft: '3px solid var(--text-gold)' },
   server: { background: 'rgba(167,139,250,0.07)', borderLeft: '3px solid #7c3aed' },
   roll_result: { background: 'rgba(74,222,128,0.07)', borderLeft: '3px solid #4ade80' },
-  npc_reveal: { background: 'rgba(212,193,156,0.08)', borderLeft: '3px solid var(--primary-gold, #d4c19c)' },
+  npc_reveal: { background: 'rgba(var(--theme-accent-rgb),0.08)', borderLeft: '3px solid var(--primary-gold)' },
 };
 
 const SENDER_COLORS: Record<string, string> = {
-  player: '#e2e8f0', dm: '#fbbf24', server: '#a78bfa', roll_result: '#4ade80',
+  player: '#e2e8f0', dm: 'var(--text-gold)', server: '#a78bfa', roll_result: '#4ade80',
 };
 
 function formatTime(iso: string): string {
@@ -319,7 +319,7 @@ const ChatPanel: React.FC<Props> = ({
               return (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ color: 'var(--primary-gold, #d4c19c)', fontWeight: 600, fontSize: '0.78rem' }}>👤 NPC Revealed</span>
+                    <span style={{ color: 'var(--primary-gold)', fontWeight: 600, fontSize: '0.78rem' }}>👤 NPC Revealed</span>
                     <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>{formatTime(msg.created_at)}</span>
                   </div>
                   {npc ? (
@@ -327,20 +327,20 @@ const ChatPanel: React.FC<Props> = ({
                       {npc.image_url && (
                         <img src={npc.image_url} alt={npc.name}
                           onClick={() => npc.image_url && setNpcViewImage({ url: npc.image_url, name: npc.name })}
-                          style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(212,193,156,0.4)', flexShrink: 0, cursor: 'pointer' }} />
+                          style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(var(--theme-accent-rgb),0.4)', flexShrink: 0, cursor: 'pointer' }} />
                       )}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: 'var(--primary-gold, #d4c19c)', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '4px' }}>{npc.name}</div>
+                        <div style={{ color: 'var(--primary-gold)', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '4px' }}>{npc.name}</div>
                         {!isDM && (
                           <button
                             onClick={() => npcId !== null && handleSaveNPC(npcId)}
                             disabled={alreadySaved || savingNPCId === npcId}
                             style={{
                               padding: '3px 10px', fontSize: '0.75rem', fontWeight: 'bold',
-                              background: alreadySaved ? 'rgba(74,222,128,0.1)' : 'rgba(212,193,156,0.15)',
-                              border: `1px solid ${alreadySaved ? '#4ade80' : 'rgba(212,193,156,0.4)'}`,
+                              background: alreadySaved ? 'rgba(74,222,128,0.1)' : 'rgba(var(--theme-accent-rgb),0.15)',
+                              border: `1px solid ${alreadySaved ? '#4ade80' : 'rgba(var(--theme-accent-rgb),0.4)'}`,
                               borderRadius: '4px', cursor: alreadySaved ? 'default' : 'pointer',
-                              color: alreadySaved ? '#4ade80' : 'var(--primary-gold, #d4c19c)',
+                              color: alreadySaved ? '#4ade80' : 'var(--primary-gold)',
                             }}>
                             {alreadySaved ? '✓ Saved' : savingNPCId === npcId ? 'Saving…' : 'Save to Characters'}
                           </button>
@@ -560,16 +560,16 @@ const ChatPanel: React.FC<Props> = ({
       {showNPCModal && isDM && ReactDOM.createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
           onClick={e => { if (e.target === e.currentTarget) closeNpcModal(); }}>
-          <div style={{ background: 'linear-gradient(135deg, rgba(26,26,26,0.98) 0%, rgba(17,17,17,0.98) 100%)', borderRadius: '16px', padding: '2rem', width: '90%', maxWidth: '500px', border: '2px solid rgba(212,193,156,0.3)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          <div style={{ background: 'linear-gradient(135deg, rgba(26,26,26,0.98) 0%, rgba(17,17,17,0.98) 100%)', borderRadius: '16px', padding: '2rem', width: '90%', maxWidth: '500px', border: '2px solid rgba(var(--theme-accent-rgb),0.3)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
             {npcStep === 'form' ? (
               <>
-                <h3 style={{ color: 'var(--primary-gold, #d4c19c)', marginBottom: '1.5rem', textAlign: 'center', fontSize: '1.3rem' }}>👤 Reveal NPC</h3>
+                <h3 style={{ color: 'var(--primary-gold)', marginBottom: '1.5rem', textAlign: 'center', fontSize: '1.3rem' }}>👤 Reveal NPC</h3>
 
                 {/* Image picker */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.25rem' }}>
                   <div
                     onClick={() => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp'; inp.onchange = e => handleNpcImageSelect(e as any); inp.click(); }}
-                    style={{ width: '100px', height: '100px', borderRadius: '50%', border: '2px dashed rgba(212,193,156,0.5)', cursor: 'pointer', overflow: 'hidden', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    style={{ width: '100px', height: '100px', borderRadius: '50%', border: '2px dashed rgba(var(--theme-accent-rgb),0.5)', cursor: 'pointer', overflow: 'hidden', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {npcImagePreview
                       ? <img src={npcImagePreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       : <span style={{ color: '#6b7280', fontSize: '0.78rem', textAlign: 'center', padding: '0.5rem' }}>Click to add photo</span>}
@@ -584,7 +584,7 @@ const ChatPanel: React.FC<Props> = ({
                   { label: 'Description', value: npcDescription, setter: setNpcDescription, placeholder: 'Appearance, role, personality…', multiline: true },
                 ].map(field => (
                   <div key={field.label} style={{ marginBottom: '0.9rem' }}>
-                    <label style={{ display: 'block', color: 'var(--primary-gold, #d4c19c)', fontSize: '0.82rem', marginBottom: '4px' }}>{field.label}</label>
+                    <label style={{ display: 'block', color: 'var(--primary-gold)', fontSize: '0.82rem', marginBottom: '4px' }}>{field.label}</label>
                     {field.multiline
                       ? <textarea value={field.value} onChange={e => field.setter(e.target.value)} placeholder={field.placeholder} rows={3}
                           style={{ width: '100%', background: '#2d2540', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#e2e8f0', padding: '6px 10px', fontSize: '0.88rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
@@ -595,22 +595,22 @@ const ChatPanel: React.FC<Props> = ({
 
                 <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                   <button onClick={closeNpcModal}
-                    style={{ padding: '0.55rem 1.25rem', background: 'transparent', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '8px', color: '#9ca3af', cursor: 'pointer', fontSize: '0.88rem' }}>
+                    style={{ padding: '0.55rem 1.25rem', background: 'transparent', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '8px', color: '#9ca3af', cursor: 'pointer', fontSize: '0.88rem' }}>
                     Cancel
                   </button>
                   <button onClick={() => { if (npcName.trim()) { if (npcImagePreview) setNpcStep('crop'); else submitNPC(); } }}
                     disabled={!npcName.trim()}
-                    style={{ padding: '0.55rem 1.5rem', background: npcName.trim() ? 'linear-gradient(135deg, rgba(212,193,156,0.3), rgba(212,193,156,0.2))' : 'rgba(255,255,255,0.05)', border: `2px solid ${npcName.trim() ? 'var(--primary-gold, #d4c19c)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: npcName.trim() ? 'var(--primary-gold, #d4c19c)' : '#4b5563', cursor: npcName.trim() ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.88rem' }}>
+                    style={{ padding: '0.55rem 1.5rem', background: npcName.trim() ? 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.3), rgba(var(--theme-accent-rgb),0.2))' : 'rgba(255,255,255,0.05)', border: `2px solid ${npcName.trim() ? 'var(--primary-gold)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: npcName.trim() ? 'var(--primary-gold)' : '#4b5563', cursor: npcName.trim() ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.88rem' }}>
                     {npcImagePreview ? 'Next: Crop Image →' : 'Show NPC'}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <h3 style={{ color: 'var(--primary-gold, #d4c19c)', marginBottom: '1.25rem', textAlign: 'center', fontSize: '1.3rem' }}>📷 Position NPC Photo</h3>
+                <h3 style={{ color: 'var(--primary-gold)', marginBottom: '1.25rem', textAlign: 'center', fontSize: '1.3rem' }}>📷 Position NPC Photo</h3>
 
                 {/* Crop preview */}
-                <div style={{ position: 'relative', width: '300px', height: '300px', margin: '0 auto 1.25rem', border: '3px solid rgba(212,193,156,0.4)', borderRadius: '12px', overflow: 'hidden', background: 'rgba(0,0,0,0.3)' }}>
+                <div style={{ position: 'relative', width: '300px', height: '300px', margin: '0 auto 1.25rem', border: '3px solid rgba(var(--theme-accent-rgb),0.4)', borderRadius: '12px', overflow: 'hidden', background: 'rgba(0,0,0,0.3)' }}>
                   {npcImagePreview && (
                     <img src={npcImagePreview} alt="crop preview"
                       style={{ position: 'absolute', width: `${npcScale}%`, height: 'auto', left: `${npcPosition.x}%`, top: `${npcPosition.y}%`, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }} />
@@ -624,18 +624,18 @@ const ChatPanel: React.FC<Props> = ({
                   { label: `Zoom (${npcScale}%)`, key: 'zoom' as const, min: 50, max: 200, value: npcScale, onChange: (v: number) => setNpcScale(v) },
                 ].map(sl => (
                   <div key={sl.key} style={{ marginBottom: '0.9rem' }}>
-                    <label style={{ display: 'block', color: 'var(--primary-gold, #d4c19c)', fontSize: '0.82rem', marginBottom: '4px' }}>{sl.label}</label>
+                    <label style={{ display: 'block', color: 'var(--primary-gold)', fontSize: '0.82rem', marginBottom: '4px' }}>{sl.label}</label>
                     <input type="range" min={sl.min} max={sl.max} value={sl.value} onChange={e => sl.onChange(parseInt(e.target.value))} style={{ width: '100%' }} />
                   </div>
                 ))}
 
                 <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                   <button onClick={() => setNpcStep('form')}
-                    style={{ padding: '0.55rem 1.25rem', background: 'transparent', border: '1px solid rgba(212,193,156,0.3)', borderRadius: '8px', color: '#9ca3af', cursor: 'pointer', fontSize: '0.88rem' }}>
+                    style={{ padding: '0.55rem 1.25rem', background: 'transparent', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '8px', color: '#9ca3af', cursor: 'pointer', fontSize: '0.88rem' }}>
                     ← Back
                   </button>
                   <button onClick={submitNPC} disabled={npcSubmitting}
-                    style={{ padding: '0.55rem 1.5rem', background: npcSubmitting ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, rgba(212,193,156,0.3), rgba(212,193,156,0.2))', border: '2px solid var(--primary-gold, #d4c19c)', borderRadius: '8px', color: 'var(--primary-gold, #d4c19c)', cursor: npcSubmitting ? 'default' : 'pointer', fontWeight: 'bold', fontSize: '0.88rem' }}>
+                    style={{ padding: '0.55rem 1.5rem', background: npcSubmitting ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.3), rgba(var(--theme-accent-rgb),0.2))', border: '2px solid var(--primary-gold)', borderRadius: '8px', color: 'var(--primary-gold)', cursor: npcSubmitting ? 'default' : 'pointer', fontWeight: 'bold', fontSize: '0.88rem' }}>
                     {npcSubmitting ? 'Revealing…' : 'Confirm & Show NPC'}
                   </button>
                 </div>
@@ -658,9 +658,9 @@ const ChatPanel: React.FC<Props> = ({
             src={npcViewImage.url}
             alt={npcViewImage.name}
             onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '80vh', borderRadius: '8px', objectFit: 'contain', border: '2px solid rgba(212,193,156,0.5)', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }}
+            style={{ maxWidth: '90vw', maxHeight: '80vh', borderRadius: '8px', objectFit: 'contain', border: '2px solid rgba(var(--theme-accent-rgb),0.5)', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }}
           />
-          <div style={{ marginTop: '12px', color: 'var(--primary-gold, #d4c19c)', fontWeight: 600, fontSize: '1.1rem' }}>{npcViewImage.name}</div>
+          <div style={{ marginTop: '12px', color: 'var(--primary-gold)', fontWeight: 600, fontSize: '1.1rem' }}>{npcViewImage.name}</div>
           <div style={{ marginTop: '6px', color: '#9ca3af', fontSize: '0.8rem' }}>Click outside to close</div>
         </div>,
         document.body

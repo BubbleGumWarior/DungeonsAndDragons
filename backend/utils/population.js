@@ -1,20 +1,34 @@
 /**
- * Returns how many of a fief's population are available as workers.
- * Below 10 pop: everyone works.
- * Above 10: diminishing returns — at 100,000 pop roughly 50,000 are workable.
- *
- * Formula: workable = pop / (1 + 0.25 * log10(pop / 10))
- *
- * Examples:
- *   10      → 10   (100%)
- *   11      → ~10  (91%)
- *   1 000   → ~667 (67%)
- *   10 000  → ~5714 (57%)
- *   100 000 → ~50000 (50%)
+ * Parse and sanitize maturation schedule JSON.
+ * Shape: { [campaignDayMatures]: count }
  */
-function getWorkablePopulation(pop) {
-  if (!pop || pop <= 10) return pop || 0;
-  return Math.floor(pop / (1 + 0.25 * Math.log10(pop / 10)));
+function normalizeMaturationSchedule(raw) {
+  const source = (raw && typeof raw === 'object') ? raw : {};
+  const out = {};
+  for (const [key, value] of Object.entries(source)) {
+    const day = Math.floor(Number(key));
+    const count = Math.floor(Number(value) || 0);
+    if (Number.isFinite(day) && day > 0 && count > 0) {
+      out[String(day)] = count;
+    }
+  }
+  return out;
 }
 
-module.exports = { getWorkablePopulation };
+function getUnderagePopulation(schedule) {
+  const normalized = normalizeMaturationSchedule(schedule);
+  return Object.values(normalized).reduce((sum, count) => sum + Math.max(0, Number(count) || 0), 0);
+}
+
+function getAssignablePopulation(totalPopulation, schedule, sickInjuredPopulation = 0) {
+  const total = Math.max(0, Math.floor(Number(totalPopulation) || 0));
+  const underage = getUnderagePopulation(schedule);
+  const sickInjured = Math.max(0, Math.floor(Number(sickInjuredPopulation) || 0));
+  return Math.max(0, total - underage - sickInjured);
+}
+
+module.exports = {
+  normalizeMaturationSchedule,
+  getUnderagePopulation,
+  getAssignablePopulation,
+};

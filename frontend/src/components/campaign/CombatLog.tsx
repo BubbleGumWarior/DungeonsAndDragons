@@ -11,10 +11,10 @@ const ACTION_COLORS: Record<string, { bg: string; border: string; icon: string }
   heal:         { bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.4)',  icon: '💚' },
   death_save:   { bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.4)',  icon: '☠️' },
   dice_roll:    { bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.4)', icon: '🎲' },
-  condition:    { bg: 'rgba(250,204,21,0.12)',  border: 'rgba(250,204,21,0.4)',  icon: '🌀' },
+  condition:    { bg: 'rgba(var(--theme-accent-rgb),0.12)',  border: 'rgba(var(--theme-accent-rgb),0.4)',  icon: '🌀' },
   concentration:{ bg: 'rgba(20,184,166,0.12)',  border: 'rgba(20,184,166,0.4)',  icon: '🔮' },
   turn_start:   { bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.4)',  icon: '▶️' },
-  combat_start: { bg: 'rgba(212,193,156,0.1)',  border: 'rgba(212,193,156,0.3)', icon: '⚡' },
+  combat_start: { bg: 'rgba(var(--theme-accent-rgb),0.1)',  border: 'rgba(var(--theme-accent-rgb),0.3)', icon: '⚡' },
   default:      { bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)', icon: '📝' },
 };
 
@@ -58,12 +58,12 @@ export const CombatLog: React.FC<Props> = ({ entries, maxHeight = '300px' }) => 
   return (
     <div style={{
       background: 'rgba(0,0,0,0.3)', borderRadius: '0.5rem',
-      border: '1px solid rgba(212,193,156,0.2)',
+      border: '1px solid rgba(var(--theme-accent-rgb),0.2)',
       display: 'flex', flexDirection: 'column',
     }}>
       <div style={{
         padding: '0.5rem 0.75rem',
-        borderBottom: '1px solid rgba(212,193,156,0.15)',
+        borderBottom: '1px solid rgba(var(--theme-accent-rgb),0.15)',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <span style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.85rem' }}>📜 Combat Log</span>

@@ -338,6 +338,13 @@ router.put('/battles/:id/status', authenticateToken, async (req, res) => {
     
     const updatedBattle = await Battle.updateStatus(id, status);
     
+    // Clear battlefield lighting nodes when battle is cancelled
+    if (status === 'cancelled') {
+      try {
+        await pool.query('DELETE FROM campaign_lighting_nodes WHERE campaign_id = $1 AND tab = $2', [battle.campaign_id, 'battlefield']);
+      } catch (e) { console.warn('Could not clear battlefield lighting nodes on cancel:', e.message); }
+    }
+
     // Emit socket event
     const io = req.app.get('io');
     if (io) {
@@ -350,6 +357,10 @@ router.put('/battles/:id/status', authenticateToken, async (req, res) => {
         timestamp: new Date().toISOString()
       });
       console.log(`✅ battleStatusUpdated emitted successfully`);
+      if (status === 'cancelled') {
+        const remainingNodes = await pool.query('SELECT id, type, x, y, strength, tab FROM campaign_lighting_nodes WHERE campaign_id = $1', [battle.campaign_id]);
+        io.to(roomName).emit('lightingNodesUpdated', { nodes: remainingNodes.rows, campaignId: battle.campaign_id });
+      }
     } else {
       console.warn('⚠️ Socket.io instance not found - event not emitted');
     }
@@ -1522,6 +1533,11 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
     
     // Mark battle as completed
     await Battle.updateStatus(id, 'completed');
+
+    // Clear battlefield lighting nodes
+    try {
+      await pool.query('DELETE FROM campaign_lighting_nodes WHERE campaign_id = $1 AND tab = $2', [battle.campaign_id, 'battlefield']);
+    } catch (e) { console.warn('Could not clear battlefield lighting nodes:', e.message); }
     
     // Emit socket event
     const io = req.app.get('io');
@@ -1548,6 +1564,9 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
         summary,
         timestamp: new Date().toISOString()
       });
+      // Emit cleared battlefield lighting nodes
+      const remainingNodes = await pool.query('SELECT id, type, x, y, strength, tab FROM campaign_lighting_nodes WHERE campaign_id = $1', [battle.campaign_id]);
+      io.to(`campaign_${battle.campaign_id}`).emit('lightingNodesUpdated', { nodes: remainingNodes.rows, campaignId: battle.campaign_id });
     }
     
     res.json({ message: 'Battle completed', results: participants, summary });

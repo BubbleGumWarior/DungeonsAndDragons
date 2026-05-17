@@ -219,8 +219,20 @@ router.post('/:id/reset-day', authenticateToken, async (req, res) => {
     if (req.user?.role !== 'Dungeon Master') return res.status(403).json({ error: 'DM only' });
     const { pool } = require('../models/database');
     await pool.query(`UPDATE campaigns SET current_day = 1 WHERE id = $1`, [req.params.id]);
-    if (req.io) req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', { campaignId: req.params.id, newDay: 1 });
-    res.json({ current_day: 1 });
+    const seasonMetadata = Campaign.getSeasonMetadata(1);
+    if (req.io) {
+      req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', {
+        campaignId: req.params.id,
+        newDay: 1,
+        ...seasonMetadata,
+      });
+    }
+    res.json({
+      current_day: 1,
+      day_of_year: seasonMetadata.dayOfYear,
+      season: seasonMetadata.season,
+      season_effects: seasonMetadata.seasonEffects,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to reset day' });
   }
@@ -232,9 +244,36 @@ router.get('/:id/day', authenticateToken, async (req, res) => {
     const { pool } = require('../models/database');
     const result = await pool.query(`SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`, [req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ error: 'Campaign not found' });
-    res.json({ current_day: result.rows[0].current_day });
+    const currentDay = Number(result.rows[0].current_day);
+    const seasonMetadata = Campaign.getSeasonMetadata(currentDay);
+    res.json({
+      current_day: currentDay,
+      day_of_year: seasonMetadata.dayOfYear,
+      season: seasonMetadata.season,
+      season_effects: seasonMetadata.seasonEffects,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get current day' });
+  }
+});
+
+// GET campaign season details
+router.get('/:id/season', authenticateToken, async (req, res) => {
+  try {
+    const { pool } = require('../models/database');
+    const result = await pool.query(`SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`, [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Campaign not found' });
+
+    const currentDay = Number(result.rows[0].current_day);
+    const seasonMetadata = Campaign.getSeasonMetadata(currentDay);
+    res.json({
+      current_day: currentDay,
+      day_of_year: seasonMetadata.dayOfYear,
+      season: seasonMetadata.season,
+      season_effects: seasonMetadata.seasonEffects,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get season data' });
   }
 });
 
@@ -246,7 +285,18 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
     if (restType === 'short') {
       const { pool } = require('../models/database');
       const result = await pool.query(`SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`, [req.params.id]);
-      return res.json({ newDay: result.rows[0]?.current_day, completedBuildings: [], resourcesGained: {}, populationGained: {}, restType: 'short' });
+      const currentDay = Number(result.rows[0]?.current_day || 1);
+      const seasonMetadata = Campaign.getSeasonMetadata(currentDay);
+      return res.json({
+        newDay: currentDay,
+        dayOfYear: seasonMetadata.dayOfYear,
+        season: seasonMetadata.season,
+        seasonEffects: seasonMetadata.seasonEffects,
+        completedBuildings: [],
+        resourcesGained: {},
+        populationGained: {},
+        restType: 'short',
+      });
     }
 
     // Long/custom rests require a positive day amount
@@ -259,6 +309,67 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
     // Notify all players in the campaign via socket
     if (req.io) {
       req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', { campaignId: req.params.id, ...summary, restType });
+      req.io.to(`campaign_${req.params.id}`).emit('kingdomDataChanged', { campaignId: Number(req.params.id) });
+
+      const userSocketMap = req.app.get('userSocketMap');
+      const io = req.app.get('io') || req.io;
+      if (io && userSocketMap) {
+        const completedByFief = [];
+
+        for (const item of (summary.completedResearch || [])) {
+          completedByFief.push({
+            type: 'research',
+            fiefId: Number(item.fiefId),
+            payload: {
+              campaignId: Number(req.params.id),
+              type: 'research',
+              fiefId: Number(item.fiefId),
+              fiefName: item.fiefName,
+              researchId: item.researchId,
+            },
+          });
+        }
+
+        for (const item of (summary.completedTierUpgrades || [])) {
+          completedByFief.push({
+            type: 'tier',
+            fiefId: Number(item.fiefId),
+            payload: {
+              campaignId: Number(req.params.id),
+              type: 'tier',
+              fiefId: Number(item.fiefId),
+              fiefName: item.fiefName,
+              newTier: Number(item.newTier),
+            },
+          });
+        }
+
+        if (completedByFief.length > 0) {
+          const fiefIds = completedByFief.map((x) => x.fiefId).filter(Number.isFinite);
+          if (fiefIds.length > 0) {
+            const ownersResult = await pool.query(
+              `SELECT f.id AS fief_id, k.player_id
+               FROM fiefs f
+               JOIN kingdoms k ON k.id = f.kingdom_id
+               WHERE f.id = ANY($1::int[])`,
+              [fiefIds]
+            );
+
+            const ownerByFief = new Map();
+            for (const row of ownersResult.rows) {
+              ownerByFief.set(Number(row.fief_id), Number(row.player_id));
+            }
+
+            for (const entry of completedByFief) {
+              const ownerId = ownerByFief.get(entry.fiefId);
+              if (!ownerId) continue;
+              const ownerSocketId = userSocketMap.get(ownerId);
+              if (!ownerSocketId) continue;
+              io.to(ownerSocketId).emit('kingdomProgressToast', entry.payload);
+            }
+          }
+        }
+      }
     }
     res.json({ ...summary, restType });
   } catch (error) {

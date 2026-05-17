@@ -48,7 +48,7 @@ const conditionColor = (c: string): { bg: string; border: string; color: string 
     return { bg: 'rgba(244,114,182,0.2)', border: 'rgba(244,114,182,0.5)', color: '#f472b6' };
   if (c === 'Invisible')
     return { bg: 'rgba(103,232,249,0.2)', border: 'rgba(103,232,249,0.5)', color: '#67e8f9' };
-  return { bg: 'rgba(250,204,21,0.15)', border: 'rgba(250,204,21,0.4)', color: '#fbbf24' };
+  return { bg: 'rgba(var(--theme-accent-rgb),0.15)', border: 'rgba(var(--theme-accent-rgb),0.4)', color: 'var(--text-gold)' };
 };
 
 const dotConditionStyle: Record<string, { bg: string; border: string; color: string; icon: string }> = {
@@ -114,7 +114,7 @@ export const CombatActionsPanel: React.FC<Props> = ({
                 style={btnStyle('#a78bfa', !canAct)}>💨 Dash</button>
               <button disabled={!canAct}
                 onClick={() => onDisengage()}
-                style={btnStyle('#fbbf24', !canAct)}>🚶 Disengage</button>
+                style={btnStyle('var(--text-gold)', !canAct)}>🚶 Disengage</button>
               <button disabled={!canAct}
                 onClick={() => onHide()}
                 style={btnStyle('#94a3b8', !canAct)}>🌑 Hide</button>

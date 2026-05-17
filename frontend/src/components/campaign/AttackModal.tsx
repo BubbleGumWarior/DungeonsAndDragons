@@ -40,7 +40,7 @@ interface Props {
 }
 
 const LIMBS: { key: keyof LimbAC; label: string; color: string }[] = [
-  { key: 'head',      label: 'Head',      color: '#fbbf24' },
+  { key: 'head',      label: 'Head',      color: 'var(--text-gold)' },
   { key: 'chest',     label: 'Chest',     color: '#f87171' },
   { key: 'left_arm',  label: 'Left Arm',  color: '#60a5fa' },
   { key: 'right_arm', label: 'Right Arm', color: '#60a5fa' },
@@ -75,7 +75,7 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
   };
   const modal: React.CSSProperties = {
     background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-    border: '2px solid rgba(212,193,156,0.4)',
+    border: '2px solid rgba(var(--theme-accent-rgb),0.4)',
     borderRadius: '1rem', padding: '2rem', width: '600px', maxWidth: '95vw',
     maxHeight: '90vh', overflowY: 'auto',
     boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
@@ -95,7 +95,7 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
         {/* Resistances display */}
         {targetResistances && (
           (targetResistances.resistances.length > 0 || targetResistances.immunities.length > 0 || targetResistances.vulnerabilities.length > 0) && (
-            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', border: '1px solid rgba(212,193,156,0.15)' }}>
+            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.15)' }}>
               {targetResistances.resistances.length > 0 && (
                 <div style={{ marginBottom: '0.4rem' }}>
                   <span style={{ color: '#93c5fd', fontSize: '0.75rem', fontWeight: 'bold', marginRight: '0.4rem' }}>RESIST:</span>
@@ -133,22 +133,22 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
               <svg viewBox="0 0 100 240" style={{ width: '100%', userSelect: 'none' }}>
                 {/* Head */}
                 <ellipse cx="50" cy="20" rx="16" ry="18"
-                  fill={selectedLimb === 'head' ? '#fbbf24' : 'rgba(212,193,156,0.15)'}
-                  stroke={selectedLimb === 'head' ? '#fbbf24' : 'rgba(212,193,156,0.4)'}
+                  fill={selectedLimb === 'head' ? 'var(--text-gold)' : 'rgba(var(--theme-accent-rgb),0.15)'}
+                  stroke={selectedLimb === 'head' ? 'var(--text-gold)' : 'rgba(var(--theme-accent-rgb),0.4)'}
                   strokeWidth="2" style={{ cursor: 'pointer' }}
                   onClick={() => setSelectedLimb('head')} />
                 <text x="50" y="23" textAnchor="middle" fontSize="7" fill="#fff" style={{ pointerEvents: 'none' }}>Head</text>
                 {targetLimbAC.head !== undefined && (
-                  <text x="50" y="32" textAnchor="middle" fontSize="6" fill="#fbbf24" style={{ pointerEvents: 'none' }}>AC {targetLimbAC.head}</text>
+                  <text x="50" y="32" textAnchor="middle" fontSize="6" fill="var(--text-gold)" style={{ pointerEvents: 'none' }}>AC {targetLimbAC.head}</text>
                 )}
 
                 {/* Neck */}
-                <rect x="44" y="37" width="12" height="8" fill="rgba(212,193,156,0.1)" />
+                <rect x="44" y="37" width="12" height="8" fill="rgba(var(--theme-accent-rgb),0.1)" />
 
                 {/* Torso / Chest */}
                 <rect x="26" y="45" width="48" height="60" rx="4"
-                  fill={selectedLimb === 'chest' ? '#f87171' : 'rgba(212,193,156,0.15)'}
-                  stroke={selectedLimb === 'chest' ? '#f87171' : 'rgba(212,193,156,0.4)'}
+                  fill={selectedLimb === 'chest' ? '#f87171' : 'rgba(var(--theme-accent-rgb),0.15)'}
+                  stroke={selectedLimb === 'chest' ? '#f87171' : 'rgba(var(--theme-accent-rgb),0.4)'}
                   strokeWidth="2" style={{ cursor: 'pointer' }}
                   onClick={() => setSelectedLimb('chest')} />
                 <text x="50" y="74" textAnchor="middle" fontSize="7" fill="#fff" style={{ pointerEvents: 'none' }}>Chest</text>
@@ -158,8 +158,8 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
 
                 {/* Left Arm */}
                 <rect x="4" y="46" width="20" height="55" rx="6"
-                  fill={selectedLimb === 'left_arm' ? '#60a5fa' : 'rgba(212,193,156,0.15)'}
-                  stroke={selectedLimb === 'left_arm' ? '#60a5fa' : 'rgba(212,193,156,0.4)'}
+                  fill={selectedLimb === 'left_arm' ? '#60a5fa' : 'rgba(var(--theme-accent-rgb),0.15)'}
+                  stroke={selectedLimb === 'left_arm' ? '#60a5fa' : 'rgba(var(--theme-accent-rgb),0.4)'}
                   strokeWidth="2" style={{ cursor: 'pointer' }}
                   onClick={() => setSelectedLimb('left_arm')} />
                 <text x="14" y="72" textAnchor="middle" fontSize="6" fill="#fff" style={{ pointerEvents: 'none' }}>L.Arm</text>
@@ -169,8 +169,8 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
 
                 {/* Right Arm */}
                 <rect x="76" y="46" width="20" height="55" rx="6"
-                  fill={selectedLimb === 'right_arm' ? '#60a5fa' : 'rgba(212,193,156,0.15)'}
-                  stroke={selectedLimb === 'right_arm' ? '#60a5fa' : 'rgba(212,193,156,0.4)'}
+                  fill={selectedLimb === 'right_arm' ? '#60a5fa' : 'rgba(var(--theme-accent-rgb),0.15)'}
+                  stroke={selectedLimb === 'right_arm' ? '#60a5fa' : 'rgba(var(--theme-accent-rgb),0.4)'}
                   strokeWidth="2" style={{ cursor: 'pointer' }}
                   onClick={() => setSelectedLimb('right_arm')} />
                 <text x="86" y="72" textAnchor="middle" fontSize="6" fill="#fff" style={{ pointerEvents: 'none' }}>R.Arm</text>
@@ -180,8 +180,8 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
 
                 {/* Left Leg */}
                 <rect x="27" y="108" width="20" height="70" rx="6"
-                  fill={selectedLimb === 'left_leg' ? '#a78bfa' : 'rgba(212,193,156,0.15)'}
-                  stroke={selectedLimb === 'left_leg' ? '#a78bfa' : 'rgba(212,193,156,0.4)'}
+                  fill={selectedLimb === 'left_leg' ? '#a78bfa' : 'rgba(var(--theme-accent-rgb),0.15)'}
+                  stroke={selectedLimb === 'left_leg' ? '#a78bfa' : 'rgba(var(--theme-accent-rgb),0.4)'}
                   strokeWidth="2" style={{ cursor: 'pointer' }}
                   onClick={() => setSelectedLimb('left_leg')} />
                 <text x="37" y="143" textAnchor="middle" fontSize="6" fill="#fff" style={{ pointerEvents: 'none' }}>L.Leg</text>
@@ -191,8 +191,8 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
 
                 {/* Right Leg */}
                 <rect x="53" y="108" width="20" height="70" rx="6"
-                  fill={selectedLimb === 'right_leg' ? '#a78bfa' : 'rgba(212,193,156,0.15)'}
-                  stroke={selectedLimb === 'right_leg' ? '#a78bfa' : 'rgba(212,193,156,0.4)'}
+                  fill={selectedLimb === 'right_leg' ? '#a78bfa' : 'rgba(var(--theme-accent-rgb),0.15)'}
+                  stroke={selectedLimb === 'right_leg' ? '#a78bfa' : 'rgba(var(--theme-accent-rgb),0.4)'}
                   strokeWidth="2" style={{ cursor: 'pointer' }}
                   onClick={() => setSelectedLimb('right_leg')} />
                 <text x="63" y="143" textAnchor="middle" fontSize="6" fill="#fff" style={{ pointerEvents: 'none' }}>R.Leg</text>
@@ -238,7 +238,7 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
                   type="number" min={1} value={damage}
                   onChange={e => setDamage(e.target.value)}
                   placeholder="e.g. 8"
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${isHeal ? 'rgba(74,222,128,0.4)' : 'rgba(212,193,156,0.3)'}`, color: '#fff', fontSize: '1rem' }} />
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', background: 'rgba(255,255,255,0.05)', border: `1px solid ${isHeal ? 'rgba(74,222,128,0.4)' : 'rgba(var(--theme-accent-rgb),0.3)'}`, color: '#fff', fontSize: '1rem' }} />
               </div>
             )}
 

@@ -209,7 +209,7 @@ const GoalsTab: React.FC<Props> = ({ campaignId, isDungeonMaster, characters, so
               borderRadius: '20px',
               border: `1px solid ${filter === f ? '#f59e0b' : 'rgba(255,255,255,0.15)'}`,
               background: filter === f ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)',
-              color: filter === f ? '#fbbf24' : 'var(--text-muted)',
+              color: filter === f ? 'var(--text-gold)' : 'var(--text-muted)',
               cursor: 'pointer',
               fontSize: '13px',
               fontWeight: filter === f ? 'bold' : 'normal',
@@ -255,7 +255,7 @@ const GoalsTab: React.FC<Props> = ({ campaignId, isDungeonMaster, characters, so
                       style={{
                         fontSize: '15px',
                         fontWeight: 'bold',
-                        color: isComplete ? '#6ee7b7' : '#fbbf24',
+                        color: isComplete ? '#6ee7b7' : 'var(--text-gold)',
                         textDecoration: isComplete ? 'line-through' : 'none',
                         opacity: isComplete ? 0.8 : 1,
                       }}
@@ -294,7 +294,7 @@ const GoalsTab: React.FC<Props> = ({ campaignId, isDungeonMaster, characters, so
                             background: 'rgba(245,158,11,0.2)',
                             border: '1px solid rgba(245,158,11,0.4)',
                             borderRadius: '5px',
-                            color: '#fbbf24',
+                            color: 'var(--text-gold)',
                             cursor: 'pointer',
                           }}
                         >
@@ -624,7 +624,7 @@ const confirmBtnStyle: React.CSSProperties = {
   background: 'rgba(245,158,11,0.35)',
   border: '1px solid rgba(245,158,11,0.6)',
   borderRadius: '6px',
-  color: '#fbbf24',
+  color: 'var(--text-gold)',
   cursor: 'pointer',
   fontSize: '13px',
   fontWeight: 'bold',

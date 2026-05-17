@@ -215,12 +215,12 @@ const thStyle: React.CSSProperties = {
   color: 'var(--text-gold)',
   fontWeight: 700,
   fontSize: '0.85rem',
-  borderBottom: '2px solid rgba(212, 193, 156, 0.3)',
+  borderBottom: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
   whiteSpace: 'nowrap',
 };
 
 const trStyle: React.CSSProperties = {
-  borderBottom: '1px solid rgba(212, 193, 156, 0.1)',
+  borderBottom: '1px solid rgba(var(--theme-accent-rgb), 0.1)',
 };
 
 const tdStyle: React.CSSProperties = {
@@ -233,8 +233,8 @@ const adjBtnStyle: React.CSSProperties = {
   width: 28,
   height: 28,
   borderRadius: '0.35rem',
-  border: '1px solid rgba(212, 193, 156, 0.4)',
-  background: 'rgba(212, 193, 156, 0.08)',
+  border: '1px solid rgba(var(--theme-accent-rgb), 0.4)',
+  background: 'rgba(var(--theme-accent-rgb), 0.08)',
   color: 'var(--text-gold)',
   fontWeight: 700,
   fontSize: '1rem',

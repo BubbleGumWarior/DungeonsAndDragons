@@ -1,0 +1,12 @@
+chain_id,backend_keys,tier1,tier2,tier3,tier4,tier5,tier6,tier7,tier8,tier9,tier10,increase_per_upgrade
+housing_chain,housing;wood_lodge,Tent,Wooden Lodge,Wooden Lodge,,,,,,,,Population cap +4 per housing upgrade step
+storage_chain,storage;storage_advanced,Storage Tent,Advanced Warehouse,Advanced Warehouse,,,,,,,,Storage capacity +100 per upgrade step (design-editable)
+hunter_chain,hunters_guild;hunting_lodge;hunters_lodge_advanced,Hunters Cabin,Hunting Lodge,Grand Hunting Lodge,,,,,,,,Meat output +1 building output and +worker efficiency per step
+vegetable_chain,farm;irrigated_farm;farm_advanced,Vegetable Patch,Irrigated Fields,Premium Farmland,,,,,,,,Vegetable output +1 building output and +worker efficiency per step
+quarry_chain,quarry;quarry_advanced,Quarry Camp,Advanced Quarry,,,,,,,,,,Stone output +1 per quarry upgrade step
+mine_chain,mine;mine_advanced,,Mine Shaft,Deep Mine,,,,,,,,,Minerals output +1 per mine upgrade step and +worker efficiency per step
+research_lab_chain,research_lab;research_lab_advanced,,Research Lab,Advanced Research Lab,,,,,,,,,Research output +1 per lab upgrade step and +worker efficiency per step
+granary_chain,granary,,Granary,,,,,,,,,,Food storage/preservation bonus per granary upgrade step
+lumber_mill_chain,lumber_mill,,Forester's Hut,,,,,,,,,,Wood worker-cap increase per upgrade step and +worker efficiency per step
+faith_temple_chain,faith_temple,,Faith Temple,,,,,,,,,,Faith output +1 per temple upgrade step and +worker efficiency per step
+builders_hut_chain,builders_hut,,,Builder's Hut,,,,,,,,,Building lane speed +3 per hut upgrade step

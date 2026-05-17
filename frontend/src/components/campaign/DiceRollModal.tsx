@@ -17,7 +17,7 @@ interface Props {
 const PURPOSE_THEMES: Record<string, { color: string; bg: string; label: string }> = {
   attack:        { color: '#60a5fa', bg: 'rgba(96,165,250,0.15)',   label: 'Attack Roll' },
   damage:        { color: '#f87171', bg: 'rgba(239,68,68,0.15)',    label: 'Damage Roll' },
-  saving_throw:  { color: '#fbbf24', bg: 'rgba(251,191,36,0.15)',   label: 'Saving Throw' },
+  saving_throw:  { color: 'var(--text-gold)', bg: 'rgba(251,191,36,0.15)',   label: 'Saving Throw' },
   ability_check: { color: '#4ade80', bg: 'rgba(74,222,128,0.15)',   label: 'Ability Check' },
   death_save:    { color: '#f97316', bg: 'rgba(249,115,22,0.15)',   label: 'Death Save' },
   initiative:    { color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', label: 'Initiative' },
@@ -429,13 +429,13 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
               style={{
                 padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer',
                 background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.4)',
-                color: '#fbbf24', fontSize: '0.85rem',
+                color: 'var(--text-gold)', fontSize: '0.85rem',
               }}>
               🔄 Request Reroll
             </button>
           )}
           {rerollPending && (
-            <p style={{ textAlign: 'center', color: '#fbbf24', fontSize: '0.8rem', margin: 0 }}>
+            <p style={{ textAlign: 'center', color: 'var(--text-gold)', fontSize: '0.8rem', margin: 0 }}>
               ⏳ Waiting for DM to approve reroll...
             </p>
           )}

@@ -24,6 +24,7 @@ const mountRoutes = require('./routes/mounts');
 const battleMapsRoutes = require('./routes/battleMaps');
 const petRoutes = require('./routes/pets');
 const npcRoutes = require('./routes/npcs');
+const kingdomRoutes = require('./routes/kingdoms');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 const CombatSession = require('./models/CombatSession');
@@ -160,6 +161,7 @@ app.use('/api/mounts', mountRoutes);
 app.use('/api/battle-maps', battleMapsRoutes);
 app.use('/api/pets', petRoutes);
 app.use('/api', npcRoutes);
+app.use('/api/kingdoms', kingdomRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -272,6 +274,17 @@ const startServer = async () => {
       const addMonsterCR = require('./migrations/add_monster_cr');
       const seedDefaultMonsters = require('./migrations/seed_default_monsters');
       const addCombatSystem = require('./migrations/add_combat_system');
+      const addKingdomSystem = require('./migrations/add_kingdom_system');
+      const addKingdomTier1Fields = require('./migrations/add_kingdom_tier1_fields');
+      const addWorkerAssignments = require('./migrations/add_worker_assignments');
+      const addKingdomWorkerResources = require('./migrations/add_kingdom_worker_resources');
+      const addBuildQueue = require('./migrations/add_build_queue');
+      const addResearchSystem = require('./migrations/add_research_system');
+      const addTierUpgradeTimer = require('./migrations/add_tier_upgrade_timer');
+      const addFiefPopulationMaturationSchedule = require('./migrations/add_fief_population_maturation_schedule');
+      const splitFoodWorkersIntoMeatVegetables = require('./migrations/split_food_workers_into_meat_vegetables');
+      const consolidateMeatVegetablesIntoFood = require('./migrations/consolidate_meat_vegetables_into_food');
+      const seedVillageStartingBuffers = require('./migrations/seed_village_starting_buffers');
       
       // Execute migrations in correct order
       const migrations = [
@@ -305,6 +318,22 @@ const startServer = async () => {
         { name: 'addMonsterAbilities', fn: addMonsterAbilities },
         { name: 'addMonsterCR', fn: addMonsterCR },
         { name: 'seedDefaultMonsters', fn: seedDefaultMonsters },
+        { name: 'addKingdomSystem', fn: addKingdomSystem },
+        { name: 'addKingdomTier1Fields', fn: addKingdomTier1Fields },
+        { name: 'addWorkerAssignments', fn: addWorkerAssignments },
+        { name: 'addKingdomWorkerResources', fn: addKingdomWorkerResources },
+        { name: 'addBuildQueue', fn: addBuildQueue },
+        { name: 'addResearchSystem', fn: addResearchSystem },
+        { name: 'addCompletedResearchTracking', fn: require('./migrations/add_completed_research_tracking') },
+        { name: 'addTierUpgradeTimer', fn: addTierUpgradeTimer },
+        { name: 'addTier3Upgrade', fn: require('./migrations/add_tier3_upgrade') },
+        { name: 'addFiefPopulationMaturationSchedule', fn: addFiefPopulationMaturationSchedule },
+        { name: 'splitFoodWorkersIntoMeatVegetables', fn: splitFoodWorkersIntoMeatVegetables },
+        { name: 'consolidateMeatVegetablesIntoFood', fn: consolidateMeatVegetablesIntoFood },
+        { name: 'seedVillageStartingBuffers', fn: seedVillageStartingBuffers },
+        { name: 'addVegetableHarvestState', fn: require('./migrations/add_vegetable_harvest_state') },
+        { name: 'addConsecutiveStarvationDays', fn: require('./migrations/add_consecutive_starvation_days') },
+        { name: 'addFiefPopulationMilitaryColumns', fn: require('./migrations/add_fief_population_military_columns') },
         { name: 'addPlayerArmyTraining', fn: require('./migrations/add_player_army_training') },
         { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') },
         { name: 'addCombatSystem', fn: addCombatSystem },
@@ -332,7 +361,7 @@ const startServer = async () => {
         { name: 'addCharacterGold', fn: require('./migrations/add_character_gold') },
         { name: 'rebalanceArmorAc', fn: require('./migrations/rebalance_armor_ac') },
         { name: 'populateOathknightData', fn: require('./migrations/populate_oathknight_data') },
-        { name: 'dropKingdomTables', fn: require('./migrations/drop_kingdom_tables') },
+        { name: 'addLightingNodes', fn: require('./migrations/add_lighting_nodes') },
       ];
       
       for (const migration of migrations) {
@@ -419,6 +448,9 @@ const startServer = async () => {
 
   // Active battlefield (army combat) map per campaign: campaignId -> mapId (number | null)
   const activeBattlefieldMapState = {};
+
+  // Lighting nodes per campaign: campaignId -> LightingNode[]
+  const campaignLightingNodes = {};
 
   // Rebuild combat cache from any active DB sessions (handles server restarts)
   try {
@@ -684,6 +716,7 @@ const startServer = async () => {
               dotConditions: battleDotState[campaignId] ?? {},
               activeMapId: activeBattleMapState[campaignId] ?? null,
               activeBattlefieldMapId: activeBattlefieldMapState[campaignId] ?? null,
+              lightingNodes: campaignLightingNodes[campaignId] ?? [],
             });
             // Send fresh action economy and conditions from DB so they survive page refreshes
             try {
@@ -1633,6 +1666,17 @@ const startServer = async () => {
           if (battleDarknessState[campaignId]) delete battleDarknessState[campaignId];
           if (activeBattleMapState[campaignId] !== undefined) delete activeBattleMapState[campaignId];
 
+          // Clear combat lighting nodes
+          try {
+            await pool.query('DELETE FROM campaign_lighting_nodes WHERE campaign_id = $1 AND tab = $2', [campaignId, 'combat']);
+            if (campaignLightingNodes[campaignId]) {
+              campaignLightingNodes[campaignId] = campaignLightingNodes[campaignId].filter(n => n.tab !== 'combat');
+            } else {
+              campaignLightingNodes[campaignId] = [];
+            }
+            io.to(`campaign_${campaignId}`).emit('lightingNodesUpdated', { nodes: campaignLightingNodes[campaignId], campaignId });
+          } catch (e) { console.warn('Could not clear combat lighting nodes:', e.message); }
+
           // Reset characters in DB — also clear temp HP
           await pool.query('UPDATE characters SET combat_active = FALSE, initiative = 0, temp_limb_health = NULL WHERE campaign_id = $1', [campaignId]);
 
@@ -2012,6 +2056,48 @@ const startServer = async () => {
           battleDarknessState[campaignId] = clamped;
           io.to(`campaign_${campaignId}`).emit('darknessUpdated', { darknessLevel: clamped, campaignId });
         } catch (error) { console.error('Error setting darkness:', error); }
+      });
+
+      // DM sets lighting nodes for the campaign (light sources and darkness fields)
+      socket.on('setLightingNodes', async (data) => {
+        try {
+          const { campaignId, nodes } = data;
+          if (!Array.isArray(nodes)) return;
+          // Validate and sanitize each node
+          const validNodes = nodes.filter(n =>
+            n && typeof n.id === 'string' && n.id.length <= 100 &&
+            (n.type === 'light' || n.type === 'dark') &&
+            typeof n.x === 'number' && n.x >= 0 && n.x <= 100 &&
+            typeof n.y === 'number' && n.y >= 0 && n.y <= 100 &&
+            typeof n.strength === 'number' && n.strength >= 0 && n.strength <= 1 &&
+            (n.tab === 'combat' || n.tab === 'battlefield')
+          );
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            // Determine which tab(s) are being updated — replace only those tabs
+            const tabs = [...new Set(validNodes.map(n => n.tab))];
+            // If nodes array is empty but we still want to clear, clear based on existing cache tabs
+            const tabsToClear = tabs.length > 0 ? tabs : ['combat', 'battlefield'];
+            for (const tab of tabsToClear) {
+              await client.query('DELETE FROM campaign_lighting_nodes WHERE campaign_id = $1 AND tab = $2', [campaignId, tab]);
+            }
+            for (const n of validNodes) {
+              await client.query(
+                'INSERT INTO campaign_lighting_nodes (id, campaign_id, type, x, y, strength, tab) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+                [n.id, campaignId, n.type, n.x, n.y, n.strength, n.tab]
+              );
+            }
+            await client.query('COMMIT');
+          } catch (dbErr) {
+            await client.query('ROLLBACK');
+            throw dbErr;
+          } finally {
+            client.release();
+          }
+          campaignLightingNodes[campaignId] = validNodes;
+          io.to(`campaign_${campaignId}`).emit('lightingNodesUpdated', { nodes: validNodes, campaignId });
+        } catch (error) { console.error('Error setting lighting nodes:', error); }
       });
 
       // DM confirms DOT damage amount for a tick (fixed or after manual determination)

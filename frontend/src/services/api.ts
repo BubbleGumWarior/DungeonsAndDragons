@@ -413,12 +413,17 @@ export const campaignAPI = {
     return response.data;
   },
 
-  getCurrentDay: async (campaignId: number): Promise<{ current_day: number }> => {
+  getCurrentDay: async (campaignId: number): Promise<CampaignDayInfo> => {
     const response = await api.get(`/campaigns/${campaignId}/day`);
     return response.data;
   },
-  resetDay: async (campaignId: number): Promise<{ current_day: number }> => {
+  resetDay: async (campaignId: number): Promise<CampaignDayInfo> => {
     const response = await api.post(`/campaigns/${campaignId}/reset-day`);
+    return response.data;
+  },
+
+  getSeason: async (campaignId: number): Promise<CampaignDayInfo> => {
+    const response = await api.get(`/campaigns/${campaignId}/season`);
     return response.data;
   },
 
@@ -1225,10 +1230,94 @@ export const battleMapsAPI = {
 
 export interface AdvanceDaysSummary {
   newDay: number;
+  dayOfYear?: number;
+  season?: 'Spring' | 'Summer' | 'Autumn' | 'Winter';
+  seasonEffects?: Record<string, number>;
+  seasonChanged?: boolean;
+  previousSeason?: 'Spring' | 'Summer' | 'Autumn' | 'Winter';
+  crossedSeasons?: Array<'Spring' | 'Summer' | 'Autumn' | 'Winter'>;
   restType?: string;
   completedBuildings: Array<{ name: string; level: number; fiefId: number; fiefName: string }>;
+  completedResearch?: Array<{ fiefId: number; fiefName: string; researchId: string }>;
+  completedTierUpgrades?: Array<{ fiefId: number; fiefName: string; newTier: number }>;
   resourcesGained: Record<number, unknown>;
   populationGained: Record<number, number>;
+}
+
+export interface CampaignDayInfo {
+  current_day: number;
+  day_of_year?: number;
+  season?: 'Spring' | 'Summer' | 'Autumn' | 'Winter';
+  season_effects?: Record<string, number>;
+}
+
+export interface KingdomFief {
+  id: number;
+  kingdom_id: number;
+  name: string;
+  tier: number;
+  tier_upgrade_days_remaining?: number;
+  tier_upgrade_days_remaining_3?: number;
+  population: number;
+  assignable_population?: number;
+  underage_population?: number;
+  sick_injured_population?: number;
+  soldiers?: number;
+  prisoners?: number;
+  slaves?: number;
+  population_maturation_schedule?: Record<string, number>;
+  is_capital: boolean;
+  stored_resources?: Record<string, number>;
+  storage_capacity?: number;
+  worker_assignments?: Record<string, number>;
+  slave_worker_assignments?: Record<string, number>;
+  unlocked_resources?: Record<string, boolean>;
+  max_workers_per_resource?: Record<string, number>;
+  buildings?: Array<Record<string, any>>;
+  researchQueue?: Array<{
+    id: number;
+    research_id: string;
+    status: 'queued' | 'active' | 'completed';
+    queue_position: number | null;
+    points_accumulated: number;
+    campaign_day_started: number | null;
+    campaign_day_completed: number | null;
+  }>;
+  availableResearch?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    pointsRequired: number;
+    tierRequired: number;
+    prerequisites: string[];
+    isCompleted: boolean;
+    isQueuedOrActive: boolean;
+  }>;
+  availableBuildings?: Array<Record<string, any>>;
+  availableUpgrades?: Array<{
+    buildingId: number;
+    currentType: string;
+    currentName: string;
+    targetKey: string;
+    targetName: string;
+    researchRequired: string;
+    days: number;
+    cost: Record<string, number>;
+    canUpgrade: boolean;
+    reason?: string;
+  }>;
+  completed_research?: string[];
+  vegetable_harvest_state?: { day_in_cycle: number; accumulated_worker_days: number };
+}
+
+export interface KingdomSummary {
+  id: number;
+  campaign_id: number;
+  player_id: number;
+  name: string | null;
+  is_active: boolean;
+  player_username?: string;
+  fiefs: KingdomFief[];
 }
 
 // ─── Pets ─────────────────────────────────────────────────────────────────
@@ -1290,6 +1379,86 @@ export const petAPI = {
 
   deletePet: async (petId: number): Promise<{ message: string }> => {
     const response = await api.delete(`/pets/${petId}`);
+    return response.data;
+  },
+};
+
+export const kingdomAPI = {
+  getCampaignKingdoms: async (campaignId: number): Promise<{ kingdoms: KingdomSummary[] }> => {
+    const response = await api.get(`/kingdoms/campaign/${campaignId}`);
+    return response.data;
+  },
+
+  grantKingdoms: async (campaignId: number, playerIds: number[]): Promise<{ kingdoms: KingdomSummary[] }> => {
+    const response = await api.post('/kingdoms/grant', { campaignId, playerIds });
+    return response.data;
+  },
+
+  nameKingdom: async (kingdomId: number, name: string, capitalName: string): Promise<{ kingdom: KingdomSummary }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/name`, { name, capitalName });
+    return response.data;
+  },
+
+  deleteKingdom: async (kingdomId: number): Promise<{ message: string; kingdomId: number; playerId: number }> => {
+    const response = await api.delete(`/kingdoms/${kingdomId}`);
+    return response.data;
+  },
+
+  getFief: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.get(`/kingdoms/fiefs/${fiefId}`);
+    return response.data;
+  },
+
+  updateWorkers: async (fiefId: number, workerAssignments: Record<string, number>): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/workers`, { workerAssignments });
+    return response.data;
+  },
+
+  updateSlaveWorkers: async (fiefId: number, workerAssignments: Record<string, number>): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/slave-workers`, { workerAssignments });
+    return response.data;
+  },
+
+  trainSoldiers: async (fiefId: number, amount: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/train`, { amount });
+    return response.data;
+  },
+
+  convertPrisoners: async (fiefId: number, amount: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/prisoners/convert`, { amount });
+    return response.data;
+  },
+
+  queueBuilding: async (fiefId: number, buildingType: string): Promise<{ building: Record<string, any>; stored_resources: Record<string, number> }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/buildings`, { buildingType });
+    return response.data;
+  },
+
+  startResearch: async (fiefId: number, researchId: string): Promise<{ research: Record<string, any> }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/research/start`, { researchId });
+    return response.data;
+  },
+
+  startTierUpgrade: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/upgrade-tier`);
+    return response.data;
+  },
+
+  startTier3Upgrade: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/upgrade-tier-3`);
+    return response.data;
+  },
+
+  upgradeBuilding: async (fiefId: number, buildingId: number): Promise<{ building: Record<string, any>; stored_resources: Record<string, number> }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/buildings/${buildingId}/upgrade`);
+    return response.data;
+  },
+
+  dmAdjustFief: async (
+    fiefId: number,
+    payload: { resourceUpdates?: Record<string, number>; populationDelta?: number }
+  ): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/dm-adjust`, payload);
     return response.data;
   },
 };
