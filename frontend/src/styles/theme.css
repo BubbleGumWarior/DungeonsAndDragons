@@ -3348,6 +3348,15 @@ label:has(input[type="checkbox"]:disabled) {
   border-radius: 6px;
 }
 
+.equipment-slot.hands {
+  width: 16%;
+  height: 10%;
+  top: 47%;
+  left: 42%;
+  border-radius: 8px;
+  border-color: rgba(var(--theme-accent-rgb), 0.6);
+}
+
 /* Equipment slot tooltips */
 .equipment-slot::before {
   content: attr(data-slot-name);
@@ -3547,6 +3556,11 @@ label:has(input[type="checkbox"]:disabled) {
     right: 10%;
   }
   
+  .equipment-slot.hands {
+    width: 18%;
+    height: 12%;
+  }
+
   .equipment-slot.left-foot {
     width: 16%;
     height: 10%;
@@ -3623,6 +3637,11 @@ label:has(input[type="checkbox"]:disabled) {
     right: 8%;
   }
   
+  .equipment-slot.hands {
+    width: 18%;
+    height: 12%;
+  }
+
   .equipment-slot.left-foot {
     width: 16%;
     height: 12%;

@@ -469,6 +469,43 @@ router.get('/inventory/item/:itemName', authenticateToken, async (req, res) => {
   }
 });
 
+// Update an inventory item — DM only
+router.put('/inventory/item/:itemName', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only the Dungeon Master can update inventory items' });
+    }
+    const { itemName } = req.params;
+    const updateData = req.body;
+    const updated = await Inventory.updateItem(decodeURIComponent(itemName), updateData);
+    if (!updated) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating inventory item:', error);
+    res.status(500).json({ error: 'Failed to update inventory item' });
+  }
+});
+
+// Delete an inventory item — DM only
+router.delete('/inventory/item/:itemName', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only the Dungeon Master can delete inventory items' });
+    }
+    const { itemName } = req.params;
+    const deleted = await Inventory.deleteItem(decodeURIComponent(itemName));
+    if (!deleted) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    res.json({ message: 'Item deleted', item_name: deleted.item_name });
+  } catch (error) {
+    console.error('Error deleting inventory item:', error);
+    res.status(500).json({ error: 'Failed to delete inventory item' });
+  }
+});
+
 // Manually adjust character health (heal or damage) — DM only
 router.patch('/:id/health', authenticateToken, async (req, res) => {
   try {
@@ -656,7 +693,8 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
     
     // Apply armor bonuses from equipped items
     for (const [slot, item] of Object.entries(equippedWithSlots)) {
-      if (item && item.limb_armor_class) {
+      if (!item) continue;
+      if (item.limb_armor_class) {
         for (const [limb, ac] of Object.entries(item.limb_armor_class)) {
           if (limb === 'hands') {
             // Apply to the specific hand slot where it's equipped
@@ -664,11 +702,21 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
               limbAC.main_hand = ac;
             } else if (slot === 'off_hand') {
               limbAC.off_hand = ac;
+            } else if (slot === 'hands') {
+              limbAC.main_hand = ac;
             }
           } else if (limbAC.hasOwnProperty(limb)) {
             limbAC[limb] = ac;
           }
         }
+      } else if (item.armor_class) {
+        // Fallback for items without limb_armor_class: derive bonus from the slot they occupy
+        if (slot === 'head') limbAC.head = item.armor_class;
+        else if (slot === 'chest') limbAC.chest = item.armor_class;
+        else if (slot === 'feet') limbAC.feet = item.armor_class;
+        else if (slot === 'main_hand') limbAC.main_hand = item.armor_class;
+        else if (slot === 'off_hand') limbAC.off_hand = item.armor_class;
+        else if (slot === 'hands') limbAC.main_hand = item.armor_class;
       }
     }
     
@@ -703,7 +751,7 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Item name and slot are required' });
     }
     
-    const validSlots = ['head', 'chest', 'legs', 'feet', 'main_hand', 'off_hand', 'lower_left_hand', 'lower_right_hand'];
+    const validSlots = ['head', 'chest', 'legs', 'feet', 'hands', 'main_hand', 'off_hand', 'lower_left_hand', 'lower_right_hand'];
     if (!validSlots.includes(slot)) {
       return res.status(400).json({ error: 'Invalid slot. Valid slots are: ' + validSlots.join(', ') });
     }
@@ -729,19 +777,27 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
     const slotItemCompatibility = {
       head: ['Armor'],
       chest: ['Armor'],
-      legs: ['Armor'], 
+      legs: ['Armor'],
       feet: ['Armor'],
+      hands: ['Armor'],             // Gloves / gauntlets
       main_hand: ['Weapon', 'Tool'], // Only weapons and tools in main hand
-      off_hand: ['Weapon', 'Tool', 'Armor'], // Weapons, tools, and shields (armor subcategory)
+      off_hand: ['Weapon', 'Tool', 'Armor'], // Weapons, tools, shields, and gauntlets
       lower_left_hand: ['Weapon', 'Tool'], // Thri-kreen lower arms can hold weapons/tools
       lower_right_hand: ['Weapon', 'Tool']
     };
 
-    // Special validation for off-hand armor - only shields allowed
-    if (slot === 'off_hand' && item.category === 'Armor' && (!item.subcategory || !item.subcategory.toLowerCase().includes('shield'))) {
-      return res.status(400).json({ 
-        error: `Only shields can be equipped in the off-hand slot for armor items.` 
-      });
+    // Special validation for off-hand armor - only shields OR gloves/gauntlets allowed
+    if (slot === 'off_hand' && item.category === 'Armor') {
+      const subcat = (item.subcategory || '').toLowerCase();
+      const iname = item.item_name.toLowerCase();
+      const isShield = subcat.includes('shield');
+      const isHandArmor = subcat.includes('glove') || subcat.includes('gauntlet') || subcat.includes('bracer')
+        || iname.includes('glove') || iname.includes('gauntlet') || iname.includes('bracer');
+      if (!isShield && !isHandArmor) {
+        return res.status(400).json({ 
+          error: `Only shields or hand armor (gloves, gauntlets) can be equipped in the off-hand slot.` 
+        });
+      }
     }
 
     if (!slotItemCompatibility[slot] || !slotItemCompatibility[slot].includes(item.category)) {
@@ -759,6 +815,14 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       if (subcategory.includes('shield')) {
         if (slot !== 'off_hand') {
           return res.status(400).json({ error: 'Shields can only be equipped in the off-hand slot' });
+        }
+      }
+      // Glove/gauntlet validation - hand armor goes to 'hands' or 'off_hand'
+      else if (subcategory.includes('glove') || subcategory.includes('gauntlet') || subcategory.includes('bracer') ||
+               item.item_name.toLowerCase().includes('glove') || item.item_name.toLowerCase().includes('gauntlet') ||
+               item.item_name.toLowerCase().includes('bracer')) {
+        if (slot !== 'hands' && slot !== 'off_hand') {
+          return res.status(400).json({ error: 'Gloves and gauntlets can only be equipped in the hands or off-hand slot' });
         }
       }
       // Boot validation - boots should only go to feet
@@ -800,6 +864,16 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
       }
     }
     
+    if (slot === 'hands' && item.category === 'Armor') {
+      const subcategory = item.subcategory ? item.subcategory.toLowerCase() : '';
+      const itemName = item.item_name.toLowerCase();
+      const isHandArmor = subcategory.includes('glove') || subcategory.includes('gauntlet') || subcategory.includes('bracer')
+        || itemName.includes('glove') || itemName.includes('gauntlet') || itemName.includes('bracer');
+      if (!isHandArmor) {
+        return res.status(400).json({ error: 'Only hand armor (gloves, gauntlets, bracers) can be equipped in hands slot' });
+      }
+    }
+
     if (slot === 'feet' && item.category === 'Armor') {
       const subcategory = item.subcategory ? item.subcategory.toLowerCase() : '';
       const itemName = item.item_name.toLowerCase();
@@ -887,7 +961,7 @@ router.post('/:id/unequip', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Slot is required' });
     }
     
-    const validSlots = ['head', 'chest', 'legs', 'feet', 'main_hand', 'off_hand', 'lower_left_hand', 'lower_right_hand'];
+    const validSlots = ['head', 'chest', 'legs', 'feet', 'hands', 'main_hand', 'off_hand', 'lower_left_hand', 'lower_right_hand'];
     if (!validSlots.includes(slot)) {
       return res.status(400).json({ error: 'Invalid slot. Valid slots are: ' + validSlots.join(', ') });
     }

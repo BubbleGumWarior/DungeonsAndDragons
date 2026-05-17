@@ -585,6 +585,16 @@ export const inventoryAPI = {
   getItemByName: async (itemName: string): Promise<InventoryItem> => {
     const response = await api.get(`/characters/inventory/item/${encodeURIComponent(itemName)}`);
     return response.data;
+  },
+
+  updateItem: async (itemName: string, updates: Partial<InventoryItem>): Promise<InventoryItem> => {
+    const response = await api.put(`/characters/inventory/item/${encodeURIComponent(itemName)}`, updates);
+    return response.data;
+  },
+
+  deleteItem: async (itemName: string): Promise<{ message: string; item_name: string }> => {
+    const response = await api.delete(`/characters/inventory/item/${encodeURIComponent(itemName)}`);
+    return response.data;
   }
 };
 

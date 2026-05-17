@@ -573,6 +573,10 @@ const CampaignView: React.FC = () => {
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [allInventoryItems, setAllInventoryItems] = useState<InventoryItem[]>([]);
   const [addItemSearchTerm, setAddItemSearchTerm] = useState('');
+  const [addItemCategoryFilter, setAddItemCategoryFilter] = useState<string>('all');
+  const [addItemSelectedItem, setAddItemSelectedItem] = useState<InventoryItem | null>(null);
+  const [addItemEditMode, setAddItemEditMode] = useState(false);
+  const [addItemEditData, setAddItemEditData] = useState<Partial<InventoryItem>>({});
   const [showCreateCustomModal, setShowCreateCustomModal] = useState(false);
   const [customItemData, setCustomItemData] = useState<Partial<InventoryItem>>({
     item_name: '',
@@ -3184,6 +3188,8 @@ const CampaignView: React.FC = () => {
       // Refresh equipment details
       loadEquipmentDetails(characterId);
       setShowAddItemModal(false);
+      setAddItemSelectedItem(null);
+      setAddItemEditMode(false);
     } catch (error) {
       console.error('Error adding item to inventory:', error);
       toast('Failed to add item to inventory');
@@ -3203,9 +3209,42 @@ const CampaignView: React.FC = () => {
     }
   };
 
-  // Create custom item and add to inventory (DM only)
-  const handleCreateCustomItem = async (characterId: number) => {
+  // Update an existing inventory catalog item (DM only)
+  const handleUpdateInventoryItem = async (originalItemName: string) => {
     try {
+      if (!addItemEditData.item_name) {
+        toast('Item name is required');
+        return;
+      }
+      const updated = await inventoryAPI.updateItem(originalItemName, addItemEditData);
+      setAllInventoryItems(prev => prev.map(i => i.item_name === originalItemName ? updated : i));
+      setAddItemSelectedItem(updated);
+      setAddItemEditMode(false);
+      toast('Item updated');
+    } catch (error) {
+      console.error('Error updating inventory item:', error);
+      toast('Failed to update item');
+    }
+  };
+
+  // Delete an inventory catalog item (DM only)
+  const handleDeleteInventoryItem = async (itemName: string) => {
+    try {
+      await inventoryAPI.deleteItem(itemName);
+      setAllInventoryItems(prev => prev.filter(i => i.item_name !== itemName));
+      if (addItemSelectedItem?.item_name === itemName) {
+        setAddItemSelectedItem(null);
+        setAddItemEditMode(false);
+      }
+      toast('Item deleted from catalog');
+    } catch (error) {
+      console.error('Error deleting inventory item:', error);
+      toast('Failed to delete item');
+    }
+  };
+
+  // Create custom item and add to inventory (DM only)
+  const handleCreateCustomItem = async (characterId: number) => {    try {
       // Validate required fields
       if (!customItemData.item_name || !customItemData.description) {
         toast('Item name and description are required');
@@ -3255,8 +3294,8 @@ const CampaignView: React.FC = () => {
   };
 
   // Load equipment details for a character
-  const loadEquipmentDetails = useCallback(async (characterId: number) => {
-    if (equipmentDetails[characterId]) {
+  const loadEquipmentDetails = useCallback(async (characterId: number, forceRefresh = false) => {
+    if (!forceRefresh && equipmentDetails[characterId]) {
       return; // Already loaded
     }
     
@@ -3340,7 +3379,7 @@ const CampaignView: React.FC = () => {
       }) => {
         // Refresh equipped items for the updated character
         loadEquippedItems(data.characterId);
-        loadEquipmentDetails(data.characterId);
+        loadEquipmentDetails(data.characterId, true);
       });
 
       // Listen for inventory updates
@@ -4926,6 +4965,7 @@ const CampaignView: React.FC = () => {
     const equipmentSlots = [
       { id: 'head', name: 'Helmet/Hat', className: 'head', icon: '🛡️' },
       { id: 'chest', name: 'Armor/Clothing', className: 'chest', icon: '🛡️' },
+      { id: 'hands', name: 'Gloves/Gauntlets', className: 'hands', icon: '🧤' },
       { id: 'main_hand', name: 'Main Hand', className: 'left-hand', icon: '⚔️' },
       { id: 'off_hand', name: 'Off Hand', className: 'right-hand', icon: '⚔️' },
       ...(isFourArmed ? [
@@ -4948,7 +4988,7 @@ const CampaignView: React.FC = () => {
           await characterAPI.unequipItem(character.id, slotId);
           // Refresh equipped items and equipment list
           loadEquippedItems(character.id);
-          loadEquipmentDetails(character.id);
+          loadEquipmentDetails(character.id, true);
           // Emit socket update
           if (socket) {
             socket.emit('equipmentUpdate', {
@@ -5019,7 +5059,7 @@ const CampaignView: React.FC = () => {
           await characterAPI.unequipItem(character.id, draggedItem.fromSlot);
           await characterAPI.equipItem(character.id, draggedItem.item.item_name, actualSlotId);
           loadEquippedItems(character.id);
-          loadEquipmentDetails(character.id);
+          loadEquipmentDetails(character.id, true);
           if (socket) {
             socket.emit('equipmentUpdate', {
               campaignId: currentCampaign?.campaign.id,
@@ -5037,7 +5077,7 @@ const CampaignView: React.FC = () => {
         try {
           await characterAPI.equipItem(character.id, draggedItem.item.item_name, actualSlotId);
           loadEquippedItems(character.id);
-          loadEquipmentDetails(character.id);
+          loadEquipmentDetails(character.id, true);
           if (socket) {
             socket.emit('equipmentUpdate', {
               campaignId: currentCampaign?.campaign.id,
@@ -5052,11 +5092,11 @@ const CampaignView: React.FC = () => {
           toast('Cannot equip this item in this slot. Check item type compatibility.');
         }
       }
-      
+
       setDraggedItem(null);
     };
 
-    const handleSlotTouchStart = (e: React.TouchEvent, slotId: string) => {
+    const handleSlotTouchStart= (e: React.TouchEvent, slotId: string) => {
       e.preventDefault();
       // Prevent default to allow custom touch handling
     };
@@ -5093,7 +5133,7 @@ const CampaignView: React.FC = () => {
           await characterAPI.unequipItem(character.id, draggedItem.fromSlot);
           await characterAPI.equipItem(character.id, draggedItem.item.item_name, finalSlotId);
           loadEquippedItems(character.id);
-          loadEquipmentDetails(character.id);
+          loadEquipmentDetails(character.id, true);
           if (socket) {
             socket.emit('equipmentUpdate', {
               campaignId: currentCampaign?.campaign.id,
@@ -5111,7 +5151,7 @@ const CampaignView: React.FC = () => {
         try {
           await characterAPI.equipItem(character.id, draggedItem.item.item_name, finalSlotId);
           loadEquippedItems(character.id);
-          loadEquipmentDetails(character.id);
+          loadEquipmentDetails(character.id, true);
           if (socket) {
             socket.emit('equipmentUpdate', {
               campaignId: currentCampaign?.campaign.id,
@@ -5154,7 +5194,7 @@ const CampaignView: React.FC = () => {
       try {
         await characterAPI.unequipItem(character.id, draggedItem.fromSlot);
         loadEquippedItems(character.id);
-        loadEquipmentDetails(character.id);
+        loadEquipmentDetails(character.id, true);
         if (socket) {
           socket.emit('equipmentUpdate', {
             campaignId: currentCampaign?.campaign.id,
@@ -15228,110 +15268,280 @@ const CampaignView: React.FC = () => {
         {/* Add Item Modal */}
         {showAddItemModal && (
           <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, backdropFilter: 'blur(4px)'
           }}>
             <div style={{
-              background: 'var(--background-dark)',
+              background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98) 0%, rgba(30, 30, 40, 0.98) 100%)',
               borderRadius: '1rem',
-              padding: '2rem',
-              width: '90%',
-              maxWidth: '600px',
-              maxHeight: '80vh',
-              overflow: 'auto',
-              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)'
+              width: '95%', maxWidth: '1100px', height: '85vh',
+              display: 'flex', flexDirection: 'column',
+              border: '2px solid rgba(var(--theme-accent-rgb), 0.4)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 60px rgba(var(--theme-accent-rgb), 0.1)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>Add Item to Inventory</h4>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.75rem', borderBottom: '2px solid rgba(var(--theme-accent-rgb), 0.3)', flexShrink: 0 }}>
+                <h4 style={{ color: 'var(--text-gold)', margin: 0, fontSize: '1.3rem' }}>📦 Item Catalog</h4>
                 <button
-                  onClick={() => setShowAddItemModal(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    fontSize: '1.5rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-              
-              <div style={{ marginBottom: '1rem' }}>
-                <input
-                  type="text"
-                  placeholder="Search items..."
-                  value={addItemSearchTerm}
-                  onChange={(e) => setAddItemSearchTerm(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
-                    borderRadius: '0.5rem',
-                    color: 'white',
-                    fontSize: '0.9rem'
-                  }}
-                />
+                  onClick={() => { setShowAddItemModal(false); setAddItemSelectedItem(null); setAddItemEditMode(false); }}
+                  style={{ background: 'rgba(220,53,69,0.2)', border: '1px solid rgba(220,53,69,0.4)', borderRadius: '50%', width: '32px', height: '32px', color: '#f5c6cb', fontSize: '1.25rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >×</button>
               </div>
 
-              <div style={{ 
-                display: 'grid', 
-                gap: '0.5rem',
-                maxHeight: '400px',
-                overflow: 'auto'
-              }}>
-                {allInventoryItems
-                  .filter(item => 
-                    addItemSearchTerm === '' || 
-                    item.item_name.toLowerCase().includes(addItemSearchTerm.toLowerCase()) ||
-                    item.category.toLowerCase().includes(addItemSearchTerm.toLowerCase()) ||
-                    (item.subcategory && item.subcategory.toLowerCase().includes(addItemSearchTerm.toLowerCase()))
-                  )
-                  .map((item, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      padding: '1rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '0.5rem',
-                      border: '1px solid rgba(var(--theme-accent-rgb), 0.2)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                      e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.4)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                      e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.2)';
-                    }}
-                    onClick={() => selectedCharacterData && handleAddItemToInventory(selectedCharacterData.id, item.item_name)}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                          {item.item_name}
+              {/* Two-panel body */}
+              <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+
+                {/* LEFT PANEL: item list */}
+                <div style={{ width: '38%', borderRight: '1px solid rgba(var(--theme-accent-rgb), 0.2)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+
+                  {/* Search */}
+                  <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(var(--theme-accent-rgb), 0.15)', flexShrink: 0 }}>
+                    <input
+                      type="text"
+                      placeholder="Search items..."
+                      value={addItemSearchTerm}
+                      onChange={e => setAddItemSearchTerm(e.target.value)}
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.5rem', color: 'white', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  {/* Category filter chips */}
+                  <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', borderBottom: '1px solid rgba(var(--theme-accent-rgb), 0.15)', flexShrink: 0 }}>
+                    {['all', 'Weapon', 'Armor', 'Tool', 'General', 'Magic Item', 'Consumable'].map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setAddItemCategoryFilter(cat)}
+                        style={{ padding: '0.2rem 0.55rem', fontSize: '0.68rem', borderRadius: '0.75rem', cursor: 'pointer', border: '1px solid rgba(var(--theme-accent-rgb), 0.4)', background: addItemCategoryFilter === cat ? 'rgba(var(--theme-accent-rgb), 0.3)' : 'rgba(255,255,255,0.05)', color: addItemCategoryFilter === cat ? 'var(--text-gold)' : 'var(--text-muted)', fontWeight: addItemCategoryFilter === cat ? 'bold' : 'normal', transition: 'all 0.15s ease' }}
+                      >{cat === 'all' ? 'All' : cat}</button>
+                    ))}
+                  </div>
+
+                  {/* Item list */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '0.375rem' }}>
+                    {allInventoryItems
+                      .filter(item => {
+                        const q = addItemSearchTerm.toLowerCase();
+                        const matchesSearch = q === '' || item.item_name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || (item.subcategory && item.subcategory.toLowerCase().includes(q));
+                        const matchesCat = addItemCategoryFilter === 'all' || item.category === addItemCategoryFilter;
+                        return matchesSearch && matchesCat;
+                      })
+                      .map((item, idx) => {
+                        const isSelected = addItemSelectedItem?.item_name === item.item_name;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => { setAddItemSelectedItem(item); setAddItemEditMode(false); }}
+                            style={{ padding: '0.55rem 0.75rem', borderRadius: '0.375rem', marginBottom: '0.2rem', cursor: 'pointer', border: '1px solid', borderColor: isSelected ? 'rgba(var(--theme-accent-rgb), 0.6)' : 'transparent', background: isSelected ? 'rgba(var(--theme-accent-rgb), 0.15)' : 'rgba(255,255,255,0.03)', transition: 'all 0.15s ease' }}
+                            onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.25)'; } }}
+                            onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'transparent'; } }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                              <div style={{ color: isSelected ? 'var(--text-gold)' : 'var(--text-secondary)', fontWeight: isSelected ? 'bold' : 'normal', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.item_name}</div>
+                              {item.rarity && item.rarity !== 'Common' && (
+                                <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem', borderRadius: '0.5rem', flexShrink: 0, background: item.rarity === 'Rare' ? 'rgba(59,130,246,0.2)' : item.rarity === 'Uncommon' ? 'rgba(34,197,94,0.2)' : 'rgba(var(--theme-accent-rgb),0.2)', color: item.rarity === 'Rare' ? '#60a5fa' : item.rarity === 'Uncommon' ? '#4ade80' : 'var(--text-gold)', border: '1px solid currentColor' }}>{item.rarity}</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{item.category}{item.subcategory && ` • ${item.subcategory}`}</div>
+                          </div>
+                        );
+                      })
+                    }
+                  </div>
+                </div>
+
+                {/* RIGHT PANEL: detail / edit */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+                  {!addItemSelectedItem ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '0.75rem', padding: '2rem' }}>
+                      <div style={{ fontSize: '3rem', opacity: 0.3 }}>📖</div>
+                      <p style={{ margin: 0, fontSize: '0.9rem', textAlign: 'center' }}>Select an item from the list to see its details</p>
+                    </div>
+                  ) : addItemEditMode ? (
+                    /* EDIT FORM */
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+                      <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem', marginTop: 0 }}>✏️ Edit: {addItemSelectedItem.item_name}</h5>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.7rem', marginBottom: '0.7rem' }}>
+                        {[
+                          { label: 'Name', key: 'item_name', type: 'text' },
+                          { label: 'Subcategory', key: 'subcategory', type: 'text' },
+                          { label: 'Damage Dice', key: 'damage_dice', type: 'text', placeholder: 'e.g. 1d8' },
+                          { label: 'Damage Type', key: 'damage_type', type: 'text', placeholder: 'e.g. Slashing' },
+                          { label: 'Armor Class', key: 'armor_class', type: 'number' },
+                          { label: 'Weight (lb)', key: 'weight', type: 'number', step: '0.1' },
+                          { label: 'Cost (cp)', key: 'cost_cp', type: 'number' },
+                          { label: 'Str Requirement', key: 'strength_requirement', type: 'number' },
+                        ].map(({ label, key, type, placeholder, step }: any) => (
+                          <div key={key}>
+                            <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 'bold', textTransform: 'uppercase' }}>{label}</label>
+                            <input
+                              type={type}
+                              step={step}
+                              placeholder={placeholder}
+                              value={(addItemEditData as any)[key] ?? ''}
+                              onChange={e => setAddItemEditData(d => ({ ...d, [key]: type === 'number' ? (e.target.value ? (step ? parseFloat(e.target.value) : parseInt(e.target.value)) : undefined) : e.target.value }))}
+                              style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.375rem', color: 'white', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        ))}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Category</label>
+                          <select value={addItemEditData.category ?? 'General'} onChange={e => setAddItemEditData(d => ({...d, category: e.target.value}))}
+                            style={{ width: '100%', padding: '0.5rem', background: 'rgba(20,20,30,0.95)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.375rem', color: 'white', fontSize: '0.85rem' }}>
+                            {['Weapon','Armor','Tool','General','Magic Item','Consumable'].map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
                         </div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                          {item.category} {item.subcategory && `• ${item.subcategory}`}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Rarity</label>
+                          <select value={addItemEditData.rarity ?? 'Common'} onChange={e => setAddItemEditData(d => ({...d, rarity: e.target.value}))}
+                            style={{ width: '100%', padding: '0.5rem', background: 'rgba(20,20,30,0.95)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.375rem', color: 'white', fontSize: '0.85rem' }}>
+                            {['Common','Uncommon','Rare','Very Rare','Legendary'].map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
                         </div>
                       </div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                        Click to add
+                      <div style={{ marginBottom: '0.7rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Description</label>
+                        <textarea
+                          rows={4}
+                          value={addItemEditData.description ?? ''}
+                          onChange={e => setAddItemEditData(d => ({...d, description: e.target.value}))}
+                          style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.375rem', color: 'white', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
+                        <input type="checkbox" id="editStealthDisadv" checked={addItemEditData.stealth_disadvantage ?? false} onChange={e => setAddItemEditData(d => ({...d, stealth_disadvantage: e.target.checked}))} style={{ accentColor: 'var(--theme-accent)', width: '16px', height: '16px' }} />
+                        <label htmlFor="editStealthDisadv" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}>Stealth Disadvantage</label>
+                        <input type="checkbox" id="editAttunement" checked={addItemEditData.attunement_required ?? false} onChange={e => setAddItemEditData(d => ({...d, attunement_required: e.target.checked}))} style={{ accentColor: 'var(--theme-accent)', width: '16px', height: '16px', marginLeft: '0.75rem' }} />
+                        <label htmlFor="editAttunement" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}>Requires Attunement</label>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setAddItemEditMode(false)}
+                          style={{ padding: '0.5rem 1.25rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                        <button onClick={() => handleUpdateInventoryItem(addItemSelectedItem.item_name)}
+                          style={{ padding: '0.5rem 1.25rem', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '0.5rem', color: '#4ade80', fontSize: '0.85rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                          Save Changes
+                        </button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    /* DETAIL VIEW */
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {/* Item header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <h4 style={{ color: 'var(--text-gold)', margin: '0 0 0.3rem', fontSize: '1.25rem', lineHeight: '1.3' }}>{addItemSelectedItem.item_name}</h4>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{addItemSelectedItem.category}{addItemSelectedItem.subcategory && ` • ${addItemSelectedItem.subcategory}`}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          {addItemSelectedItem.rarity && addItemSelectedItem.rarity !== 'Common' && (
+                            <span style={{ fontSize: '0.7rem', padding: '0.25rem 0.6rem', borderRadius: '0.75rem', background: addItemSelectedItem.rarity === 'Rare' ? 'rgba(59,130,246,0.2)' : addItemSelectedItem.rarity === 'Uncommon' ? 'rgba(34,197,94,0.2)' : 'rgba(var(--theme-accent-rgb),0.2)', color: addItemSelectedItem.rarity === 'Rare' ? '#60a5fa' : addItemSelectedItem.rarity === 'Uncommon' ? '#4ade80' : 'var(--text-gold)', border: '1px solid currentColor' }}>{addItemSelectedItem.rarity}</span>
+                          )}
+                          {user?.role === 'Dungeon Master' && (
+                            <>
+                              <button
+                                onClick={() => { setAddItemEditData({...addItemSelectedItem}); setAddItemEditMode(true); }}
+                                style={{ padding: '0.3rem 0.65rem', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '0.4rem', color: '#60a5fa', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.35)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.2)'; }}
+                              >✏️ Edit</button>
+                              <button
+                                onClick={() => { if (window.confirm(`Delete "${addItemSelectedItem.item_name}" from the item catalog? This cannot be undone.`)) handleDeleteInventoryItem(addItemSelectedItem.item_name); }}
+                                style={{ padding: '0.3rem 0.65rem', background: 'rgba(220,53,69,0.2)', border: '1px solid rgba(220,53,69,0.4)', borderRadius: '0.4rem', color: '#f5c6cb', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,53,69,0.35)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,53,69,0.2)'; }}
+                              >🗑 Delete</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      {addItemSelectedItem.description && (
+                        <div style={{ padding: '0.875rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: '1.55' }}>
+                          {addItemSelectedItem.description}
+                        </div>
+                      )}
+
+                      {/* Stats grid */}
+                      {(addItemSelectedItem.damage_dice || addItemSelectedItem.armor_class || addItemSelectedItem.weight || addItemSelectedItem.cost_cp || addItemSelectedItem.strength_requirement || addItemSelectedItem.range_normal) && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '0.5rem' }}>
+                          {addItemSelectedItem.damage_dice && (
+                            <div style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.375rem', border: '1px solid rgba(var(--theme-accent-rgb),0.15)' }}>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.2rem' }}>Damage</div>
+                              <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{addItemSelectedItem.damage_dice}</div>
+                              {addItemSelectedItem.damage_type && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{addItemSelectedItem.damage_type}</div>}
+                            </div>
+                          )}
+                          {addItemSelectedItem.armor_class && (
+                            <div style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.375rem', border: '1px solid rgba(var(--theme-accent-rgb),0.15)' }}>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.2rem' }}>AC Bonus</div>
+                              <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>+{addItemSelectedItem.armor_class}</div>
+                            </div>
+                          )}
+                          {addItemSelectedItem.range_normal && (
+                            <div style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.375rem', border: '1px solid rgba(var(--theme-accent-rgb),0.15)' }}>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.2rem' }}>Range</div>
+                              <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{addItemSelectedItem.range_normal}{addItemSelectedItem.range_long && `/${addItemSelectedItem.range_long}`} ft</div>
+                            </div>
+                          )}
+                          {addItemSelectedItem.weight && (
+                            <div style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.375rem', border: '1px solid rgba(var(--theme-accent-rgb),0.15)' }}>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.2rem' }}>Weight</div>
+                              <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{addItemSelectedItem.weight} lb</div>
+                            </div>
+                          )}
+                          {addItemSelectedItem.cost_cp && (
+                            <div style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.375rem', border: '1px solid rgba(var(--theme-accent-rgb),0.15)' }}>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.2rem' }}>Value</div>
+                              <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{addItemSelectedItem.cost_cp >= 100 ? `${Math.floor(addItemSelectedItem.cost_cp / 100)} gp` : `${addItemSelectedItem.cost_cp} cp`}</div>
+                            </div>
+                          )}
+                          {addItemSelectedItem.strength_requirement && (
+                            <div style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.375rem', border: '1px solid rgba(var(--theme-accent-rgb),0.15)' }}>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '0.2rem' }}>Str Req.</div>
+                              <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{addItemSelectedItem.strength_requirement}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Properties */}
+                      {addItemSelectedItem.properties && (addItemSelectedItem.properties as string[]).length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Properties:</span>
+                          {(addItemSelectedItem.properties as string[]).map((p, pi) => (
+                            <span key={pi} style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(var(--theme-accent-rgb),0.15)', color: 'var(--text-gold)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.3)' }}>{p}</span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Warnings */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {addItemSelectedItem.stealth_disadvantage && (
+                          <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.375rem', fontSize: '0.75rem', color: '#fca5a5' }}>⚠️ Stealth disadvantage</div>
+                        )}
+                        {addItemSelectedItem.attunement_required && (
+                          <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '0.375rem', fontSize: '0.75rem', color: '#d8b4fe' }}>✨ Requires attunement</div>
+                        )}
+                      </div>
+
+                      {/* Add button — pushed to bottom */}
+                      <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.2)' }}>
+                        <button
+                          onClick={() => selectedCharacterData && handleAddItemToInventory(selectedCharacterData.id, addItemSelectedItem.item_name)}
+                          style={{ width: '100%', padding: '0.8rem', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '0.5rem', color: '#4ade80', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s ease' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(34,197,94,0.35)'; e.currentTarget.style.borderColor = 'rgba(34,197,94,0.6)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(34,197,94,0.2)'; e.currentTarget.style.borderColor = 'rgba(34,197,94,0.4)'; }}
+                        >
+                          + Add to {selectedCharacterData?.name ?? 'Character'}'s Inventory
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
