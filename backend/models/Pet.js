@@ -101,6 +101,21 @@ class Pet {
     return Pet._parse(result.rows[0]);
   }
 
+  static async updateImage(id, imageBuffer, mimeType) {
+    const result = await pool.query(
+      `UPDATE character_pets
+          SET image_data      = $1,
+              image_mime_type = $2,
+              image_url       = $3,
+              updated_at      = NOW()
+        WHERE id = $4
+       RETURNING *`,
+      [imageBuffer, mimeType, `/api/pets/${id}/image`, id]
+    );
+    if (result.rows.length === 0) return null;
+    return Pet._parse(result.rows[0]);
+  }
+
   static async updateHP(id, hit_points_current) {
     const result = await pool.query(
       `UPDATE character_pets SET hit_points_current = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
@@ -120,10 +135,15 @@ class Pet {
 
   static _parse(row) {
     if (!row) return null;
-    return {
+    const parsed = {
       ...row,
       abilities: typeof row.abilities === 'string' ? JSON.parse(row.abilities) : (row.abilities || {}),
     };
+    // If image is stored in the database, point image_url to the serve endpoint
+    if (row.image_data) {
+      parsed.image_url = `/api/pets/${row.id}/image`;
+    }
+    return parsed;
   }
 }
 

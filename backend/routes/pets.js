@@ -2,26 +2,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const Pet = require('../models/Pet');
 const { pool } = require('../models/database');
 const { authenticateToken: auth } = require('../middleware/auth');
 
-// ── Image upload config ────────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/pets');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const suffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, 'pet-' + suffix + path.extname(file.originalname));
-  },
-});
-
+// ── Image upload config — store in memory, persisted to database ───────────
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ok = /jpeg|jpg|png|gif|webp|avif/.test(path.extname(file.originalname).toLowerCase());
@@ -150,6 +137,24 @@ router.patch('/:id/hp', auth, async (req, res) => {
   }
 });
 
+// GET /api/pets/:id/image — serve pet image from database (no auth required for img tags)
+router.get('/:id/image', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT image_data, image_mime_type FROM character_pets WHERE id = $1',
+      [req.params.id]
+    );
+    const row = result.rows[0];
+    if (!row || !row.image_data) return res.status(404).json({ error: 'Image not found' });
+    res.set('Content-Type', row.image_mime_type || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=31536000');
+    res.send(row.image_data);
+  } catch (err) {
+    console.error('Error serving pet image:', err);
+    res.status(500).json({ error: 'Failed to serve image' });
+  }
+});
+
 // POST /api/pets/:id/image — DM uploads image
 router.post('/:id/image', auth, upload.single('image'), async (req, res) => {
   try {
@@ -157,14 +162,7 @@ router.post('/:id/image', auth, upload.single('image'), async (req, res) => {
     if (!pet) return;
     if (!req.file) return res.status(400).json({ error: 'No image file provided' });
 
-    // Remove old image file if it exists on disk
-    if (pet.image_url) {
-      const oldFile = path.join(__dirname, '../uploads/pets', path.basename(pet.image_url));
-      if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
-    }
-
-    const imageUrl = `/uploads/pets/${req.file.filename}`;
-    const updated = await Pet.update(req.params.id, { image_url: imageUrl });
+    const updated = await Pet.updateImage(req.params.id, req.file.buffer, req.file.mimetype);
 
     const io = req.app.get('io');
     if (io) {
@@ -187,12 +185,7 @@ router.delete('/:id', auth, async (req, res) => {
     if (!pet) return;
 
     const deleted = await Pet.delete(req.params.id);
-
-    // Clean up image file
-    if (deleted?.image_url) {
-      const filePath = path.join(__dirname, '../uploads/pets', path.basename(deleted.image_url));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
+    if (!deleted) return res.status(404).json({ error: 'Pet not found' });
 
     const io = req.app.get('io');
     if (io) {
