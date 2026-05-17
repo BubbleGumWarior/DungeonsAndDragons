@@ -15387,7 +15387,7 @@ const CampaignView: React.FC = () => {
                         ))}
                         <div>
                           <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Category</label>
-                          <select value={addItemEditData.category ?? 'General'} onChange={e => setAddItemEditData(d => ({...d, category: e.target.value}))}
+                          <select value={addItemEditData.category ?? 'General'} onChange={e => setAddItemEditData(d => ({...d, category: e.target.value as InventoryItem['category']}))}
                             style={{ width: '100%', padding: '0.5rem', background: 'rgba(20,20,30,0.95)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.375rem', color: 'white', fontSize: '0.85rem' }}>
                             {['Weapon','Armor','Tool','General','Magic Item','Consumable'].map(c => <option key={c} value={c}>{c}</option>)}
                           </select>
