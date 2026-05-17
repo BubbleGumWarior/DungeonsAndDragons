@@ -14483,10 +14483,10 @@ const CampaignView: React.FC = () => {
                                 <div style={{ width: 130, minHeight: 130, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                   {pet.image_url ? (
                                     <img
-                                      src={getImageUrl(pet.image_url)}
+                                      src={getImageUrl(pet.image_url ?? undefined)}
                                       alt={pet.name}
                                       style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block', cursor: 'pointer' }}
-                                      onClick={() => setViewImageModal({ imageUrl: getImageUrl(pet.image_url) ?? '', name: pet.name })}
+                                      onClick={() => setViewImageModal({ imageUrl: getImageUrl(pet.image_url ?? undefined) ?? '', name: pet.name })}
                                     />
                                   ) : (
                                     <span style={{ fontSize: '3rem' }}>🐾</span>
@@ -19233,7 +19233,7 @@ const CampaignView: React.FC = () => {
                     {petImagePreviewUrl ? (
                       <img src={petImagePreviewUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (editingPet?.image_url ? (
-                      <img src={getImageUrl(editingPet.image_url)} alt={editingPet.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={getImageUrl(editingPet.image_url ?? undefined)} alt={editingPet.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <span style={{ fontSize: '2.5rem' }}>🐾</span>
                     ))}
