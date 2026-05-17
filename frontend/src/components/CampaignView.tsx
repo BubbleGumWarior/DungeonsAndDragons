@@ -15394,7 +15394,7 @@ const CampaignView: React.FC = () => {
                         </div>
                         <div>
                           <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Rarity</label>
-                          <select value={addItemEditData.rarity ?? 'Common'} onChange={e => setAddItemEditData(d => ({...d, rarity: e.target.value}))}
+                          <select value={addItemEditData.rarity ?? 'Common'} onChange={e => setAddItemEditData(d => ({...d, rarity: e.target.value as InventoryItem['rarity']}))}
                             style={{ width: '100%', padding: '0.5rem', background: 'rgba(20,20,30,0.95)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.375rem', color: 'white', fontSize: '0.85rem' }}>
                             {['Common','Uncommon','Rare','Very Rare','Legendary'].map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
