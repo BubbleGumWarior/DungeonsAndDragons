@@ -156,14 +156,14 @@ router.post('/grant-exp/:campaignId', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'No characters selected' });
     }
     
-    if (!expAmount || expAmount <= 0) {
+    if (expAmount === undefined || expAmount === null || expAmount === 0) {
       return res.status(400).json({ error: 'Invalid experience amount' });
     }
     
-    // Update experience for all selected characters
+    // Update experience for all selected characters (floor at 0 when reducing)
     const result = await pool.query(`
       UPDATE characters
-      SET experience_points = experience_points + $1,
+      SET experience_points = GREATEST(experience_points + $1, 0),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ANY($2) AND campaign_id = $3
       RETURNING id, name, level, experience_points
@@ -171,7 +171,8 @@ router.post('/grant-exp/:campaignId', authenticateToken, async (req, res) => {
     
     // Emit socket event for real-time updates
     if (req.io) {
-      console.log(`🔔 Emitting experienceGranted to campaign room: campaign_${campaignId}`);
+      const action = expAmount < 0 ? 'reduced' : 'granted';
+      console.log(`🔔 Emitting experienceGranted to campaign room: campaign_${campaignId} (${action})`);
       req.io.to(`campaign_${campaignId}`).emit('experienceGranted', {
         campaignId: parseInt(campaignId),
         characters: result.rows,
@@ -183,7 +184,9 @@ router.post('/grant-exp/:campaignId', authenticateToken, async (req, res) => {
     }
 
     res.json({
-      message: `Granted ${expAmount} EXP to ${result.rows.length} character(s)`,
+      message: expAmount < 0
+        ? `Removed ${Math.abs(expAmount)} EXP from ${result.rows.length} character(s)`
+        : `Granted ${expAmount} EXP to ${result.rows.length} character(s)`,
       characters: result.rows
     });
   } catch (error) {

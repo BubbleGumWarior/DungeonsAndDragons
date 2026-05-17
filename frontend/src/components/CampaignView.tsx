@@ -1706,6 +1706,7 @@ const CampaignView: React.FC = () => {
   const [showGrantExpModal, setShowGrantExpModal] = useState(false);
   const [selectedCharactersForExp, setSelectedCharactersForExp] = useState<number[]>([]);
   const [expAmount, setExpAmount] = useState<number>(100);
+  const [expMode, setExpMode] = useState<'grant' | 'reduce'>('grant');
 
   // Manual health adjustment state
   const [showHealthModal, setShowHealthModal] = useState(false);
@@ -2834,11 +2835,13 @@ const CampaignView: React.FC = () => {
     }
 
     try {
-      await skillAPI.grantExperience(currentCampaign.campaign.id, selectedCharactersForExp, expAmount);
+      const amount = expMode === 'reduce' ? -expAmount : expAmount;
+      await skillAPI.grantExperience(currentCampaign.campaign.id, selectedCharactersForExp, amount);
       // Close modal — the socket 'experienceGranted' event will reload campaign data and show the toast for all users
       setShowGrantExpModal(false);
       setSelectedCharactersForExp([]);
       setExpAmount(100);
+      setExpMode('grant');
     } catch (error) {
       console.error('Error granting experience:', error);
       toast('Failed to grant experience');
@@ -20503,7 +20506,35 @@ const CampaignView: React.FC = () => {
             overflow: 'auto',
             padding: '2rem'
           }}>
-            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1.5rem' }}>⭐ Grant Experience</h3>
+            <h3 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>⭐ Experience</h3>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+              <button
+                onClick={() => setExpMode('grant')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  background: expMode === 'grant' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(255,255,255,0.05)',
+                  border: expMode === 'grant' ? '2px solid rgba(168, 85, 247, 0.7)' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '0.5rem',
+                  color: expMode === 'grant' ? '#c084fc' : '#94a3b8',
+                  cursor: 'pointer',
+                  fontWeight: expMode === 'grant' ? 'bold' : 'normal'
+                }}
+              >⭐ Grant EXP</button>
+              <button
+                onClick={() => setExpMode('reduce')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  background: expMode === 'reduce' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)',
+                  border: expMode === 'reduce' ? '2px solid rgba(239, 68, 68, 0.6)' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '0.5rem',
+                  color: expMode === 'reduce' ? '#f87171' : '#94a3b8',
+                  cursor: 'pointer',
+                  fontWeight: expMode === 'reduce' ? 'bold' : 'normal'
+                }}
+              >✂️ Reduce EXP</button>
+            </div>
             
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -20596,20 +20627,23 @@ const CampaignView: React.FC = () => {
                   padding: '0.75rem',
                   background: selectedCharactersForExp.length === 0 || expAmount <= 0
                     ? 'rgba(100, 116, 139, 0.3)'
-                    : 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
-                  border: '2px solid rgba(168, 85, 247, 0.5)',
-                  color: selectedCharactersForExp.length === 0 || expAmount <= 0 ? '#64748b' : '#c084fc',
+                    : expMode === 'reduce'
+                      ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(185, 28, 28, 0.3))'
+                      : 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
+                  border: expMode === 'reduce' ? '2px solid rgba(239, 68, 68, 0.5)' : '2px solid rgba(168, 85, 247, 0.5)',
+                  color: selectedCharactersForExp.length === 0 || expAmount <= 0 ? '#64748b' : expMode === 'reduce' ? '#f87171' : '#c084fc',
                   cursor: selectedCharactersForExp.length === 0 || expAmount <= 0 ? 'not-allowed' : 'pointer',
                   opacity: selectedCharactersForExp.length === 0 || expAmount <= 0 ? 0.5 : 1
                 }}
               >
-                ⭐ Grant {expAmount} EXP
+                {expMode === 'reduce' ? `✂️ Reduce ${expAmount} EXP` : `⭐ Grant ${expAmount} EXP`}
               </button>
               <button
                 onClick={() => {
                   setShowGrantExpModal(false);
                   setSelectedCharactersForExp([]);
                   setExpAmount(100);
+                  setExpMode('grant');
                 }}
                 className="btn btn-secondary"
                 style={{
