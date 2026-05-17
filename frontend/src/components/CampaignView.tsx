@@ -1371,7 +1371,6 @@ const CampaignView: React.FC = () => {
       const PLAYER_FOG_OPACITY = 1;
       // Vision radius shrinks as darkness increases — same formula as combat overlay
       const darknessRadiusMultiplier = Math.max(0.15, 1 - darknessLevel * 0.85);
-      const shouldApplyVisionOverlay = darknessLevel > 0;
 
       // Lighting nodes for this tab
       const MAX_NODE_RADIUS_PCT = 25;
@@ -4882,6 +4881,7 @@ const CampaignView: React.FC = () => {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCampaign?.campaign.id, user?.id, user?.role]);
 
   // Load equipped items when character changes
