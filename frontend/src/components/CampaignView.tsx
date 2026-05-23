@@ -118,13 +118,14 @@ const getBattlefieldDistanceFeet = (
 
 // City locations on the world map (positions as % of image width/height)
 // major: true => 5x base size (180px), default => 3x base size (108px)
-const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolean }> = [
+const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolean; outline?: string }> = [
   { name: 'Northington',  x: 36,  y: 24 },
   { name: 'The Blairy',   x: 17.75,  y: 28.5 },
   { name: 'Westreach',    x: 22.5,  y: 38,  major: true },
   { name: 'Riverpoint',   x: 27,  y: 48 },
   { name: 'Outreach',     x: 18.2,  y: 60 },
   { name: 'Gulltown',     x: 38,  y: 69 },
+  { name: 'Yllwyn',       x: 42.25,  y: 79 },
   { name: 'Fairy Grove',  x: 28.2,  y: 75 },
   { name: 'Pass-Crown',   x: 50,  y: 46,  major: true },
   { name: "Ruk'da",       x: 64,  y: 28 },
@@ -6993,13 +6994,23 @@ const CampaignView: React.FC = () => {
                           width: sizePercent,
                           aspectRatio: '1 / 1',
                           borderRadius: '50%',
-                          border: 'none',
+                          border: city.outline ? `3px solid ${city.outline}` : 'none',
                           background: 'transparent',
                           cursor: 'pointer',
                           zIndex: 20,
                           padding: 0,
+                          overflow: 'hidden',
+                          boxSizing: 'border-box',
                         }}
-                      />
+                      >
+                        {city.outline && (
+                          <img
+                            src={`/images/CityImages/${getCityImageFilename(city.name)}.jpg`}
+                            alt={city.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+                          />
+                        )}
+                      </button>
                     );
                   })}
                   
