@@ -1279,6 +1279,8 @@ export interface KingdomFief {
   is_capital: boolean;
   stored_resources?: Record<string, number>;
   storage_capacity?: number;
+  housing_capacity?: number;
+  prisoner_capacity?: number;
   worker_assignments?: Record<string, number>;
   slave_worker_assignments?: Record<string, number>;
   unlocked_resources?: Record<string, boolean>;
@@ -1436,6 +1438,16 @@ export const kingdomAPI = {
 
   convertPrisoners: async (fiefId: number, amount: number): Promise<{ fief: KingdomFief }> => {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/prisoners/convert`, { amount });
+    return response.data;
+  },
+
+  adjustPrisoners: async (fiefId: number, delta: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/prisoners/adjust`, { delta });
+    return response.data;
+  },
+
+  releaseSlaves: async (fiefId: number, amount: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/slaves/release`, { amount });
     return response.data;
   },
 

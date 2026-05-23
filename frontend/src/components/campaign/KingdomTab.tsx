@@ -87,6 +87,19 @@ const LOGISTICS_BUILDING_TYPES = new Set([
 const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'civic'] as const;
 type BuildTabId = typeof BUILD_TABS[number];
 
+const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'research', 'faith'];
+const SLAVE_RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone'];
+
+const sortByCanonicalOrder = (keys: string[], order: string[]) =>
+  [...keys].sort((a, b) => {
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
 const BUILD_TAB_LABELS: Record<BuildTabId, string> = {
   all: 'All',
   food: 'Food',
@@ -114,6 +127,30 @@ const getBuildingCategory = (building: any): BuildTabId => {
   if (['quarry', 'quarry_advanced', 'mine', 'mine_advanced', 'smithy', 'forge', 'master_smithy', 'royal_forge', 'grand_forge', 'war_smithy', 'imperial_forge'].includes(key)) return 'stone';
   if (['research_lab', 'research_lab_advanced'].includes(key)) return 'research';
   if (key === 'faith_temple') return 'faith';
+  return 'civic';
+};
+
+const RESEARCH_TABS = ['all', 'economy', 'military', 'civic'] as const;
+type ResearchTabId = typeof RESEARCH_TABS[number];
+
+const RESEARCH_TAB_LABELS: Record<ResearchTabId, string> = {
+  all: 'All',
+  economy: 'Economy',
+  military: 'Military',
+  civic: 'Civic',
+};
+
+const RESEARCH_TAB_COLORS: Record<ResearchTabId, { text: string; border: string; background: string }> = {
+  all:      { text: '#e2e8f0', border: 'rgba(148,163,184,0.4)',   background: 'rgba(30,41,59,0.35)' },
+  economy:  { text: '#86efac', border: 'rgba(34,197,94,0.45)',    background: 'rgba(20,83,45,0.3)' },
+  military: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)',    background: 'rgba(127,29,29,0.3)' },
+  civic:    { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
+};
+
+const getResearchCategory = (research: any): ResearchTabId => {
+  const id = String(research?.id || '');
+  if (/_hunter$|_vegetable$|_quarry$|_mine$|_research_lab$/.test(id)) return 'economy';
+  if (/_militia_camp$|_stables$|_archer_range$|_swordsmith_hall$|_spear_drill_yard$|_armory$|_drill_yard$|_command_post$|_siege_engine_workshop$|_smithy$|_palisades$|_watchtower$/.test(id)) return 'military';
   return 'civic';
 };
 
@@ -164,6 +201,7 @@ const KingdomTab: React.FC<Props> = ({
   const [loading, setLoading] = useState(true);
   const [kingdoms, setKingdoms] = useState<KingdomSummary[]>([]);
   const [selectedFiefId, setSelectedFiefId] = useState<number | null>(null);
+  // Keep a ref in sync so socket handlers always read the latest value without needing re-registration
   const [fiefDetails, setFiefDetails] = useState<KingdomFief | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
@@ -177,13 +215,20 @@ const KingdomTab: React.FC<Props> = ({
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [showChildrenModal, setShowChildrenModal] = useState(false);
   const [showBuildModal, setShowBuildModal] = useState(false);
+  const [showResearchModal, setShowResearchModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showConversionModal, setShowConversionModal] = useState(false);
+  const [conversionInput, setConversionInput] = useState('1');
+  const [releaseInput, setReleaseInput] = useState('1');
   const [selectedUpgradeBuildingId, setSelectedUpgradeBuildingId] = useState<number | null>(null);
   const [buildTab, setBuildTab] = useState<BuildTabId>('all');
+  const [researchTab, setResearchTab] = useState<ResearchTabId>('all');
   const [selectedGrantPlayerIds, setSelectedGrantPlayerIds] = useState<number[]>([]);
   const [currentCampaignDay, setCurrentCampaignDay] = useState<number | null>(null);
   const [currentSeason, setCurrentSeason] = useState<'Spring' | 'Summer' | 'Autumn' | 'Winter' | null>(null);
   const [currentSeasonEffects, setCurrentSeasonEffects] = useState<Record<string, number>>({});
+  const [hoveredBuilding, setHoveredBuilding] = useState<{ building: any; x: number; y: number } | null>(null);
+  const selectedFiefIdRef = React.useRef<number | null>(null);
 
   const fetchKingdoms = useCallback(async () => {
     try {
@@ -232,19 +277,26 @@ const KingdomTab: React.FC<Props> = ({
     };
   }, [campaignId, fetchKingdoms]);
 
+  // Keep ref in sync with state so socket handlers always use the latest fief id
+  useEffect(() => {
+    selectedFiefIdRef.current = selectedFiefId;
+  }, [selectedFiefId]);
+
   useEffect(() => {
     if (!socket) return;
 
     const onDataChanged = (data: { campaignId: number }) => {
       if (Number(data?.campaignId) !== Number(campaignId)) return;
       fetchKingdoms();
-      if (selectedFiefId) fetchFief(selectedFiefId);
+      const currentFiefId = selectedFiefIdRef.current;
+      if (currentFiefId) fetchFief(currentFiefId);
     };
 
     const onDayAdvanced = (data: { campaignId: number | string }) => {
       if (Number(data?.campaignId) !== Number(campaignId)) return;
       fetchKingdoms();
-      if (selectedFiefId) fetchFief(selectedFiefId);
+      const currentFiefId = selectedFiefIdRef.current;
+      if (currentFiefId) fetchFief(currentFiefId);
       campaignAPI.getCurrentDay(campaignId)
         .then((dayInfo) => {
           setCurrentCampaignDay(Math.max(1, Number(dayInfo?.current_day || 1)));
@@ -261,7 +313,7 @@ const KingdomTab: React.FC<Props> = ({
       socket.off('kingdomDataChanged', onDataChanged);
       socket.off('dayAdvanced', onDayAdvanced);
     };
-  }, [socket, campaignId, isDungeonMaster, userId, selectedFiefId, fetchKingdoms, fetchFief]);
+  }, [socket, campaignId, fetchKingdoms, fetchFief]);
 
   const myKingdom = useMemo(() => {
     if (isDungeonMaster) return null;
@@ -441,9 +493,10 @@ const KingdomTab: React.FC<Props> = ({
     const unlocked = (fiefDetails.unlocked_resources || {}) as Record<string, boolean>;
     const maxMap = (fiefDetails.max_workers_per_resource || {}) as Record<string, number>;
 
-    const keys = Object.keys(assignments).length
+    const rawKeys = Object.keys(assignments).length
       ? Object.keys(assignments)
-      : ['meat', 'vegetables', 'wood', 'stone', 'iron', 'gold', 'research', 'faith', 'building'];
+      : RESOURCE_CANONICAL_ORDER;
+    const keys = sortByCanonicalOrder(rawKeys, RESOURCE_CANONICAL_ORDER);
 
     return keys
       .filter((k) => (k === 'meat' ? unlocked[k] === true : unlocked[k] !== false))
@@ -455,9 +508,10 @@ const KingdomTab: React.FC<Props> = ({
     const assignments = (fiefDetails.slave_worker_assignments || {}) as Record<string, number>;
     const unlocked = (fiefDetails.unlocked_resources || {}) as Record<string, boolean>;
     const maxMap = (fiefDetails.max_workers_per_resource || {}) as Record<string, number>;
-    const keys = Object.keys(assignments).length
+    const rawKeys = Object.keys(assignments).length
       ? Object.keys(assignments)
-      : ['meat', 'vegetables', 'wood', 'stone', 'iron', 'gold'];
+      : SLAVE_RESOURCE_CANONICAL_ORDER;
+    const keys = sortByCanonicalOrder(rawKeys, SLAVE_RESOURCE_CANONICAL_ORDER);
 
     return keys
       .filter((k) => unlocked[k] !== false)
@@ -490,8 +544,38 @@ const KingdomTab: React.FC<Props> = ({
   const dailyFoodConsumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1));
   const foodDaysLeftIfNoProduction = dailyFoodConsumption > 0 ? (storedFood / dailyFoodConsumption) : Number.POSITIVE_INFINITY;
   const unassignedAdults = Math.max(0, assignablePopulation - totalAssigned);
+
+  const housingCapacity = useMemo(() => {
+    if (fiefDetails?.housing_capacity != null) return Math.max(0, Number(fiefDetails.housing_capacity));
+    // Fallback: compute from buildings if API field not present
+    const completedBuildings = (fiefDetails?.buildings || []).filter((b: any) => Boolean(b?.is_complete));
+    const completedResearch: string[] = fiefDetails?.completed_research || [];
+    const done = new Set(completedResearch.map(String));
+    const perBuilding = done.has('tier3_housing') ? 12 : done.has('tier2_housing') ? 8 : 4;
+    const count = completedBuildings.filter((b: any) => {
+      const t = String(b?.building_type || '');
+      return t === 'housing' || t === 'wood_lodge';
+    }).length;
+    return count * perBuilding;
+  }, [fiefDetails?.housing_capacity, fiefDetails?.buildings, fiefDetails?.completed_research]);
   const hasPrisonInfrastructure = Boolean(
-    (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && String(b?.building_type) === 'prison')
+    (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && [
+      'prison', 'dungeon', 'black_cells', 'deep_prison', 'high_security_prison', 'iron_keep', 'shadow_vault',
+    ].includes(String(b?.building_type)))
+  );
+
+  const PRISON_CAPS_BY_TYPE: Record<string, number> = useMemo(() => ({
+    prison: 20, dungeon: 40, black_cells: 60, deep_prison: 80,
+    high_security_prison: 100, iron_keep: 120, shadow_vault: 140,
+  }), []);
+  const prisonerCapacity = useMemo(() => {
+    if (fiefDetails?.prisoner_capacity != null) return Math.max(0, Number(fiefDetails.prisoner_capacity));
+    return (fiefDetails?.buildings || [])
+      .filter((b: any) => Boolean(b?.is_complete))
+      .reduce((sum: number, b: any) => sum + (PRISON_CAPS_BY_TYPE[String(b?.building_type || '')] || 0), 0);
+  }, [fiefDetails?.prisoner_capacity, fiefDetails?.buildings, PRISON_CAPS_BY_TYPE]);
+  const hasMilitiaBuilding = Boolean(
+    (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && ['militia_camp', 'militia_barracks', 'veteran_barracks'].includes(String(b?.building_type)))
   );
 
   const maturationSchedule = useMemo(() => {
@@ -648,7 +732,8 @@ const KingdomTab: React.FC<Props> = ({
       }
     }
     const foodTotal = output.vegetables + output.meat;
-    const consumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1));
+    const consumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
+      + (slaves + prisoners) * 0.5;
     const net = foodTotal - consumption;
 
     return {
@@ -665,7 +750,7 @@ const KingdomTab: React.FC<Props> = ({
         logisticsLevel,
       },
     };
-  }, [fiefDetails, totalPopulation, currentSeasonEffects]);
+  }, [fiefDetails, totalPopulation, currentSeasonEffects, slaves, prisoners]);
 
   const researchQueue = useMemo(() => {
     return [...(fiefDetails?.researchQueue || [])].sort((a, b) => {
@@ -675,7 +760,6 @@ const KingdomTab: React.FC<Props> = ({
     });
   }, [fiefDetails]);
 
-  const activeResearch = researchQueue.find((r) => r.status === 'active');
   const upgradeByBuildingId = useMemo(() => {
     const map = new Map<number, any>();
     for (const upgrade of (fiefDetails?.availableUpgrades || [])) {
@@ -789,22 +873,51 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const convertPrisonersToSlaves = async () => {
+  const executeConversion = async () => {
     if (!fiefDetails) return;
-    const input = window.prompt('How many prisoners should be converted to slaves?', '1');
-    if (input == null) return;
-    const amount = Math.max(0, Math.floor(Number(input) || 0));
-    if (amount <= 0) {
-      pushToast('Enter a positive whole number.');
-      return;
-    }
-
+    const amount = Math.max(0, Math.floor(Number(conversionInput) || 0));
+    if (amount <= 0) { pushToast('Enter a positive whole number.'); return; }
     setBusy('convert-prisoners');
     try {
       await kingdomAPI.convertPrisoners(Number(fiefDetails.id), amount);
       await fetchFief(Number(fiefDetails.id));
+      setConversionInput('1');
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to convert prisoners');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const executeRelease = async () => {
+    if (!fiefDetails) return;
+    const amount = Math.max(0, Math.floor(Number(releaseInput) || 0));
+    if (amount <= 0) { pushToast('Enter a positive whole number.'); return; }
+    setBusy('release-slaves');
+    try {
+      await kingdomAPI.releaseSlaves(Number(fiefDetails.id), amount);
+      await fetchFief(Number(fiefDetails.id));
+      setReleaseInput('1');
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to release slaves');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const dmAdjustPrisoners = async (direction: 1 | -1) => {
+    if (!fiefDetails || !isDungeonMaster) return;
+    const label = direction > 0 ? 'add' : 'remove';
+    const input = window.prompt(`How many prisoners to ${label}?`, '1');
+    if (input == null) return;
+    const amount = Math.floor(Number(input));
+    if (!Number.isFinite(amount) || amount <= 0) { pushToast('Enter a valid positive whole number.'); return; }
+    setBusy('dm-adjust');
+    try {
+      await kingdomAPI.adjustPrisoners(Number(fiefDetails.id), direction * amount);
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to adjust prisoners');
     } finally {
       setBusy(null);
     }
@@ -976,6 +1089,65 @@ const KingdomTab: React.FC<Props> = ({
         document.body
       )}
 
+      {hoveredBuilding && ReactDOM.createPortal(
+        (() => {
+          const b = hoveredBuilding.building;
+          const resourceOutput = (b.resource_output && typeof b.resource_output === 'object') ? b.resource_output as Record<string, number> : {};
+          const outputEntries = Object.entries(resourceOutput).filter(([, v]) => Number(v) > 0);
+          // Clamp tooltip so it doesn't overflow the right edge of the viewport
+          const tooltipWidth = 260;
+          const left = Math.min(hoveredBuilding.x, window.innerWidth - tooltipWidth - 12);
+          const top = hoveredBuilding.y;
+          return (
+            <div
+              style={{
+                position: 'fixed',
+                top,
+                left,
+                width: tooltipWidth,
+                zIndex: 10000,
+                background: 'rgba(2,6,23,0.97)',
+                border: '1px solid rgba(148,163,184,0.35)',
+                borderRadius: '0.55rem',
+                padding: '0.7rem 0.85rem',
+                boxShadow: '0 8px 28px rgba(0,0,0,0.6)',
+                pointerEvents: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+              }}
+            >
+              <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '-0.2rem' }}>{b.building_type}</div>
+              {b.description && (
+                <div style={{ color: '#cbd5e1', fontSize: '0.8rem', lineHeight: '1.45', borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.4rem' }}>
+                  {b.description}
+                </div>
+              )}
+              {outputEntries.length > 0 && (
+                <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.4rem' }}>
+                  <div style={{ color: '#86efac', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Output</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem' }}>
+                    {outputEntries.map(([resource, amount]) => (
+                      <div key={resource} style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0', fontSize: '0.8rem' }}>
+                        <span style={{ textTransform: 'capitalize' }}>{RESOURCE_ICONS[resource] ? `${RESOURCE_ICONS[resource]} ` : ''}{resource}</span>
+                        <span style={{ color: '#86efac', fontWeight: 700 }}>+{Number(amount).toFixed(1)} /day</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {b.level > 1 && (
+                <div style={{ color: '#fde68a', fontSize: '0.75rem', borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.4rem' }}>
+                  Level {b.level}
+                </div>
+              )}
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
       {isDungeonMaster && kingdoms.length > 0 && (
         <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
           <div style={{ color: 'var(--text-gold)', marginBottom: '0.6rem', fontWeight: 700 }}>All Campaign Kingdoms</div>
@@ -1089,84 +1261,145 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
-                <div style={{ color: 'var(--text-gold)', marginBottom: '0.6rem', fontWeight: 700 }}>Population</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.7rem 1.1rem', alignItems: 'center' }}>
-                  <span style={{ color: '#e2e8f0', fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    Total: {totalPopulation}
+              <div style={{ padding: '0.9rem 1rem', border: '1px solid rgba(148,163,184,0.22)', borderRadius: '0.7rem', background: 'rgba(2,6,23,0.38)' }}>
+                {/* ── Header row ── */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.65rem' }}>
+                  <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>👥 Population</span>
+                  <span style={{
+                    fontWeight: 700,
+                    fontSize: '1.08rem',
+                    color: housingCapacity > 0 && (totalPopulation + slaves) >= housingCapacity ? '#ef4444'
+                      : housingCapacity > 0 && (totalPopulation + slaves) >= housingCapacity * 0.9 ? '#fbbf24'
+                      : '#e2e8f0',
+                  }}>
+                    {totalPopulation + slaves}{housingCapacity > 0 ? ` / ${housingCapacity}` : ''}
                     {isDungeonMaster && (
-                      <>
-                        <button
-                          onClick={() => dmAdjustPopulation(-1)}
-                          disabled={busy === 'dm-adjust'}
-                          style={{
-                            padding: '0.14rem 0.42rem',
-                            borderRadius: '0.32rem',
-                            border: '1px solid rgba(239,68,68,0.45)',
-                            background: 'rgba(127,29,29,0.35)',
-                            color: '#fca5a5',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: busy === 'dm-adjust' ? 'not-allowed' : 'pointer',
-                            opacity: busy === 'dm-adjust' ? 0.6 : 1,
-                          }}
-                        >
-                          - Pop
-                        </button>
-                        <button
-                          onClick={() => dmAdjustPopulation(1)}
-                          disabled={busy === 'dm-adjust'}
-                          style={{
-                            padding: '0.14rem 0.42rem',
-                            borderRadius: '0.32rem',
-                            border: '1px solid rgba(34,197,94,0.45)',
-                            background: 'rgba(20,83,45,0.35)',
-                            color: '#86efac',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: busy === 'dm-adjust' ? 'not-allowed' : 'pointer',
-                            opacity: busy === 'dm-adjust' ? 0.6 : 1,
-                          }}
-                        >
-                          + Pop
-                        </button>
-                      </>
+                      <span style={{ marginLeft: '0.5rem', display: 'inline-flex', gap: '0.25rem' }}>
+                        <button onClick={() => dmAdjustPopulation(-1)} disabled={busy === 'dm-adjust'}
+                          style={{ padding: '0.1rem 0.38rem', borderRadius: '0.28rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontSize: '0.72rem', fontWeight: 700, cursor: busy === 'dm-adjust' ? 'not-allowed' : 'pointer', opacity: busy === 'dm-adjust' ? 0.6 : 1 }}>−</button>
+                        <button onClick={() => dmAdjustPopulation(1)} disabled={busy === 'dm-adjust'}
+                          style={{ padding: '0.1rem 0.38rem', borderRadius: '0.28rem', border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontSize: '0.72rem', fontWeight: 700, cursor: busy === 'dm-adjust' ? 'not-allowed' : 'pointer', opacity: busy === 'dm-adjust' ? 0.6 : 1 }}>+</button>
+                      </span>
                     )}
                   </span>
-                  <span style={{ color: '#94a3b8', fontSize: '0.98rem' }}>Assignable adults: {assignablePopulation}</span>
-                  <span style={{ color: '#fca5a5', fontSize: '0.95rem' }}>Sick/Injured: {sickInjuredPopulation}</span>
-                  <span style={{ color: '#93c5fd', fontSize: '0.95rem' }}>Soldiers: {soldiers}</span>
-                  <span style={{ color: '#e2e8f0', fontSize: '0.95rem' }}>Prisoners: {prisoners}</span>
-                  <span style={{ color: '#fde68a', fontSize: '0.95rem' }}>Slaves: {slaves}</span>
-                  <span style={{ color: productionByLane.foodBreakdown.net >= 0 ? '#22c55e' : '#ef4444', fontSize: '0.95rem', fontWeight: 700 }}>Food net: {productionByLane.foodBreakdown.net.toFixed(1)} /day</span>
-                  <button
-                    onClick={() => setShowChildrenModal(true)}
-                    style={{
-                      padding: '0.4rem 0.7rem',
-                      borderRadius: '0.35rem',
-                      border: '1px solid rgba(125,211,252,0.45)',
-                      background: 'rgba(12,74,110,0.35)',
-                      color: '#7dd3fc',
-                      fontSize: '0.93rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Children: {underagePopulation}
-                  </button>
-                  <span style={{ color: '#94a3b8', fontSize: '0.92rem' }}>
-                    {nextMaturityDays == null
-                      ? 'No child maturation scheduled'
-                      : `Next child matures in ${nextMaturityDays} day(s)`}
-                  </span>
                 </div>
-                <div style={{ marginTop: '0.45rem', color: '#94a3b8', fontSize: '0.76rem' }}>
-                  {dailyFoodConsumption <= 0
-                    ? `Stored food: ${storedFood.toFixed(1)}. No daily consumption right now, so food will not deplete from population upkeep.`
-                    : `Stored food: ${storedFood.toFixed(1)}. If production stops, food lasts about ${foodDaysLeftIfNoProduction.toFixed(1)} day(s).`}
+
+                {/* ── Housing cap fill bar ── */}
+                {(() => {
+                  if (housingCapacity <= 0) return null;
+                  const pct = Math.min(1, (totalPopulation + slaves) / housingCapacity);
+                  const barColor = pct >= 1 ? '#ef4444' : pct >= 0.9 ? '#fbbf24' : '#22c55e';
+                  return (
+                    <div style={{ marginBottom: '0.65rem' }}>
+                      <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      {pct >= 1 && (
+                        <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
+                          🏠 Housing capacity full — build more Tents to allow population growth
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── Breakdown ── */}
+                {/* Core 3-column grid: Adults | Children | Slaves */}
+                <div style={{ display: 'grid', gridTemplateColumns: (hasPrisonInfrastructure || slaves > 0) ? '1fr 1fr 1fr' : '1fr 1fr', gap: '0.75rem', alignItems: 'start', textAlign: 'center', marginBottom: (sickInjuredPopulation > 0 || soldiers > 0) ? '0.5rem' : '0.6rem' }}>
+                  {/* Adults */}
+                  <div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Adults</div>
+                    <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1rem', marginBottom: '0.1rem' }}>{assignablePopulation}</div>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{unassignedAdults} unassigned</div>
+                  </div>
+                  {/* Children */}
+                  <div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Children</div>
+                    <button onClick={() => setShowChildrenModal(true)} style={{ display: 'inline-block', width: 'fit-content', padding: '0.18rem 0.55rem', borderRadius: '0.32rem', border: '1px solid rgba(125,211,252,0.4)', background: 'rgba(12,74,110,0.32)', color: '#7dd3fc', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', marginBottom: '0.1rem' }}>
+                      {underagePopulation}
+                    </button>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                      {nextMaturityDays == null ? 'None maturing' : `Next matures in ${nextMaturityDays}d`}
+                    </div>
+                  </div>
+                  {/* Slaves */}
+                  {(hasPrisonInfrastructure || slaves > 0) && (
+                    <div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Slaves</div>
+                      <div style={{ color: '#fde68a', fontWeight: 700, fontSize: '1rem', marginBottom: '0.1rem' }}>{slaves}</div>
+                      <button onClick={() => setShowConversionModal(true)}
+                        style={{ display: 'inline-block', width: 'fit-content', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', border: '1px solid rgba(234,179,8,0.4)', background: 'rgba(146,64,14,0.3)', color: '#fde68a', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                        Manage
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Secondary row: Sick/Injured + Soldiers (conditional) */}
+                {(sickInjuredPopulation > 0 || soldiers > 0) && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem 1.5rem', marginBottom: '0.6rem' }}>
+                    {sickInjuredPopulation > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sick / Injured</span>
+                        <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '1rem' }}>{sickInjuredPopulation}</span>
+                      </div>
+                    )}
+                    {soldiers > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Soldiers</span>
+                        <span style={{ color: '#93c5fd', fontWeight: 700, fontSize: '1rem' }}>{soldiers}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Prisoner cap bar ── */}
+                {(hasPrisonInfrastructure || prisoners > 0) && prisonerCapacity > 0 && (() => {
+                  const pct = Math.min(1, prisoners / prisonerCapacity);
+                  const barColor = pct >= 1 ? '#ef4444' : pct >= 0.8 ? '#fbbf24' : '#a78bfa';
+                  return (
+                    <div style={{ marginBottom: '0.65rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🔒 Prisoner Capacity</span>
+                      </div>
+                      <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      {pct >= 1 && (
+                        <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
+                          🔓 Prison overcrowded — excess prisoners will escape and blend into the population
+                        </div>
+                      )}
+                      {/* Prisoner count below bar */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.45rem' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Prisoners</span>
+                        <span style={{ color: barColor, fontWeight: 700, fontSize: '1rem' }}>{prisoners}</span>
+                        <span style={{ color: '#64748b', fontSize: '0.8rem' }}>/ {prisonerCapacity}</span>
+                        {isDungeonMaster && (
+                          <>
+                            <button onClick={() => dmAdjustPrisoners(-1)} disabled={busy === 'dm-adjust' || prisoners <= 0}
+                              style={{ padding: '0.1rem 0.35rem', borderRadius: '0.25rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, opacity: (busy === 'dm-adjust' || prisoners <= 0) ? 0.5 : 1 }}>−</button>
+                            <button onClick={() => dmAdjustPrisoners(1)} disabled={busy === 'dm-adjust'}
+                              style={{ padding: '0.1rem 0.35rem', borderRadius: '0.25rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, opacity: busy === 'dm-adjust' ? 0.5 : 1 }}>+</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── Food summary ── */}
+                <div style={{ paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem' }}>
+                  <span style={{ color: productionByLane.foodBreakdown.net >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: '0.9rem' }}>
+                    Food: {productionByLane.foodBreakdown.net >= 0 ? '+' : ''}{productionByLane.foodBreakdown.net.toFixed(1)} /day
+                  </span>
+                  <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                    🏦 {storedFood.toFixed(1)} stored
+                    {dailyFoodConsumption > 0 && ` · ${foodDaysLeftIfNoProduction === Number.POSITIVE_INFINITY ? '∞' : foodDaysLeftIfNoProduction.toFixed(0)}d reserve`}
+                  </span>
                 </div>
               </div>
 
+              {hasMilitiaBuilding && (
               <div style={{ padding: '0.8rem', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '0.6rem', background: 'rgba(8,47,73,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                   <div style={{ color: '#93c5fd', fontWeight: 700 }}>Militia & Soldiers</div>
@@ -1192,216 +1425,200 @@ const KingdomTab: React.FC<Props> = ({
                   <span>Unassigned adults: {unassignedAdults}</span>
                 </div>
               </div>
-
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(234,179,8,0.28)', borderRadius: '0.6rem', background: 'rgba(120,53,15,0.22)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ color: '#fde68a', fontWeight: 700 }}>Prisoners & Slave Labor</div>
-                  <button
-                    onClick={convertPrisonersToSlaves}
-                    disabled={busy === 'convert-prisoners' || prisoners <= 0}
-                    style={{
-                      padding: '0.3rem 0.65rem',
-                      borderRadius: '0.35rem',
-                      border: '1px solid rgba(234,179,8,0.45)',
-                      background: 'rgba(146,64,14,0.35)',
-                      color: '#fde68a',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      opacity: (busy === 'convert-prisoners' || prisoners <= 0) ? 0.6 : 1,
-                    }}
-                  >
-                    {busy === 'convert-prisoners' ? 'Converting...' : 'Convert Prisoners'}
-                  </button>
-                </div>
-                <div style={{ marginTop: '0.55rem', color: '#e2e8f0', fontSize: '0.9rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                  <span>Prisoners held: {prisoners}</span>
-                  <span>Slave population: {slaves}</span>
-                  <span style={{ color: hasPrisonInfrastructure ? '#86efac' : '#fca5a5' }}>
-                    Prison infrastructure: {hasPrisonInfrastructure ? 'Online' : 'Not built'}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
-                <div style={{ color: 'var(--text-gold)', marginBottom: '0.6rem', fontWeight: 700 }}>Worker Assignments (Citizens)</div>
-                <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginBottom: '0.55rem', textAlign: 'center' }}>Assigned citizens: {totalAssigned}/{assignablePopulation} assignable adults</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', alignItems: 'center' }}>
-                  {resourceRows.map((row) => (
-                    <div
-                      key={row.key}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.35rem',
-                        width: '100%',
-                        maxWidth: '1160px',
-                      }}
-                    >
-                      <div style={{ display: 'grid', gridTemplateColumns: '96px minmax(250px, auto) 68px minmax(250px, auto) 96px', alignItems: 'center', justifyContent: 'center', gap: '0.55rem' }}>
-                        <div style={{ textAlign: 'center', color: '#e2e8f0', textTransform: 'capitalize', minWidth: '60px' }}>{row.key}</div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem', flexWrap: 'wrap' }}>
-                          {WORKER_STEP_OPTIONS.slice().reverse().map((step) => (
-                            <button
-                              key={`minus-${row.key}-${step}`}
-                              onClick={() => adjustWorkers(row.key, -step)}
-                              disabled={busy === 'workers'}
-                              style={{ padding: '0.2rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer' }}
-                            >
-                              -{step}
-                            </button>
-                          ))}
-                        </div>
-                        <span style={{ minWidth: 68, textAlign: 'center', color: '#f8fafc', fontWeight: 700 }}>{row.assigned}/{row.max}</span>
-                        <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.35rem', flexWrap: 'wrap' }}>
-                          {WORKER_STEP_OPTIONS.map((step) => (
-                            <button
-                              key={`plus-${row.key}-${step}`}
-                              onClick={() => adjustWorkers(row.key, step)}
-                              disabled={busy === 'workers'}
-                              style={{ padding: '0.2rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer' }}
-                            >
-                              +{step}
-                            </button>
-                          ))}
-                        </div>
-                        <div style={{ textAlign: 'center', minWidth: '70px', fontWeight: 700, fontSize: '0.88rem' }}>
-                          {(() => {
-                            const output = Number(productionByLane.output[row.key] || 0);
-                            let color = 'var(--text-gold)';
-                            if (output > 0) color = '#22c55e';
-                            else if (output < 0) color = '#ef4444';
-                            return <span style={{ color }}>{formatSigned(output)}</span>;
-                          })()}
-                        </div>
-                      </div>
-                      <span style={{ color: '#93c5fd', fontSize: '0.78rem', textAlign: 'center' }}>
-                        {row.key === 'meat'
-                          ? `${formatSigned(productionByLane.output.meat)} /day (constant)`
-                          : row.key === 'vegetables'
-                            ? `Getting ~${(productionByLane.foodBreakdown.projectedVegetableYield ?? 0).toFixed(1)} food in ${productionByLane.foodBreakdown.daysLeftInCycle ?? 0} day(s)`
-                          : row.key === 'building'
-                            ? `${formatSigned(productionByLane.output.building)} build speed/day`
-                            : `${formatSigned(Number(productionByLane.output[row.key] || 0))} /day`}
-                      </span>
-                      {currentCampaignDay !== null && ['vegetables', 'meat', 'wood', 'stone', 'iron', 'minerals', 'faith', 'research', 'gold'].includes(row.key) && (
-                        (() => {
-                          const season = currentSeason || (currentCampaignDay ? getSeasonForDay(currentCampaignDay) : null);
-                          if (!season) return null;
-                          const effects = (currentSeasonEffects && typeof currentSeasonEffects === 'object')
-                            ? currentSeasonEffects
-                            : getSeasonEffects(season);
-                          const displayKey = row.key === 'iron' ? 'minerals' : row.key;
-                          const resourceModifier = effects[displayKey] || 0;
-
-                          const logisticsLevel = Math.max(0, Number(productionByLane.foodBreakdown.logisticsLevel || 0));
-                          const logisticsText = logisticsLevel > 0 ? ` | Logistics +${logisticsLevel * 5}%` : '';
-
-                          if (resourceModifier !== 0) {
-                            const isBonus = resourceModifier > 0;
-                            const color = isBonus ? '#22c55e' : '#ef4444';
-                            const percent = Math.round(Math.abs(resourceModifier) * 100);
-                            const adjustedOutput = Number(productionByLane.output[row.key] || 0);
-                            const outputSuffix = row.key === 'building' ? ' build speed/day' : '/day';
-                            return (
-                              <span title={`${season} effect: ${isBonus ? '+' : '-'}${percent}% production`} style={{ color, fontSize: '0.73rem', fontWeight: 600, cursor: 'help' }}>
-                                {season} {isBonus ? '📈' : '📉'} {isBonus ? '+' : '-'}{percent}%{logisticsText}{' -> '}{formatSigned(adjustedOutput)}{outputSuffix}
-                              </span>
-                            );
-                          }
-
-                          if (logisticsLevel > 0) {
-                            return (
-                              <span style={{ color: '#22c55e', fontSize: '0.73rem', fontWeight: 600 }}>
-                                Logistics +{logisticsLevel * 5}%
-                              </span>
-                            );
-                          }
-
-                          return null;
-                        })()
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {(hasPrisonInfrastructure || slaves > 0 || totalSlaveAssigned > 0) && (
-                <div style={{ padding: '0.8rem', border: '1px solid rgba(234,179,8,0.28)', borderRadius: '0.6rem', background: 'rgba(120,53,15,0.22)' }}>
-                  <div style={{ color: '#fde68a', marginBottom: '0.6rem', fontWeight: 700 }}>Worker Assignments (Slave Labor)</div>
-                  <div style={{ color: '#f1f5f9', fontSize: '0.82rem', marginBottom: '0.55rem', textAlign: 'center' }}>Assigned slaves: {totalSlaveAssigned}/{slaves}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', alignItems: 'center' }}>
-                    {slaveResourceRows.map((row) => (
-                      <div
-                        key={`slave-${row.key}`}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.35rem',
-                          width: '100%',
-                          maxWidth: '1160px',
-                        }}
-                      >
-                        <div style={{ display: 'grid', gridTemplateColumns: '96px minmax(250px, auto) 68px minmax(250px, auto) 96px', alignItems: 'center', justifyContent: 'center', gap: '0.55rem' }}>
-                          <div style={{ textAlign: 'center', color: '#fde68a', textTransform: 'capitalize', minWidth: '60px' }}>{row.key}</div>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem', flexWrap: 'wrap' }}>
-                            {WORKER_STEP_OPTIONS.slice().reverse().map((step) => (
-                              <button
-                                key={`slave-minus-${row.key}-${step}`}
-                                onClick={() => adjustSlaveWorkers(row.key, -step)}
-                                disabled={busy === 'slave-workers'}
-                                style={{ padding: '0.2rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer' }}
-                              >
-                                -{step}
-                              </button>
-                            ))}
-                          </div>
-                          <span style={{ minWidth: 68, textAlign: 'center', color: '#f8fafc', fontWeight: 700 }}>{row.assigned}/{row.max}</span>
-                          <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.35rem', flexWrap: 'wrap' }}>
-                            {WORKER_STEP_OPTIONS.map((step) => (
-                              <button
-                                key={`slave-plus-${row.key}-${step}`}
-                                onClick={() => adjustSlaveWorkers(row.key, step)}
-                                disabled={busy === 'slave-workers'}
-                                style={{ padding: '0.2rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer' }}
-                              >
-                                +{step}
-                              </button>
-                            ))}
-                          </div>
-                          <div style={{ textAlign: 'center', minWidth: '70px', fontWeight: 700, fontSize: '0.88rem' }}>
-                            <span style={{ color: '#22c55e' }}>{formatSigned(Number(productionByLane.output[row.key] || 0))}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               )}
+
+
+
+              {(() => {
+                const showSlaves = hasPrisonInfrastructure || slaves > 0 || totalSlaveAssigned > 0;
+                const renderModifier = (key: string) => {
+                  if (!currentCampaignDay || !['vegetables', 'meat', 'wood', 'stone', 'iron', 'minerals', 'faith', 'research', 'gold'].includes(key)) {
+                    return null;
+                  }
+                  const season = currentSeason || getSeasonForDay(currentCampaignDay);
+                  const effects = (currentSeasonEffects && typeof currentSeasonEffects === 'object') ? currentSeasonEffects : getSeasonEffects(season);
+                  const displayKey = key === 'iron' ? 'minerals' : key;
+                  const resourceModifier = effects[displayKey] || 0;
+                  const logisticsLevel = Math.max(0, Number(productionByLane.foodBreakdown.logisticsLevel || 0));
+                  const logisticsText = logisticsLevel > 0 ? ` | Logistics +${logisticsLevel * 5}%` : '';
+                  if (resourceModifier !== 0) {
+                    const isBonus = resourceModifier > 0;
+                    const color = isBonus ? '#22c55e' : '#ef4444';
+                    const percent = Math.round(Math.abs(resourceModifier) * 100);
+                    const adjustedOutput = Number(productionByLane.output[key] || 0);
+                    const outputSuffix = key === 'building' ? ' build speed/day' : '/day';
+                    return (
+                      <span title={`${season} effect: ${isBonus ? '+' : '-'}${percent}% production`} style={{ color, fontSize: '0.72rem', fontWeight: 600, cursor: 'help' }}>
+                        {season} {isBonus ? '📈' : '📉'} {isBonus ? '+' : '-'}{percent}%{logisticsText}{' → '}{formatSigned(adjustedOutput)}{outputSuffix}
+                      </span>
+                    );
+                  }
+                  if (logisticsLevel > 0) {
+                    return <span style={{ color: '#22c55e', fontSize: '0.72rem', fontWeight: 600 }}>Logistics +{logisticsLevel * 5}%</span>;
+                  }
+                  return null;
+                };
+
+                const citizenControls = (row: { key: string; assigned: number; max: number }) => (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', flexWrap: 'wrap', padding: '0.4rem 0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                      {WORKER_STEP_OPTIONS.slice().reverse().map((step) => (
+                        <button key={`minus-${row.key}-${step}`} onClick={() => adjustWorkers(row.key, -step)} disabled={busy === 'workers'}
+                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.78rem' }}>
+                          -{step}
+                        </button>
+                      ))}
+                    </div>
+                    <span style={{ minWidth: '80px', textAlign: 'center', color: '#f8fafc', fontWeight: 700, fontSize: '1.45rem', lineHeight: 1 }}>{row.assigned}/{row.max}</span>
+                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                      {WORKER_STEP_OPTIONS.map((step) => (
+                        <button key={`plus-${row.key}-${step}`} onClick={() => adjustWorkers(row.key, step)} disabled={busy === 'workers'}
+                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontSize: '0.78rem' }}>
+                          +{step}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+
+                const slaveControls = (row: { key: string; assigned: number; max: number }) => (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', flexWrap: 'wrap', padding: '0.4rem 0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                      {WORKER_STEP_OPTIONS.slice().reverse().map((step) => (
+                        <button key={`slave-minus-${row.key}-${step}`} onClick={() => adjustSlaveWorkers(row.key, -step)} disabled={busy === 'slave-workers'}
+                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.78rem' }}>
+                          -{step}
+                        </button>
+                      ))}
+                    </div>
+                    <span style={{ minWidth: '80px', textAlign: 'center', color: '#f8fafc', fontWeight: 700, fontSize: '1.45rem', lineHeight: 1 }}>{row.assigned}/{row.max}</span>
+                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                      {WORKER_STEP_OPTIONS.map((step) => (
+                        <button key={`slave-plus-${row.key}-${step}`} onClick={() => adjustSlaveWorkers(row.key, step)} disabled={busy === 'slave-workers'}
+                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontSize: '0.78rem' }}>
+                          +{step}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+
+                const totalCell = (key: string) => {
+                  const output = Number(productionByLane.output[key] || 0);
+                  const outputColor = output > 0 ? '#22c55e' : output < 0 ? '#ef4444' : '#94a3b8';
+                  const suffix = key === 'building' ? 'build/day' : key === 'vegetables' ? 'food/cycle' : '/day';
+                  const modifier = renderModifier(key);
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.1rem', padding: '0.4rem 0.6rem', height: '100%' }}>
+                      <span style={{ color: outputColor, fontWeight: 700, fontSize: '1.05rem' }}>{formatSigned(output)}</span>
+                      <span style={{ color: '#475569', fontSize: '0.7rem' }}>{suffix}</span>
+                      <div style={{ minHeight: '1.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>{modifier}</div>
+                    </div>
+                  );
+                };
+
+                const headerCols = showSlaves ? '80px 1px 1fr 1px 1fr 1px 140px' : '80px 1px 1fr 1px 140px';
+                const laneCols   = showSlaves ? '80px 1px 1fr 1px 1fr 1px 140px' : '80px 1px 1fr 1px 140px';
+
+                return (
+                  <div style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)', overflow: 'hidden' }}>
+                    {/* Column headers */}
+                    <div style={{ display: 'grid', gridTemplateColumns: headerCols }}>
+                      <div style={{ padding: '0.7rem 0.4rem 0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Resource</span>
+                      </div>
+                      <div style={{ background: 'rgba(148,163,184,0.15)' }} />
+                      <div style={{ padding: '0.7rem 0.8rem 0.5rem' }}>
+                        <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.95rem' }}>⚒ Workers — Citizens</div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalAssigned} / {assignablePopulation} assignable adults</div>
+                      </div>
+                      {showSlaves && <div style={{ background: 'rgba(148,163,184,0.15)' }} />}
+                      {showSlaves && (
+                        <div style={{ padding: '0.7rem 0.8rem 0.5rem', background: 'rgba(120,53,15,0.18)' }}>
+                          <div style={{ color: '#fde68a', fontWeight: 700, fontSize: '0.95rem' }}>⛓ Workers — Slave Labor</div>
+                          <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalSlaveAssigned} / {slaves} slaves</div>
+                        </div>
+                      )}
+                      <div style={{ background: 'rgba(148,163,184,0.15)' }} />
+                      <div style={{ padding: '0.7rem 0.6rem 0.5rem', background: 'rgba(15,23,42,0.5)', textAlign: 'center' }}>
+                        <div style={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.85rem' }}>Total Output</div>
+                      </div>
+                    </div>
+
+                    {/* Divider under headers */}
+                    <div style={{ height: '1px', background: 'rgba(148,163,184,0.15)' }} />
+
+                    {/* Lane rows */}
+                    {resourceRows.map((citizenRow, idx) => {
+                      const slaveRow = showSlaves ? slaveResourceRows.find(r => r.key === citizenRow.key) : null;
+                      const isEven = idx % 2 === 0;
+                      const rowBg = isEven ? 'rgba(255,255,255,0.02)' : 'transparent';
+                      return (
+                        <div key={citizenRow.key} style={{ display: 'grid', gridTemplateColumns: laneCols, background: rowBg, borderTop: idx > 0 ? '1px solid rgba(148,163,184,0.08)' : undefined, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.3rem 0.2rem' }}>
+                            <span style={{ color: '#cbd5e1', textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>{citizenRow.key}</span>
+                          </div>
+                          <div style={{ background: 'rgba(148,163,184,0.15)', alignSelf: 'stretch' }} />
+                          <div>{citizenControls(citizenRow)}</div>
+                          {showSlaves && <div style={{ background: 'rgba(148,163,184,0.15)', alignSelf: 'stretch' }} />}
+                          {showSlaves && (
+                            <div style={{ background: 'rgba(120,53,15,0.10)' }}>
+                              {slaveRow
+                                ? slaveControls(slaveRow)
+                                : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.4rem', color: '#94a3b8', opacity: 0.35 }}>—</div>
+                              }
+                            </div>
+                          )}
+                          <div style={{ background: 'rgba(148,163,184,0.15)', alignSelf: 'stretch' }} />
+                          <div style={{ background: 'rgba(15,23,42,0.4)', alignSelf: 'stretch' }}>{totalCell(citizenRow.key)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
               <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Construction</div>
-                  <button
-                    onClick={() => {
-                      setBuildTab('all');
-                      setShowBuildModal(true);
-                    }}
-                    style={{
-                      padding: '0.38rem 0.7rem',
-                      borderRadius: '0.45rem',
-                      border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
-                      background: 'rgba(120,53,15,0.35)',
-                      color: 'var(--text-gold)',
-                      cursor: 'pointer',
-                      fontWeight: 700,
-                    }}
-                  >
-                    Build
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                    <button
+                      onClick={() => {
+                        setBuildTab('all');
+                        setShowBuildModal(true);
+                      }}
+                      style={{
+                        padding: '0.38rem 0.7rem',
+                        borderRadius: '0.45rem',
+                        border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
+                        background: 'rgba(120,53,15,0.35)',
+                        color: 'var(--text-gold)',
+                        cursor: 'pointer',
+                        fontWeight: 700,
+                      }}
+                    >
+                      Build
+                    </button>
+                    {hasCompletedResearchLab && (
+                      <button
+                        onClick={() => {
+                          setResearchTab('all');
+                          setShowResearchModal(true);
+                        }}
+                        style={{
+                          padding: '0.38rem 0.7rem',
+                          borderRadius: '0.45rem',
+                          border: '1px solid rgba(59,130,246,0.45)',
+                          background: 'rgba(30,58,138,0.35)',
+                          color: '#93c5fd',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                        }}
+                      >
+                        📘 Research
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '0.76rem', marginBottom: '0.6rem' }}>Built and in-progress structures</div>
                 {BUILD_TABS.map((category) => {
@@ -1423,6 +1640,11 @@ const KingdomTab: React.FC<Props> = ({
                             return (
                               <div
                                 key={Number(b.id)}
+                                onMouseEnter={b.is_complete ? (e) => {
+                                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  setHoveredBuilding({ building: b, x: rect.left, y: rect.bottom + 6 });
+                                } : undefined}
+                                onMouseLeave={b.is_complete ? () => setHoveredBuilding(null) : undefined}
                                 style={{
                                   borderRadius: '0.55rem',
                                   border: `1px solid ${categoryColors.border}`,
@@ -1432,6 +1654,7 @@ const KingdomTab: React.FC<Props> = ({
                                   display: 'flex',
                                   flexDirection: 'column',
                                   gap: '0.16rem',
+                                  cursor: b.is_complete ? 'default' : undefined,
                                 }}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
@@ -1630,144 +1853,6 @@ const KingdomTab: React.FC<Props> = ({
                   </>
                 )}
               </div>
-
-              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                {/* Placeholder for spacing */}
-              </div>
-
-              {hasCompletedResearchLab && (
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
-                <div style={{ color: '#93c5fd', marginBottom: '0.6rem', fontWeight: 700, fontSize: '1.05rem' }}>📘 Research</div>
-
-                {(fiefDetails.availableResearch || []).length === 0 ? (
-                  <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>Research unlocks after reaching Tier 2 and building a Research Lab.</div>
-                ) : (
-                  <>
-                    {activeResearch && (
-                      <div style={{ marginBottom: '0.8rem', padding: '0.6rem', border: '1px solid rgba(217,119,6,0.35)', borderRadius: '0.45rem', background: 'rgba(120,53,15,0.2)' }}>
-                        <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                          ⏳ Active
-                        </div>
-                        {researchQueue.filter(r => r.status === 'active').map((entry) => {
-                          const research = (fiefDetails.availableResearch || []).find((r: any) => String(r.id) === String(entry.research_id));
-                          const progress = Number(entry.points_accumulated || 0);
-                          const required = Number(research?.pointsRequired || 100);
-                          const progressPercent = Math.min(100, (progress / required) * 100);
-                          return (
-                            <div key={entry.id}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-                                <span style={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 600 }}>{research?.name || formatResearchLabel(entry.research_id)}</span>
-                                <span style={{ color: '#bfdbfe', fontSize: '0.74rem' }}>{Math.floor(progress)}/{required} pts</span>
-                              </div>
-                              <div style={{ height: '0.32rem', background: 'rgba(30,41,59,0.5)', borderRadius: '0.2rem', overflow: 'hidden' }}>
-                                <div style={{ height: '100%', background: 'rgba(217,119,6,0.7)', width: `${progressPercent}%`, transition: 'width 0.3s ease' }} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {researchQueue.filter(r => r.status === 'queued').length > 0 && (
-                      <div style={{ marginBottom: '0.8rem', padding: '0.6rem', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '0.45rem', background: 'rgba(30,41,59,0.25)' }}>
-                        <div style={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                          ⋯ Queued
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          {researchQueue.filter(r => r.status === 'queued').map((entry, idx) => {
-                            const research = (fiefDetails.availableResearch || []).find((r: any) => String(r.id) === String(entry.research_id));
-                            return (
-                              <div key={entry.id} style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
-                                {idx + 1}. {research?.name || formatResearchLabel(entry.research_id)}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {(fiefDetails.availableResearch || []).filter((r: any) => r.isCompleted).length > 0 && (
-                      <div style={{ marginBottom: '0.8rem', padding: '0.6rem', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '0.45rem', background: 'rgba(22,163,74,0.15)' }}>
-                        <div style={{ color: '#86efac', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                          ✓ Completed
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.4rem' }}>
-                          {(fiefDetails.availableResearch || []).filter((r: any) => r.isCompleted).map((research: any) => (
-                            <div
-                              key={research.id}
-                              title={`${research.name}: ${String(research.description || 'No description available.')}`}
-                              style={{
-                                fontSize: '0.76rem',
-                                color: '#86efac',
-                                padding: '0.3rem 0.4rem',
-                                background: 'rgba(34,197,94,0.1)',
-                                borderRadius: '0.3rem',
-                                textAlign: 'center',
-                                cursor: 'help',
-                              }}
-                            >
-                              {research.name}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(fiefDetails.availableResearch || []).filter((r: any) => !r.isCompleted && !r.isQueuedOrActive).length > 0 && (
-                      <div style={{ padding: '0.6rem', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.45rem', background: 'rgba(30,58,138,0.15)' }}>
-                        <div style={{ color: '#93c5fd', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                          📖 Available
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.5rem' }}>
-                          {(fiefDetails.availableResearch || []).filter((r: any) => !r.isCompleted && !r.isQueuedOrActive).map((research: any) => {
-                            const prereqText = (research.prerequisites || []).map((r: string) => formatResearchLabel(r)).join(', ');
-                            return (
-                              <div
-                                key={research.id}
-                                style={{
-                                  border: '1px solid rgba(96,165,250,0.35)',
-                                  borderRadius: '0.45rem',
-                                  padding: '0.5rem 0.6rem',
-                                  background: 'rgba(30,41,59,0.4)',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '0.25rem',
-                                }}
-                              >
-                                <div style={{ color: '#dbeafe', fontWeight: 700, fontSize: '0.88rem' }}>{research.name}</div>
-                                <div style={{ color: '#cbd5e1', fontSize: '0.75rem', lineHeight: '1.3' }}>{research.description}</div>
-                                {prereqText && (
-                                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.1rem' }}>⚙️ {prereqText}</div>
-                                )}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
-                                  <span style={{ color: '#93c5fd', fontSize: '0.76rem', fontWeight: 600 }}>{research.pointsRequired} pts</span>
-                                  <button
-                                    onClick={() => startResearch(research.id)}
-                                    disabled={busy === `research-${research.id}`}
-                                    style={{
-                                      padding: '0.24rem 0.5rem',
-                                      borderRadius: '0.3rem',
-                                      border: '1px solid rgba(96,165,250,0.5)',
-                                      background: busy === `research-${research.id}` ? 'rgba(71,85,105,0.35)' : 'rgba(30,58,138,0.45)',
-                                      color: busy === `research-${research.id}` ? '#94a3b8' : '#93c5fd',
-                                      cursor: busy === `research-${research.id}` ? 'not-allowed' : 'pointer',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {busy === `research-${research.id}` ? 'Starting...' : 'Start'}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-              )}
             </div>
           )}
         </>
@@ -2062,6 +2147,269 @@ const KingdomTab: React.FC<Props> = ({
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showResearchModal && fiefDetails && ReactDOM.createPortal(
+        (() => {
+          const fiefTier = Number(fiefDetails?.tier || 1);
+          const allResearch = (fiefDetails.availableResearch || []) as any[];
+          const activeResearch = researchQueue.find((r: any) => r.status === 'active');
+          const dailyResearchRate = Math.max(0, Number(productionByLane.output.research || 0));
+          const getETA = (pointsRequired: number, pointsAccumulated = 0): string => {
+            const remaining = Math.max(0, pointsRequired - pointsAccumulated);
+            if (remaining === 0) return 'Done';
+            if (dailyResearchRate <= 0) return 'No researchers';
+            const days = Math.ceil(remaining / dailyResearchRate);
+            return `~${days} day${days === 1 ? '' : 's'}`;
+          };
+          const completedSet = new Set(allResearch.filter((r: any) => r.isCompleted).map((r: any) => String(r.id)));
+          const prereqsMet = (r: any): boolean =>
+            (r.prerequisites || []).every((p: string) => completedSet.has(p));
+          const queueableResearch = allResearch.filter((r: any) =>
+            !r.isCompleted && !r.isQueuedOrActive &&
+            Number(r.tierRequired || 2) <= fiefTier && prereqsMet(r)
+          );
+          const filteredQueueable = researchTab === 'all'
+            ? queueableResearch
+            : queueableResearch.filter((r: any) => getResearchCategory(r) === researchTab);
+          return (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 10015, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '2rem 1rem', overflowY: 'auto' }}
+              onClick={(e) => { if (e.target === e.currentTarget) setShowResearchModal(false); }}
+            >
+              <div
+                style={{ background: 'rgba(18,18,18,0.96)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '12px', boxShadow: '0 25px 50px rgba(0,0,0,0.5)', width: '100%', maxWidth: '960px', maxHeight: '90vh', overflow: 'hidden' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-header">
+                  <h3 className="modal-title">📘 Research (Tier {fiefTier})</h3>
+                  <button className="modal-close" onClick={() => setShowResearchModal(false)} aria-label="Close">×</button>
+                </div>
+                <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem', maxHeight: 'calc(90vh - 90px)', overflowY: 'auto' }}>
+                  {allResearch.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>Research unlocks after reaching Tier 2 and building a Research Lab.</div>
+                  ) : (
+                    <>
+                      {/* Active */}
+                      {activeResearch && (
+                        <div style={{ padding: '0.6rem', border: '1px solid rgba(217,119,6,0.35)', borderRadius: '0.45rem', background: 'rgba(120,53,15,0.2)' }}>
+                          <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>⏳ Active</div>
+                          {researchQueue.filter((r: any) => r.status === 'active').map((entry: any) => {
+                            const research = allResearch.find((r: any) => String(r.id) === String(entry.research_id));
+                            const progress = Number(entry.points_accumulated || 0);
+                            const required = Number(research?.pointsRequired || 100);
+                            const progressPercent = Math.min(100, (progress / required) * 100);
+                            const eta = getETA(required, progress);
+                            return (
+                              <div key={entry.id}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                                  <span style={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 600 }}>{research?.name || formatResearchLabel(entry.research_id)}</span>
+                                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <span style={{ color: '#fde68a', fontSize: '0.72rem', fontWeight: 600 }}>{eta}</span>
+                                    <span style={{ color: '#bfdbfe', fontSize: '0.74rem' }}>{Math.floor(progress)}/{required} pts</span>
+                                  </div>
+                                </div>
+                                <div style={{ height: '0.32rem', background: 'rgba(30,41,59,0.5)', borderRadius: '0.2rem', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', background: 'rgba(217,119,6,0.7)', width: `${progressPercent}%`, transition: 'width 0.3s ease' }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Queued */}
+                      {researchQueue.filter((r: any) => r.status === 'queued').length > 0 && (
+                        <div style={{ padding: '0.6rem', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '0.45rem', background: 'rgba(30,41,59,0.25)' }}>
+                          <div style={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>⋯ Queued</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            {researchQueue.filter((r: any) => r.status === 'queued').map((entry: any, idx: number) => {
+                              const research = allResearch.find((r: any) => String(r.id) === String(entry.research_id));
+                              return (
+                                <div key={entry.id} style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                                  {idx + 1}. {research?.name || formatResearchLabel(entry.research_id)}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Completed */}
+                      {allResearch.filter((r: any) => r.isCompleted).length > 0 && (
+                        <div style={{ padding: '0.6rem', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '0.45rem', background: 'rgba(22,163,74,0.15)' }}>
+                          <div style={{ color: '#86efac', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.4rem' }}>✓ Completed</div>
+                          {(['economy', 'military', 'civic'] as ResearchTabId[]).map((cat) => {
+                            const items = allResearch.filter((r: any) => r.isCompleted && getResearchCategory(r) === cat);
+                            if (items.length === 0) return null;
+                            const s = RESEARCH_TAB_COLORS[cat];
+                            return (
+                              <div key={cat} style={{ marginBottom: '0.4rem' }}>
+                                <div style={{ color: s.text, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
+                                  {RESEARCH_TAB_LABELS[cat]}
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                                  {items.map((r: any) => (
+                                    <div key={r.id} title={String(r.description || '')}
+                                      style={{ fontSize: '0.73rem', color: '#86efac', padding: '0.18rem 0.38rem', background: 'rgba(34,197,94,0.1)', borderRadius: '0.3rem', cursor: 'help' }}>
+                                      {r.name}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Available */}
+                      <div style={{ padding: '0.6rem', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.45rem', background: 'rgba(30,58,138,0.15)' }}>
+                        <div style={{ color: '#93c5fd', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.4rem' }}>📖 Available to Research</div>
+                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                          {RESEARCH_TABS.map((tab) => {
+                            const count = tab === 'all'
+                              ? queueableResearch.length
+                              : queueableResearch.filter((r: any) => getResearchCategory(r) === tab).length;
+                            if (tab !== 'all' && count === 0) return null;
+                            const active = researchTab === tab;
+                            const s = RESEARCH_TAB_COLORS[tab];
+                            return (
+                              <button key={tab} onClick={() => setResearchTab(tab)}
+                                style={{
+                                  padding: '0.24rem 0.52rem', borderRadius: '999px',
+                                  border: `1px solid ${s.border}`,
+                                  background: active ? s.background : 'rgba(15,23,42,0.28)',
+                                  color: s.text, cursor: 'pointer',
+                                  fontWeight: active ? 700 : 500, fontSize: '0.74rem',
+                                }}>
+                                {RESEARCH_TAB_LABELS[tab]}{tab !== 'all' && ` (${count})`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {filteredQueueable.length === 0 ? (
+                          <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                            {queueableResearch.length === 0
+                              ? `No research available at Tier ${fiefTier}. Increase your fief tier to unlock more.`
+                              : 'No research in this category.'}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.5rem' }}>
+                            {filteredQueueable.map((research: any) => {
+                              const cat = getResearchCategory(research);
+                              const c = RESEARCH_TAB_COLORS[cat];
+                              return (
+                                <div key={research.id}
+                                  style={{ border: `1px solid ${c.border}`, borderRadius: '0.45rem', padding: '0.5rem 0.6rem', background: 'rgba(30,41,59,0.4)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.4rem' }}>
+                                    <div style={{ color: '#dbeafe', fontWeight: 700, fontSize: '0.88rem' }}>{research.name}</div>
+                                    <span style={{ color: c.text, fontSize: '0.68rem', textTransform: 'uppercase', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                      {RESEARCH_TAB_LABELS[cat]}
+                                    </span>
+                                  </div>
+                                  <div style={{ color: '#cbd5e1', fontSize: '0.75rem', lineHeight: '1.3' }}>{research.description}</div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem' }}>
+                                    <span style={{ color: '#93c5fd', fontSize: '0.74rem', fontWeight: 600 }}>
+                                      Tier {research.tierRequired} • {research.pointsRequired} pts
+                                    </span>
+                                    <span style={{ color: '#fde68a', fontSize: '0.72rem', fontWeight: 600 }}>
+                                      {getETA(Number(research.pointsRequired))}
+                                    </span>
+                                    <button
+                                      onClick={() => startResearch(research.id)}
+                                      disabled={busy === `research-${research.id}`}
+                                      style={{
+                                        padding: '0.24rem 0.5rem', borderRadius: '0.3rem',
+                                        border: `1px solid ${c.border}`,
+                                        background: busy === `research-${research.id}` ? 'rgba(71,85,105,0.35)' : 'rgba(30,58,138,0.45)',
+                                        color: busy === `research-${research.id}` ? '#94a3b8' : c.text,
+                                        cursor: busy === `research-${research.id}` ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.72rem', fontWeight: 600,
+                                      }}>
+                                      {busy === `research-${research.id}` ? 'Starting…' : 'Queue'}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
+      {showConversionModal && fiefDetails && ReactDOM.createPortal(
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setShowConversionModal(false); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 10020, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        >
+          <div style={{ background: '#0f172a', border: '1px solid rgba(234,179,8,0.35)', borderRadius: '0.75rem', padding: '1.4rem', width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ color: '#fde68a', fontWeight: 700, fontSize: '1.05rem' }}>⛓ Prisoner & Slave Management</div>
+              <button onClick={() => setShowConversionModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+              <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.5rem', padding: '0.7rem', textAlign: 'center' }}>
+                <div style={{ color: '#fca5a5', fontSize: '0.78rem', marginBottom: '0.25rem' }}>Prisoners</div>
+                <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.5rem' }}>{prisoners}</div>
+              </div>
+              <div style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '0.5rem', padding: '0.7rem', textAlign: 'center' }}>
+                <div style={{ color: '#fde68a', fontSize: '0.78rem', marginBottom: '0.25rem' }}>Slaves</div>
+                <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.5rem' }}>{slaves}</div>
+              </div>
+            </div>
+
+            {/* Prisoners → Slaves */}
+            <div style={{ background: 'rgba(146,64,14,0.2)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '0.55rem', padding: '1rem' }}>
+              <div style={{ color: '#fde68a', fontWeight: 700, marginBottom: '0.5rem' }}>Convert Prisoners → Slaves</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Prisoners are put to work as slave labor. This is irreversible unless you release them below.</div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="number" min="1" max={prisoners} value={conversionInput}
+                  onChange={(e) => setConversionInput(e.target.value)}
+                  style={{ width: '70px', padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,0,0,0.4)', color: '#f8fafc', textAlign: 'center' }}
+                />
+                <span style={{ color: '#64748b', fontSize: '0.82rem' }}>of {prisoners} prisoners</span>
+                <button
+                  onClick={executeConversion}
+                  disabled={busy === 'convert-prisoners' || prisoners <= 0 || Number(conversionInput) <= 0}
+                  style={{ marginLeft: 'auto', padding: '0.35rem 0.75rem', borderRadius: '0.35rem', border: '1px solid rgba(234,179,8,0.45)', background: 'rgba(146,64,14,0.45)', color: '#fde68a', fontWeight: 700, cursor: 'pointer', opacity: (busy === 'convert-prisoners' || prisoners <= 0) ? 0.5 : 1 }}
+                >
+                  {busy === 'convert-prisoners' ? 'Converting…' : 'Convert'}
+                </button>
+              </div>
+            </div>
+
+            {/* Slaves → Prisoners */}
+            <div style={{ background: 'rgba(30,41,59,0.5)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: '0.55rem', padding: '1rem' }}>
+              <div style={{ color: '#cbd5e1', fontWeight: 700, marginBottom: '0.5rem' }}>Release Slaves → Prisoners</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Released slaves return to the prisoner pool. Any excess worker assignments are automatically reduced.</div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="number" min="1" max={slaves} value={releaseInput}
+                  onChange={(e) => setReleaseInput(e.target.value)}
+                  style={{ width: '70px', padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(0,0,0,0.4)', color: '#f8fafc', textAlign: 'center' }}
+                />
+                <span style={{ color: '#64748b', fontSize: '0.82rem' }}>of {slaves} slaves</span>
+                <button
+                  onClick={executeRelease}
+                  disabled={busy === 'release-slaves' || slaves <= 0 || Number(releaseInput) <= 0}
+                  style={{ marginLeft: 'auto', padding: '0.35rem 0.75rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.3)', background: 'rgba(30,41,59,0.6)', color: '#e2e8f0', fontWeight: 700, cursor: 'pointer', opacity: (busy === 'release-slaves' || slaves <= 0) ? 0.5 : 1 }}
+                >
+                  {busy === 'release-slaves' ? 'Releasing…' : 'Release'}
+                </button>
+              </div>
             </div>
           </div>
         </div>,

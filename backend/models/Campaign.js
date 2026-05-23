@@ -36,7 +36,7 @@ class Campaign {
     const dailyBirthChanceRaw = Number(process.env.KINGDOM_DAILY_BIRTH_CHANCE_PER_ADULT);
     const dailyBirthChance = Number.isFinite(dailyBirthChanceRaw)
       ? Math.min(1, Math.max(0, dailyBirthChanceRaw))
-      : 0.00005;
+      : 0.001;
 
     return {
       dailyBirthChance,
@@ -127,6 +127,25 @@ class Campaign {
     return Math.max(0, Math.min(adults, sampled));
   }
 
+  // Trim worker assignments down so the total does not exceed `assignableAdults`.
+  // Removes workers in lowest-priority-first order so important lanes are preserved.
+  static trimWorkerAssignmentsToAssignable(workerAssignments, assignableAdults) {
+    const assignments = { ...(Campaign.toNumericResourceMap(workerAssignments)) };
+    const target = Math.max(0, Math.floor(Number(assignableAdults) || 0));
+    let total = Object.values(assignments).reduce((s, v) => s + Math.max(0, Number(v) || 0), 0);
+    if (total <= target) return assignments;
+
+    const removeOrder = ['building', 'research', 'faith', 'iron', 'stone', 'wood', 'vegetables', 'meat'];
+    for (const lane of removeOrder) {
+      if (total <= target) break;
+      const current = Math.max(0, Number(assignments[lane] || 0));
+      const toRemove = Math.min(current, total - target);
+      assignments[lane] = current - toRemove;
+      total -= toRemove;
+    }
+    return assignments;
+  }
+
   static applyResourceUnlock(unlockedResources, maxWorkersPerResource, resourceKey, workerCap = 20) {
     const nextUnlocked = { ...(unlockedResources || {}) };
     const nextMaxWorkers = { ...(maxWorkersPerResource || {}) };
@@ -187,6 +206,27 @@ class Campaign {
       Math.max(0, Number(floorPopulation) || 0),
       housingCount * perBuilding
     );
+  }
+
+  static getPrisonerCapacityForBuildingType(type) {
+    const caps = {
+      prison: 20,
+      dungeon: 40,
+      black_cells: 60,
+      deep_prison: 80,
+      high_security_prison: 100,
+      iron_keep: 120,
+      shadow_vault: 140,
+    };
+    return caps[String(type)] || 0;
+  }
+
+  static calculatePrisonerCapacityFromCompletedBuildings(completedBuildings) {
+    let cap = 0;
+    for (const b of (completedBuildings || [])) {
+      cap += Campaign.getPrisonerCapacityForBuildingType(b?.buildingType || b?.building_type);
+    }
+    return cap;
   }
 
   static applyBuildingBasedWorkerCaps(fief, completedBuildings) {
@@ -778,7 +818,9 @@ class Campaign {
                   COALESCE(f.max_workers_per_resource, '{}'::jsonb) AS max_workers_per_resource,
                     ${hasSickInjuredPopulationColumn ? 'COALESCE(f.sick_injured_population, 0)' : '0'} AS sick_injured_population,
                     ${hasCompletedResearchColumn ? "COALESCE(f.completed_research, '[]'::jsonb)" : "'[]'::jsonb"} AS completed_research,
-                    ${hasVegetableHarvestStateColumn ? "COALESCE(f.vegetable_harvest_state, '{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb)" : "'{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb"} AS vegetable_harvest_state${hasConsecutiveStarvationDaysColumn ? ",\n                  COALESCE(f.consecutive_starvation_days, 0) AS consecutive_starvation_days" : ''}
+                    ${hasVegetableHarvestStateColumn ? "COALESCE(f.vegetable_harvest_state, '{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb)" : "'{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb"} AS vegetable_harvest_state${hasConsecutiveStarvationDaysColumn ? ",\n                  COALESCE(f.consecutive_starvation_days, 0) AS consecutive_starvation_days" : ''},
+                  COALESCE(f.slaves, 0) AS slaves,
+                  COALESCE(f.prisoners, 0) AS prisoners
            FROM fiefs f
            JOIN kingdoms k ON k.id = f.kingdom_id
            WHERE k.campaign_id = $1`,
@@ -811,6 +853,8 @@ class Campaign {
             },
             consecutiveStarvationDays: Number(row.consecutive_starvation_days || 0),
             completedResearch: Array.isArray(row.completed_research) ? row.completed_research : [],
+            slaves: Math.max(0, Number(row.slaves || 0)),
+            prisoners: Math.max(0, Number(row.prisoners || 0)),
           });
           resourcesGained[id] = {};
           populationGained[id] = 0;
@@ -948,7 +992,8 @@ class Campaign {
             resourcesGained[fief.id][resource] = (Number(resourcesGained[fief.id][resource]) || 0) + amount;
           }
 
-          const dailyFoodNeeded = Campaign.getDailyFoodConsumption(fief.population, fief.tier);
+          const dailyFoodNeeded = Campaign.getDailyFoodConsumption(fief.population, fief.tier)
+            + (fief.slaves + fief.prisoners) * 0.5;
           const currentFood = Math.max(0, Number(fief.storedResources.food || 0));
           const consumedFood = Math.min(currentFood, dailyFoodNeeded);
           fief.storedResources.food = currentFood - consumedFood;
@@ -991,12 +1036,48 @@ class Campaign {
             fief.populationMaturationSchedule,
             fief.sickInjuredPopulation
           );
+
+          // Trim worker assignments if starvation killed workers
+          if (starvationDeaths > 0) {
+            fief.workerAssignments = Campaign.trimWorkerAssignmentsToAssignable(fief.workerAssignments, assignableAdults);
+          }
           const foodProducedToday = Math.max(0, Number(capacityApplied.applied.food || 0));
           const season = Campaign.getSeasonForDay(dayNumber);
           const birthChanceMultiplier = Campaign.getBirthChanceMultiplier(foodProducedToday, dailyFoodNeeded, starvationDeaths, season);
           const birthsToday = Campaign.sampleBirths(assignableAdults, populationConfig.dailyBirthChance * birthChanceMultiplier);
           const housingCapacity = Campaign.calculateHousingCapacityFromCompletedBuildings(completed, fief.completedResearch, fief.population);
-          const birthsAllowedByHousing = Math.max(0, Math.floor(housingCapacity - fief.population));
+
+          // Enforce prisoner cap: excess prisoners escape and blend into civilian population
+          const prisonerCap = Campaign.calculatePrisonerCapacityFromCompletedBuildings(completed);
+          if (prisonerCap > 0 && fief.prisoners > prisonerCap) {
+            const escaped = fief.prisoners - prisonerCap;
+            fief.prisoners = prisonerCap;
+            fief.population += escaped;
+            populationGained[fief.id] = (Number(populationGained[fief.id]) || 0) + escaped;
+          }
+
+          // Enforce housing cap: emigrants leave if population + slaves exceeds cap (slaves count as occupying housing)
+          const slavesCount = Math.max(0, Number(fief.slaves || 0));
+          const effectiveOccupancy = fief.population + slavesCount;
+          if (effectiveOccupancy > housingCapacity) {
+            const emigrants = Math.min(fief.population, effectiveOccupancy - housingCapacity);
+            if (emigrants > 0) {
+              fief.population = Math.max(0, fief.population - emigrants);
+              fief.populationMaturationSchedule = Campaign.trimMaturationScheduleToPopulation(
+                fief.populationMaturationSchedule,
+                fief.population
+              );
+              populationGained[fief.id] = (Number(populationGained[fief.id]) || 0) - emigrants;
+              const postEmigrationAssignable = getAssignablePopulation(
+                fief.population,
+                fief.populationMaturationSchedule,
+                fief.sickInjuredPopulation
+              );
+              fief.workerAssignments = Campaign.trimWorkerAssignmentsToAssignable(fief.workerAssignments, postEmigrationAssignable);
+            }
+          }
+
+          const birthsAllowedByHousing = Math.max(0, Math.floor(housingCapacity - fief.population - slavesCount));
           const birthsToApply = Math.min(birthsToday, birthsAllowedByHousing);
           if (birthsToApply > 0) {
             fief.population += birthsToApply;
@@ -1008,7 +1089,9 @@ class Campaign {
           }
 
           const passiveBuilderBonus = Campaign.getCompletedBuildingCount(completed, ['builders_hut']) * 3;
-          const builderWorkers = Math.max(0, Number(fief.workerAssignments.building || 0)) + passiveBuilderBonus;
+          const builderWorkers = Math.max(0, Number(fief.workerAssignments.building || 0))
+            + Math.max(0, Number((fief.slaveWorkerAssignments || {}).building || 0))
+            + passiveBuilderBonus;
           if (builderWorkers > 0) {
             let remainingEffort = builderWorkers;
 
@@ -1243,6 +1326,10 @@ class Campaign {
             updateValues.push(Math.max(0, Number(fief.consecutiveStarvationDays || 0)));
             paramIndex += 1;
           }
+
+          updateSetClauses.push(`prisoners = $${paramIndex}`);
+          updateValues.push(Math.max(0, Math.floor(Number(fief.prisoners || 0))));
+          paramIndex += 1;
 
           const whereParam = paramIndex;
           updateValues.push(fief.id);

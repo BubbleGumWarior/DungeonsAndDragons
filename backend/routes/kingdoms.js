@@ -10,7 +10,7 @@ const BUILDING_CATALOG = {
   housing: {
     key: 'housing',
     name: 'Tent',
-    description: 'Basic shelter that raises your population cap, allowing more workers to be assigned each day.',
+    description: 'Adds +4 population capacity per Tent built. More tents = more adults available as workers. Research Tier 2 Housing to upgrade these to Wooden Lodges (+8 pop each).',
     tierRequired: 1,
     cost: { wood: 8 },
     days: 1,
@@ -20,10 +20,20 @@ const BUILDING_CATALOG = {
   storage: {
     key: 'storage',
     name: 'Storage Tent',
-    description: 'Increases your storage capacity so you can stockpile more resources before hitting the cap.',
+    description: 'Adds +100 storage capacity. Each Storage Tent stacks, so building more lets you stockpile larger reserves before hitting the cap.',
     tierRequired: 1,
     cost: { wood: 16 },
     days: 2,
+    resourceOutput: {},
+    prerequisites: [],
+  },
+  storage_shack: {
+    key: 'storage_shack',
+    name: 'Basic Storage Shack',
+    description: 'Adds +200 storage capacity. An upgraded Storage Tent with reinforced walls and better organisation. Requires Tier 2 Storage research.',
+    tierRequired: 2,
+    cost: { wood: 20, stone: 10 },
+    days: 3,
     resourceOutput: {},
     prerequisites: [],
   },
@@ -31,7 +41,7 @@ const BUILDING_CATALOG = {
   hunters_guild: {
     key: 'hunters_guild',
     name: 'Hunters Cabin',
-    description: 'Unlocks the meat worker lane. Produces 1 meat per day base. Assign hunters to increase production further.',
+    description: 'Unlocks the meat worker lane with a cap of +20 hunters. Passively produces +1 meat/day. Each assigned hunter adds +1.5 meat/day on top.',
     tierRequired: 1,
     cost: { wood: 14 },
     days: 5,
@@ -41,7 +51,7 @@ const BUILDING_CATALOG = {
   farm: {
     key: 'farm',
     name: 'Vegetable Patch',
-    description: 'Unlocks the vegetables worker lane. Produces 1 vegetable per harvest cycle base. Harvests scale with assigned farmers.',
+    description: 'Unlocks the vegetable worker lane with a cap of +20 farmers. Passively yields +1 vegetable per harvest cycle (every 10 days). Assigned farmers contribute to the cycle total.',
     tierRequired: 1,
     cost: { wood: 8 },
     days: 3,
@@ -51,7 +61,7 @@ const BUILDING_CATALOG = {
   quarry: {
     key: 'quarry',
     name: 'Quarry Camp',
-    description: 'Unlocks the stone worker lane. Stone is required for most Tier 2 buildings and upgrades.',
+    description: 'Unlocks the stone worker lane with a cap of +20 quarriers. Passively produces +1 stone/day. Each assigned quarrier adds +1 stone/day. Stone is required for most Tier 2 buildings.',
     tierRequired: 1,
     cost: { wood: 20 },
     days: 15,
@@ -61,7 +71,7 @@ const BUILDING_CATALOG = {
   granary: {
     key: 'granary',
     name: 'Granary',
-    description: 'Greatly expands food storage capacity and reduces food spoilage, helping your village survive long winters.',
+    description: 'Adds +200 storage capacity and raises the vegetable worker cap by +20. A key building for surviving long winters with surplus food.',
     tierRequired: 2,
     cost: { wood: 24, stone: 14 },
     days: 3,
@@ -72,7 +82,7 @@ const BUILDING_CATALOG = {
   hunting_lodge: {
     key: 'hunting_lodge',
     name: 'Hunting Lodge',
-    description: 'Produces 1 meat per day base. Organised hunts yield additional meat per assigned worker and unlock rare game trades.',
+    description: 'Raises the hunter worker cap by +20 (stacks with Hunters Cabin). Passively produces +1 meat/day. Each assigned hunter adds +1.5 meat/day.',
     tierRequired: 2,
     cost: { wood: 18, stone: 10 },
     days: 3,
@@ -82,7 +92,7 @@ const BUILDING_CATALOG = {
   irrigated_farm: {
     key: 'irrigated_farm',
     name: 'Irrigated Fields',
-    description: 'Produces 2 vegetables per harvest cycle base. Water channels dramatically improve food security compared to basic farms.',
+    description: 'Raises the farmer worker cap by +20 (stacks with Vegetable Patch). Passively yields +2 vegetables per harvest cycle (every 10 days).',
     tierRequired: 2,
     cost: { wood: 16, stone: 12 },
     days: 2,
@@ -92,7 +102,7 @@ const BUILDING_CATALOG = {
   mine: {
     key: 'mine',
     name: 'Mine Shaft',
-    description: 'Extracts minerals and iron ore from the earth. Required to craft advanced tools and Tier 3 structures.',
+    description: 'Unlocks the iron/minerals worker lane with a cap of +20 miners. Passively produces +1 mineral/day. Each miner adds +1 mineral/day. Required for Tier 3 structures.',
     tierRequired: 2,
     cost: { wood: 20, stone: 16 },
     days: 4,
@@ -102,7 +112,7 @@ const BUILDING_CATALOG = {
   research_lab: {
     key: 'research_lab',
     name: 'Research Lab',
-    description: 'Generates research points each day. Spend them to unlock powerful kingdom-wide upgrades and bonuses.',
+    description: 'Unlocks the research worker lane with a cap of +20 researchers. Passively produces +1 research/day. Assign researchers to generate more per day.',
     tierRequired: 2,
     cost: { wood: 22, stone: 18, iron: 6 },
     days: 4,
@@ -112,7 +122,7 @@ const BUILDING_CATALOG = {
   faith_temple: {
     key: 'faith_temple',
     name: 'Faith Temple',
-    description: 'A place of worship that generates faith points, boosting morale and unlocking divine blessings for your people.',
+    description: 'Unlocks the faith worker lane with a cap of +20 clerics. Passively produces +0.5 faith/day. Each assigned cleric adds +0.5 faith/day.',
     tierRequired: 2,
     cost: { wood: 18, stone: 20, iron: 4 },
     days: 4,
@@ -122,7 +132,7 @@ const BUILDING_CATALOG = {
   lumber_mill: {
     key: 'lumber_mill',
     name: "Forester's Hut",
-    description: 'Increases the wood worker cap, allowing more workers to be assigned to wood production each day.',
+    description: 'Unlocks the wood worker lane with a cap of +20 woodcutters. Passively produces +1 wood/day. Each assigned woodcutter adds +1 wood/day.',
     tierRequired: 2,
     cost: { wood: 20 },
     days: 5,
@@ -132,7 +142,7 @@ const BUILDING_CATALOG = {
   trade_post: {
     key: 'trade_post',
     name: 'Trade Post',
-    description: 'Unlocks the gold worker lane and enables long-distance commerce income.',
+    description: 'Unlocks the gold worker lane with a cap of +20 traders. Passively produces +1 gold/day. Each assigned trader adds +1 gold/day.',
     tierRequired: 2,
     cost: { wood: 18, stone: 10, iron: 4 },
     days: 4,
@@ -142,7 +152,7 @@ const BUILDING_CATALOG = {
   logistics_depot: {
     key: 'logistics_depot',
     name: 'Logistics Depot',
-    description: 'Improves distribution efficiency. Each level provides +5% production for lanes that already produce resources.',
+    description: 'Increases all active resource production lanes by +5%. Each additional Logistics Depot stacks for a further +5% bonus (e.g. 2 depots = +10% to all producing lanes).',
     tierRequired: 2,
     cost: { wood: 16, stone: 12, iron: 4 },
     days: 3,
@@ -152,7 +162,7 @@ const BUILDING_CATALOG = {
   prison: {
     key: 'prison',
     name: 'Prison',
-    description: 'Holds captured enemies and criminals. Enables prisoner management and labor conversion systems.',
+    description: 'Holds captured enemies and criminals. Enables prisoner management and slave labor conversion. Provides 20 prisoner capacity. Upgrade to increase capacity by +20 per tier.',
     tierRequired: 2,
     cost: { wood: 20, stone: 18, iron: 4 },
     days: 4,
@@ -212,8 +222,8 @@ const BUILDING_CATALOG = {
   wood_lodge: {
     key: 'wood_lodge',
     name: 'Wooden Lodge',
-    description: 'An improved housing structure that expands your population cap beyond basic tents.',
-    tierRequired: 3,
+    description: 'Adds +8 population capacity per Wooden Lodge (requires Tier 2 Housing research). Stacks with other housing — build more to increase your worker pool.',
+    tierRequired: 2,
     cost: { wood: 16, stone: 8, iron: 4 },
     days: 4,
     resourceOutput: {},
@@ -222,7 +232,7 @@ const BUILDING_CATALOG = {
   hunters_lodge_advanced: {
     key: 'hunters_lodge_advanced',
     name: 'Grand Hunting Lodge',
-    description: 'An elite hunting establishment for experienced hunters, producing substantially more meat.',
+    description: 'Raises the hunter worker cap by +20 (stacks with prior hunting buildings). Passively produces +1 meat/day. Each assigned hunter adds +1.5 meat/day.',
     tierRequired: 3,
     cost: { wood: 24, stone: 16, iron: 8 },
     days: 4,
@@ -232,7 +242,7 @@ const BUILDING_CATALOG = {
   farm_advanced: {
     key: 'farm_advanced',
     name: 'Premium Farmland',
-    description: 'Advanced agricultural techniques yield exceptional vegetable harvests.',
+    description: 'Raises the farmer worker cap by +20. Passively yields +3 vegetables per harvest cycle (every 10 days). Best food output per building in the game.',
     tierRequired: 3,
     cost: { wood: 20, stone: 14, iron: 6 },
     days: 3,
@@ -242,7 +252,7 @@ const BUILDING_CATALOG = {
   storage_advanced: {
     key: 'storage_advanced',
     name: 'Advanced Warehouse',
-    description: 'State-of-the-art storage with superior capacity and preservation.',
+    description: 'Adds +300 storage capacity. The highest single-building storage bonus available.',
     tierRequired: 3,
     cost: { wood: 32, stone: 24, iron: 12 },
     days: 4,
@@ -252,7 +262,7 @@ const BUILDING_CATALOG = {
   quarry_advanced: {
     key: 'quarry_advanced',
     name: 'Advanced Quarry',
-    description: 'Deep quarrying operations extract stone at an accelerated rate.',
+    description: 'Raises the stone worker cap by +20. Passively produces +2 stone/day. Each assigned quarrier still adds +1 stone/day.',
     tierRequired: 3,
     cost: { wood: 28, stone: 20, iron: 10 },
     days: 5,
@@ -262,7 +272,7 @@ const BUILDING_CATALOG = {
   mine_advanced: {
     key: 'mine_advanced',
     name: 'Deep Mine',
-    description: 'Extensive mining operations yield precious minerals and iron ore.',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +2 minerals/day. Each assigned miner adds +1 mineral/day.',
     tierRequired: 3,
     cost: { wood: 32, stone: 28, iron: 14 },
     days: 5,
@@ -272,7 +282,7 @@ const BUILDING_CATALOG = {
   research_lab_advanced: {
     key: 'research_lab_advanced',
     name: 'Advanced Research Lab',
-    description: 'A cutting-edge research facility that accelerates technological progress.',
+    description: 'Raises the research worker cap by +20. Passively generates +2 research/day. Assign researchers to further increase daily output.',
     tierRequired: 3,
     cost: { wood: 30, stone: 28, iron: 16 },
     days: 5,
@@ -282,7 +292,7 @@ const BUILDING_CATALOG = {
   builders_hut: {
     key: 'builders_hut',
     name: "Builder's Hut",
-    description: 'A master craftsman workshop that provides passive building speed bonus (+3 to building lane).',
+    description: 'Passively adds +3 to the construction lane each day, speeding up all active building projects. Stacks — each Builder\'s Hut adds another +3/day.',
     tierRequired: 3,
     cost: { wood: 20, stone: 16, iron: 8 },
     days: 3,
@@ -762,7 +772,7 @@ Object.assign(BUILDING_CATALOG, {
   dungeon: {
     key: 'dungeon',
     name: 'Dungeon',
-    description: 'Secure prison expansion with stronger confinement standards.',
+    description: 'Secure underground prison with stronger confinement standards. Provides 40 prisoner capacity (+20 over Prison). Excess prisoners automatically escape into the civilian population.',
     tierRequired: 4,
     cost: { wood: 24, stone: 24, iron: 8 },
     days: 5,
@@ -772,7 +782,7 @@ Object.assign(BUILDING_CATALOG, {
   black_cells: {
     key: 'black_cells',
     name: 'Black Cells',
-    description: 'High-control isolation blocks for dangerous detainees.',
+    description: 'High-control isolation blocks for dangerous detainees. Provides 60 prisoner capacity. Prisoners above the cap will escape and blend into the civilian population.',
     tierRequired: 5,
     cost: { wood: 30, stone: 30, iron: 14 },
     days: 6,
@@ -782,7 +792,7 @@ Object.assign(BUILDING_CATALOG, {
   deep_prison: {
     key: 'deep_prison',
     name: 'Deep Prison',
-    description: 'Layered subterranean containment for long-term high-risk detention.',
+    description: 'Layered subterranean containment for long-term high-risk detention. Provides 80 prisoner capacity.',
     tierRequired: 6,
     cost: { wood: 36, stone: 38, iron: 18 },
     days: 7,
@@ -792,7 +802,7 @@ Object.assign(BUILDING_CATALOG, {
   high_security_prison: {
     key: 'high_security_prison',
     name: 'High Security Prison',
-    description: 'Fortified incarceration complex with advanced oversight.',
+    description: 'Fortified incarceration complex with advanced oversight. Provides 100 prisoner capacity.',
     tierRequired: 7,
     cost: { wood: 44, stone: 46, iron: 24 },
     days: 8,
@@ -802,7 +812,7 @@ Object.assign(BUILDING_CATALOG, {
   iron_keep: {
     key: 'iron_keep',
     name: 'Iron Keep',
-    description: 'Heavy confinement fortress for maximal prisoner control.',
+    description: 'Heavy confinement fortress for maximal prisoner control. Provides 120 prisoner capacity.',
     tierRequired: 8,
     cost: { wood: 52, stone: 54, iron: 32 },
     days: 9,
@@ -812,7 +822,7 @@ Object.assign(BUILDING_CATALOG, {
   shadow_vault: {
     key: 'shadow_vault',
     name: 'Shadow Vault',
-    description: 'Final-tier detention architecture for covert and strategic prisoners.',
+    description: 'Final-tier detention architecture for covert and strategic prisoners. Provides 140 prisoner capacity — the maximum.',
     tierRequired: 9,
     cost: { wood: 62, stone: 64, iron: 40 },
     days: 10,
@@ -1301,8 +1311,8 @@ Object.assign(BUILDING_CATALOG, {
 });
 
 const TIER1_BUILDING_TYPES = new Set(['housing', 'storage', 'hunters_guild', 'farm', 'quarry']);
-const TIER2_BUILDING_TYPES = new Set(['lumber_mill', 'granary', 'hunting_lodge', 'irrigated_farm', 'mine', 'research_lab', 'faith_temple', 'trade_post', 'logistics_depot', 'prison', 'watchtower', 'palisades', 'infirmary']);
-const TIER3_BUILDING_TYPES = new Set(['wood_lodge', 'hunters_lodge_advanced', 'farm_advanced', 'storage_advanced', 'quarry_advanced', 'mine_advanced', 'research_lab_advanced', 'builders_hut', 'embassy', 'smithy']);
+const TIER2_BUILDING_TYPES = new Set(['lumber_mill', 'granary', 'hunting_lodge', 'irrigated_farm', 'mine', 'research_lab', 'faith_temple', 'trade_post', 'logistics_depot', 'prison', 'watchtower', 'palisades', 'infirmary', 'wood_lodge', 'storage_shack']);
+const TIER3_BUILDING_TYPES = new Set(['hunters_lodge_advanced', 'farm_advanced', 'storage_advanced', 'quarry_advanced', 'mine_advanced', 'research_lab_advanced', 'builders_hut', 'embassy', 'smithy']);
 
 const BUILDING_UPGRADE_MAP = {
   housing: {
@@ -1312,6 +1322,11 @@ const BUILDING_UPGRADE_MAP = {
   },
   storage: {
     researchRequired: 'tier2_storage',
+    upgradedBuilding: 'storage_shack',
+    tier3: 'storage_shack',
+  },
+  storage_shack: {
+    researchRequired: 'tier3_storage',
     upgradedBuilding: 'storage_advanced',
     tier3: 'storage_advanced',
   },
@@ -1467,6 +1482,7 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'hunters_lodge_advanced',
   'irrigated_farm',
   'farm_advanced',
+  'storage_shack',
   'storage_advanced',
   'quarry_advanced',
   'mine_advanced',
@@ -1541,13 +1557,26 @@ const normalizeWorkerAssignments = (value) => {
 const normalizeSlaveWorkerAssignments = (value) => {
   const source = normalizeResourceMap(value);
   return {
-    meat: Math.max(0, getNumber(source.meat)),
-    vegetables: Math.max(0, getNumber(source.vegetables)),
     wood: Math.max(0, getNumber(source.wood)),
     stone: Math.max(0, getNumber(source.stone)),
     iron: Math.max(0, getNumber(source.iron)),
-    gold: Math.max(0, getNumber(source.gold)),
+    building: Math.max(0, getNumber(source.building)),
   };
+};
+
+const clampSlaveAssignmentsToPool = (assignments, newPool) => {
+  const normalized = normalizeSlaveWorkerAssignments(assignments);
+  const total = Object.values(normalized).reduce((sum, v) => sum + v, 0);
+  if (total <= newPool) return normalized;
+  const result = { ...normalized };
+  let excess = total - newPool;
+  for (const k of Object.keys(result).reverse()) {
+    if (excess <= 0) break;
+    const reduce = Math.min(result[k], excess);
+    result[k] -= reduce;
+    excess -= reduce;
+  }
+  return result;
 };
 
 const WORKER_CAP_BUILDING_MAP = {
@@ -1582,6 +1611,7 @@ const applyBuildingBasedWorkerCaps = (unlockedResources, maxWorkersPerResource, 
 const getStorageCapacityBonusForBuilding = (buildingType) => {
   const key = String(buildingType || '');
   if (key === 'storage') return 100;
+  if (key === 'storage_shack') return 200;
   if (key === 'granary') return 200;
   if (key === 'storage_advanced') return 300;
   return 0;
@@ -1595,6 +1625,43 @@ const calculateStorageCapacityFromBuildings = (buildings) => {
     bonus += getStorageCapacityBonusForBuilding(building.building_type);
   }
   return Math.max(baseCapacity, baseCapacity + bonus);
+};
+
+const getHousingCapPerBuilding = (completedResearchSet) => {
+  if (completedResearchSet.has('tier3_housing')) return 12;
+  if (completedResearchSet.has('tier2_housing')) return 8;
+  return 4;
+};
+
+const calculateHousingCapacityFromBuildings = (buildings, completedResearchArr) => {
+  const done = new Set(Array.isArray(completedResearchArr) ? completedResearchArr.map(String) : []);
+  const perBuilding = getHousingCapPerBuilding(done);
+  let count = 0;
+  for (const building of (buildings || [])) {
+    if (!building?.is_complete) continue;
+    const type = String(building.building_type || '');
+    if (type === 'housing' || type === 'wood_lodge') count += 1;
+  }
+  return count * perBuilding;
+};
+
+const PRISONER_CAP_BY_BUILDING = {
+  prison: 20,
+  dungeon: 40,
+  black_cells: 60,
+  deep_prison: 80,
+  high_security_prison: 100,
+  iron_keep: 120,
+  shadow_vault: 140,
+};
+
+const calculatePrisonerCapacityFromBuildings = (buildings) => {
+  let cap = 0;
+  for (const building of (buildings || [])) {
+    if (!building?.is_complete) continue;
+    cap += PRISONER_CAP_BY_BUILDING[String(building.building_type || '')] || 0;
+  }
+  return cap;
 };
 
 const tableExists = async (name) => {
@@ -1935,6 +2002,14 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       building.resource_output = targetBlueprint.resourceOutput || {};
     }
 
+    // Always sync description from the current catalog so updated text is reflected immediately
+    for (const building of buildingsResult.rows) {
+      const catalogEntry = BUILDING_CATALOG[String(building.building_type || '')];
+      if (catalogEntry?.description) {
+        building.description = String(catalogEntry.description);
+      }
+    }
+
     let calculatedStorageCapacity = calculateStorageCapacityFromBuildings(buildingsResult.rows);
     
     // Apply storage multiplier from storage research
@@ -2042,9 +2117,10 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         const requiredResearch = String(upgradeInfo.researchRequired || '').trim();
         if (requiredResearch && !completedResearch.has(requiredResearch)) return null;
 
-        const upgradeBuildingKey = fiefTier >= 3 ? upgradeInfo.tier3 : upgradeInfo.upgradedBuilding;
+        const upgradeBuildingKey = upgradeInfo.upgradedBuilding;
         const blueprint = BUILDING_CATALOG[upgradeBuildingKey];
         if (!blueprint) return null;
+        if (Number(blueprint.tierRequired || 1) > fiefTier) return null;
 
         const missing = [];
         for (const [resource, neededRaw] of Object.entries(blueprint.cost || {})) {
@@ -2077,10 +2153,14 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       ? { ...fief.max_workers_per_resource }
       : {};
     const capAdjusted = applyBuildingBasedWorkerCaps(unlockedResources, maxWorkers, completedBuildings);
+    const housingCapacity = calculateHousingCapacityFromBuildings(completedBuildings, Array.from(completedResearch));
+    const prisonerCapacity = calculatePrisonerCapacityFromBuildings(buildingsResult.rows);
 
     res.json({
       fief: {
         ...withPopulationBreakdown(fief),
+        housing_capacity: housingCapacity,
+        prisoner_capacity: prisonerCapacity,
         stored_resources: normalizeStoredResources(fief?.stored_resources),
         worker_assignments: normalizeWorkerAssignments(fief?.worker_assignments),
         slave_worker_assignments: normalizeSlaveWorkerAssignments(fief?.slave_worker_assignments),
@@ -2304,6 +2384,92 @@ router.patch('/fiefs/:id/prisoners/convert', authenticateToken, async (req, res)
   } catch (error) {
     console.error('Error converting prisoners:', error);
     res.status(500).json({ error: 'Failed to convert prisoners' });
+  }
+});
+
+// DM: adjust prisoner count independently (does not touch population)
+router.patch('/fiefs/:id/prisoners/adjust', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    const delta = Math.floor(Number(req.body?.delta) || 0);
+    if (!Number.isFinite(fiefId) || delta === 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    const updateResult = await pool.query(
+      `UPDATE fiefs
+       SET prisoners = GREATEST(0, COALESCE(prisoners, 0) + $2)
+       WHERE id = $1
+       RETURNING id, population, population_maturation_schedule, sick_injured_population, soldiers, prisoners, slaves, worker_assignments, slave_worker_assignments`,
+      [fiefId, delta]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    res.json({
+      fief: {
+        ...withPopulationBreakdown(updateResult.rows[0]),
+        slave_worker_assignments: normalizeSlaveWorkerAssignments(updateResult.rows[0]?.slave_worker_assignments),
+      },
+    });
+  } catch (error) {
+    console.error('Error adjusting prisoners:', error);
+    res.status(500).json({ error: 'Failed to adjust prisoners' });
+  }
+});
+
+// Release slaves back to prisoners, clamping worker assignments
+router.patch('/fiefs/:id/slaves/release', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    const amount = Math.max(0, Math.floor(Number(req.body?.amount) || 0));
+    if (!Number.isFinite(fiefId) || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    const currentSlaves = Math.max(0, Number(owned.slaves || 0));
+    if (amount > currentSlaves) {
+      return res.status(400).json({ error: `Cannot release ${amount}. Only ${currentSlaves} slaves available.` });
+    }
+
+    const newSlaveCount = currentSlaves - amount;
+    const clampedAssignments = clampSlaveAssignmentsToPool(owned.slave_worker_assignments, newSlaveCount);
+
+    const updateResult = await pool.query(
+      `UPDATE fiefs
+       SET slaves = $2,
+           prisoners = COALESCE(prisoners, 0) + $3,
+           slave_worker_assignments = $4::jsonb
+       WHERE id = $1
+       RETURNING id, population, population_maturation_schedule, sick_injured_population, soldiers, prisoners, slaves, worker_assignments, slave_worker_assignments`,
+      [fiefId, newSlaveCount, amount, JSON.stringify(clampedAssignments)]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    res.json({
+      fief: {
+        ...withPopulationBreakdown(updateResult.rows[0]),
+        slave_worker_assignments: normalizeSlaveWorkerAssignments(updateResult.rows[0]?.slave_worker_assignments),
+      },
+    });
+  } catch (error) {
+    console.error('Error releasing slaves:', error);
+    res.status(500).json({ error: 'Failed to release slaves' });
   }
 });
 
@@ -2617,11 +2783,16 @@ router.patch('/fiefs/:id/buildings/:buildingId/upgrade', authenticateToken, asyn
     }
 
     // Get the upgrade building blueprint
-    const upgradeBuildingKey = fief.tier >= 3 ? upgradeInfo.tier3 : upgradeInfo.upgradedBuilding;
+    const upgradeBuildingKey = upgradeInfo.upgradedBuilding;
     const upgradeBlueprintTemp = BUILDING_CATALOG[upgradeBuildingKey];
     if (!upgradeBlueprintTemp) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Upgrade blueprint not found' });
+    }
+
+    if (Number(upgradeBlueprintTemp.tierRequired || 1) > Number(fief.tier || 1)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Requires fief tier ${upgradeBlueprintTemp.tierRequired} to upgrade` });
     }
 
     // Check resources
