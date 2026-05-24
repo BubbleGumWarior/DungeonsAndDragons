@@ -10,7 +10,7 @@ const { authenticateToken: auth } = require('../middleware/auth');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 15 * 1024 * 1024 // 15MB limit
   },
   fileFilter: function (req, file, cb) {
     const allowedTypes = /jpeg|jpg|png|gif|webp|avif/;
@@ -67,7 +67,17 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Upload monster image (DM only)
-router.post('/:id/image', auth, upload.single('image'), async (req, res) => {
+router.post('/:id/image', auth, (req, res, next) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Image file too large. Maximum size is 15MB.' });
+      }
+      return res.status(400).json({ message: err.message || 'File upload error' });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     if (req.user.role !== 'Dungeon Master') {
       return res.status(403).json({ message: 'Only Dungeon Masters can upload monster images' });
