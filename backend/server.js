@@ -1462,6 +1462,58 @@ const startServer = async () => {
             }
           } catch (e) { console.warn('Could not fetch monster templates for combatantsUpdated (accept):', e.message); }
 
+          // Shield temp HP: grant temp HP to the shielding arm based on the shield's AC bonus
+          try {
+            const equippedRow = await pool.query('SELECT equipped_items FROM characters WHERE id = $1', [characterId]);
+            const equippedItems = typeof equippedRow.rows[0]?.equipped_items === 'string'
+              ? JSON.parse(equippedRow.rows[0].equipped_items)
+              : (equippedRow.rows[0]?.equipped_items || {});
+
+            const shieldSlots = [
+              { slot: 'main_hand', arm: 'right_arm' },
+              { slot: 'off_hand',  arm: 'left_arm'  },
+            ];
+
+            for (const { slot, arm } of shieldSlots) {
+              const itemName = equippedItems[slot];
+              if (!itemName) continue;
+
+              const itemResult = await pool.query(
+                'SELECT armor_class, limb_armor_class, subcategory FROM inventory WHERE LOWER(item_name) = LOWER($1)',
+                [itemName]
+              );
+              if (itemResult.rows.length === 0) continue;
+
+              const item = itemResult.rows[0];
+              const isShield = (item.subcategory || '').toLowerCase().includes('shield') ||
+                               itemName.toLowerCase().includes('shield');
+              if (!isShield) continue;
+
+              const lac = typeof item.limb_armor_class === 'string'
+                ? JSON.parse(item.limb_armor_class)
+                : (item.limb_armor_class || {});
+              const acBonus = lac.hands ?? item.armor_class ?? 0;
+              if (acBonus <= 0) continue;
+
+              const tempAmount = acBonus * 5;
+              const tempRow = await pool.query('SELECT temp_limb_health FROM characters WHERE id = $1', [characterId]);
+              const existing = tempRow.rows[0]?.temp_limb_health || {};
+              const newTemp = { ...existing, [arm]: (existing[arm] || 0) + tempAmount };
+              await pool.query('UPDATE characters SET temp_limb_health = $1 WHERE id = $2', [JSON.stringify(newTemp), characterId]);
+
+              io.to(`campaign_${campaignId}`).emit('healthUpdated', {
+                type: 'character',
+                characterId,
+                tempLimbHealth: newTemp,
+                campaignId,
+                timestamp: new Date().toISOString(),
+              });
+              console.log(`🛡️ Shield temp HP: +${tempAmount} to ${arm} for ${character.name} (${itemName})`);
+            }
+          } catch (shieldErr) {
+            console.error('Error applying shield temp HP on combat join:', shieldErr);
+          }
+
           io.to(`campaign_${campaignId}`).emit('combatantsUpdated', {
             combatants: session.combatants,
             initiativeOrder: session.initiativeOrder,

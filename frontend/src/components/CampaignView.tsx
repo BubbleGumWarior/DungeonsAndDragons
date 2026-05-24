@@ -12019,7 +12019,7 @@ const CampaignView: React.FC = () => {
                           const feetAC      = rawLimbAC?.feet      ?? 0;
                           // All armor is additive: base limb AC + equipped item bonus.
                           const characterLimbAC = {
-                            head:      Math.round(baseAC * 1.20) + helmAC,
+                            head:      Math.round(baseAC * 1.50) + helmAC,
                             chest:     Math.round(baseAC * 1.00) + chestAC,
                             hands:     Math.round(baseAC * 0.25) + Math.max(mainHandAC, offHandAC),
                             main_hand: Math.round(baseAC * 0.25) + mainHandAC,
@@ -18105,7 +18105,7 @@ const CampaignView: React.FC = () => {
                   const feetAC     = rawLimbAC?.feet      ?? 0;
                   // All armor is additive: base limb AC + equipped item bonus.
                   const cLimbAC = {
-                    head:      Math.round(baseAC * 1.20) + helmAC,
+                    head:      Math.round(baseAC * 1.50) + helmAC,
                     chest:     Math.round(baseAC * 1.00) + chestAC,
                     main_hand: Math.round(baseAC * 0.25) + mainHandAC,
                     off_hand:  Math.round(baseAC * 0.25) + offHandAC,
