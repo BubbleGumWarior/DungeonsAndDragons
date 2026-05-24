@@ -426,6 +426,37 @@ class Campaign {
     return adjusted;
   }
 
+  static applyLocationModifiers(production, locationModifiers) {
+    if (!locationModifiers || typeof locationModifiers !== 'object') return { ...(production || {}) };
+    const adjusted = { ...(production || {}) };
+    for (const [resource, modRaw] of Object.entries(locationModifiers)) {
+      const mod = Number(modRaw || 0);
+      if (mod === 0) continue;
+      const amount = Number(adjusted[resource] || 0);
+      if (amount > 0) {
+        adjusted[resource] = Math.max(0, amount * (1 + mod));
+      }
+    }
+    return adjusted;
+  }
+
+  // All modifiers (seasonal + logistics + location) are summed then applied as a single multiplier
+  static applyCombinedModifiers(baseProduction, seasonEffects, logisticsLevel, locationModifiers) {
+    const LOGISTICS_RESOURCES = new Set(['vegetables', 'meat', 'wood', 'stone', 'minerals', 'gold', 'faith', 'research']);
+    const logisticsBonus = Math.max(0, Number(logisticsLevel || 0)) * 0.05;
+    const locMods = (locationModifiers && typeof locationModifiers === 'object') ? locationModifiers : {};
+    const adjusted = {};
+    for (const [resource, amountRaw] of Object.entries(baseProduction)) {
+      const amount = Number(amountRaw) || 0;
+      const seasonMod = Campaign.getSeasonalModifierForResource(resource, seasonEffects);
+      const logMod = LOGISTICS_RESOURCES.has(resource) ? logisticsBonus : 0;
+      const locationMod = Number(locMods[resource] || 0);
+      const totalMod = seasonMod + logMod + locationMod;
+      adjusted[resource] = Math.max(0, amount * (1 + totalMod));
+    }
+    return adjusted;
+  }
+
   static computeBaseProduction(workerAssignments, completedBuildings, options = {}) {
     const workers = Campaign.toNumericResourceMap(workerAssignments);
     const dayNumber = Number(options.dayNumber || 0);
@@ -767,6 +798,8 @@ class Campaign {
       let hasVegetableHarvestStateColumn = false;
       let hasSickInjuredPopulationColumn = false;
       let hasSlaveWorkerAssignmentsColumn = false;
+      let hasLocationModifiersColumn = false;
+      let hasTravelDaysColumn = false;
       if (canSimulateKingdoms) {
         const fiefColumnsCheck = await client.query(
           `SELECT column_name
@@ -780,6 +813,8 @@ class Campaign {
             'vegetable_harvest_state',
             'sick_injured_population',
             'slave_worker_assignments',
+            'location_modifiers',
+            'travel_days_remaining',
           ]]
         );
         const availableColumns = new Set(fiefColumnsCheck.rows.map((r) => String(r.column_name || '')));
@@ -789,6 +824,8 @@ class Campaign {
         hasVegetableHarvestStateColumn = availableColumns.has('vegetable_harvest_state');
         hasSickInjuredPopulationColumn = availableColumns.has('sick_injured_population');
         hasSlaveWorkerAssignmentsColumn = availableColumns.has('slave_worker_assignments');
+        hasLocationModifiersColumn = availableColumns.has('location_modifiers');
+        hasTravelDaysColumn = availableColumns.has('travel_days_remaining');
       }
 
       const resourcesGained = {};
@@ -820,7 +857,9 @@ class Campaign {
                     ${hasCompletedResearchColumn ? "COALESCE(f.completed_research, '[]'::jsonb)" : "'[]'::jsonb"} AS completed_research,
                     ${hasVegetableHarvestStateColumn ? "COALESCE(f.vegetable_harvest_state, '{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb)" : "'{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb"} AS vegetable_harvest_state${hasConsecutiveStarvationDaysColumn ? ",\n                  COALESCE(f.consecutive_starvation_days, 0) AS consecutive_starvation_days" : ''},
                   COALESCE(f.slaves, 0) AS slaves,
-                  COALESCE(f.prisoners, 0) AS prisoners
+                  COALESCE(f.prisoners, 0) AS prisoners,
+                    ${hasLocationModifiersColumn ? "COALESCE(f.location_modifiers, '{}'::jsonb)" : "'{}'::jsonb"} AS location_modifiers,
+                    ${hasTravelDaysColumn ? 'COALESCE(f.travel_days_remaining, 0)' : '0'} AS travel_days_remaining
            FROM fiefs f
            JOIN kingdoms k ON k.id = f.kingdom_id
            WHERE k.campaign_id = $1`,
@@ -855,6 +894,8 @@ class Campaign {
             completedResearch: Array.isArray(row.completed_research) ? row.completed_research : [],
             slaves: Math.max(0, Number(row.slaves || 0)),
             prisoners: Math.max(0, Number(row.prisoners || 0)),
+            locationModifiers: Campaign.toNumericResourceMap(row.location_modifiers),
+            travelDaysRemaining: Number(row.travel_days_remaining || 0),
           });
           resourcesGained[id] = {};
           populationGained[id] = 0;
@@ -938,6 +979,12 @@ class Campaign {
         const populationConfig = Campaign.getPopulationConfig();
 
         for (const fief of fiefStates) {
+          // Fief in transit: skip all production, decrement travel counter only
+          if (fief.travelDaysRemaining > 0) {
+            fief.travelDaysRemaining = Math.max(0, fief.travelDaysRemaining - 1);
+            continue;
+          }
+
           const matureToday = Math.max(0, Math.floor(Number(fief.populationMaturationSchedule[String(dayNumber)] || 0)));
           if (matureToday > 0) {
             delete fief.populationMaturationSchedule[String(dayNumber)];
@@ -982,10 +1029,9 @@ class Campaign {
             baseProduction.vegetables += (vegetablesWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier * vegsPerWorkerPerHarvest) / harvestInterval;
           }
 
-          const seasonAdjusted = Campaign.applySeasonToProduction(baseProduction, seasonEffects);
           const logisticsLevel = Campaign.getCompletedBuildingCount(completed, Campaign.LOGISTICS_BUILDING_TYPES);
-          const logisticsAdjusted = Campaign.applyLogisticsBonus(seasonAdjusted, logisticsLevel);
-          const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, logisticsAdjusted, fief.storageCapacity);
+          const modifiedProduction = Campaign.applyCombinedModifiers(baseProduction, seasonEffects, logisticsLevel, fief.locationModifiers);
+          const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity);
           fief.storedResources = capacityApplied.stored;
 
           for (const [resource, amount] of Object.entries(capacityApplied.applied)) {
@@ -1330,6 +1376,12 @@ class Campaign {
           updateSetClauses.push(`prisoners = $${paramIndex}`);
           updateValues.push(Math.max(0, Math.floor(Number(fief.prisoners || 0))));
           paramIndex += 1;
+
+          if (hasTravelDaysColumn) {
+            updateSetClauses.push(`travel_days_remaining = $${paramIndex}`);
+            updateValues.push(Math.max(0, Math.floor(Number(fief.travelDaysRemaining || 0))));
+            paramIndex += 1;
+          }
 
           const whereParam = paramIndex;
           updateValues.push(fief.id);

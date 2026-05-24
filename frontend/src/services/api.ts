@@ -1320,6 +1320,8 @@ export interface KingdomFief {
   }>;
   completed_research?: string[];
   vegetable_harvest_state?: { day_in_cycle: number; accumulated_worker_days: number };
+  location_modifiers?: Record<string, number>;
+  travel_days_remaining?: number;
 }
 
 export interface KingdomSummary {
@@ -1401,8 +1403,8 @@ export const kingdomAPI = {
     return response.data;
   },
 
-  grantKingdoms: async (campaignId: number, playerIds: number[]): Promise<{ kingdoms: KingdomSummary[] }> => {
-    const response = await api.post('/kingdoms/grant', { campaignId, playerIds });
+  grantKingdoms: async (campaignId: number, playerIds: number[], locationModifiers?: Record<string, number>): Promise<{ kingdoms: KingdomSummary[] }> => {
+    const response = await api.post('/kingdoms/grant', { campaignId, playerIds, locationModifiers });
     return response.data;
   },
 
@@ -1481,6 +1483,24 @@ export const kingdomAPI = {
     payload: { resourceUpdates?: Record<string, number>; populationDelta?: number }
   ): Promise<{ fief: KingdomFief }> => {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/dm-adjust`, payload);
+    return response.data;
+  },
+
+  createFief: async (
+    kingdomId: number,
+    name: string,
+    population: number,
+    resources: { food: number; wood: number; stone: number; minerals: number }
+  ): Promise<{ fiefId: number; message: string }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/fiefs`, { name, population, resources });
+    return response.data;
+  },
+
+  setFiefLocationModifiers: async (
+    fiefId: number,
+    payload: { locationModifiers: Record<string, number>; travelDays: number }
+  ): Promise<{ fiefId: number; locationModifiers: Record<string, number>; travelDays: number }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/location-modifiers`, payload);
     return response.data;
   },
 };

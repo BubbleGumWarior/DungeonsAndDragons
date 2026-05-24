@@ -96,6 +96,7 @@ class Kingdom {
             'worker_assignments',
             'unlocked_resources',
             'max_workers_per_resource',
+            'location_modifiers',
           ]]
         );
         const cols = new Set(hasTier1Columns.rows.map((r) => r.column_name));
@@ -134,6 +135,16 @@ class Kingdom {
              WHERE id = $1`,
             [fiefId]
           );
+        }
+
+        if (cols.has('location_modifiers')) {
+          const kingdomMods = kingdom.location_modifiers;
+          if (kingdomMods && typeof kingdomMods === 'object' && Object.keys(kingdomMods).length > 0) {
+            await client.query(
+              `UPDATE fiefs SET location_modifiers = $2::jsonb WHERE id = $1`,
+              [fiefId, JSON.stringify(kingdomMods)]
+            );
+          }
         }
 
         const queueCol = await client.query(

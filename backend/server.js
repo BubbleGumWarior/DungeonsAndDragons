@@ -362,6 +362,8 @@ const startServer = async () => {
         { name: 'rebalanceArmorAc', fn: require('./migrations/rebalance_armor_ac') },
         { name: 'populateOathknightData', fn: require('./migrations/populate_oathknight_data') },
         { name: 'addLightingNodes', fn: require('./migrations/add_lighting_nodes') },
+        { name: 'addLocationModifiers', fn: require('./migrations/add_location_modifiers') },
+        { name: 'addFiefTravelDays', fn: require('./migrations/add_fief_travel_days') },
       ];
       
       for (const migration of migrations) {

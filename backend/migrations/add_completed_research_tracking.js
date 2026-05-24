@@ -27,4 +27,4 @@ const migrate = async () => {
   }
 };
 
-module.exports = { migrate };
+module.exports = migrate;

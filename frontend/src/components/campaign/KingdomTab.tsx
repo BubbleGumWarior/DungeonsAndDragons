@@ -224,6 +224,20 @@ const KingdomTab: React.FC<Props> = ({
   const [buildTab, setBuildTab] = useState<BuildTabId>('all');
   const [researchTab, setResearchTab] = useState<ResearchTabId>('all');
   const [selectedGrantPlayerIds, setSelectedGrantPlayerIds] = useState<number[]>([]);
+  const [grantLocationModifiers, setGrantLocationModifiers] = useState<Record<string, number>>({});
+
+  // ── Create New Fief state ──────────────────────────────────────────────────
+  const [showCreateFiefModal, setShowCreateFiefModal] = useState(false);
+  const [createFiefKingdomId, setCreateFiefKingdomId] = useState<number | null>(null);
+  const [newFiefName, setNewFiefName] = useState('');
+  const [newFiefPop, setNewFiefPop] = useState(10);
+  const [newFiefResources, setNewFiefResources] = useState({ food: 40, wood: 57, stone: 0, minerals: 0 });
+
+  // ── DM post-creation modifiers + travel modal state ───────────────────────
+  const [showFiefModifiersModal, setShowFiefModifiersModal] = useState(false);
+  const [pendingFiefModifierId, setPendingFiefModifierId] = useState<number | null>(null);
+  const [pendingFiefModifiers, setPendingFiefModifiers] = useState<Record<string, number>>({});
+  const [pendingTravelDays, setPendingTravelDays] = useState(0);
   const [currentCampaignDay, setCurrentCampaignDay] = useState<number | null>(null);
   const [currentSeason, setCurrentSeason] = useState<'Spring' | 'Summer' | 'Autumn' | 'Winter' | null>(null);
   const [currentSeasonEffects, setCurrentSeasonEffects] = useState<Record<string, number>>({});
@@ -309,11 +323,24 @@ const KingdomTab: React.FC<Props> = ({
     socket.on('kingdomDataChanged', onDataChanged);
     socket.on('dayAdvanced', onDayAdvanced);
 
+    const onFiefCreated = (data: { campaignId: number; kingdomId: number; newFiefId: number }) => {
+      if (Number(data?.campaignId) !== Number(campaignId)) return;
+      fetchKingdoms();
+      if (isDungeonMaster) {
+        setPendingFiefModifierId(data.newFiefId);
+        setPendingFiefModifiers({});
+        setPendingTravelDays(0);
+        setShowFiefModifiersModal(true);
+      }
+    };
+    socket.on('fiefCreated', onFiefCreated);
+
     return () => {
       socket.off('kingdomDataChanged', onDataChanged);
       socket.off('dayAdvanced', onDayAdvanced);
+      socket.off('fiefCreated', onFiefCreated);
     };
-  }, [socket, campaignId, fetchKingdoms, fetchFief]);
+  }, [socket, campaignId, fetchKingdoms, fetchFief, isDungeonMaster]);
 
   const myKingdom = useMemo(() => {
     if (isDungeonMaster) return null;
@@ -456,9 +483,17 @@ const KingdomTab: React.FC<Props> = ({
     if (selectedGrantPlayerIds.length === 0) return;
     setBusy('grant');
     try {
-      await kingdomAPI.grantKingdoms(campaignId, selectedGrantPlayerIds);
+      const nonZeroMods = Object.fromEntries(
+        Object.entries(grantLocationModifiers).filter(([, v]) => v !== 0)
+      );
+      await kingdomAPI.grantKingdoms(
+        campaignId,
+        selectedGrantPlayerIds,
+        Object.keys(nonZeroMods).length > 0 ? nonZeroMods : undefined
+      );
       setShowGrantModal(false);
       setSelectedGrantPlayerIds([]);
+      setGrantLocationModifiers({});
       await fetchKingdoms();
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to grant kingdoms');
@@ -482,6 +517,44 @@ const KingdomTab: React.FC<Props> = ({
       await fetchKingdoms();
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to delete kingdom');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleCreateFief = async () => {
+    if (!createFiefKingdomId) return;
+    setBusy('create-fief');
+    try {
+      await kingdomAPI.createFief(createFiefKingdomId, newFiefName, newFiefPop, newFiefResources);
+      setShowCreateFiefModal(false);
+      setNewFiefName('');
+      setNewFiefPop(10);
+      setNewFiefResources({ food: 40, wood: 57, stone: 0, minerals: 0 });
+      setCreateFiefKingdomId(null);
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to create fief');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSaveFiefModifiers = async () => {
+    if (!pendingFiefModifierId) return;
+    setBusy('fief-modifiers');
+    try {
+      await kingdomAPI.setFiefLocationModifiers(pendingFiefModifierId, {
+        locationModifiers: pendingFiefModifiers,
+        travelDays: pendingTravelDays,
+      });
+      setShowFiefModifiersModal(false);
+      setPendingFiefModifierId(null);
+      setPendingFiefModifiers({});
+      setPendingTravelDays(0);
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to save fief modifiers');
     } finally {
       setBusy(null);
     }
@@ -650,11 +723,21 @@ const KingdomTab: React.FC<Props> = ({
     const hunterResearchMultiplier = getResearchWorkerYieldMultiplier(completedResearch, 'meat');
     const vegetableResearchMultiplier = getResearchWorkerYieldMultiplier(completedResearch, 'vegetables');
     const seasonEffects = (currentSeasonEffects && typeof currentSeasonEffects === 'object') ? currentSeasonEffects : {};
-    const applySeasonalModifier = (resourceKey: string, amount: number) => {
-      const key = resourceKey === 'iron' ? 'minerals' : resourceKey;
-      const modifier = Number(seasonEffects[key] || 0);
-      if (modifier === 0) return amount;
-      return amount * (1 + modifier);
+    const logisticsLevel = completedBuildings.filter((b: any) => LOGISTICS_BUILDING_TYPES.has(String(b?.building_type || ''))).length;
+    const logisticsBonus = Math.max(0, logisticsLevel) * 0.05;
+    const locationMods = (fiefDetails.location_modifiers && typeof fiefDetails.location_modifiers === 'object')
+      ? fiefDetails.location_modifiers as Record<string, number>
+      : {};
+    const LOGISTICS_MOD_KEYS = new Set(['meat', 'vegetables', 'wood', 'stone', 'iron', 'gold', 'research', 'faith']);
+    // All modifiers (seasonal + logistics + location) are summed then applied as a single multiplier
+    const applyAllModifiers = (resourceKey: string, amount: number) => {
+      const seasonKey = resourceKey === 'iron' ? 'minerals' : resourceKey;
+      const seasonMod = Number((seasonEffects as Record<string, number>)[seasonKey] || 0);
+      const locationMod = Number(locationMods[resourceKey] || 0);
+      const logMod = LOGISTICS_MOD_KEYS.has(resourceKey) ? logisticsBonus : 0;
+      const totalMod = seasonMod + locationMod + logMod;
+      if (totalMod === 0) return amount;
+      return Math.max(0, amount * (1 + totalMod));
     };
 
     const workersMeat = Math.max(0, Number(assignments.meat || 0)) + Math.max(0, Number(assignments.food || 0));
@@ -683,7 +766,7 @@ const KingdomTab: React.FC<Props> = ({
     const totalVegetableWorkers = workersVegetables + slaveVegetables;
     const projectedAccumulated = accumulatedWorkerDays + (totalVegetableWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier * daysLeftInCycle);
     const projectedVegetableYieldBase = projectedAccumulated * VEGETABLES_PER_WORKER_PER_HARVEST;
-    const projectedVegetableYield = applySeasonalModifier('vegetables', projectedVegetableYieldBase);
+    const projectedVegetableYield = applyAllModifiers('vegetables', projectedVegetableYieldBase);
     const nextDayIsHarvest = daysLeftInCycle <= 1;
 
     let vegetables = 0;
@@ -715,22 +798,16 @@ const KingdomTab: React.FC<Props> = ({
       }
     }
 
-    output.vegetables = applySeasonalModifier('vegetables', vegetables);
-    output.meat = applySeasonalModifier('meat', meat);
-    output.wood = applySeasonalModifier('wood', output.wood);
-    output.stone = applySeasonalModifier('stone', output.stone);
-    output.iron = applySeasonalModifier('iron', output.iron);
-    output.gold = applySeasonalModifier('gold', output.gold);
-    output.faith = applySeasonalModifier('faith', output.faith);
+    output.vegetables = applyAllModifiers('vegetables', vegetables);
+    output.meat = applyAllModifiers('meat', meat);
+    output.wood = applyAllModifiers('wood', output.wood);
+    output.stone = applyAllModifiers('stone', output.stone);
+    output.iron = applyAllModifiers('iron', output.iron);
+    output.gold = applyAllModifiers('gold', output.gold);
+    output.faith = applyAllModifiers('faith', output.faith);
+    output.research = applyAllModifiers('research', output.research);
+    output.building = applyAllModifiers('building', output.building);
 
-    const logisticsLevel = completedBuildings.filter((b: any) => LOGISTICS_BUILDING_TYPES.has(String(b?.building_type || ''))).length;
-    const logisticsMultiplier = 1 + (Math.max(0, logisticsLevel) * 0.05);
-    if (logisticsLevel > 0) {
-      for (const key of ['meat', 'vegetables', 'wood', 'stone', 'iron', 'gold', 'research', 'faith']) {
-        const amount = Number(output[key] || 0);
-        if (amount > 0) output[key] = amount * logisticsMultiplier;
-      }
-    }
     const foodTotal = output.vegetables + output.meat;
     const consumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
       + (slaves + prisoners) * 0.5;
@@ -1148,63 +1225,118 @@ const KingdomTab: React.FC<Props> = ({
         document.body
       )}
 
-      {isDungeonMaster && kingdoms.length > 0 && (
-        <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
-          <div style={{ color: 'var(--text-gold)', marginBottom: '0.6rem', fontWeight: 700 }}>All Campaign Kingdoms</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-            {kingdoms.map((k) => (
-              <div key={k.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.45rem', padding: '0.45rem 0.55rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                  <span style={{ color: '#e2e8f0' }}>{k.name || `Unnamed Kingdom #${k.id}`}</span>
-                  <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
-                    Player: {k.player_username || `#${k.player_id}`} • {k.is_active ? 'Active' : 'Pending Name'} • Fiefs: {(k.fiefs || []).length}
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleDeleteKingdom(Number(k.id), k.name)}
-                  disabled={busy === `delete-${Number(k.id)}`}
-                  style={{ padding: '0.28rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer' }}
-                >
-                  {busy === `delete-${Number(k.id)}` ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {!visibleKingdoms.length ? (
         <div style={{ color: 'var(--text-muted)', padding: '1rem 0.2rem' }}>No kingdom assigned yet.</div>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {visibleKingdoms.flatMap((k) => (k.fiefs || []).map((f) => ({ kingdom: k, fief: f }))).map(({ kingdom, fief }) => (
-              <button
-                key={fief.id}
-                onClick={() => {
-                  setSelectedFiefId(Number(fief.id));
-                  fetchFief(Number(fief.id));
-                }}
-                style={{
-                  padding: '0.5rem 0.8rem',
-                  borderRadius: '0.45rem',
-                  border: Number(selectedFiefId) === Number(fief.id)
-                    ? '1px solid rgba(var(--theme-accent-rgb), 0.65)'
-                    : '1px solid rgba(148,163,184,0.3)',
-                  background: Number(selectedFiefId) === Number(fief.id)
-                    ? 'rgba(245,158,11,0.18)'
-                    : 'rgba(15,23,42,0.4)',
-                  color: Number(selectedFiefId) === Number(fief.id) ? 'var(--text-gold)' : '#cbd5e1',
-                  cursor: 'pointer',
-                }}
-              >
-                {kingdom.name || 'Unnamed Kingdom'}: {fief.name}
-              </button>
-            ))}
-          </div>
+          {visibleKingdoms.map((k) => {
+            const isMyKingdom = !isDungeonMaster && Number(k.player_id) === Number(userId);
+            const capital = (k.fiefs || []).find((f) => f.is_capital);
+            const capitalAdults = Math.floor(Number(capital?.population || 0));
+            return (
+              <div key={k.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)', overflow: 'hidden', marginBottom: '0.5rem' }}>
+                {/* Kingdom header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', borderBottom: '1px solid rgba(148,163,184,0.15)', background: 'rgba(0,0,0,0.25)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                    <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>
+                      👑 {k.name || `Unnamed Kingdom #${k.id}`}
+                    </span>
+                    <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                      Player: {k.player_username || `#${k.player_id}`} • {k.is_active ? 'Active' : 'Pending Name'}
+                    </span>
+                  </div>
+                  {isDungeonMaster && (
+                    <button
+                      onClick={() => handleDeleteKingdom(Number(k.id), k.name)}
+                      disabled={busy === `delete-${Number(k.id)}`}
+                      style={{ padding: '0.28rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.8rem' }}
+                    >
+                      {busy === `delete-${Number(k.id)}` ? 'Deleting...' : 'Delete'}
+                    </button>
+                  )}
+                </div>
+                {/* Fief tabs */}
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', padding: '0.5rem 0.6rem' }}>
+                  {(k.fiefs || []).map((f) => {
+                    const inTransit = Number(f.travel_days_remaining || 0) > 0;
+                    const isSelected = Number(selectedFiefId) === Number(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          setSelectedFiefId(Number(f.id));
+                          fetchFief(Number(f.id));
+                        }}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          borderRadius: '0.45rem',
+                          border: isSelected
+                            ? '1px solid rgba(var(--theme-accent-rgb), 0.65)'
+                            : '1px solid rgba(148,163,184,0.3)',
+                          background: isSelected
+                            ? 'rgba(245,158,11,0.18)'
+                            : inTransit
+                              ? 'rgba(15,23,42,0.25)'
+                              : 'rgba(15,23,42,0.4)',
+                          color: inTransit ? '#64748b' : isSelected ? 'var(--text-gold)' : '#cbd5e1',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          fontSize: '0.88rem',
+                          opacity: inTransit ? 0.65 : 1,
+                        }}
+                      >
+                        {f.name}
+                        {inTransit && (
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            🚶 {f.travel_days_remaining}d
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {isMyKingdom && (
+                    <button
+                      onClick={() => {
+                        setCreateFiefKingdomId(Number(k.id));
+                        setNewFiefName('');
+                        setNewFiefPop(10);
+                        setNewFiefResources({ food: 40, wood: 57, stone: 0, minerals: 0 });
+                        setShowCreateFiefModal(true);
+                      }}
+                      style={{
+                        padding: '0.4rem 0.75rem',
+                        borderRadius: '0.45rem',
+                        border: '1px solid rgba(34,197,94,0.4)',
+                        background: 'rgba(20,83,45,0.25)',
+                        color: '#86efac',
+                        cursor: 'pointer',
+                        fontSize: '0.88rem',
+                      }}
+                    >
+                      + New Fief
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
 
           {fiefDetails && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+              {Number(fiefDetails.travel_days_remaining || 0) > 0 ? (
+                <div style={{ padding: '1.5rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.55)', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚶</div>
+                  <div style={{ color: '#94a3b8', fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.25rem' }}>
+                    In Transit
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
+                    {fiefDetails.travel_days_remaining} day{fiefDetails.travel_days_remaining !== 1 ? 's' : ''} remaining before this fief becomes available
+                  </div>
+                </div>
+              ) : (
+              <>
               <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                   <div style={{ color: '#e2e8f0' }}>Tier {fiefDetails.tier} {fiefDetails.is_capital ? '• Capital' : ''}</div>
@@ -1398,6 +1530,8 @@ const KingdomTab: React.FC<Props> = ({
                   </span>
                 </div>
               </div>
+              </>
+              )}
 
               {hasMilitiaBuilding && (
               <div style={{ padding: '0.8rem', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '0.6rem', background: 'rgba(8,47,73,0.25)' }}>
@@ -1432,31 +1566,58 @@ const KingdomTab: React.FC<Props> = ({
               {(() => {
                 const showSlaves = hasPrisonInfrastructure || slaves > 0 || totalSlaveAssigned > 0;
                 const renderModifier = (key: string) => {
-                  if (!currentCampaignDay || !['vegetables', 'meat', 'wood', 'stone', 'iron', 'minerals', 'faith', 'research', 'gold'].includes(key)) {
-                    return null;
-                  }
-                  const season = currentSeason || getSeasonForDay(currentCampaignDay);
-                  const effects = (currentSeasonEffects && typeof currentSeasonEffects === 'object') ? currentSeasonEffects : getSeasonEffects(season);
-                  const displayKey = key === 'iron' ? 'minerals' : key;
-                  const resourceModifier = effects[displayKey] || 0;
-                  const logisticsLevel = Math.max(0, Number(productionByLane.foodBreakdown.logisticsLevel || 0));
-                  const logisticsText = logisticsLevel > 0 ? ` | Logistics +${logisticsLevel * 5}%` : '';
-                  if (resourceModifier !== 0) {
-                    const isBonus = resourceModifier > 0;
-                    const color = isBonus ? '#22c55e' : '#ef4444';
-                    const percent = Math.round(Math.abs(resourceModifier) * 100);
-                    const adjustedOutput = Number(productionByLane.output[key] || 0);
-                    const outputSuffix = key === 'building' ? ' build speed/day' : '/day';
-                    return (
-                      <span title={`${season} effect: ${isBonus ? '+' : '-'}${percent}% production`} style={{ color, fontSize: '0.72rem', fontWeight: 600, cursor: 'help' }}>
-                        {season} {isBonus ? '📈' : '📉'} {isBonus ? '+' : '-'}{percent}%{logisticsText}{' → '}{formatSigned(adjustedOutput)}{outputSuffix}
+                  const RESOURCE_KEYS = ['vegetables', 'meat', 'wood', 'stone', 'iron', 'minerals', 'faith', 'research', 'gold'];
+                  const badges: React.ReactNode[] = [];
+
+                  // Location modifier badge (amber) — all keys
+                  const locationMods = (fiefDetails?.location_modifiers && typeof fiefDetails.location_modifiers === 'object')
+                    ? fiefDetails.location_modifiers as Record<string, number>
+                    : {};
+                  const locationMod = Number(locationMods[key] || 0);
+                  if (locationMod !== 0) {
+                    const locPct = Math.round(Math.abs(locationMod) * 100);
+                    const locColor = locationMod > 0 ? '#f59e0b' : '#f87171';
+                    badges.push(
+                      <span key="loc" style={{ color: locColor, fontSize: '0.72rem', fontWeight: 600 }}>
+                        📍 {locationMod > 0 ? '+' : '-'}{locPct}% terrain
                       </span>
                     );
                   }
-                  if (logisticsLevel > 0) {
-                    return <span style={{ color: '#22c55e', fontSize: '0.72rem', fontWeight: 600 }}>Logistics +{logisticsLevel * 5}%</span>;
+
+                  if (currentCampaignDay && RESOURCE_KEYS.includes(key)) {
+                    const logisticsLevel = Math.max(0, Number(productionByLane.foodBreakdown.logisticsLevel || 0));
+                    // Logistics badge (green) — resource keys only
+                    if (logisticsLevel > 0) {
+                      badges.push(
+                        <span key="log" style={{ color: '#22c55e', fontSize: '0.72rem', fontWeight: 600 }}>
+                          🏭 +{logisticsLevel * 5}% logistics
+                        </span>
+                      );
+                    }
+                    // Seasonal badge (green/red) — resource keys only
+                    const season = currentSeason || getSeasonForDay(currentCampaignDay);
+                    const effects = (currentSeasonEffects && typeof currentSeasonEffects === 'object') ? currentSeasonEffects : getSeasonEffects(season);
+                    const displayKey = key === 'iron' ? 'minerals' : key;
+                    const resourceModifier = effects[displayKey] || 0;
+                    if (resourceModifier !== 0) {
+                      const isBonus = resourceModifier > 0;
+                      const color = isBonus ? '#22c55e' : '#ef4444';
+                      const percent = Math.round(Math.abs(resourceModifier) * 100);
+                      badges.push(
+                        <span key="season" title={`${season} effect: ${isBonus ? '+' : '-'}${percent}% production`} style={{ color, fontSize: '0.72rem', fontWeight: 600, cursor: 'help' }}>
+                          {season} {isBonus ? '📈' : '📉'} {isBonus ? '+' : '-'}{percent}%
+                        </span>
+                      );
+                    }
                   }
-                  return null;
+
+                  if (badges.length === 0) return null;
+                  if (badges.length === 1) return badges[0];
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', alignItems: 'center' }}>
+                      {badges}
+                    </div>
+                  );
                 };
 
                 const citizenControls = (row: { key: string; assigned: number; max: number }) => (
@@ -1858,6 +2019,225 @@ const KingdomTab: React.FC<Props> = ({
         </>
       )}
 
+      {/* ── Create New Fief Modal ───────────────────────────────────────────── */}
+      {showCreateFiefModal && ReactDOM.createPortal(
+        (() => {
+          const kingdom = kingdoms.find((k) => Number(k.id) === createFiefKingdomId);
+          const capital = kingdom ? (kingdom.fiefs || []).find((f) => f.is_capital) : null;
+          const capitalAdults = Math.floor(Number(capital?.population || 0));
+          const maxPop = Math.max(10, capitalAdults - 10);
+          const totalSent = newFiefResources.food + newFiefResources.wood + newFiefResources.stone + newFiefResources.minerals;
+          const overBudget = totalSent > 100;
+          const capFood = Math.floor(Number((capital?.stored_resources as any)?.food || 0));
+          const capWood = Math.floor(Number((capital?.stored_resources as any)?.wood || 0));
+          const capStone = Math.floor(Number((capital?.stored_resources as any)?.stone || 0));
+          const capMinerals = Math.floor(Number((capital?.stored_resources as any)?.minerals || 0));
+          const canSubmit = newFiefName.trim().length > 0
+            && newFiefPop >= 10 && newFiefPop <= maxPop
+            && newFiefResources.food >= 40 && newFiefResources.wood >= 57
+            && !overBudget
+            && newFiefResources.food <= capFood
+            && newFiefResources.wood <= capWood
+            && newFiefResources.stone <= capStone
+            && newFiefResources.minerals <= capMinerals;
+          const adjRes = (key: keyof typeof newFiefResources, delta: number, min: number, max: number) => {
+            setNewFiefResources((prev) => ({ ...prev, [key]: Math.max(min, Math.min(max, prev[key] + delta)) }));
+          };
+          return (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '2rem 1rem', overflowY: 'auto' }}
+              onClick={(e) => { if (e.target === e.currentTarget) setShowCreateFiefModal(false); }}
+            >
+              <div
+                style={{ background: 'rgba(18,18,18,0.97)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '12px', boxShadow: '0 25px 50px rgba(0,0,0,0.5)', width: '100%', maxWidth: '480px' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-header">
+                  <h3 className="modal-title">🏘️ Create New Fief</h3>
+                  <button className="modal-close" onClick={() => setShowCreateFiefModal(false)} aria-label="Close">×</button>
+                </div>
+                <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {/* Name */}
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Fief Name</label>
+                    <input
+                      type="text"
+                      value={newFiefName}
+                      onChange={(e) => setNewFiefName(e.target.value)}
+                      placeholder="Enter fief name…"
+                      maxLength={60}
+                      style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.3)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  {/* Population */}
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                      Population to Send <span style={{ color: '#64748b', fontWeight: 400 }}>(capital has {capitalAdults}, keeps ≥ 10)</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button onClick={() => setNewFiefPop((p) => Math.max(10, p - 1))} style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer' }}>−</button>
+                      <span style={{ color: '#e2e8f0', fontWeight: 700, minWidth: '2rem', textAlign: 'center' }}>{newFiefPop}</span>
+                      <button onClick={() => setNewFiefPop((p) => Math.min(maxPop, p + 1))} style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer' }}>+</button>
+                      <span style={{ color: '#64748b', fontSize: '0.78rem' }}>max {maxPop}</span>
+                    </div>
+                  </div>
+                  {/* Resources */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}>Resources to Send</label>
+                      <span style={{ color: overBudget ? '#ef4444' : '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}>
+                        Total: {totalSent} / 100 {overBudget && '⚠️'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      {([
+                        { key: 'food' as const, label: '🌾 Food', min: 40, cap: capFood, hint: 'min 40' },
+                        { key: 'wood' as const, label: '🌳 Wood', min: 57, cap: capWood, hint: 'min 57 (32 for tents)' },
+                        { key: 'stone' as const, label: '🪨 Stone', min: 0, cap: capStone, hint: '' },
+                        { key: 'minerals' as const, label: '⛏️ Minerals', min: 0, cap: capMinerals, hint: '' },
+                      ] as Array<{ key: keyof typeof newFiefResources; label: string; min: number; cap: number; hint: string }>).map(({ key, label, min, cap, hint }) => {
+                        const val = newFiefResources[key];
+                        const belowMin = val < min;
+                        const overCap = val > cap;
+                        return (
+                          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ color: '#94a3b8', fontSize: '0.82rem', minWidth: '90px' }}>{label}</span>
+                            <button onClick={() => adjRes(key, -1, min, cap)} style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(148,163,184,0.2)', background: 'rgba(15,23,42,0.5)', color: '#94a3b8', cursor: 'pointer' }}>−</button>
+                            <input
+                              type="number"
+                              value={val}
+                              min={min}
+                              max={cap}
+                              onChange={(e) => setNewFiefResources((prev) => ({ ...prev, [key]: Math.max(min, Math.min(cap, Math.floor(Number(e.target.value) || 0))) }))}
+                              style={{ width: '62px', padding: '0.25rem 0.4rem', borderRadius: '0.3rem', border: `1px solid ${belowMin || overCap ? 'rgba(239,68,68,0.5)' : 'rgba(148,163,184,0.25)'}`, background: 'rgba(15,23,42,0.5)', color: belowMin || overCap ? '#ef4444' : '#e2e8f0', textAlign: 'center' }}
+                            />
+                            <button onClick={() => adjRes(key, 1, min, cap)} style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(148,163,184,0.2)', background: 'rgba(15,23,42,0.5)', color: '#94a3b8', cursor: 'pointer' }}>+</button>
+                            <span style={{ color: '#64748b', fontSize: '0.72rem' }}>
+                              cap has {cap}{hint ? ` • ${hint}` : ''}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                    <button className="btn btn-secondary" onClick={() => setShowCreateFiefModal(false)}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleCreateFief} disabled={!canSubmit || busy === 'create-fief'}>
+                      {busy === 'create-fief' ? 'Creating…' : 'Create Fief'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
+      {/* ── DM: Set Fief Location Modifiers + Travel Days Modal ─────────────── */}
+      {showFiefModifiersModal && isDungeonMaster && ReactDOM.createPortal(
+        (() => {
+          const LOCATION_LANES: Array<{ key: string; label: string; icon: string }> = [
+            { key: 'wood', label: 'Wood', icon: '🌳' },
+            { key: 'stone', label: 'Stone', icon: '🪨' },
+            { key: 'iron', label: 'Iron', icon: '⛓️' },
+            { key: 'meat', label: 'Meat', icon: '🥩' },
+            { key: 'vegetables', label: 'Vegetables', icon: '🥕' },
+            { key: 'gold', label: 'Gold', icon: '🪙' },
+            { key: 'research', label: 'Research', icon: '📘' },
+            { key: 'faith', label: 'Faith', icon: '✨' },
+            { key: 'building', label: 'Building', icon: '🏗️' },
+          ];
+          const adjustMod = (key: string, delta: number) => {
+            setPendingFiefModifiers((prev) => {
+              const current = Number(prev[key] || 0);
+              const next = Math.round((current + delta) * 100) / 100;
+              const clamped = Math.max(-1, Math.min(2, next));
+              return { ...prev, [key]: clamped };
+            });
+          };
+          // Find fief name for display
+          const fiefName = kingdoms.flatMap((k) => k.fiefs || []).find((f) => Number(f.id) === pendingFiefModifierId)?.name || `Fief #${pendingFiefModifierId}`;
+          return (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 10001, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '2rem 1rem', overflowY: 'auto' }}
+              onClick={(e) => { if (e.target === e.currentTarget) { setShowFiefModifiersModal(false); } }}
+            >
+              <div
+                style={{ background: 'rgba(18,18,18,0.97)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '12px', boxShadow: '0 25px 50px rgba(0,0,0,0.5)', width: '100%', maxWidth: '560px' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-header">
+                  <h3 className="modal-title">📍 Set Location for {fiefName}</h3>
+                  <button className="modal-close" onClick={() => setShowFiefModifiersModal(false)} aria-label="Close">×</button>
+                </div>
+                <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {/* Location modifier grid */}
+                  <div>
+                    <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>📍 Location Bonuses</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+                      {LOCATION_LANES.map(({ key, label, icon }) => {
+                        const mod = Number(pendingFiefModifiers[key] || 0);
+                        const pct = Math.round(mod * 100);
+                        const color = mod > 0 ? '#f59e0b' : mod < 0 ? '#f87171' : '#64748b';
+                        return (
+                          <div key={key} style={{ background: 'rgba(2,6,23,0.5)', border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.45rem', padding: '0.35rem 0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600 }}>{icon} {label}</div>
+                            <div style={{ color, fontWeight: 700, fontSize: '0.95rem', textAlign: 'center' }}>{pct >= 0 ? '+' : ''}{pct}%</div>
+                            <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
+                              {[-25, -5].map((d) => (
+                                <button key={d} onClick={() => adjustMod(key, d / 100)}
+                                  style={{ padding: '0.1rem 0.28rem', borderRadius: '0.25rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.72rem' }}>
+                                  {d}%
+                                </button>
+                              ))}
+                              {[5, 25].map((d) => (
+                                <button key={d} onClick={() => adjustMod(key, d / 100)}
+                                  style={{ padding: '0.1rem 0.28rem', borderRadius: '0.25rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontSize: '0.72rem' }}>
+                                  +{d}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Travel days */}
+                  <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.85rem' }}>
+                    <div style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.4rem' }}>🚶 Travel Days</div>
+                    <div style={{ color: '#64748b', fontSize: '0.78rem', marginBottom: '0.5rem' }}>
+                      The fief is locked (no production, no workers) until travel is complete. Set 0 for immediate availability.
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <button onClick={() => setPendingTravelDays((d) => Math.max(0, d - 1))} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>−</button>
+                      <input
+                        type="number"
+                        value={pendingTravelDays}
+                        min={0}
+                        onChange={(e) => setPendingTravelDays(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                        style={{ width: '72px', padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0', textAlign: 'center' }}
+                      />
+                      <button onClick={() => setPendingTravelDays((d) => d + 1)} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>+</button>
+                      <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                        {pendingTravelDays === 0 ? 'Available immediately' : `Available after ${pendingTravelDays} day${pendingTravelDays !== 1 ? 's' : ''}`}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                    <button className="btn btn-secondary" onClick={() => setShowFiefModifiersModal(false)}>Skip</button>
+                    <button className="btn btn-primary" onClick={handleSaveFiefModifiers} disabled={busy === 'fief-modifiers'}>
+                      {busy === 'fief-modifiers' ? 'Saving…' : 'Save Modifiers'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
       {showGrantModal && ReactDOM.createPortal(
         <div
           style={{
@@ -1872,7 +2252,7 @@ const KingdomTab: React.FC<Props> = ({
             overflowY: 'auto',
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowGrantModal(false);
+            if (e.target === e.currentTarget) { setShowGrantModal(false); setGrantLocationModifiers({}); }
           }}
         >
           <div
@@ -1890,7 +2270,7 @@ const KingdomTab: React.FC<Props> = ({
           >
             <div className="modal-header">
               <h3 className="modal-title">Grant Kingdom</h3>
-              <button className="modal-close" onClick={() => setShowGrantModal(false)} aria-label="Close">×</button>
+              <button className="modal-close" onClick={() => { setShowGrantModal(false); setGrantLocationModifiers({}); }} aria-label="Close">×</button>
             </div>
             <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(90vh - 90px)' }}>
               {grantRows.length === 0 ? (
@@ -1929,8 +2309,64 @@ const KingdomTab: React.FC<Props> = ({
                   })}
                 </div>
               )}
+
+              {/* Location Bonuses */}
+              {(() => {
+                const LOCATION_LANES: Array<{ key: string; label: string; icon: string }> = [
+                  { key: 'wood', label: 'Wood', icon: '🌳' },
+                  { key: 'stone', label: 'Stone', icon: '🪨' },
+                  { key: 'iron', label: 'Iron', icon: '⛓️' },
+                  { key: 'meat', label: 'Meat', icon: '🥩' },
+                  { key: 'vegetables', label: 'Vegetables', icon: '🥕' },
+                  { key: 'gold', label: 'Gold', icon: '🪙' },
+                  { key: 'research', label: 'Research', icon: '📘' },
+                  { key: 'faith', label: 'Faith', icon: '✨' },
+                  { key: 'building', label: 'Building', icon: '🏗️' },
+                ];
+                const adjustMod = (key: string, delta: number) => {
+                  setGrantLocationModifiers((prev) => {
+                    const current = Number(prev[key] || 0);
+                    const next = Math.round((current + delta) * 100) / 100;
+                    const clamped = Math.max(-1, Math.min(2, next));
+                    return { ...prev, [key]: clamped };
+                  });
+                };
+                return (
+                  <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.75rem' }}>
+                    <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>📍 Location Bonuses <span style={{ color: '#64748b', fontWeight: 400, fontSize: '0.78rem' }}>(permanent, based on where the kingdom is built)</span></div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+                      {LOCATION_LANES.map(({ key, label, icon }) => {
+                        const mod = Number(grantLocationModifiers[key] || 0);
+                        const pct = Math.round(mod * 100);
+                        const color = mod > 0 ? '#f59e0b' : mod < 0 ? '#f87171' : '#64748b';
+                        return (
+                          <div key={key} style={{ background: 'rgba(2,6,23,0.5)', border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.45rem', padding: '0.35rem 0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600 }}>{icon} {label}</div>
+                            <div style={{ color, fontWeight: 700, fontSize: '0.95rem', textAlign: 'center' }}>{pct >= 0 ? '+' : ''}{pct}%</div>
+                            <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
+                              {[-25, -5].map((d) => (
+                                <button key={d} onClick={() => adjustMod(key, d / 100)}
+                                  style={{ padding: '0.1rem 0.28rem', borderRadius: '0.25rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.72rem' }}>
+                                  {d}%
+                                </button>
+                              ))}
+                              {[5, 25].map((d) => (
+                                <button key={d} onClick={() => adjustMod(key, d / 100)}
+                                  style={{ padding: '0.1rem 0.28rem', borderRadius: '0.25rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontSize: '0.72rem' }}>
+                                  +{d}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                <button className="btn btn-secondary" onClick={() => setShowGrantModal(false)}>Cancel</button>
+                <button className="btn btn-secondary" onClick={() => { setShowGrantModal(false); setGrantLocationModifiers({}); }}>Cancel</button>
                 <button className="btn btn-primary" onClick={handleGrant} disabled={busy === 'grant' || selectedGrantPlayerIds.length === 0}>Grant</button>
               </div>
             </div>

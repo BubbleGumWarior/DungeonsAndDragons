@@ -1803,6 +1803,20 @@ router.get('/campaign/:id', authenticateToken, async (req, res) => {
   }
 });
 
+const VALID_LOCATION_MODIFIER_KEYS = new Set(['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'research', 'faith']);
+
+const sanitizeLocationModifiers = (raw) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (!VALID_LOCATION_MODIFIER_KEYS.has(key)) continue;
+    const num = Number(val);
+    if (!Number.isFinite(num)) continue;
+    if (num !== 0) result[key] = num;
+  }
+  return result;
+};
+
 router.post('/grant', authenticateToken, async (req, res) => {
   try {
     if (!requireDM(req, res)) return;
@@ -1814,11 +1828,29 @@ router.post('/grant', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'campaignId and at least one playerId are required' });
     }
 
+    const locationModifiers = sanitizeLocationModifiers(req.body.locationModifiers);
+    const hasLocationModifiers = Object.keys(locationModifiers).length > 0;
+
+    // Check if location_modifiers column exists on kingdoms table
+    const colCheck = await pool.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'kingdoms' AND column_name = 'location_modifiers'`
+    );
+    const hasLocationModifiersColumn = colCheck.rows.length > 0;
+
     const created = [];
     const io = req.app.get('io') || req.io;
     const userSocketMap = req.app.get('userSocketMap');
     for (const playerId of playerIds) {
       const kingdom = await Kingdom.create({ campaign_id: campaignId, player_id: playerId });
+
+      if (hasLocationModifiers && hasLocationModifiersColumn) {
+        await pool.query(
+          `UPDATE kingdoms SET location_modifiers = $2::jsonb WHERE id = $1`,
+          [kingdom.id, JSON.stringify(locationModifiers)]
+        );
+        kingdom.location_modifiers = locationModifiers;
+      }
+
       created.push(kingdom);
 
       if (io && userSocketMap) {
@@ -2169,6 +2201,9 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         vegetable_harvest_state: (fief?.vegetable_harvest_state && typeof fief.vegetable_harvest_state === 'object')
           ? fief.vegetable_harvest_state
           : { day_in_cycle: 0, accumulated_worker_days: 0 },
+        location_modifiers: (fief?.location_modifiers && typeof fief.location_modifiers === 'object')
+          ? fief.location_modifiers
+          : {},
         buildings: buildingsResult.rows,
         researchQueue,
         availableResearch,
@@ -3077,6 +3112,246 @@ router.post('/fiefs/:id/upgrade-tier-3', authenticateToken, async (req, res) => 
   } catch (error) {
     console.error('Error starting tier 3 upgrade:', error);
     res.status(500).json({ error: 'Failed to start tier 3 upgrade' });
+  }
+});
+
+// ─── Create New Fief ─────────────────────────────────────────────────────────
+router.post('/:kingdomId/fiefs', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.kingdomId);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    // Verify requester owns this kingdom
+    const ownerCheck = await pool.query(
+      `SELECT k.id, k.campaign_id, k.player_id FROM kingdoms k WHERE k.id = $1`,
+      [kingdomId]
+    );
+    if (!ownerCheck.rows.length) return res.status(404).json({ error: 'Kingdom not found' });
+    const kingdom = ownerCheck.rows[0];
+    if (Number(kingdom.player_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'You do not own this kingdom' });
+    }
+
+    const { name, population, resources } = req.body;
+
+    // Validate name
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Fief name is required' });
+    }
+
+    // Validate population
+    const pop = Math.floor(Number(population));
+    if (!Number.isFinite(pop) || pop < 10) {
+      return res.status(400).json({ error: 'Population must be at least 10' });
+    }
+
+    // Validate resources
+    const sentFood = Math.floor(Number(resources?.food ?? 0));
+    const sentWood = Math.floor(Number(resources?.wood ?? 0));
+    const sentStone = Math.floor(Number(resources?.stone ?? 0));
+    const sentMinerals = Math.floor(Number(resources?.minerals ?? 0));
+    if (sentFood < 40) return res.status(400).json({ error: 'Must send at least 40 food' });
+    if (sentWood < 57) return res.status(400).json({ error: 'Must send at least 57 wood (32 for tents + 25 for fief)' });
+    if (sentStone < 0 || sentMinerals < 0) return res.status(400).json({ error: 'Resources cannot be negative' });
+    const totalSent = sentFood + sentWood + sentStone + sentMinerals;
+    if (totalSent > 100) return res.status(400).json({ error: 'Total resources sent cannot exceed 100' });
+
+    // Find capital fief to deduct from
+    const capitalResult = await pool.query(
+      `SELECT id, population, stored_resources FROM fiefs WHERE kingdom_id = $1 AND is_capital = true LIMIT 1`,
+      [kingdomId]
+    );
+    if (!capitalResult.rows.length) return res.status(400).json({ error: 'No capital fief found' });
+    const capital = capitalResult.rows[0];
+
+    const capitalPop = Math.floor(Number(capital.population || 0));
+    if (capitalPop - pop < 10) {
+      return res.status(400).json({ error: `Capital must keep at least 10 population (has ${capitalPop}, sending ${pop})` });
+    }
+
+    const stored = capital.stored_resources || {};
+    const capFood = Math.floor(Number(stored.food || 0));
+    const capWood = Math.floor(Number(stored.wood || 0));
+    const capStone = Math.floor(Number(stored.stone || 0));
+    const capMinerals = Math.floor(Number(stored.minerals || 0));
+    if (capFood < sentFood) return res.status(400).json({ error: `Capital only has ${capFood} food` });
+    if (capWood < sentWood) return res.status(400).json({ error: `Capital only has ${capWood} wood` });
+    if (capStone < sentStone) return res.status(400).json({ error: `Capital only has ${capStone} stone` });
+    if (capMinerals < sentMinerals) return res.status(400).json({ error: `Capital only has ${capMinerals} minerals` });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Deduct from capital
+      const newCapitalResources = {
+        ...stored,
+        food: capFood - sentFood,
+        wood: capWood - sentWood,
+        stone: capStone - sentStone,
+        minerals: capMinerals - sentMinerals,
+      };
+      await client.query(
+        `UPDATE fiefs SET population = $2, stored_resources = $3::jsonb WHERE id = $1`,
+        [capital.id, capitalPop - pop, JSON.stringify(newCapitalResources)]
+      );
+
+      // New fief stored resources (32 wood consumed by 4 tents)
+      const newFiefResources = {
+        food: sentFood,
+        wood: sentWood - 32,
+        stone: sentStone,
+        minerals: sentMinerals,
+        faith: 0,
+        research: 0,
+      };
+
+      // Insert new fief
+      const fiefResult = await client.query(
+        `INSERT INTO fiefs (kingdom_id, name, tier, population, is_capital, travel_days_remaining)
+         VALUES ($1, $2, 1, $3, false, 0)
+         RETURNING id`,
+        [kingdomId, name.trim(), pop]
+      );
+      const newFiefId = Number(fiefResult.rows[0].id);
+
+      // Check which columns exist
+      const colCheck = await client.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_name = 'fiefs' AND column_name = ANY($1::text[])`,
+        [['storage_capacity', 'stored_resources', 'worker_assignments', 'unlocked_resources', 'max_workers_per_resource', 'location_modifiers']]
+      );
+      const cols = new Set(colCheck.rows.map((r) => r.column_name));
+
+      if (cols.has('storage_capacity')) {
+        await client.query(`UPDATE fiefs SET storage_capacity = 100 WHERE id = $1`, [newFiefId]);
+      }
+      if (cols.has('stored_resources')) {
+        await client.query(
+          `UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`,
+          [newFiefId, JSON.stringify(newFiefResources)]
+        );
+      }
+      if (cols.has('worker_assignments')) {
+        await client.query(
+          `UPDATE fiefs SET worker_assignments = '{"meat":0,"vegetables":0,"wood":0,"stone":0,"iron":0,"research":0,"faith":0,"building":0}'::jsonb WHERE id = $1`,
+          [newFiefId]
+        );
+      }
+      if (cols.has('unlocked_resources')) {
+        await client.query(
+          `UPDATE fiefs SET unlocked_resources = '{"meat":false,"vegetables":false,"wood":true,"stone":false,"iron":false,"research":false,"faith":false,"building":true}'::jsonb WHERE id = $1`,
+          [newFiefId]
+        );
+      }
+      if (cols.has('max_workers_per_resource')) {
+        await client.query(
+          `UPDATE fiefs SET max_workers_per_resource = '{"meat":10,"vegetables":10,"wood":10,"stone":10,"iron":10,"research":10,"faith":10,"building":10}'::jsonb WHERE id = $1`,
+          [newFiefId]
+        );
+      }
+      if (cols.has('location_modifiers')) {
+        await client.query(
+          `UPDATE fiefs SET location_modifiers = '{}'::jsonb WHERE id = $1`,
+          [newFiefId]
+        );
+      }
+
+      // Insert 4 completed housing (Tent) buildings
+      const queueCol = await client.query(
+        `SELECT 1 FROM information_schema.columns WHERE table_name = 'fief_buildings' AND column_name = 'queue_position'`
+      );
+      const hasQueuePosition = queueCol.rows.length > 0;
+
+      for (let i = 0; i < 4; i++) {
+        if (hasQueuePosition) {
+          await client.query(
+            `INSERT INTO fief_buildings (fief_id, name, building_type, level, description, construction_days_required, days_remaining, is_complete, resource_output, resource_cost, built_at, queue_position)
+             VALUES ($1, 'Tent', 'housing', 1, 'Basic shelter', 0, 0, true, '{}'::jsonb, '{}'::jsonb, NOW(), NULL)`,
+            [newFiefId]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO fief_buildings (fief_id, name, building_type, level, description, construction_days_required, days_remaining, is_complete, resource_output, resource_cost, built_at)
+             VALUES ($1, 'Tent', 'housing', 1, 'Basic shelter', 0, 0, true, '{}'::jsonb, '{}'::jsonb, NOW())`,
+            [newFiefId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+
+      // Emit fiefCreated so DM gets the modifier/travel modal
+      if (req.io) {
+        req.io.to(`campaign_${kingdom.campaign_id}`).emit('fiefCreated', {
+          campaignId: kingdom.campaign_id,
+          kingdomId,
+          newFiefId,
+        });
+        req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id });
+      }
+
+      res.json({ fiefId: newFiefId, message: 'Fief created successfully' });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error creating fief:', error);
+    res.status(500).json({ error: 'Failed to create fief' });
+  }
+});
+
+// ─── DM: Set Fief Location Modifiers + Travel Days ───────────────────────────
+router.patch('/fiefs/:id/location-modifiers', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const locationModifiers = sanitizeLocationModifiers(req.body.locationModifiers);
+    const travelDays = Math.max(0, Math.floor(Number(req.body.travelDays ?? 0)));
+    if (!Number.isFinite(travelDays)) return res.status(400).json({ error: 'Invalid travelDays' });
+
+    // Check travel_days_remaining column exists
+    const colCheck = await pool.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'fiefs' AND column_name = 'travel_days_remaining'`
+    );
+    const hasTravelDays = colCheck.rows.length > 0;
+
+    let result;
+    if (hasTravelDays) {
+      result = await pool.query(
+        `UPDATE fiefs SET location_modifiers = $2::jsonb, travel_days_remaining = $3 WHERE id = $1 RETURNING id, kingdom_id`,
+        [fiefId, JSON.stringify(locationModifiers), travelDays]
+      );
+    } else {
+      result = await pool.query(
+        `UPDATE fiefs SET location_modifiers = $2::jsonb WHERE id = $1 RETURNING id, kingdom_id`,
+        [fiefId, JSON.stringify(locationModifiers)]
+      );
+    }
+
+    if (!result.rows.length) return res.status(404).json({ error: 'Fief not found' });
+
+    // Get campaign ID via kingdom
+    const campaignResult = await pool.query(
+      `SELECT campaign_id FROM kingdoms WHERE id = $1`,
+      [result.rows[0].kingdom_id]
+    );
+    const campaignId = campaignResult.rows[0]?.campaign_id;
+
+    if (req.io && campaignId) {
+      req.io.to(`campaign_${campaignId}`).emit('kingdomDataChanged', { campaignId });
+    }
+
+    res.json({ fiefId, locationModifiers, travelDays });
+  } catch (error) {
+    console.error('Error setting fief location modifiers:', error);
+    res.status(500).json({ error: 'Failed to set fief location modifiers' });
   }
 });
 
