@@ -694,7 +694,7 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
     // Apply armor bonuses from equipped items
     for (const [slot, item] of Object.entries(equippedWithSlots)) {
       if (!item) continue;
-      if (item.limb_armor_class) {
+      if (item.limb_armor_class && Object.keys(item.limb_armor_class).length > 0) {
         for (const [limb, ac] of Object.entries(item.limb_armor_class)) {
           if (limb === 'hands') {
             // Apply to the specific hand slot where it's equipped
