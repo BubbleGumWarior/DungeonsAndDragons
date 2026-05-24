@@ -775,13 +775,13 @@ router.post('/:id/equip', authenticateToken, async (req, res) => {
 
     // Validate item type vs slot compatibility
     const slotItemCompatibility = {
-      head: ['Armor'],
-      chest: ['Armor'],
-      legs: ['Armor'],
-      feet: ['Armor'],
-      hands: ['Armor'],             // Gloves / gauntlets
-      main_hand: ['Weapon', 'Tool'], // Only weapons and tools in main hand
-      off_hand: ['Weapon', 'Tool', 'Armor'], // Weapons, tools, shields, and gauntlets
+      head: ['Armor', 'Magic Item'],
+      chest: ['Armor', 'Magic Item'],
+      legs: ['Armor', 'Magic Item'],
+      feet: ['Armor', 'Magic Item'],
+      hands: ['Armor', 'Magic Item'],   // Gloves / gauntlets / magic rings
+      main_hand: ['Weapon', 'Tool'],    // Only weapons and tools in main hand
+      off_hand: ['Weapon', 'Tool', 'Armor', 'Magic Item'], // Weapons, tools, shields, gauntlets, magic items
       lower_left_hand: ['Weapon', 'Tool'], // Thri-kreen lower arms can hold weapons/tools
       lower_right_hand: ['Weapon', 'Tool']
     };
