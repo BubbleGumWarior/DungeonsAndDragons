@@ -1231,8 +1231,6 @@ const KingdomTab: React.FC<Props> = ({
         <>
           {visibleKingdoms.map((k) => {
             const isMyKingdom = !isDungeonMaster && Number(k.player_id) === Number(userId);
-            const capital = (k.fiefs || []).find((f) => f.is_capital);
-            const capitalAdults = Math.floor(Number(capital?.population || 0));
             return (
               <div key={k.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)', overflow: 'hidden', marginBottom: '0.5rem' }}>
                 {/* Kingdom header */}
