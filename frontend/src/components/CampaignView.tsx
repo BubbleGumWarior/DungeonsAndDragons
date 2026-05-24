@@ -118,14 +118,15 @@ const getBattlefieldDistanceFeet = (
 
 // City locations on the world map (positions as % of image width/height)
 // major: true => 5x base size (180px), default => 3x base size (108px)
-const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolean; outline?: string }> = [
+// playerCity: true => city has multiple images to cycle through
+const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolean; outline?: string; playerCity?: boolean }> = [
   { name: 'Northington',  x: 36,  y: 24 },
   { name: 'The Blairy',   x: 17.75,  y: 28.5 },
   { name: 'Westreach',    x: 22.5,  y: 38,  major: true },
   { name: 'Riverpoint',   x: 27,  y: 48 },
   { name: 'Outreach',     x: 18.2,  y: 60 },
   { name: 'Gulltown',     x: 38,  y: 69 },
-  { name: 'Yllwyn',       x: 42.25,  y: 79 },
+  { name: 'Yllwyn',       x: 42.25,  y: 79, playerCity: true },
   { name: 'Fairy Grove',  x: 28.2,  y: 75 },
   { name: 'Pass-Crown',   x: 50,  y: 46,  major: true },
   { name: "Ruk'da",       x: 64,  y: 28 },
@@ -134,6 +135,11 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
   { name: 'Khairok',      x: 74.5,  y: 49 },
   { name: 'Uhlruk',       x: 72,  y: 58, major: true },
 ];
+
+// Extra images for player cities (in addition to the default .jpg)
+const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
+  'Yllwyn': ['/images/CityImages/YllwynTerrain.png'],
+};
 
 const getCityImageFilename = (cityName: string): string =>
   cityName.replace(/'/g, '').replace(/\s+/g, '_');
@@ -643,6 +649,7 @@ const CampaignView: React.FC = () => {
   const [showPartyMenu, setShowPartyMenu] = useState(false);
   const [showPartyMembersModal, setShowPartyMembersModal] = useState(false);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [cityImageIndex, setCityImageIndex] = useState<number>(0);
 
   const [setTroopsArmyId, setSetTroopsArmyId] = useState<number | null>(null);
   const [setTroopsVal, setSetTroopsVal] = useState<string>('');
@@ -6985,7 +6992,7 @@ const CampaignView: React.FC = () => {
                       <button
                         key={city.name}
                         title={city.name}
-                        onClick={() => setSelectedCity(city.name)}
+                        onClick={() => { setSelectedCity(city.name); setCityImageIndex(0); }}
                         style={{
                           position: 'absolute',
                           left: `${city.x}%`,
@@ -7319,66 +7326,91 @@ const CampaignView: React.FC = () => {
                 )}
 
                 {/* City Image Modal */}
-                {selectedCity && (
-                  <div
-                    className="modal-overlay"
-                    onClick={() => setSelectedCity(null)}
-                    style={{ zIndex: 2000 }}
-                  >
+                {selectedCity && (() => {
+                  const cityData = CITY_LOCATIONS.find(c => c.name === selectedCity);
+                  const isPlayerCity = cityData?.playerCity === true;
+                  const defaultImage = `/images/CityImages/${getCityImageFilename(selectedCity)}.jpg`;
+                  const extraImages = PLAYER_CITY_EXTRA_IMAGES[selectedCity] || [];
+                  const allImages = isPlayerCity ? [defaultImage, ...extraImages] : [defaultImage];
+                  const currentImage = allImages[cityImageIndex] ?? defaultImage;
+                  const canPrev = cityImageIndex > 0;
+                  const canNext = cityImageIndex < allImages.length - 1;
+                  return (
                     <div
-                      className="modal-container"
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ maxWidth: '2600px', width: '95vh', maxHeight: '95vh', overflowY: 'auto' }}
+                      className="modal-overlay"
+                      onClick={() => setSelectedCity(null)}
+                      style={{ zIndex: 2000 }}
                     >
-                      <div className="modal-header" style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-panel, #1a1a2e)' }}>
-                        <h3 className="modal-title">🏙️ {selectedCity}</h3>
-                        <button
-                          className="modal-close"
-                          onClick={() => setSelectedCity(null)}
-                          aria-label="Close city view"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="modal-content" style={{ padding: '1rem', textAlign: 'center' }}>
-                        <img
-                          src={`/images/CityImages/${getCityImageFilename(selectedCity)}.jpg`}
-                          alt={selectedCity}
-                          onClick={() => setSelectedCity(null)}
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            // Try png fallback
-                            if (!target.src.endsWith('.png')) {
-                              target.src = `/images/CityImages/${getCityImageFilename(selectedCity)}.png`;
-                            } else {
-                              target.style.display = 'none';
-                              const msg = target.nextSibling as HTMLElement;
-                              if (msg) msg.style.display = 'block';
-                            }
-                          }}
-                          style={{
-                            maxWidth: '100%',
-                            maxHeight: '75vh',
-                            objectFit: 'contain',
-                            borderRadius: '0.6rem',
-                            border: '2px solid rgba(var(--theme-accent-rgb), 0.35)',
-                            cursor: 'pointer',
-                          }}
-                        />
-                        <p
-                          style={{
-                            display: 'none',
-                            color: 'var(--text-secondary)',
-                            marginTop: '1rem',
-                            fontStyle: 'italic',
-                          }}
-                        >
-                          No image available for {selectedCity} yet.
-                        </p>
+                      <div
+                        className="modal-container"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ maxWidth: '2600px', width: '95vh', maxHeight: '95vh', overflowY: 'auto' }}
+                      >
+                        <div className="modal-header" style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-panel, #1a1a2e)' }}>
+                          <h3 className="modal-title">🏙️ {selectedCity}{isPlayerCity && <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', fontWeight: 600, color: '#a78bfa', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '999px', padding: '0.1rem 0.5rem', verticalAlign: 'middle' }}>Player City</span>}</h3>
+                          <button
+                            className="modal-close"
+                            onClick={() => setSelectedCity(null)}
+                            aria-label="Close city view"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="modal-content" style={{ padding: '1rem', textAlign: 'center' }}>
+                          {isPlayerCity && allImages.length > 1 && (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
+                              <button
+                                onClick={() => setCityImageIndex(i => Math.max(0, i - 1))}
+                                disabled={!canPrev}
+                                aria-label="Previous image"
+                                style={{ background: canPrev ? 'rgba(139,92,246,0.2)' : 'rgba(71,85,105,0.2)', border: `1px solid ${canPrev ? 'rgba(139,92,246,0.5)' : 'rgba(71,85,105,0.3)'}`, color: canPrev ? '#a78bfa' : '#475569', borderRadius: '50%', width: '2.2rem', height: '2.2rem', cursor: canPrev ? 'pointer' : 'not-allowed', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >‹</button>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{cityImageIndex + 1} / {allImages.length}</span>
+                              <button
+                                onClick={() => setCityImageIndex(i => Math.min(allImages.length - 1, i + 1))}
+                                disabled={!canNext}
+                                aria-label="Next image"
+                                style={{ background: canNext ? 'rgba(139,92,246,0.2)' : 'rgba(71,85,105,0.2)', border: `1px solid ${canNext ? 'rgba(139,92,246,0.5)' : 'rgba(71,85,105,0.3)'}`, color: canNext ? '#a78bfa' : '#475569', borderRadius: '50%', width: '2.2rem', height: '2.2rem', cursor: canNext ? 'pointer' : 'not-allowed', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >›</button>
+                            </div>
+                          )}
+                          <img
+                            key={currentImage}
+                            src={currentImage}
+                            alt={selectedCity}
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              if (!target.src.endsWith('.png')) {
+                                target.src = `/images/CityImages/${getCityImageFilename(selectedCity)}.png`;
+                              } else {
+                                target.style.display = 'none';
+                                const msg = target.nextSibling as HTMLElement;
+                                if (msg) msg.style.display = 'block';
+                              }
+                            }}
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: '75vh',
+                              objectFit: 'contain',
+                              borderRadius: '0.6rem',
+                              border: '2px solid rgba(var(--theme-accent-rgb), 0.35)',
+                            }}
+                          />
+                          <p
+                            style={{
+                              display: 'none',
+                              color: 'var(--text-secondary)',
+                              marginTop: '1rem',
+                              fontStyle: 'italic',
+                            }}
+                          >
+                            No image available for {selectedCity} yet.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 
