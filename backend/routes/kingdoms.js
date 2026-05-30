@@ -1323,7 +1323,7 @@ const BUILDING_UPGRADE_MAP = {
   storage: {
     researchRequired: 'tier2_storage',
     upgradedBuilding: 'storage_shack',
-    tier3: 'storage_shack',
+    tier3: 'storage_advanced',
   },
   storage_shack: {
     researchRequired: 'tier3_storage',
@@ -1508,6 +1508,15 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'war_room', 'strategic_command', 'advanced_command_center', 'high_command_citadel',
   'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall',
 ].forEach((type) => UPGRADE_ONLY_BUILDING_TYPES.add(type));
+
+// All building types that are the destination of any upgrade path.
+// Used to guard the legacy-repair loop so that buildings already sitting at a
+// correctly-upgraded type are never auto-advanced to the NEXT tier on page load.
+const UPGRADE_DESTINATION_TYPES = new Set(
+  Object.values(BUILDING_UPGRADE_MAP).flatMap((info) =>
+    [info.upgradedBuilding, info.tier3].filter(Boolean)
+  )
+);
 
 const getNumber = (value) => {
   const parsed = Number(value);
@@ -2000,6 +2009,12 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
 
       const level = getNumber(building.level || 1);
       if (level < 2) continue;
+
+      // Skip buildings already at an upgraded type — these were correctly set by the upgrade
+      // PATCH route and must not be auto-advanced to the next tier on every page load.
+      // UPGRADE_DESTINATION_TYPES covers every upgradedBuilding/tier3 value in the map,
+      // including types like 'infirmary' that are also directly buildable.
+      if (UPGRADE_DESTINATION_TYPES.has(String(building.building_type || ''))) continue;
 
       const upgradeInfo = BUILDING_UPGRADE_MAP[String(building.building_type || '')];
       if (!upgradeInfo) continue;
