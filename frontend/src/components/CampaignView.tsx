@@ -5784,13 +5784,7 @@ const CampaignView: React.FC = () => {
                       <div style={{ 
                         fontSize: '0.8rem', 
                         color: 'var(--text-secondary)', 
-                        lineHeight: '1.4',
-                        maxHeight: '3.6em',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical'
+                        lineHeight: '1.4'
                       }}>
                         {itemDetails.description}
                       </div>
