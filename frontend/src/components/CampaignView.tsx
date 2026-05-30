@@ -4901,12 +4901,21 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('kingdomProgressToast', (data: {
         campaignId: number;
-        type: 'research' | 'tier';
+        type: 'research' | 'tier' | 'birth';
         fiefName?: string;
         researchId?: string;
         newTier?: number;
       }) => {
         if (Number(data?.campaignId) !== Number(currentCampaign.campaign.id)) return;
+
+        if (data.type === 'birth') {
+          const message = data.fiefName
+            ? `A child has been born in ${data.fiefName}!`
+            : 'A child has been born in your kingdom!';
+          setToastMessage(message);
+          setTimeout(() => setToastMessage(null), 5000);
+          return;
+        }
 
         if (data.type === 'research') {
           const readableResearch = String(data.researchId || '')

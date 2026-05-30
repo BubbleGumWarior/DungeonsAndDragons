@@ -1098,6 +1098,21 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const handleGiveBirth = async () => {
+    if (!fiefDetails || !isDungeonMaster) return;
+    setBusy('give-birth');
+    try {
+      await kingdomAPI.giveBirth(Number(fiefDetails.id));
+      await fetchFief(Number(fiefDetails.id));
+      await fetchKingdoms();
+      pushToast('A child was born!');
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to give birth');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const dmAdjustPopulation = async (direction: 1 | -1) => {
     if (!fiefDetails || !isDungeonMaster) return;
 
@@ -1445,9 +1460,16 @@ const KingdomTab: React.FC<Props> = ({
                   {/* Children */}
                   <div>
                     <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Children</div>
-                    <button onClick={() => setShowChildrenModal(true)} style={{ display: 'inline-block', width: 'fit-content', padding: '0.18rem 0.55rem', borderRadius: '0.32rem', border: '1px solid rgba(125,211,252,0.4)', background: 'rgba(12,74,110,0.32)', color: '#7dd3fc', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', marginBottom: '0.1rem' }}>
-                      {underagePopulation}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <button onClick={() => setShowChildrenModal(true)} style={{ display: 'inline-block', width: 'fit-content', padding: '0.18rem 0.55rem', borderRadius: '0.32rem', border: '1px solid rgba(125,211,252,0.4)', background: 'rgba(12,74,110,0.32)', color: '#7dd3fc', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', marginBottom: '0.1rem' }}>
+                        {underagePopulation}
+                      </button>
+                      {isDungeonMaster && (
+                        <button onClick={handleGiveBirth} disabled={busy === 'give-birth'} title="DM: Immediately add one newborn child" style={{ display: 'inline-block', width: 'fit-content', padding: '0.18rem 0.45rem', borderRadius: '0.32rem', border: '1px solid rgba(251,191,36,0.5)', background: 'rgba(120,53,15,0.35)', color: '#fbbf24', fontSize: '0.72rem', fontWeight: 700, cursor: busy === 'give-birth' ? 'not-allowed' : 'pointer', opacity: busy === 'give-birth' ? 0.6 : 1, marginBottom: '0.1rem' }}>
+                          Give Birth
+                        </button>
+                      )}
+                    </div>
                     <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
                       {nextMaturityDays == null ? 'None maturing' : `Next matures in ${nextMaturityDays}d`}
                     </div>

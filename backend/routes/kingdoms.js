@@ -3319,6 +3319,86 @@ router.post('/:kingdomId/fiefs', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── DM: Give Birth (immediately add one child to maturation schedule) ────────
+router.post('/fiefs/:id/give-birth', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      `SELECT f.*, k.player_id, k.campaign_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+
+    const fief = result.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+
+    const campDayResult = await client.query(
+      `SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`,
+      [fief.campaign_id]
+    );
+    const currentDay = Math.max(1, Math.floor(Number(campDayResult.rows[0]?.current_day || 1)));
+    const MATURITY_DAYS = 15 * 365;
+    const maturityDay = currentDay + MATURITY_DAYS;
+
+    const nextSchedule = normalizeMaturationSchedule(fief.population_maturation_schedule);
+    const key = String(maturityDay);
+    nextSchedule[key] = (nextSchedule[key] || 0) + 1;
+
+    const nextPopulation = Math.max(0, Math.floor(Number(fief.population || 0))) + 1;
+
+    const updateResult = await client.query(
+      `UPDATE fiefs
+       SET population = $2,
+           population_maturation_schedule = $3::jsonb
+       WHERE id = $1
+       RETURNING *`,
+      [fiefId, nextPopulation, JSON.stringify(nextSchedule)]
+    );
+
+    await client.query('COMMIT');
+
+    const io = req.app.get('io') || req.io;
+    const userSocketMap = req.app.get('userSocketMap');
+
+    if (io) {
+      io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+
+      // Notify the kingdom owner with a toast
+      const fiefNameResult = await pool.query(`SELECT name FROM fiefs WHERE id = $1`, [fiefId]);
+      const fiefName = fiefNameResult.rows[0]?.name || null;
+      const ownerSocketId = userSocketMap ? userSocketMap.get(Number(fief.player_id)) : null;
+      const toastPayload = { campaignId: fief.campaign_id, type: 'birth', fiefName };
+      if (ownerSocketId) {
+        io.to(ownerSocketId).emit('kingdomProgressToast', toastPayload);
+      } else {
+        io.to(`campaign_${fief.campaign_id}`).emit('kingdomProgressToast', toastPayload);
+      }
+    }
+
+    res.json({ fief: withPopulationBreakdown(updateResult.rows[0]) });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error giving birth:', error);
+    res.status(500).json({ error: 'Failed to give birth' });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── DM: Set Fief Location Modifiers + Travel Days ───────────────────────────
 router.patch('/fiefs/:id/location-modifiers', authenticateToken, async (req, res) => {
   try {

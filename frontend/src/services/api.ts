@@ -1505,6 +1505,11 @@ export const kingdomAPI = {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/location-modifiers`, payload);
     return response.data;
   },
+
+  giveBirth: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/give-birth`);
+    return response.data;
+  },
 };
 
 
