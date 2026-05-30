@@ -362,6 +362,7 @@ const startServer = async () => {
         { name: 'rebalanceArmorAc', fn: require('./migrations/rebalance_armor_ac') },
         { name: 'populateOathknightData', fn: require('./migrations/populate_oathknight_data') },
         { name: 'addLightingNodes', fn: require('./migrations/add_lighting_nodes') },
+        { name: 'addCampaignDarknessState', fn: require('./migrations/add_campaign_darkness_state') },
         { name: 'addLocationModifiers', fn: require('./migrations/add_location_modifiers') },
         { name: 'addFiefTravelDays', fn: require('./migrations/add_fief_travel_days') },
       ];
@@ -838,6 +839,44 @@ const startServer = async () => {
             });
             console.log(`👥 Sent party grouping state to user ${socket.id} for campaign ${campaignId}`);
           }
+
+          // Hydrate lighting nodes from DB if cache is missing (e.g. after server restart)
+          if (!campaignLightingNodes[campaignId]) {
+            try {
+              const nodesRes = await pool.query(
+                'SELECT id, type, x, y, strength, tab FROM campaign_lighting_nodes WHERE campaign_id = $1',
+                [campaignId]
+              );
+              campaignLightingNodes[campaignId] = nodesRes.rows;
+            } catch (e) {
+              console.warn('Could not load lighting nodes from DB:', e.message);
+              campaignLightingNodes[campaignId] = [];
+            }
+          }
+
+          // Hydrate darkness level from DB if cache is missing (e.g. after server restart)
+          if (battleDarknessState[campaignId] === undefined) {
+            try {
+              const dRes = await pool.query(
+                'SELECT darkness_level FROM campaign_darkness_state WHERE campaign_id = $1',
+                [campaignId]
+              );
+              battleDarknessState[campaignId] = Number(dRes.rows[0]?.darkness_level ?? 0);
+            } catch (e) {
+              console.warn('Could not load darkness level from DB:', e.message);
+              battleDarknessState[campaignId] = 0;
+            }
+          }
+
+          // Always send current darkness + lighting nodes to the joining client.
+          // This fires regardless of whether combat is active, closing the exploit window
+          // where a player could refresh and briefly see the board without darkness applied.
+          socket.emit('darknessSync', {
+            darknessLevel: battleDarknessState[campaignId] ?? 0,
+            lightingNodes: campaignLightingNodes[campaignId] ?? [],
+            campaignId
+          });
+
         } catch (error) {
           console.error(`Error joining campaign ${campaignId}:`, error);
         }
@@ -1720,6 +1759,11 @@ const startServer = async () => {
           if (battleDarknessState[campaignId]) delete battleDarknessState[campaignId];
           if (activeBattleMapState[campaignId] !== undefined) delete activeBattleMapState[campaignId];
 
+          // Clear persisted darkness level for this campaign
+          try {
+            await pool.query('DELETE FROM campaign_darkness_state WHERE campaign_id = $1', [campaignId]);
+          } catch (e) { console.warn('Could not clear darkness state from DB:', e.message); }
+
           // Clear combat lighting nodes
           try {
             await pool.query('DELETE FROM campaign_lighting_nodes WHERE campaign_id = $1 AND tab = $2', [campaignId, 'combat']);
@@ -2103,11 +2147,20 @@ const startServer = async () => {
       });
 
       // DM sets darkness level for the campaign (0 = fully lit, 1 = pitch black)
-      socket.on('setDarkness', (data) => {
+      socket.on('setDarkness', async (data) => {
         try {
           const { campaignId, darknessLevel } = data;
           const clamped = Math.max(0, Math.min(1, Number(darknessLevel) || 0));
           battleDarknessState[campaignId] = clamped;
+          // Persist to DB so it survives server restarts
+          try {
+            await pool.query(
+              `INSERT INTO campaign_darkness_state (campaign_id, darkness_level)
+               VALUES ($1, $2)
+               ON CONFLICT (campaign_id) DO UPDATE SET darkness_level = $2, updated_at = NOW()`,
+              [campaignId, clamped]
+            );
+          } catch (dbErr) { console.warn('Could not persist darkness level:', dbErr.message); }
           io.to(`campaign_${campaignId}`).emit('darknessUpdated', { darknessLevel: clamped, campaignId });
         } catch (error) { console.error('Error setting darkness:', error); }
       });

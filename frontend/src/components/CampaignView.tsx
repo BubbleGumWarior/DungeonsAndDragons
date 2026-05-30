@@ -120,11 +120,15 @@ const getBattlefieldDistanceFeet = (
 // major: true => 5x base size (180px), default => 3x base size (108px)
 // playerCity: true => city has multiple images to cycle through
 const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolean; outline?: string; playerCity?: boolean }> = [
+  { name: 'North Pac',    x: 42.25,  y: 12 },
   { name: 'Northington',  x: 36,  y: 24 },
   { name: 'The Blairy',   x: 17.75,  y: 28.5 },
   { name: 'Westreach',    x: 22.5,  y: 38,  major: true },
   { name: 'Riverpoint',   x: 27,  y: 48 },
+  { name: 'Riverbasin',   x: 31.5,  y: 47 },
   { name: 'Outreach',     x: 18.2,  y: 60 },
+  { name: 'Northreach',   x: 15,  y: 70 },
+  { name: 'Southreach',   x: 18,  y: 74 },
   { name: 'Gulltown',     x: 38,  y: 69 },
   { name: 'Yllwyn',       x: 42.25,  y: 79, playerCity: true },
   { name: 'Fairy Grove',  x: 28.2,  y: 75 },
@@ -628,6 +632,9 @@ const CampaignView: React.FC = () => {
   const [remainingArmyMovement, setRemainingArmyMovement] = useState<Record<number, number>>({});
   // Darkness: 0 = fully lit, 1 = pitch black. DM sees at half opacity, players see full black.
   const [darknessLevel, setDarknessLevel] = useState(0);
+  // Gate: starts false on every page load; lifted once the server confirms current darkness state.
+  // Prevents players from seeing the board without darkness applied after a refresh or tab switch.
+  const [darknessConfirmed, setDarknessConfirmed] = useState(false);
   // Lighting nodes (light sources and darkness fields)
   const [lightingNodes, setLightingNodes] = useState<LightingNode[]>([]);
   const [showLightingModal, setShowLightingModal] = useState<'combat' | 'battlefield' | null>(null);
@@ -1354,7 +1361,7 @@ const CampaignView: React.FC = () => {
     const observer = new ResizeObserver(() => drawDarknessOverlay());
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [darknessLevel, lightingNodes, battlePositions, combatants, combatConditions, user, characterSkills]);
+  }, [darknessLevel, lightingNodes, battlePositions, combatants, combatConditions, user, characterSkills, campaignTab]);
 
   // ── Battlefield darkness overlay (army/mass-combat tab) ─────────────────────
   // Identical behaviour to combat darkness: vision radius shrinks with darknessLevel,
@@ -1537,7 +1544,35 @@ const CampaignView: React.FC = () => {
     const observer = new ResizeObserver(() => drawBattlefieldOverlay());
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [darknessLevel, lightingNodes, activeBattle, user]);
+  }, [darknessLevel, lightingNodes, activeBattle, user, campaignTab]);
+
+  // ── Darkness gate safety timeout ─────────────────────────────────────────────
+  // Auto-confirm after 5 s so a socket failure never leaves a permanent black screen.
+  useEffect(() => {
+    const t = setTimeout(() => setDarknessConfirmed(true), 5000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // ── Darkness localStorage cache ──────────────────────────────────────────────
+  // Persist darkness level so the canvas draws the correct value on the next
+  // page load, before the socket sync arrives (the gate still covers the board).
+  useEffect(() => {
+    const id = (currentCampaign as any)?.campaign?.id;
+    if (!id) return;
+    localStorage.setItem(`darkness_${id}`, String(darknessLevel));
+  }, [darknessLevel, currentCampaign]);
+
+  // Restore darkness from localStorage on mount so canvas is ready when the gate lifts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = (currentCampaign as any)?.campaign?.id;
+    if (!id) return;
+    const cached = localStorage.getItem(`darkness_${id}`);
+    if (cached !== null) {
+      const val = Number(cached);
+      if (!isNaN(val) && val > 0) setDarknessLevel(val);
+    }
+  }, []); // intentionally runs once on mount
 
   const shouldUseSingleOverlayPanel = (() => {
     if (!overlayViewportWidth) return false;
@@ -3757,10 +3792,15 @@ const CampaignView: React.FC = () => {
         if ((data as any).activeBattlefieldMapId !== undefined) {
           setActiveBattlefieldMapId((data as any).activeBattlefieldMapId ?? null);
         }
-        // Seed lighting nodes from server state
+        // Seed lighting nodes and darkness level from server state
         if (Array.isArray((data as any).lightingNodes)) {
           setLightingNodes((data as any).lightingNodes as LightingNode[]);
         }
+        if (typeof (data as any).darknessLevel === 'number') {
+          setDarknessLevel((data as any).darknessLevel);
+        }
+        // Lift the darkness gate — server has confirmed current darkness state
+        setDarknessConfirmed(true);
       });
 
       // Listen for next turn event (DM resets all movement)
@@ -4239,9 +4279,17 @@ const CampaignView: React.FC = () => {
         setDotConditions(prev => ({ ...prev, [data.combatantKey]: data.dotConditions }));
       });
 
-      // Darkness level updated by DM
+      // Darkness level updated by DM in real-time
       newSocket.on('darknessUpdated', (data: { darknessLevel: number; campaignId: number }) => {
         setDarknessLevel(data.darknessLevel);
+      });
+
+      // Initial darkness + lighting nodes sync on join — fires for every join regardless of combat
+      // state, giving a guaranteed confirmation signal that closes the page-refresh exploit window.
+      newSocket.on('darknessSync', (data: { darknessLevel: number; lightingNodes: LightingNode[]; campaignId: number }) => {
+        setDarknessLevel(data.darknessLevel);
+        setLightingNodes(data.lightingNodes);
+        setDarknessConfirmed(true);
       });
 
       // Lighting nodes updated by DM (or cleared on combat reset / battle end)
@@ -8363,6 +8411,10 @@ const CampaignView: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Darkness gate: full black until server confirms state — prevents flash on refresh/tab-switch */}
+                  {!darknessConfirmed && (
+                    <div style={{ position: 'absolute', inset: 0, background: 'black', zIndex: 999, pointerEvents: 'none' }} />
+                  )}
                   {/* Darkness overlay canvas — always rendered, effect handles clearing when unused */}
                   <canvas
                     ref={darknessCanvasRef}
@@ -9256,6 +9308,10 @@ const CampaignView: React.FC = () => {
                             pointerEvents: 'none'
                           }} />
 
+                          {/* Darkness gate: full black until server confirms state — prevents flash on refresh/tab-switch */}
+                          {!darknessConfirmed && (
+                            <div style={{ position: 'absolute', inset: 0, background: 'black', zIndex: 999, pointerEvents: 'none' }} />
+                          )}
                           {/* Battlefield darkness overlay canvas — same two-zone fog as combat tab */}
                           <canvas
                             ref={battlefieldDarknessCanvasRef}
