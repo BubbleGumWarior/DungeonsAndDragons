@@ -1572,7 +1572,7 @@ const CampaignView: React.FC = () => {
       const val = Number(cached);
       if (!isNaN(val) && val > 0) setDarknessLevel(val);
     }
-  }, []); // intentionally runs once on mount
+  }, [currentCampaign]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shouldUseSingleOverlayPanel = (() => {
     if (!overlayViewportWidth) return false;
