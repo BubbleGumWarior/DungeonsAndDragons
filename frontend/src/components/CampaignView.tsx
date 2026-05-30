@@ -4955,6 +4955,19 @@ const CampaignView: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCampaign?.campaign.id, user?.id]); // Only recreate socket when campaign or user changes
 
+  // Seed hitDiceRemaining from campaign characters on load so the character sheet
+  // shows the correct count without needing an active combat session or socket event.
+  useEffect(() => {
+    if (!currentCampaign?.characters) return;
+    const hdrMap: Record<number, number> = {};
+    currentCampaign.characters.forEach((c: any) => {
+      if (c.hit_dice_remaining != null) hdrMap[c.id] = c.hit_dice_remaining;
+    });
+    if (Object.keys(hdrMap).length > 0) {
+      setHitDiceRemaining(prev => ({ ...prev, ...hdrMap }));
+    }
+  }, [currentCampaign?.campaign.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!currentCampaign || !user) return;
     if (user.role === 'Dungeon Master') return;
@@ -12496,7 +12509,7 @@ const CampaignView: React.FC = () => {
                               'Sorcerer': 6, 'Wizard': 6
                             };
                             const die = hitDiceMap[selectedCharacterData.class] ?? 8;
-                            const remaining = hitDiceRemaining[selectedCharacterData.id] ?? selectedCharacterData.level;
+                            const remaining = hitDiceRemaining[selectedCharacterData.id] ?? selectedCharacterData.hit_dice_remaining ?? selectedCharacterData.level;
                             return `${remaining}d${die}`;
                           })()}
                         </div>
@@ -12509,7 +12522,7 @@ const CampaignView: React.FC = () => {
                               'Sorcerer': 6, 'Wizard': 6
                             };
                             const die = hitDiceMap[selectedCharacterData.class] ?? 8;
-                            const remaining = hitDiceRemaining[selectedCharacterData.id] ?? selectedCharacterData.level;
+                            const remaining = hitDiceRemaining[selectedCharacterData.id] ?? selectedCharacterData.hit_dice_remaining ?? selectedCharacterData.level;
                             const recovered = Math.max(1, Math.floor(selectedCharacterData.level / 2));
                             return `${remaining} / ${selectedCharacterData.level} remaining · long rest +${recovered}d${die}`;
                           })()}

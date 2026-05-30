@@ -116,6 +116,8 @@ export interface Character {
   concealed_class?: string | null;
   gold?: number;
   subclass_name?: string | null;
+  hit_dice_remaining?: number | null;
+  hit_points_max?: number | null;
 }
 
 export interface EquippedItems {
