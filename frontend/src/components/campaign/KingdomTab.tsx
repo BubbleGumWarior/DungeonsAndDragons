@@ -26,7 +26,7 @@ const WORKER_STEP_OPTIONS = [1, 5, 10, 50, 100] as const;
 const POPULATION_MATURITY_DAYS = 15 * 365;
 const VEGETABLE_HARVEST_INTERVAL_DAYS = 10;
 const VEGETABLES_PER_WORKER_PER_HARVEST = 2; // must match backend: 20 per 10 days
-const MEAT_PER_WORKER_PER_DAY = 1.5; // base rate (T1), kept for reference
+// const MEAT_PER_WORKER_PER_DAY = 1.5; // base rate (T1), kept for reference
 
 // Must stay in sync with Campaign.MEAT_BUILDING_CHAIN / VEG_BUILDING_CHAIN on the backend.
 const MEAT_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
