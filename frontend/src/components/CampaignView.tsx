@@ -126,6 +126,7 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
   { name: 'Westreach',    x: 22.5,  y: 38,  major: true },
   { name: 'Riverpoint',   x: 27,  y: 48 },
   { name: 'Riverbasin',   x: 31.5,  y: 47 },
+  { name: 'Silva Umbra',  x: 37,  y: 50, playerCity: true},
   { name: 'Outreach',     x: 18.2,  y: 60 },
   { name: 'Northreach',   x: 15,  y: 70 },
   { name: 'Southreach',   x: 18,  y: 74 },
@@ -143,6 +144,7 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
 // Extra images for player cities (in addition to the default .jpg)
 const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
   'Yllwyn': ['/images/CityImages/YllwynTerrain.png'],
+  'Silva Umbra': ['/images/CityImages/SilvaUmbraTerrain.png'],
 };
 
 const getCityImageFilename = (cityName: string): string =>
@@ -23093,6 +23095,7 @@ const CampaignView: React.FC = () => {
               .map(c => ({ userId: c.player_id as number, characterName: c.name }))}
             campaignNPCs={campaignNPCs}
             userCharacterId={currentCampaign.userCharacter?.id ?? null}
+            currentDay={currentDay}
             onNPCRevealed={(npc) => setCampaignNPCs(prev => prev.find(n => n.id === npc.id) ? prev : [...prev, npc])}
             onNPCSaved={(npc) => setSavedNPCsForCharacter(prev => prev.find(n => n.id === npc.id) ? prev : [...prev, npc])}
           />

@@ -4,7 +4,7 @@ const { normalizeMaturationSchedule, getAssignablePopulation } = require('../uti
 
 class Campaign {
   static WORKER_CAP_BUILDING_MAP = {
-    wood: ['lumber_mill', 'wood_lodge'],
+    wood: ['lumber_mill'],
     meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced'],
     vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced'],
     stone: ['quarry', 'quarry_advanced'],
@@ -22,6 +22,24 @@ class Campaign {
     'supply_network',
     'imperial_logistics_hub',
     'trade_route_office',
+  ];
+
+  // Tiered per-worker production rates for food buildings.
+  // Workers are distributed into highest-tier building slots first (20 slots per building).
+  // Only workers that fit within a building's capacity receive its rate.
+  static MEAT_BUILDING_CHAIN = [
+    { type: 'hunters_lodge_advanced', rate: 1.95, capacity: 20 },
+    { type: 'hunting_lodge',          rate: 1.73, capacity: 20 },
+    { type: 'hunters_guild',          rate: 1.5,  capacity: 20 },
+  ];
+
+  // Rates here are effective-worker multipliers: T1=1.0, T2=+15%, T3=+30% (flat over base).
+  // granary adds lane cap but no production bonus so it shares the T1 rate.
+  static VEG_BUILDING_CHAIN = [
+    { type: 'farm_advanced',   rate: 1.30, capacity: 20 },
+    { type: 'irrigated_farm',  rate: 1.15, capacity: 20 },
+    { type: 'farm',            rate: 1.0,  capacity: 20 },
+    { type: 'granary',         rate: 1.0,  capacity: 20 },
   ];
 
   static getProductionConfig() {
@@ -252,6 +270,7 @@ class Campaign {
   static getStorageCapacityBonusForBuilding(buildingType) {
     const key = String(buildingType || '');
     if (key === 'storage') return 100;
+    if (key === 'storage_shack') return 200;
     if (key === 'granary') return 200;
     if (key === 'storage_advanced') return 300;
     return 0;
@@ -297,7 +316,7 @@ class Campaign {
       fief.maxWorkersPerResource = unlocked.nextMaxWorkers;
     }
 
-    if (key === 'lumber_mill' || key === 'wood_lodge') {
+    if (key === 'lumber_mill') {
       const unlocked = Campaign.applyResourceCapIncrement(fief.unlockedResources, fief.maxWorkersPerResource, 'wood', 20);
       fief.unlockedResources = unlocked.nextUnlocked;
       fief.maxWorkersPerResource = unlocked.nextMaxWorkers;
@@ -457,6 +476,41 @@ class Campaign {
     return adjusted;
   }
 
+  /**
+   * Distribute `totalWorkers` into building slots from highest tier first.
+   * Each building in the chain provides `capacity` slots at its `rate`.
+   * For meat: rate is meat/worker/day. For vegetables: rate is an effective-worker multiplier.
+   * Returns the total weighted output (meat produced, or effective worker-days for veg).
+   */
+  static computeTieredWorkerOutput(totalWorkers, completedBuildings, tierChain) {
+    const countByType = {};
+    for (const b of (completedBuildings || [])) {
+      const t = String(b?.buildingType || b?.building_type || '');
+      countByType[t] = (countByType[t] || 0) + 1;
+    }
+
+    let remaining = Math.max(0, totalWorkers);
+    let total = 0;
+
+    for (const { type, rate, capacity } of tierChain) {
+      if (remaining <= 0) break;
+      const buildingCount = countByType[type] || 0;
+      if (buildingCount === 0) continue;
+      const slots = buildingCount * capacity;
+      const assigned = Math.min(remaining, slots);
+      total += assigned * rate;
+      remaining -= assigned;
+    }
+
+    // Fallback: any workers not covered by listed buildings use the lowest-tier rate.
+    if (remaining > 0) {
+      const lowestRate = tierChain[tierChain.length - 1]?.rate ?? 1;
+      total += remaining * lowestRate;
+    }
+
+    return total;
+  }
+
   static computeBaseProduction(workerAssignments, completedBuildings, options = {}) {
     const workers = Campaign.toNumericResourceMap(workerAssignments);
     const dayNumber = Number(options.dayNumber || 0);
@@ -480,7 +534,7 @@ class Campaign {
     const meatWorkers = Number(workers.meat || 0) + legacyFoodWorkers;
     const vegetablesWorkers = Number(workers.vegetables || 0);
 
-    output.meat += meatWorkers * productionConfig.meatPerWorkerPerDay * tierWorkerYieldMultiplier * hunterResearchMultiplier;
+    output.meat += Campaign.computeTieredWorkerOutput(meatWorkers, completedBuildings, Campaign.MEAT_BUILDING_CHAIN) * tierWorkerYieldMultiplier * hunterResearchMultiplier;
 
     // Vegetable production is handled via accumulated worker-days in advanceDays to prevent
     // the exploit of reassigning workers only on harvest day. computeBaseProduction returns 0 here.
@@ -1015,8 +1069,10 @@ class Campaign {
           const vegsPerWorkerPerHarvest = Number(productionConfig.vegetablesPerWorkerPerHarvest || 5);
           const vegetablesWorkers = Math.max(0, Number(effectiveAssignments.vegetables || 0));
           const vegetableResearchMultiplier = Campaign.getResearchWorkerYieldMultiplier(fief.completedResearch, 'vegetables');
+          // Effective vegetable workers: workers in higher-tier buildings accumulate faster.
+          const effectiveVegWorkers = Campaign.computeTieredWorkerOutput(vegetablesWorkers, completed, Campaign.VEG_BUILDING_CHAIN);
           if (hasVegetableHarvestStateColumn) {
-            fief.vegetableHarvestState.accumulatedWorkerDays += vegetablesWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier;
+            fief.vegetableHarvestState.accumulatedWorkerDays += effectiveVegWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier;
             fief.vegetableHarvestState.dayInCycle += 1;
             if (fief.vegetableHarvestState.dayInCycle >= harvestInterval) {
               baseProduction.vegetables += fief.vegetableHarvestState.accumulatedWorkerDays * vegsPerWorkerPerHarvest;
@@ -1026,7 +1082,7 @@ class Campaign {
           } else {
             // Fallback for partially migrated schemas: apply average daily vegetable output
             // so single-day advances do not lose harvest progress.
-            baseProduction.vegetables += (vegetablesWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier * vegsPerWorkerPerHarvest) / harvestInterval;
+            baseProduction.vegetables += (effectiveVegWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier * vegsPerWorkerPerHarvest) / harvestInterval;
           }
 
           const logisticsLevel = Campaign.getCompletedBuildingCount(completed, Campaign.LOGISTICS_BUILDING_TYPES);

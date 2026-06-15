@@ -41,7 +41,7 @@ const BUILDING_CATALOG = {
   hunters_guild: {
     key: 'hunters_guild',
     name: 'Hunters Cabin',
-    description: 'Unlocks the meat worker lane with a cap of +20 hunters. Passively produces +1 meat/day. Each assigned hunter adds +1.5 meat/day on top.',
+    description: 'Unlocks the meat worker lane with a cap of +20 hunters. Passively produces +1 meat/day. Each assigned hunter adds +1.5 meat/day.',
     tierRequired: 1,
     cost: { wood: 14 },
     days: 5,
@@ -51,7 +51,7 @@ const BUILDING_CATALOG = {
   farm: {
     key: 'farm',
     name: 'Vegetable Patch',
-    description: 'Unlocks the vegetable worker lane with a cap of +20 farmers. Passively yields +1 vegetable per harvest cycle (every 10 days). Assigned farmers contribute to the cycle total.',
+    description: 'Unlocks the vegetable worker lane with a cap of +20 farmers. Passively yields +1 vegetable per harvest cycle (every 10 days). Farmers contribute 1× rate per harvest.',
     tierRequired: 1,
     cost: { wood: 8 },
     days: 3,
@@ -82,7 +82,7 @@ const BUILDING_CATALOG = {
   hunting_lodge: {
     key: 'hunting_lodge',
     name: 'Hunting Lodge',
-    description: 'Raises the hunter worker cap by +20 (stacks with Hunters Cabin). Passively produces +1 meat/day. Each assigned hunter adds +1.5 meat/day.',
+    description: 'Raises the hunter worker cap by +20. Passively produces +1 meat/day. Hunters in this building add +1.73 meat/day each (up from +1.5 at Hunters Cabin).',
     tierRequired: 2,
     cost: { wood: 18, stone: 10 },
     days: 3,
@@ -92,7 +92,7 @@ const BUILDING_CATALOG = {
   irrigated_farm: {
     key: 'irrigated_farm',
     name: 'Irrigated Fields',
-    description: 'Raises the farmer worker cap by +20 (stacks with Vegetable Patch). Passively yields +2 vegetables per harvest cycle (every 10 days).',
+    description: 'Raises the farmer worker cap by +20. Passively yields +2 vegetables per harvest cycle. Farmers in this building contribute at 1.15× rate (up from 1× at Vegetable Patch).',
     tierRequired: 2,
     cost: { wood: 16, stone: 12 },
     days: 2,
@@ -182,7 +182,7 @@ const BUILDING_CATALOG = {
   palisades: {
     key: 'palisades',
     name: 'Palisades',
-    description: 'Basic fortifications that protect your settlement against raids.',
+    description: 'Basic fortifications that protect your settlement against raids. Each building of this type covers a total distance of 15 meters.',
     tierRequired: 2,
     cost: { wood: 24, stone: 10 },
     days: 4,
@@ -232,7 +232,7 @@ const BUILDING_CATALOG = {
   hunters_lodge_advanced: {
     key: 'hunters_lodge_advanced',
     name: 'Grand Hunting Lodge',
-    description: 'Raises the hunter worker cap by +20 (stacks with prior hunting buildings). Passively produces +1 meat/day. Each assigned hunter adds +1.5 meat/day.',
+    description: 'Raises the hunter worker cap by +20. Passively produces +1 meat/day. Hunters in this building add +1.95 meat/day each (up from +1.5 at Hunters Cabin, +30% over base).',
     tierRequired: 3,
     cost: { wood: 24, stone: 16, iron: 8 },
     days: 4,
@@ -242,7 +242,7 @@ const BUILDING_CATALOG = {
   farm_advanced: {
     key: 'farm_advanced',
     name: 'Premium Farmland',
-    description: 'Raises the farmer worker cap by +20. Passively yields +3 vegetables per harvest cycle (every 10 days). Best food output per building in the game.',
+    description: 'Raises the farmer worker cap by +20. Passively yields +3 vegetables per harvest cycle. Farmers in this building contribute at 1.30× rate (up from 1.0× at Vegetable Patch, +30% over base). Best food output per building.',
     tierRequired: 3,
     cost: { wood: 20, stone: 14, iron: 6 },
     days: 3,
@@ -1766,6 +1766,30 @@ const clampWorkersToAssignablePopulation = (assignments, maxByResource, assignab
   return clampedByLane;
 };
 
+// Returns the set of all building types that satisfy a prerequisite for `baseType`:
+// the base type itself plus every upgraded version of it in the chain.
+const getUpgradeChainFrom = (baseType) => {
+  const result = new Set();
+  let current = String(baseType || '');
+  while (current) {
+    result.add(current);
+    const next = BUILDING_UPGRADE_MAP[current]?.upgradedBuilding;
+    if (!next || result.has(next)) break;
+    current = next;
+  }
+  return result;
+};
+
+// Count how many completed buildings satisfy a prerequisite type (including higher-tier upgrades).
+const countSatisfying = (requiredType, byTypeCount) => {
+  const chain = getUpgradeChainFrom(requiredType);
+  let total = 0;
+  for (const type of chain) {
+    total += byTypeCount[type] || 0;
+  }
+  return total;
+};
+
 const hasPrerequisites = (catalogEntry, completedBuildings) => {
   const list = Array.isArray(catalogEntry.prerequisites) ? catalogEntry.prerequisites : [];
   const byTypeCount = {};
@@ -1782,7 +1806,7 @@ const hasPrerequisites = (catalogEntry, completedBuildings) => {
     }
 
     if (req.type) {
-      const have = byTypeCount[req.type] || 0;
+      const have = countSatisfying(req.type, byTypeCount);
       if (have < (req.minCount || 1)) return false;
       continue;
     }
@@ -2130,24 +2154,55 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       }
 
       if (!hasPrerequisites(entry, completedBuildings)) {
+        const prereqList = Array.isArray(entry.prerequisites) ? entry.prerequisites : [];
+        const byTypeCount = {};
+        for (const b of completedBuildings) {
+          const t = String(b.building_type || '');
+          byTypeCount[t] = (byTypeCount[t] || 0) + 1;
+        }
+        const missing = [];
+        for (const req of prereqList) {
+          if (req.anyTier1Completed) {
+            const count = completedBuildings.filter((b) => TIER1_BUILDING_TYPES.has(String(b.building_type || ''))).length;
+            if (count < req.anyTier1Completed) {
+              missing.push(`${req.anyTier1Completed} Tier 1 building${req.anyTier1Completed > 1 ? 's' : ''}`);
+            }
+            continue;
+          }
+          if (req.type) {
+            const have = countSatisfying(req.type, byTypeCount);
+            const need = req.minCount || 1;
+            if (have < need) {
+              const blueprintName = BUILDING_CATALOG[req.type]?.name || req.type;
+              missing.push(need > 1 ? `${need}× ${blueprintName}` : blueprintName);
+            }
+          }
+        }
+        const prereqMsg = missing.length > 0
+          ? `Requires: ${missing.join(', ')}`
+          : 'Building prerequisites are not met';
         return {
           ...entry,
           isLocked: true,
-          lockReason: 'Building prerequisites are not met',
+          lockReason: prereqMsg,
         };
       }
 
+      const insufficientResources = [];
       for (const [resource, neededRaw] of Object.entries(entry.cost || {})) {
         const needed = Math.max(0, Number(neededRaw || 0));
         const resourceKey = resource === 'iron' ? 'minerals' : resource;
         const available = Math.max(0, Number(storedForCostChecks[resourceKey] || 0));
         if (available < needed) {
-          return {
-            ...entry,
-            isLocked: true,
-            lockReason: `Insufficient ${resource}`,
-          };
+          insufficientResources.push(resource);
         }
+      }
+      if (insufficientResources.length > 0) {
+        return {
+          ...entry,
+          isLocked: true,
+          lockReason: `Insufficient ${insufficientResources.join(', ')}`,
+        };
       }
 
       return {

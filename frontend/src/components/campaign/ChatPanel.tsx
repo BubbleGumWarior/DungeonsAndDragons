@@ -21,6 +21,7 @@ interface Props {
   onlinePlayers: OnlinePlayer[];
   campaignNPCs: CampaignNPC[];
   userCharacterId: number | null;
+  currentDay: number;
   onNPCRevealed: (npc: CampaignNPC) => void;
   onNPCSaved: (npc: CampaignNPC) => void;
 }
@@ -101,7 +102,7 @@ function formatTime(iso: string): string {
 const ChatPanel: React.FC<Props> = ({
   isOpen, onClose, messages, socket, campaignId,
   currentUserId, currentUserName, isDM, onlinePlayers,
-  campaignNPCs, userCharacterId, onNPCRevealed, onNPCSaved,
+  campaignNPCs, userCharacterId, currentDay, onNPCRevealed, onNPCSaved,
 }) => {
   const [inputText, setInputText] = useState('');
   const [showRollPicker, setShowRollPicker] = useState(false);
@@ -208,7 +209,11 @@ const ChatPanel: React.FC<Props> = ({
 
       const formData = new FormData();
       formData.append('name', npcName.trim());
-      formData.append('age', npcAge.trim());
+      const ageInput = npcAge.trim();
+      const storedAge = ageInput && !isNaN(Number(ageInput))
+        ? String(Number(ageInput) - Math.floor((currentDay - 1) / 365))
+        : ageInput;
+      formData.append('age', storedAge);
       formData.append('description', npcDescription.trim());
       if (fileToUpload) formData.append('image', fileToUpload);
 

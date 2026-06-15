@@ -26,7 +26,49 @@ const WORKER_STEP_OPTIONS = [1, 5, 10, 50, 100] as const;
 const POPULATION_MATURITY_DAYS = 15 * 365;
 const VEGETABLE_HARVEST_INTERVAL_DAYS = 10;
 const VEGETABLES_PER_WORKER_PER_HARVEST = 2; // must match backend: 20 per 10 days
-const MEAT_PER_WORKER_PER_DAY = 1.5;
+const MEAT_PER_WORKER_PER_DAY = 1.5; // base rate (T1), kept for reference
+
+// Must stay in sync with Campaign.MEAT_BUILDING_CHAIN / VEG_BUILDING_CHAIN on the backend.
+const MEAT_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
+  { type: 'hunters_lodge_advanced', rate: 1.95, capacity: 20 },
+  { type: 'hunting_lodge',          rate: 1.73, capacity: 20 },
+  { type: 'hunters_guild',          rate: 1.5,  capacity: 20 },
+];
+const VEG_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
+  { type: 'farm_advanced',  rate: 1.30, capacity: 20 },
+  { type: 'irrigated_farm', rate: 1.15, capacity: 20 },
+  { type: 'farm',           rate: 1.0,  capacity: 20 },
+  { type: 'granary',        rate: 1.0,  capacity: 20 },
+];
+// Distribute workers into highest-tier building slots first.
+// For meat chains, returns total meat/day from workers.
+// For veg chains, returns effective worker-days (multiplied by tier rate).
+const computeTieredWorkerOutput = (
+  totalWorkers: number,
+  completedBuildings: any[],
+  chain: { type: string; rate: number; capacity: number }[],
+): number => {
+  const countByType: Record<string, number> = {};
+  for (const b of completedBuildings) {
+    const t = String(b?.building_type || '');
+    countByType[t] = (countByType[t] || 0) + 1;
+  }
+  let remaining = Math.max(0, totalWorkers);
+  let total = 0;
+  for (const { type, rate, capacity } of chain) {
+    if (remaining <= 0) break;
+    const count = countByType[type] || 0;
+    if (count === 0) continue;
+    const slots = count * capacity;
+    const assigned = Math.min(remaining, slots);
+    total += assigned * rate;
+    remaining -= assigned;
+  }
+  if (remaining > 0) {
+    total += remaining * (chain[chain.length - 1]?.rate ?? 1);
+  }
+  return total;
+};
 const getTierWorkerYieldMultiplier = (tier?: number) => {
   const normalizedTier = Math.max(1, Math.floor(Number(tier || 1)));
   return 1 + ((normalizedTier - 1) * 0.1);
@@ -84,7 +126,7 @@ const LOGISTICS_BUILDING_TYPES = new Set([
   'trade_route_office',
 ]);
 
-const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'civic'] as const;
+const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'civic'] as const;
 type BuildTabId = typeof BUILD_TABS[number];
 
 const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'research', 'faith'];
@@ -107,26 +149,62 @@ const BUILD_TAB_LABELS: Record<BuildTabId, string> = {
   stone: 'Stone & Mining',
   research: 'Research',
   faith: 'Faith',
+  storage: 'Storage & Housing',
+  military: 'Military',
+  defense: 'Defense',
+  trade: 'Trade & Logistics',
   civic: 'Civic',
 };
 
 const BUILD_TAB_COLORS: Record<BuildTabId, { text: string; border: string; background: string }> = {
-  all: { text: '#e2e8f0', border: 'rgba(148,163,184,0.4)', background: 'rgba(30,41,59,0.35)' },
-  food: { text: '#86efac', border: 'rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.3)' },
-  wood: { text: '#d6bc9a', border: 'rgba(180,136,90,0.45)', background: 'rgba(92,58,34,0.35)' },
-  stone: { text: '#cbd5e1', border: 'rgba(148,163,184,0.45)', background: 'rgba(51,65,85,0.35)' },
-  research: { text: '#93c5fd', border: 'rgba(59,130,246,0.45)', background: 'rgba(30,58,138,0.28)' },
-  faith: { text: '#c4b5fd', border: 'rgba(139,92,246,0.45)', background: 'rgba(76,29,149,0.25)' },
-  civic: { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
+  all:      { text: '#e2e8f0', border: 'rgba(148,163,184,0.4)',   background: 'rgba(30,41,59,0.35)' },
+  food:     { text: '#86efac', border: 'rgba(34,197,94,0.45)',    background: 'rgba(20,83,45,0.3)' },
+  wood:     { text: '#d6bc9a', border: 'rgba(180,136,90,0.45)',   background: 'rgba(92,58,34,0.35)' },
+  stone:    { text: '#cbd5e1', border: 'rgba(148,163,184,0.45)',  background: 'rgba(51,65,85,0.35)' },
+  research: { text: '#93c5fd', border: 'rgba(59,130,246,0.45)',   background: 'rgba(30,58,138,0.28)' },
+  faith:    { text: '#c4b5fd', border: 'rgba(139,92,246,0.45)',   background: 'rgba(76,29,149,0.25)' },
+  storage:  { text: '#fde68a', border: 'rgba(234,179,8,0.45)',    background: 'rgba(113,63,18,0.28)' },
+  military: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)',    background: 'rgba(127,29,29,0.28)' },
+  defense:  { text: '#94a3b8', border: 'rgba(100,116,139,0.45)',  background: 'rgba(30,41,59,0.35)' },
+  trade:    { text: '#6ee7b7', border: 'rgba(16,185,129,0.45)',   background: 'rgba(6,78,59,0.28)' },
+  civic:    { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
 };
 
 const getBuildingCategory = (building: any): BuildTabId => {
   const key = String(building?.key || building?.building_type || '').trim();
-  if (['farm', 'irrigated_farm', 'farm_advanced', 'hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'granary'].includes(key)) return 'food';
-  if (['lumber_mill', 'wood_lodge'].includes(key)) return 'wood';
+  // Food
+  if (['farm', 'irrigated_farm', 'farm_advanced', 'hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced'].includes(key)) return 'food';
+  // Wood
+  if (['lumber_mill'].includes(key)) return 'wood';
+  // Stone & Mining (includes smithy/forge chain)
   if (['quarry', 'quarry_advanced', 'mine', 'mine_advanced', 'smithy', 'forge', 'master_smithy', 'royal_forge', 'grand_forge', 'war_smithy', 'imperial_forge'].includes(key)) return 'stone';
+  // Research
   if (['research_lab', 'research_lab_advanced'].includes(key)) return 'research';
+  // Faith
   if (key === 'faith_temple') return 'faith';
+  // Storage & Housing
+  if (['housing', 'wood_lodge', 'storage', 'storage_shack', 'storage_advanced', 'granary', 'builders_hut'].includes(key)) return 'storage';
+  // Military
+  if (['militia_camp', 'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
+       'stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables',
+       'archer_range', 'bowyer_hall', 'master_fletcher_range', 'elite_fletching_hall', 'royal_marksman_range',
+       'swordsmith_hall', 'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge',
+       'spear_drill_yard', 'pike_yard', 'formation_citadel', 'shieldwall_hall', 'phalanx_command',
+       'armory', 'expanded_armory', 'royal_armory', 'grand_armory', 'war_arsenal',
+       'drill_yard', 'training_grounds', 'elite_drill_grounds', 'veteran_training_grounds', 'war_college',
+       'command_post', 'war_room', 'strategic_command', 'advanced_command_center', 'high_command_citadel',
+       'siege_engine_workshop', 'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall',
+  ].includes(key)) return 'military';
+  // Defense
+  if (['watchtower', 'signal_tower', 'sentinel_tower', 'border_tower', 'high_watch', 'beacon_tower', 'watch_bastion',
+       'palisades', 'fortified_palisades', 'wooden_ramparts', 'stone_walls', 'reinforced_walls', 'fortified_walls', 'bastion_walls', 'citadel_walls', 'fortress_walls',
+       'prison', 'dungeon', 'black_cells', 'deep_prison', 'high_security_prison', 'iron_keep', 'shadow_vault',
+  ].includes(key)) return 'defense';
+  // Trade & Logistics
+  if (['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum',
+       'logistics_depot', 'supply_depot', 'roadworks', 'quartermaster_depot', 'supply_network', 'imperial_logistics_hub', 'trade_route_office',
+  ].includes(key)) return 'trade';
+  // Civic (diplomacy, welfare)
   return 'civic';
 };
 
@@ -571,8 +649,11 @@ const KingdomTab: React.FC<Props> = ({
       : RESOURCE_CANONICAL_ORDER;
     const keys = sortByCanonicalOrder(rawKeys, RESOURCE_CANONICAL_ORDER);
 
+    // Resources that require an explicit unlock (building must be built before the lane is visible).
+    // These start as undefined in older fiefs, so we can't rely on !== false — require === true.
+    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold']);
     return keys
-      .filter((k) => (k === 'meat' ? unlocked[k] === true : unlocked[k] !== false))
+      .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
       .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] || 10)) }));
   }, [fiefDetails]);
 
@@ -586,8 +667,9 @@ const KingdomTab: React.FC<Props> = ({
       : SLAVE_RESOURCE_CANONICAL_ORDER;
     const keys = sortByCanonicalOrder(rawKeys, SLAVE_RESOURCE_CANONICAL_ORDER);
 
+    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold']);
     return keys
-      .filter((k) => unlocked[k] !== false)
+      .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
       .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] || 10)) }));
   }, [fiefDetails]);
 
@@ -764,13 +846,14 @@ const KingdomTab: React.FC<Props> = ({
     const daysLeftInCycle = Math.max(0, VEGETABLE_HARVEST_INTERVAL_DAYS - dayInCycle);
     // Projected yield = accumulated so far + today's workers * remaining days (including today's contribution next day)
     const totalVegetableWorkers = workersVegetables + slaveVegetables;
-    const projectedAccumulated = accumulatedWorkerDays + (totalVegetableWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier * daysLeftInCycle);
+    const effectiveVegWorkersPerDay = computeTieredWorkerOutput(totalVegetableWorkers, completedBuildings, VEG_BUILDING_CHAIN);
+    const projectedAccumulated = accumulatedWorkerDays + (effectiveVegWorkersPerDay * tierWorkerYieldMultiplier * vegetableResearchMultiplier * daysLeftInCycle);
     const projectedVegetableYieldBase = projectedAccumulated * VEGETABLES_PER_WORKER_PER_HARVEST;
     const projectedVegetableYield = applyAllModifiers('vegetables', projectedVegetableYieldBase);
     const nextDayIsHarvest = daysLeftInCycle <= 1;
 
     let vegetables = 0;
-    let meat = (workersMeat + slaveMeat) * MEAT_PER_WORKER_PER_DAY * tierWorkerYieldMultiplier * hunterResearchMultiplier;
+    let meat = computeTieredWorkerOutput(workersMeat + slaveMeat, completedBuildings, MEAT_BUILDING_CHAIN) * tierWorkerYieldMultiplier * hunterResearchMultiplier;
     output.wood += (workersWood + slaveWood) * tierWorkerYieldMultiplier;
     output.stone += (workersStone + slaveStone) * tierWorkerYieldMultiplier;
     output.iron += (workersIron + slaveIron + (workersMinerals * 0.5)) * tierWorkerYieldMultiplier;
@@ -1351,12 +1434,53 @@ const KingdomTab: React.FC<Props> = ({
               ) : (
               <>
               <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                  <div style={{ color: '#e2e8f0' }}>Tier {fiefDetails.tier} {fiefDetails.is_capital ? '• Capital' : ''}</div>
-                  <div style={{ color: '#94a3b8' }}>
-                    Storage: {Object.values((fiefDetails.stored_resources || {}) as Record<string, number>).reduce((a, b) => a + Number(b || 0), 0).toFixed(1)} / {Number(fiefDetails.storage_capacity || 100)}
-                  </div>
-                </div>
+                {(() => {
+                  const totalStored = Object.values((fiefDetails.stored_resources || {}) as Record<string, number>)
+                    .reduce((a, b) => a + Number(b || 0), 0);
+                  const cap = Number(fiefDetails.storage_capacity || 100);
+                  const available = Math.max(0, cap - totalStored);
+                  const { output: prodOutput, foodBreakdown } = productionByLane;
+                  const grossFood = Math.max(0, foodBreakdown.total);
+                  const otherProd = [
+                    { label: 'Wood',     amount: Math.max(0, Number(prodOutput.wood  || 0)) },
+                    { label: 'Stone',    amount: Math.max(0, Number(prodOutput.stone || 0)) },
+                    { label: 'Minerals', amount: Math.max(0, Number(prodOutput.iron  || 0)) },
+                    { label: 'Gold',     amount: Math.max(0, Number(prodOutput.gold  || 0)) },
+                    { label: 'Faith',    amount: Math.max(0, Number(prodOutput.faith || 0)) },
+                  ];
+                  let rem = Math.max(0, available - Math.min(grossFood, available));
+                  const lostResources: { label: string; lost: number }[] = [];
+                  for (const res of otherProd) {
+                    if (res.amount <= 0.001) continue;
+                    const accepted = Math.min(res.amount, rem);
+                    const lost = res.amount - accepted;
+                    rem = Math.max(0, rem - accepted);
+                    if (lost > 0.05) lostResources.push({ label: res.label, lost });
+                  }
+                  const willLose = lostResources.length > 0;
+                  const pct = cap > 0 ? Math.min(1, totalStored / cap) : 0;
+                  const barColor = willLose ? '#ef4444' : pct >= 0.8 ? '#fbbf24' : '#22c55e';
+                  return (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                        <div style={{ color: '#e2e8f0' }}>Tier {fiefDetails.tier} {fiefDetails.is_capital ? '• Capital' : ''}</div>
+                        <div style={{ color: willLose ? '#ef4444' : '#94a3b8' }}>
+                          Storage: {totalStored.toFixed(1)} / {cap}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '0.45rem', marginBottom: '0.5rem' }}>
+                        <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                        </div>
+                        {willLose && (
+                          <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
+                            📦 Storage nearly full — {lostResources.map(r => `${r.lost.toFixed(1)} ${r.label}`).join(', ')} will be lost today (food fills storage first)
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
                   {Object.entries((fiefDetails.stored_resources || {}) as Record<string, number>)
@@ -1814,7 +1938,7 @@ const KingdomTab: React.FC<Props> = ({
                         {BUILD_TAB_LABELS[category]}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '0.6rem' }}>
-                        {buildingsInCategory.map((b: any) => (
+                        {[...buildingsInCategory].sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || ''))).map((b: any) => (
                           (() => {
                             const upgrade = upgradeByBuildingId.get(Number(b.id));
 
