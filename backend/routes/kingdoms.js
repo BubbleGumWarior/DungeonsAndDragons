@@ -2006,6 +2006,100 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ── Co-owner routes ──────────────────────────────────────────────────────────
+
+router.post('/:id/co-owners', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const kingdomId = Number(req.params.id);
+    const playerId = Number(req.body.playerId);
+
+    if (!Number.isFinite(kingdomId) || !Number.isFinite(playerId)) {
+      return res.status(400).json({ error: 'Invalid kingdomId or playerId' });
+    }
+
+    // Verify kingdom exists and get campaign_id
+    const kResult = await pool.query(
+      `SELECT k.id, k.player_id, k.campaign_id, c.dungeon_master_id
+       FROM kingdoms k
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE k.id = $1`,
+      [kingdomId]
+    );
+    const kingdom = kResult.rows[0];
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (Number(kingdom.dungeon_master_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    // Can't add the primary owner as a co-owner
+    if (Number(kingdom.player_id) === playerId) {
+      return res.status(400).json({ error: 'Player is already the primary owner of this kingdom' });
+    }
+
+    // Verify the player exists
+    const userResult = await pool.query(`SELECT id, username FROM users WHERE id = $1`, [playerId]);
+    if (!userResult.rows[0]) return res.status(404).json({ error: 'Player not found' });
+
+    await pool.query(
+      `INSERT INTO kingdom_co_owners (kingdom_id, player_id)
+       VALUES ($1, $2)
+       ON CONFLICT (kingdom_id, player_id) DO NOTHING`,
+      [kingdomId, playerId]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id });
+    }
+
+    res.status(201).json({ message: 'Co-owner added', player_id: playerId, player_username: userResult.rows[0].username });
+  } catch (error) {
+    console.error('Error adding co-owner:', error);
+    res.status(500).json({ error: 'Failed to add co-owner' });
+  }
+});
+
+router.delete('/:id/co-owners/:playerId', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const kingdomId = Number(req.params.id);
+    const playerId = Number(req.params.playerId);
+
+    if (!Number.isFinite(kingdomId) || !Number.isFinite(playerId)) {
+      return res.status(400).json({ error: 'Invalid kingdomId or playerId' });
+    }
+
+    const kResult = await pool.query(
+      `SELECT k.campaign_id, c.dungeon_master_id
+       FROM kingdoms k
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE k.id = $1`,
+      [kingdomId]
+    );
+    const kingdom = kResult.rows[0];
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (Number(kingdom.dungeon_master_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    await pool.query(
+      `DELETE FROM kingdom_co_owners WHERE kingdom_id = $1 AND player_id = $2`,
+      [kingdomId, playerId]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id });
+    }
+
+    res.json({ message: 'Co-owner removed', playerId });
+  } catch (error) {
+    console.error('Error removing co-owner:', error);
+    res.status(500).json({ error: 'Failed to remove co-owner' });
+  }
+});
+
 router.get('/fiefs/:id', authenticateToken, async (req, res) => {
   try {
     const fiefId = Number(req.params.id);

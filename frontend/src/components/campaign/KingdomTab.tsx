@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { campaignAPI, kingdomAPI, KingdomSummary, KingdomFief } from '../../services/api';
+import { campaignAPI, kingdomAPI, KingdomSummary, KingdomFief, KingdomCoOwner } from '../../services/api';
 
 interface Player {
   id: number;
@@ -304,6 +304,10 @@ const KingdomTab: React.FC<Props> = ({
   const [selectedGrantPlayerIds, setSelectedGrantPlayerIds] = useState<number[]>([]);
   const [grantLocationModifiers, setGrantLocationModifiers] = useState<Record<string, number>>({});
 
+  // ── Co-owner state ─────────────────────────────────────────────────────────
+  const [coOwnerTargetKingdomId, setCoOwnerTargetKingdomId] = useState<number | null>(null);
+  const [coOwnerSelectedPlayerId, setCoOwnerSelectedPlayerId] = useState<number | ''>('');
+
   // ── Create New Fief state ──────────────────────────────────────────────────
   const [showCreateFiefModal, setShowCreateFiefModal] = useState(false);
   const [createFiefKingdomId, setCreateFiefKingdomId] = useState<number | null>(null);
@@ -422,7 +426,11 @@ const KingdomTab: React.FC<Props> = ({
 
   const myKingdom = useMemo(() => {
     if (isDungeonMaster) return null;
-    return kingdoms.find((k) => Number(k.player_id) === Number(userId)) || null;
+    return kingdoms.find(
+      (k) =>
+        Number(k.player_id) === Number(userId) ||
+        (k.co_owners || []).some((co) => Number(co.player_id) === Number(userId))
+    ) || null;
   }, [kingdoms, isDungeonMaster, userId]);
 
   const visibleKingdoms = useMemo(
@@ -595,6 +603,34 @@ const KingdomTab: React.FC<Props> = ({
       await fetchKingdoms();
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to delete kingdom');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleAddCoOwner = async () => {
+    if (!isDungeonMaster || !coOwnerTargetKingdomId || !coOwnerSelectedPlayerId) return;
+    setBusy(`co-owner-add-${coOwnerTargetKingdomId}`);
+    try {
+      await kingdomAPI.addCoOwner(coOwnerTargetKingdomId, Number(coOwnerSelectedPlayerId));
+      setCoOwnerTargetKingdomId(null);
+      setCoOwnerSelectedPlayerId('');
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to add co-owner');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleRemoveCoOwner = async (kingdomId: number, playerId: number) => {
+    if (!isDungeonMaster) return;
+    setBusy(`co-owner-remove-${kingdomId}-${playerId}`);
+    try {
+      await kingdomAPI.removeCoOwner(kingdomId, playerId);
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to remove co-owner');
     } finally {
       setBusy(null);
     }
@@ -1329,17 +1365,91 @@ const KingdomTab: React.FC<Props> = ({
         <>
           {visibleKingdoms.map((k) => {
             const isMyKingdom = !isDungeonMaster && Number(k.player_id) === Number(userId);
+            const coOwners: KingdomCoOwner[] = k.co_owners || [];
+            const coOwnerPlayerIds = new Set(coOwners.map((c) => c.player_id));
+            const eligibleCoOwnerPlayers = (players || []).filter(
+              (p) => Number(p.id) !== Number(k.player_id) && !coOwnerPlayerIds.has(Number(p.id))
+            );
+            const isAddingCoOwner = coOwnerTargetKingdomId === Number(k.id);
             return (
               <div key={k.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)', overflow: 'hidden', marginBottom: '0.5rem' }}>
                 {/* Kingdom header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', borderBottom: '1px solid rgba(148,163,184,0.15)', background: 'rgba(0,0,0,0.25)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>
                       👑 {k.name || `Unnamed Kingdom #${k.id}`}
                     </span>
-                    <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
-                      Player: {k.player_username || `#${k.player_id}`} • {k.is_active ? 'Active' : 'Pending Name'}
-                    </span>
+                    {/* Primary owner row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                        Player: {k.player_username || `#${k.player_id}`} • {k.is_active ? 'Active' : 'Pending Name'}
+                      </span>
+                      {isDungeonMaster && (
+                        <button
+                          title="Add a player to share this kingdom"
+                          onClick={() => {
+                            if (isAddingCoOwner) {
+                              setCoOwnerTargetKingdomId(null);
+                              setCoOwnerSelectedPlayerId('');
+                            } else {
+                              setCoOwnerTargetKingdomId(Number(k.id));
+                              setCoOwnerSelectedPlayerId('');
+                            }
+                          }}
+                          style={{ padding: '0.05rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(96,165,250,0.5)', background: 'rgba(30,58,138,0.3)', color: '#93c5fd', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1, fontWeight: 700 }}
+                        >
+                          +
+                        </button>
+                      )}
+                    </div>
+                    {/* Co-owners */}
+                    {coOwners.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.1rem' }}>
+                        {coOwners.map((co) => (
+                          <span key={co.player_id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.45rem', borderRadius: '0.35rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd', fontSize: '0.72rem' }}>
+                            {co.player_username}
+                            {isDungeonMaster && (
+                              <button
+                                title={`Remove ${co.player_username} from kingdom`}
+                                disabled={busy === `co-owner-remove-${Number(k.id)}-${co.player_id}`}
+                                onClick={() => handleRemoveCoOwner(Number(k.id), co.player_id)}
+                                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 0.1rem', fontSize: '0.75rem', lineHeight: 1 }}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Add co-owner inline picker */}
+                    {isDungeonMaster && isAddingCoOwner && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}>
+                        <select
+                          value={coOwnerSelectedPlayerId}
+                          onChange={(e) => setCoOwnerSelectedPlayerId(e.target.value === '' ? '' : Number(e.target.value))}
+                          style={{ padding: '0.2rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(15,23,42,0.8)', color: '#e2e8f0', fontSize: '0.8rem' }}
+                        >
+                          <option value="">Select player…</option>
+                          {eligibleCoOwnerPlayers.map((p) => (
+                            <option key={p.id} value={p.id}>{p.username}</option>
+                          ))}
+                        </select>
+                        <button
+                          disabled={!coOwnerSelectedPlayerId || busy === `co-owner-add-${Number(k.id)}`}
+                          onClick={handleAddCoOwner}
+                          style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(96,165,250,0.5)', background: 'rgba(30,58,138,0.4)', color: '#93c5fd', cursor: 'pointer', fontSize: '0.8rem' }}
+                        >
+                          {busy === `co-owner-add-${Number(k.id)}` ? '…' : 'Add'}
+                        </button>
+                        <button
+                          onClick={() => { setCoOwnerTargetKingdomId(null); setCoOwnerSelectedPlayerId(''); }}
+                          style={{ padding: '0.2rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(148,163,184,0.3)', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {isDungeonMaster && (
                     <button

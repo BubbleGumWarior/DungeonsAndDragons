@@ -50,7 +50,31 @@ class Kingdom {
       byKingdom.get(key).push(fief);
     }
 
-    return result.rows.map((k) => ({ ...k, fiefs: byKingdom.get(Number(k.id)) || [] }));
+    // Fetch co-owners (table may not exist yet if migration hasn't run)
+    let coOwnersByKingdom = new Map();
+    try {
+      const coOwnersResult = await pool.query(
+        `SELECT kc.kingdom_id, kc.player_id, u.username AS player_username
+         FROM kingdom_co_owners kc
+         JOIN users u ON u.id = kc.player_id
+         WHERE kc.kingdom_id = ANY($1::int[])
+         ORDER BY kc.added_at ASC`,
+        [ids]
+      );
+      for (const row of coOwnersResult.rows) {
+        const key = Number(row.kingdom_id);
+        if (!coOwnersByKingdom.has(key)) coOwnersByKingdom.set(key, []);
+        coOwnersByKingdom.get(key).push({ player_id: Number(row.player_id), player_username: row.player_username });
+      }
+    } catch (_) {
+      // Table doesn't exist yet — silently ignore
+    }
+
+    return result.rows.map((k) => ({
+      ...k,
+      fiefs: byKingdom.get(Number(k.id)) || [],
+      co_owners: coOwnersByKingdom.get(Number(k.id)) || [],
+    }));
   }
 
   static async setName(kingdomId, name, capitalName = 'Capital') {

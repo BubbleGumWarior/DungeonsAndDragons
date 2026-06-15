@@ -365,6 +365,7 @@ const startServer = async () => {
         { name: 'addCampaignDarknessState', fn: require('./migrations/add_campaign_darkness_state') },
         { name: 'addLocationModifiers', fn: require('./migrations/add_location_modifiers') },
         { name: 'addFiefTravelDays', fn: require('./migrations/add_fief_travel_days') },
+        { name: 'addKingdomCoOwners', fn: require('./migrations/add_kingdom_co_owners') },
       ];
       
       for (const migration of migrations) {

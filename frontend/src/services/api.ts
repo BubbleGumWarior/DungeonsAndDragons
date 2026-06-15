@@ -1326,6 +1326,11 @@ export interface KingdomFief {
   travel_days_remaining?: number;
 }
 
+export interface KingdomCoOwner {
+  player_id: number;
+  player_username: string;
+}
+
 export interface KingdomSummary {
   id: number;
   campaign_id: number;
@@ -1334,6 +1339,7 @@ export interface KingdomSummary {
   is_active: boolean;
   player_username?: string;
   fiefs: KingdomFief[];
+  co_owners?: KingdomCoOwner[];
 }
 
 // ─── Pets ─────────────────────────────────────────────────────────────────
@@ -1417,6 +1423,16 @@ export const kingdomAPI = {
 
   deleteKingdom: async (kingdomId: number): Promise<{ message: string; kingdomId: number; playerId: number }> => {
     const response = await api.delete(`/kingdoms/${kingdomId}`);
+    return response.data;
+  },
+
+  addCoOwner: async (kingdomId: number, playerId: number): Promise<{ message: string; player_id: number; player_username: string }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/co-owners`, { playerId });
+    return response.data;
+  },
+
+  removeCoOwner: async (kingdomId: number, playerId: number): Promise<{ message: string; playerId: number }> => {
+    const response = await api.delete(`/kingdoms/${kingdomId}/co-owners/${playerId}`);
     return response.data;
   },
 
