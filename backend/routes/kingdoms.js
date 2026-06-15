@@ -1687,7 +1687,21 @@ const getFiefContext = async (fiefId) => {
      WHERE f.id = $1`,
     [fiefId]
   );
-  return result.rows[0] || null;
+  const fief = result.rows[0] || null;
+  if (!fief) return null;
+
+  // Attach co-owner player IDs so canManageFief can check them synchronously
+  try {
+    const coOwners = await pool.query(
+      `SELECT player_id FROM kingdom_co_owners WHERE kingdom_id = $1`,
+      [fief.kingdom_id]
+    );
+    fief.co_owner_ids = coOwners.rows.map((r) => Number(r.player_id));
+  } catch (_) {
+    fief.co_owner_ids = [];
+  }
+
+  return fief;
 };
 
 const canManageFief = (user, fief) => {
@@ -1695,7 +1709,9 @@ const canManageFief = (user, fief) => {
   if (user.role === 'Dungeon Master') {
     return Number(fief.dungeon_master_id) === Number(user.id);
   }
-  return Number(fief.player_id) === Number(user.id);
+  if (Number(fief.player_id) === Number(user.id)) return true;
+  if (Array.isArray(fief.co_owner_ids) && fief.co_owner_ids.includes(Number(user.id))) return true;
+  return false;
 };
 
 const withPopulationBreakdown = (fief) => {
@@ -1934,7 +1950,8 @@ router.post('/:id/name', authenticateToken, async (req, res) => {
 
     const canEdit = req.user.role === 'Dungeon Master'
       ? Number(ownership.dungeon_master_id) === Number(req.user.id)
-      : Number(ownership.player_id) === Number(req.user.id);
+      : Number(ownership.player_id) === Number(req.user.id) ||
+        await pool.query(`SELECT 1 FROM kingdom_co_owners WHERE kingdom_id = $1 AND player_id = $2`, [kingdomId, req.user.id]).then(r => r.rows.length > 0).catch(() => false);
 
     if (!canEdit) return res.status(403).json({ error: 'Not authorized to name this kingdom' });
 
@@ -3285,14 +3302,24 @@ router.post('/:kingdomId/fiefs', authenticateToken, async (req, res) => {
     const kingdomId = Number(req.params.kingdomId);
     if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
 
-    // Verify requester owns this kingdom
+    // Verify requester owns or co-owns this kingdom
     const ownerCheck = await pool.query(
       `SELECT k.id, k.campaign_id, k.player_id FROM kingdoms k WHERE k.id = $1`,
       [kingdomId]
     );
     if (!ownerCheck.rows.length) return res.status(404).json({ error: 'Kingdom not found' });
     const kingdom = ownerCheck.rows[0];
-    if (Number(kingdom.player_id) !== Number(req.user.id)) {
+
+    let isCoOwner = false;
+    try {
+      const coCheck = await pool.query(
+        `SELECT 1 FROM kingdom_co_owners WHERE kingdom_id = $1 AND player_id = $2`,
+        [kingdomId, req.user.id]
+      );
+      isCoOwner = coCheck.rows.length > 0;
+    } catch (_) {}
+
+    if (Number(kingdom.player_id) !== Number(req.user.id) && !isCoOwner) {
       return res.status(403).json({ error: 'You do not own this kingdom' });
     }
 
