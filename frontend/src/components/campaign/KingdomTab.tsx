@@ -25,8 +25,8 @@ interface Props {
 const WORKER_STEP_OPTIONS = [1, 5, 10, 50, 100] as const;
 const POPULATION_MATURITY_DAYS = 15 * 365;
 const VEGETABLE_HARVEST_INTERVAL_DAYS = 10;
-const VEGETABLES_PER_WORKER_PER_HARVEST = 2; // must match backend: 20 per 10 days
-// const MEAT_PER_WORKER_PER_DAY = 1.5; // base rate (T1), kept for reference
+// const VEGETABLES_PER_WORKER_PER_HARVEST = 2; // base rate (T1), kept for reference — embedded in VEG_BUILDING_CHAIN
+// const MEAT_PER_WORKER_PER_DAY = 1.5; // base rate (T1), kept for reference — embedded in MEAT_BUILDING_CHAIN
 
 // Must stay in sync with Campaign.MEAT_BUILDING_CHAIN / VEG_BUILDING_CHAIN on the backend.
 const MEAT_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
@@ -35,10 +35,10 @@ const MEAT_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = 
   { type: 'hunters_guild',          rate: 1.5,  capacity: 20 },
 ];
 const VEG_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
-  { type: 'farm_advanced',  rate: 1.30, capacity: 20 },
-  { type: 'irrigated_farm', rate: 1.15, capacity: 20 },
-  { type: 'farm',           rate: 1.0,  capacity: 20 },
-  { type: 'granary',        rate: 1.0,  capacity: 20 },
+  { type: 'farm_advanced',  rate: 2.60, capacity: 20 },
+  { type: 'irrigated_farm', rate: 2.30, capacity: 20 },
+  { type: 'farm',           rate: 2.0,  capacity: 20 },
+  { type: 'granary',        rate: 2.0,  capacity: 20 },
 ];
 // Distribute workers into highest-tier building slots first.
 // For meat chains, returns total meat/day from workers.
@@ -848,7 +848,7 @@ const KingdomTab: React.FC<Props> = ({
     const totalVegetableWorkers = workersVegetables + slaveVegetables;
     const effectiveVegWorkersPerDay = computeTieredWorkerOutput(totalVegetableWorkers, completedBuildings, VEG_BUILDING_CHAIN);
     const projectedAccumulated = accumulatedWorkerDays + (effectiveVegWorkersPerDay * tierWorkerYieldMultiplier * vegetableResearchMultiplier * daysLeftInCycle);
-    const projectedVegetableYieldBase = projectedAccumulated * VEGETABLES_PER_WORKER_PER_HARVEST;
+    const projectedVegetableYieldBase = projectedAccumulated;
     const projectedVegetableYield = applyAllModifiers('vegetables', projectedVegetableYieldBase);
     const nextDayIsHarvest = daysLeftInCycle <= 1;
 
