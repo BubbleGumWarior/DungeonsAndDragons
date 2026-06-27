@@ -132,6 +132,7 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
   { name: 'Southreach',   x: 18,  y: 74 },
   { name: 'Gulltown',     x: 38,  y: 69 },
   { name: 'Yllwyn',       x: 42.25,  y: 79, playerCity: true },
+  { name: 'Scolissaz',    x: 37.5,  y: 87.5},
   { name: 'Fairy Grove',  x: 28.2,  y: 75 },
   { name: 'Pass-Crown',   x: 50,  y: 46,  major: true },
   { name: "Ruk'da",       x: 64,  y: 28 },
@@ -804,6 +805,7 @@ const CampaignView: React.FC = () => {
   const [dotDmgMode, setDotDmgMode] = useState<'fixed' | 'dice' | 'roll'>('fixed');
   const [dotFixed, setDotFixed] = useState('5');
   const [dotDice, setDotDice] = useState('d6');
+  const [initiativeCollapsed, setInitiativeCollapsed] = useState(false);
   const [showAttackModal, setShowAttackModal] = useState<{ attackerKey: string; targetKey: string; prefillDamage?: number } | null>(null);
   // Attack request flow: player sends to DM; DM configures dice; player rolls
   const [pendingAttackRequest, setPendingAttackRequest] = useState<AttackRequest | null>(null); // DM sees this
@@ -3907,6 +3909,16 @@ const CampaignView: React.FC = () => {
           ...prev,
           [data.resetMovementFor]: data.movementSpeed
         }));
+        // Auto-select the player's own combatant when it becomes their turn
+        // Use the ref so we always have the latest currentCampaign (avoids stale closure)
+        const freshCampaign = currentCampaignRef.current;
+        if (freshCampaign?.userCharacter) {
+          const myCharId = freshCampaign.userCharacter.id;
+          if (String(data.currentCharacterId) === String(myCharId)) {
+            // Use data.currentCharacterId directly — same type the server sends for combatant.characterId
+            setSelectedCombatant(data.currentCharacterId);
+          }
+        }
       });
 
       // Listen for combat reset (DM clears all combatants)
@@ -7601,22 +7613,28 @@ const CampaignView: React.FC = () => {
                     border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
                     borderRadius: '0.75rem'
                   }}>
-                    <h6 style={{ color: 'var(--text-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h6 style={{ color: 'var(--text-gold)', marginBottom: initiativeCollapsed ? 0 : '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span>🎲</span>
                       <span>Initiative Order</span>
                       {currentTurnIndex >= 0 && initiativeOrder.length > 0 ? (
-                        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#999' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#999' }}>
                           Turn {currentTurnIndex + 1} of {initiativeOrder.length}
                         </span>
                       ) : (
-                        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#f4a261' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#f4a261' }}>
                           ⏸️ Waiting to start
                         </span>
                       )}
+                      <button
+                        onClick={() => setInitiativeCollapsed(p => !p)}
+                        title={initiativeCollapsed ? 'Expand initiative list' : 'Collapse initiative list'}
+                        style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.3rem', color: '#94a3b8', cursor: 'pointer', fontSize: '0.75rem', padding: '0.15rem 0.5rem', lineHeight: 1 }}
+                      >{initiativeCollapsed ? '▼ Expand' : '▲ Collapse'}</button>
                     </h6>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {/* Sort combatants by initiative order for display */}
                       {initiativeOrder.map((combatantId, orderIndex) => {
+                        if (initiativeCollapsed && orderIndex !== currentTurnIndex) return null;
                         const combatant = combatants.find(c => c.characterId === combatantId);
                         if (!combatant) return null;
                         
@@ -7926,12 +7944,14 @@ const CampaignView: React.FC = () => {
                                     const fullLabel = aType === 'action' ? 'Action' : aType === 'bonusAction' ? 'Bonus Action' : 'Reaction';
                                     const isUsed = !!(economy as any)[fieldKey];
                                     const color = isUsed ? '#ef4444' : '#4ade80';
+                                    const isDMUser = user?.role === 'Dungeon Master';
                                     return (
                                       <button
                                         key={aType}
-                                        title={`${fullLabel}: ${isUsed ? 'Used (click to restore)' : 'Available (click to use)'}`}
+                                        title={isDMUser ? `${fullLabel}: ${isUsed ? 'Used (click to restore)' : 'Available (click to use)'}` : `${fullLabel}: ${isUsed ? 'Used' : 'Available'}`}
                                         onClick={(e) => {
                                           e.stopPropagation();
+                                          if (!isDMUser) return;
                                           socket?.emit('spendActionEconomy', {
                                             campaignId: currentCampaign?.campaign.id,
                                             combatantKey,
@@ -7943,7 +7963,7 @@ const CampaignView: React.FC = () => {
                                           width: '28px', height: '22px', borderRadius: '4px',
                                           background: isUsed ? 'rgba(239,68,68,0.2)' : 'rgba(74,222,128,0.15)',
                                           border: `1px solid ${color}`,
-                                          color, cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold',
+                                          color, cursor: isDMUser ? 'pointer' : 'default', fontSize: '0.65rem', fontWeight: 'bold',
                                           padding: 0, lineHeight: 1,
                                         }}
                                       >{label}</button>
@@ -16700,7 +16720,7 @@ const CampaignView: React.FC = () => {
                     <h4 style={{ color: 'var(--text-gold)', margin: 0 }}>⚔️ Choose Target</h4>
                     <button onClick={() => setShowAttackModal(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '60vh', overflowY: 'auto', paddingRight: '0.25rem' }}>
                     {possibleTargets.map(t => (
                       <button key={t.characterId}
                         onClick={() => {
