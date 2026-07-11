@@ -47,6 +47,35 @@ class Campaign {
       meatPerWorkerPerDay: 1.5,
       vegetablesPerWorkerPerHarvest: 2,
       vegetablesHarvestIntervalDays: 10,
+      vegetableAssignmentDays: 4,
+      vegetableGrowthDays: 6,
+      vegetableHarvestDays: 4,
+      // 4 harvest days roughly equals 25 days of baseline meat production (1.5/day => 37.5 total).
+      vegetablesPerWorkerPerHarvestDay: 9.375,
+    };
+  }
+
+  static normalizeVegetableHarvestState(value) {
+    const raw = (value && typeof value === 'object') ? value : {};
+    const legacyDayInCycle = Math.max(0, Math.floor(Number(raw.day_in_cycle || 0)));
+    const phaseRaw = String(raw.phase || '').trim().toLowerCase();
+    let phase = 'assigning';
+    if (phaseRaw === 'growing' || phaseRaw === 'harvesting' || phaseRaw === 'assigning') {
+      phase = phaseRaw;
+    } else if (legacyDayInCycle >= 4 && legacyDayInCycle < 10) {
+      phase = 'growing';
+    }
+
+    const dayInPhase = Math.max(0, Math.floor(Number(raw.day_in_phase || 0)));
+    const lockedWorkers = Math.max(0, Math.floor(Number(raw.locked_workers || 0)));
+
+    return {
+      phase,
+      dayInPhase,
+      lockedWorkers,
+      // Legacy compatibility fields used by old clients/debug outputs.
+      dayInCycle: legacyDayInCycle,
+      accumulatedWorkerDays: Math.max(0, Number(raw.accumulated_worker_days || 0)),
     };
   }
 
@@ -476,6 +505,31 @@ class Campaign {
     return adjusted;
   }
 
+  static applyLegendaryBonuses(production, legendaryBonuses) {
+    const adjusted = { ...(production || {}) };
+    const bonuses = (legendaryBonuses && typeof legendaryBonuses === 'object') ? legendaryBonuses : {};
+    const map = {
+      wood: 'wood_bonus_pct',
+      stone: 'stone_bonus_pct',
+      minerals: 'iron_bonus_pct',
+      meat: 'meat_bonus_pct',
+      vegetables: 'vegetables_bonus_pct',
+      gold: 'gold_bonus_pct',
+      research: 'research_bonus_pct',
+      faith: 'faith_bonus_pct',
+      building: 'building_bonus_pct',
+    };
+
+    for (const [resource, key] of Object.entries(map)) {
+      const pct = Number(bonuses[key] || 0);
+      const value = Number(adjusted[resource] || 0);
+      if (!Number.isFinite(pct) || pct === 0 || value <= 0) continue;
+      adjusted[resource] = Math.max(0, value * (1 + (pct / 100)));
+    }
+
+    return adjusted;
+  }
+
   /**
    * Distribute `totalWorkers` into building slots from highest tier first.
    * Each building in the chain provides `capacity` slots at its `rate`.
@@ -563,10 +617,14 @@ class Campaign {
     stored.food = legacyFood;
     delete stored.meat;
     delete stored.vegetables;
+    delete stored.research;
 
     const normalizedProduced = {};
     for (const [resource, amountRaw] of Object.entries(producedResources || {})) {
       const amount = Math.max(0, Number(amountRaw) || 0);
+      if (resource === 'research') {
+        continue;
+      }
       if (resource === 'meat' || resource === 'vegetables') {
         normalizedProduced.food = (Number(normalizedProduced.food) || 0) + amount;
       } else {
@@ -891,6 +949,7 @@ class Campaign {
       const fiefStates = [];
       const buildingsByFief = new Map();
       const researchByFief = new Map();
+      const legendaryBonusesByFief = new Map();
 
       if (canSimulateKingdoms) {
         const fiefsResult = await client.query(
@@ -940,10 +999,7 @@ class Campaign {
             unlockedResources,
             maxWorkersPerResource: Campaign.toNumericResourceMap(row.max_workers_per_resource),
             sickInjuredPopulation: Math.max(0, Number(row.sick_injured_population || 0)),
-            vegetableHarvestState: {
-              dayInCycle: Number((row.vegetable_harvest_state || {}).day_in_cycle || 0),
-              accumulatedWorkerDays: Number((row.vegetable_harvest_state || {}).accumulated_worker_days || 0),
-            },
+            vegetableHarvestState: Campaign.normalizeVegetableHarvestState(row.vegetable_harvest_state),
             consecutiveStarvationDays: Number(row.consecutive_starvation_days || 0),
             completedResearch: Array.isArray(row.completed_research) ? row.completed_research : [],
             slaves: Math.max(0, Number(row.slaves || 0)),
@@ -989,6 +1045,38 @@ class Campaign {
               resourceOutput: Campaign.toNumericResourceMap(row.resource_output),
               dirty: false,
             });
+          }
+
+          const legendaryTables = await client.query(
+            `SELECT to_regclass('public.kingdom_legendary_assignments') AS assignments,
+                    to_regclass('public.kingdom_legendary_characters') AS characters`
+          );
+          const canUseLegendary = Boolean(
+            legendaryTables.rows[0]?.assignments &&
+            legendaryTables.rows[0]?.characters
+          );
+
+          if (canUseLegendary) {
+            const legendaryResult = await client.query(
+              `SELECT la.fief_id, lc.bonuses
+               FROM kingdom_legendary_assignments la
+               JOIN kingdom_legendary_characters lc ON lc.id = la.legendary_id
+               WHERE la.fief_id = ANY($1::int[])
+                 AND lc.is_active = true`,
+              [fiefStates.map((f) => f.id)]
+            );
+
+            for (const row of legendaryResult.rows) {
+              const fiefId = Number(row.fief_id);
+              if (!legendaryBonusesByFief.has(fiefId)) legendaryBonusesByFief.set(fiefId, {});
+              const current = legendaryBonusesByFief.get(fiefId);
+              const bonuses = (row.bonuses && typeof row.bonuses === 'object') ? row.bonuses : {};
+              for (const [key, value] of Object.entries(bonuses)) {
+                const numeric = Number(value || 0);
+                if (!Number.isFinite(numeric) || numeric === 0) continue;
+                current[key] = Number(current[key] || 0) + numeric;
+              }
+            }
           }
 
           if (canSimulateResearch) {
@@ -1062,31 +1150,93 @@ class Campaign {
             completedResearch: fief.completedResearch,
           });
 
-          // Accumulate vegetable worker-days; pay out only when the cycle completes.
+          // Vegetable lane cycle:
+          // - assigning (4d): workers may be set by players
+          // - growing (6d): lane cap forced to 0; assigned workers remain but produce nothing
+          // - harvesting (4d): only days when vegetables are collected from locked workers
           const productionConfig = Campaign.getProductionConfig();
           const tierWorkerYieldMultiplier = Campaign.getTierWorkerYieldMultiplier(fief.tier);
-          const harvestInterval = Math.max(1, Number(productionConfig.vegetablesHarvestIntervalDays || 5));
-          const vegsPerWorkerPerHarvest = Number(productionConfig.vegetablesPerWorkerPerHarvest || 5);
-          const vegetablesWorkers = Math.max(0, Number(effectiveAssignments.vegetables || 0));
+          const assignmentDays = Math.max(1, Number(productionConfig.vegetableAssignmentDays || 4));
+          const growthDays = Math.max(1, Number(productionConfig.vegetableGrowthDays || 6));
+          const harvestDays = Math.max(1, Number(productionConfig.vegetableHarvestDays || 4));
+          const vegHarvestPerWorkerPerDay = Math.max(0, Number(productionConfig.vegetablesPerWorkerPerHarvestDay || 9.375));
           const vegetableResearchMultiplier = Campaign.getResearchWorkerYieldMultiplier(fief.completedResearch, 'vegetables');
-          // Effective vegetable workers: workers in higher-tier buildings accumulate faster.
-          const effectiveVegWorkers = Campaign.computeTieredWorkerOutput(vegetablesWorkers, completed, Campaign.VEG_BUILDING_CHAIN);
           if (hasVegetableHarvestStateColumn) {
-            fief.vegetableHarvestState.accumulatedWorkerDays += effectiveVegWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier;
-            fief.vegetableHarvestState.dayInCycle += 1;
-            if (fief.vegetableHarvestState.dayInCycle >= harvestInterval) {
-              baseProduction.vegetables += fief.vegetableHarvestState.accumulatedWorkerDays * vegsPerWorkerPerHarvest;
-              fief.vegetableHarvestState.accumulatedWorkerDays = 0;
-              fief.vegetableHarvestState.dayInCycle = 0;
+            const state = Campaign.normalizeVegetableHarvestState(fief.vegetableHarvestState);
+            const currentAssignedVegetableWorkers = Math.max(0, Math.floor(Number((fief.workerAssignments || {}).vegetables || 0)));
+
+            // Keep farming idle until a fief actually has vegetable workers assigned.
+            // Also recover from stale locked phases that have no locked workers.
+            if (state.phase !== 'assigning' && state.lockedWorkers <= 0) {
+              state.phase = 'assigning';
+              state.dayInPhase = 0;
+              state.dayInCycle = 0;
+              state.accumulatedWorkerDays = 0;
             }
+
+            if (state.phase === 'harvesting') {
+              const effectiveLockedWorkers = Campaign.computeTieredWorkerOutput(state.lockedWorkers, completed, Campaign.VEG_BUILDING_CHAIN);
+              const harvestedToday = effectiveLockedWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier * vegHarvestPerWorkerPerDay;
+              baseProduction.vegetables += harvestedToday;
+            }
+
+            if (state.phase === 'assigning') {
+              if (currentAssignedVegetableWorkers > 0) {
+                state.dayInPhase += 1;
+                if (state.dayInPhase >= assignmentDays) {
+                  state.lockedWorkers = currentAssignedVegetableWorkers;
+                  state.phase = 'growing';
+                  state.dayInPhase = 0;
+                }
+              } else {
+                // No workers assigned: keep this fief at an idle, editable start state.
+                state.dayInPhase = 0;
+                state.dayInCycle = 0;
+                state.lockedWorkers = 0;
+              }
+            } else if (state.phase === 'growing') {
+              // Lane appears closed while crops are growing.
+              fief.maxWorkersPerResource.vegetables = 0;
+              state.dayInPhase += 1;
+              if (state.dayInPhase >= growthDays) {
+                state.phase = 'harvesting';
+                state.dayInPhase = 0;
+              }
+            } else {
+              state.dayInPhase += 1;
+              if (state.dayInPhase >= harvestDays) {
+                state.phase = 'assigning';
+                state.dayInPhase = 0;
+                state.lockedWorkers = 0;
+              }
+            }
+
+            // Keep a legacy cycle-day approximation for backwards compatibility.
+            if (state.phase === 'assigning') {
+              state.dayInCycle = Math.max(0, Math.min(assignmentDays, state.dayInPhase));
+            } else if (state.phase === 'growing') {
+              state.dayInCycle = assignmentDays + Math.max(0, Math.min(growthDays, state.dayInPhase));
+            } else {
+              state.dayInCycle = assignmentDays + growthDays + Math.max(0, Math.min(harvestDays, state.dayInPhase));
+            }
+
+            fief.vegetableHarvestState = state;
           } else {
             // Fallback for partially migrated schemas: apply average daily vegetable output
             // so single-day advances do not lose harvest progress.
+            const harvestInterval = Math.max(1, Number(productionConfig.vegetablesHarvestIntervalDays || 10));
+            const vegsPerWorkerPerHarvest = Number(productionConfig.vegetablesPerWorkerPerHarvest || 2);
+            const vegetablesWorkers = Math.max(0, Number(effectiveAssignments.vegetables || 0));
+            const effectiveVegWorkers = Campaign.computeTieredWorkerOutput(vegetablesWorkers, completed, Campaign.VEG_BUILDING_CHAIN);
             baseProduction.vegetables += (effectiveVegWorkers * tierWorkerYieldMultiplier * vegetableResearchMultiplier * vegsPerWorkerPerHarvest) / harvestInterval;
           }
 
           const logisticsLevel = Campaign.getCompletedBuildingCount(completed, Campaign.LOGISTICS_BUILDING_TYPES);
-          const modifiedProduction = Campaign.applyCombinedModifiers(baseProduction, seasonEffects, logisticsLevel, fief.locationModifiers);
+          const legendaryBonuses = legendaryBonusesByFief.get(fief.id) || {};
+          const modifiedProduction = Campaign.applyLegendaryBonuses(
+            Campaign.applyCombinedModifiers(baseProduction, seasonEffects, logisticsLevel, fief.locationModifiers),
+            legendaryBonuses
+          );
           const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity);
           fief.storedResources = capacityApplied.stored;
 
@@ -1094,12 +1244,15 @@ class Campaign {
             resourcesGained[fief.id][resource] = (Number(resourcesGained[fief.id][resource]) || 0) + amount;
           }
 
+          const foodConsumptionReductionPct = Math.max(0, Number(legendaryBonuses.food_consumption_reduction_pct || 0));
+          const consumptionMultiplier = Math.max(0, 1 - (foodConsumptionReductionPct / 100));
           const dailyFoodNeeded = Campaign.getDailyFoodConsumption(fief.population, fief.tier)
             + (fief.slaves + fief.prisoners) * 0.5;
+          const adjustedDailyFoodNeeded = Math.max(0, dailyFoodNeeded * consumptionMultiplier);
           const currentFood = Math.max(0, Number(fief.storedResources.food || 0));
-          const consumedFood = Math.min(currentFood, dailyFoodNeeded);
+          const consumedFood = Math.min(currentFood, adjustedDailyFoodNeeded);
           fief.storedResources.food = currentFood - consumedFood;
-          const foodDeficit = Math.max(0, dailyFoodNeeded - consumedFood);
+          const foodDeficit = Math.max(0, adjustedDailyFoodNeeded - consumedFood);
 
           let starvationDeaths = 0;
           // Only apply starvation deaths if storage is completely depleted (currentFood was 0 before consumption)
@@ -1110,7 +1263,7 @@ class Campaign {
             // Consecutive days multiplier: increases chance exponentially
             const daysMultiplier = Math.min(5, 1 + (fief.consecutiveStarvationDays - 1) * 0.3);
             // Deficit severity multiplier: scales with how much food is missing relative to consumption
-            const deficitMultiplier = Math.min(3, 1 + (foodDeficit / Math.max(1, dailyFoodNeeded)));
+            const deficitMultiplier = Math.min(3, 1 + (foodDeficit / Math.max(1, adjustedDailyFoodNeeded)));
             // Combined death chance per villager
             const deathChancePerVillager = Math.min(1, baseDeathChance * daysMultiplier * deficitMultiplier);
             // Roll for each villager
@@ -1145,7 +1298,9 @@ class Campaign {
           }
           const foodProducedToday = Math.max(0, Number(capacityApplied.applied.food || 0));
           const season = Campaign.getSeasonForDay(dayNumber);
-          const birthChanceMultiplier = Campaign.getBirthChanceMultiplier(foodProducedToday, dailyFoodNeeded, starvationDeaths, season);
+          const populationGrowthBonusPct = Math.max(0, Number(legendaryBonuses.population_growth_bonus_pct || 0));
+          const birthChanceMultiplier = Campaign.getBirthChanceMultiplier(foodProducedToday, adjustedDailyFoodNeeded, starvationDeaths, season)
+            * (1 + (populationGrowthBonusPct / 100));
           const birthsToday = Campaign.sampleBirths(assignableAdults, populationConfig.dailyBirthChance * birthChanceMultiplier);
           const housingCapacity = Campaign.calculateHousingCapacityFromCompletedBuildings(completed, fief.completedResearch, fief.population);
 
@@ -1411,6 +1566,9 @@ class Campaign {
           if (hasVegetableHarvestStateColumn) {
             updateSetClauses.push(`vegetable_harvest_state = $${paramIndex}::jsonb`);
             updateValues.push(JSON.stringify({
+              phase: String(fief.vegetableHarvestState.phase || 'assigning'),
+              day_in_phase: Math.max(0, Number(fief.vegetableHarvestState.dayInPhase || 0)),
+              locked_workers: Math.max(0, Number(fief.vegetableHarvestState.lockedWorkers || 0)),
               day_in_cycle: fief.vegetableHarvestState.dayInCycle,
               accumulated_worker_days: fief.vegetableHarvestState.accumulatedWorkerDays,
             }));

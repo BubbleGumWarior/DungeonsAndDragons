@@ -366,6 +366,9 @@ const startServer = async () => {
         { name: 'addLocationModifiers', fn: require('./migrations/add_location_modifiers') },
         { name: 'addFiefTravelDays', fn: require('./migrations/add_fief_travel_days') },
         { name: 'addKingdomCoOwners', fn: require('./migrations/add_kingdom_co_owners') },
+        { name: 'addKingdomLegendarySystem', fn: require('./migrations/add_kingdom_legendary_system') },
+        { name: 'addKingdomPrayersSystem', fn: require('./migrations/add_kingdom_prayers_system') },
+        { name: 'addKingdomTradeDepot', fn: require('./migrations/add_kingdom_trade_depot') },
       ];
       
       for (const migration of migrations) {

@@ -1342,6 +1342,37 @@ export interface KingdomSummary {
   co_owners?: KingdomCoOwner[];
 }
 
+export interface LegendaryCharacter {
+  id: number;
+  kingdom_id: number;
+  name: string;
+  description: string;
+  bonuses: Record<string, number>;
+  created_by?: number | null;
+  is_active: boolean;
+  assigned_fief_id?: number | null;
+  assigned_at?: string | null;
+}
+
+export interface PrayerDefinition {
+  key: string;
+  name: string;
+  description: string;
+  minTier: number;
+  faithCost: number;
+  effects: Record<string, number>;
+}
+
+export interface KingdomTradeDepot {
+  kingdom_id: number;
+  resources: Record<string, number>;
+  population: number;
+  slaves: number;
+  desired_resource_text: string;
+  capacity_used: number;
+  capacity_max: number;
+}
+
 // ─── Pets ─────────────────────────────────────────────────────────────────
 
 export interface Pet {
@@ -1524,6 +1555,86 @@ export const kingdomAPI = {
 
   giveBirth: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
     const response = await api.post(`/kingdoms/fiefs/${fiefId}/give-birth`);
+    return response.data;
+  },
+
+  getLegendaryCharacters: async (kingdomId: number): Promise<{ characters: LegendaryCharacter[]; slotsPerFief: number; highestTier: number }> => {
+    const response = await api.get(`/kingdoms/${kingdomId}/legendary-characters`);
+    return response.data;
+  },
+
+  createLegendaryCharacter: async (
+    kingdomId: number,
+    payload: { name: string; description: string; bonuses: Record<string, number> }
+  ): Promise<{ character: LegendaryCharacter }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/legendary-characters`, payload);
+    return response.data;
+  },
+
+  assignLegendaryCharacter: async (
+    fiefId: number,
+    legendaryId: number
+  ): Promise<{ message: string }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/legendary-assignments`, { legendaryId });
+    return response.data;
+  },
+
+  unassignLegendaryCharacter: async (
+    fiefId: number,
+    legendaryId: number
+  ): Promise<{ message: string }> => {
+    const response = await api.delete(`/kingdoms/fiefs/${fiefId}/legendary-assignments/${legendaryId}`);
+    return response.data;
+  },
+
+  getPrayers: async (kingdomId: number): Promise<{ prayers: PrayerDefinition[]; pooledFaith: number; highestTier: number }> => {
+    const response = await api.get(`/kingdoms/${kingdomId}/prayers`);
+    return response.data;
+  },
+
+  castPrayer: async (
+    kingdomId: number,
+    prayerKey: string,
+    payload?: { targetFiefId?: number }
+  ): Promise<{ message: string; pooledFaith: number }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/prayers/${prayerKey}/cast`, payload || {});
+    return response.data;
+  },
+
+  getTradeDepot: async (kingdomId: number): Promise<{ depot: KingdomTradeDepot }> => {
+    const response = await api.get(`/kingdoms/${kingdomId}/trade-depot`);
+    return response.data;
+  },
+
+  setTradeDesiredResource: async (
+    kingdomId: number,
+    desiredText: string
+  ): Promise<{ depot: KingdomTradeDepot }> => {
+    const response = await api.patch(`/kingdoms/${kingdomId}/trade-depot/desired`, { desiredText });
+    return response.data;
+  },
+
+  depositTradeDepot: async (
+    kingdomId: number,
+    payload: { fiefId: number; resources?: Record<string, number>; population?: number; slaves?: number }
+  ): Promise<{ depot: KingdomTradeDepot }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/trade-depot/deposit`, payload);
+    return response.data;
+  },
+
+  withdrawTradeDepot: async (
+    kingdomId: number,
+    payload: { fiefId: number; resources?: Record<string, number>; population?: number; slaves?: number }
+  ): Promise<{ depot: KingdomTradeDepot }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/trade-depot/withdraw`, payload);
+    return response.data;
+  },
+
+  acceptTradeDepot: async (
+    kingdomId: number,
+    payload: { takeAll?: boolean; resources?: Record<string, number>; population?: number; slaves?: number }
+  ): Promise<{ depot: KingdomTradeDepot; message: string }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/trade-depot/accept`, payload);
     return response.data;
   },
 };

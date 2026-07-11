@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { campaignAPI, kingdomAPI, KingdomSummary, KingdomFief, KingdomCoOwner } from '../../services/api';
+import {
+  campaignAPI,
+  kingdomAPI,
+  KingdomSummary,
+  KingdomFief,
+  KingdomCoOwner,
+  LegendaryCharacter,
+  PrayerDefinition,
+  KingdomTradeDepot,
+} from '../../services/api';
 
 interface Player {
   id: number;
@@ -22,10 +31,15 @@ interface Props {
   socket: any;
 }
 
+type ManagementMode = 'fief' | 'kingdom';
+
 const WORKER_STEP_OPTIONS = [1, 5, 10, 50, 100] as const;
 const POPULATION_MATURITY_DAYS = 15 * 365;
-const VEGETABLE_HARVEST_INTERVAL_DAYS = 10;
-// const VEGETABLES_PER_WORKER_PER_HARVEST = 2; // base rate (T1), kept for reference — embedded in VEG_BUILDING_CHAIN
+const VEGETABLE_ASSIGNMENT_DAYS = 4;
+const VEGETABLE_GROWTH_DAYS = 6;
+const VEGETABLE_HARVEST_DAYS = 4;
+const VEGETABLE_HARVEST_PER_WORKER_PER_DAY = 9.375;
+// 4 harvest days at 9.375/day ~= 25 days of baseline meat yield (1.5/day).
 // const MEAT_PER_WORKER_PER_DAY = 1.5; // base rate (T1), kept for reference — embedded in MEAT_BUILDING_CHAIN
 
 // Must stay in sync with Campaign.MEAT_BUILDING_CHAIN / VEG_BUILDING_CHAIN on the backend.
@@ -114,6 +128,54 @@ const RESOURCE_ICONS: Record<string, string> = {
   meat: '🥩',
   vegetables: '🥕',
   building: '🏗️',
+};
+
+const LEGENDARY_BONUS_LABELS: Record<string, string> = {
+  wood_bonus_pct: 'Wood',
+  stone_bonus_pct: 'Stone',
+  iron_bonus_pct: 'Iron',
+  meat_bonus_pct: 'Meat',
+  vegetables_bonus_pct: 'Vegetables',
+  gold_bonus_pct: 'Gold',
+  research_bonus_pct: 'Research',
+  faith_bonus_pct: 'Faith',
+  building_bonus_pct: 'Building',
+  population_growth_bonus_pct: 'Population Growth',
+  food_consumption_reduction_pct: 'Food Use Reduction',
+};
+
+const formatLegendaryBonus = (key: string, value: number) => {
+  const label = LEGENDARY_BONUS_LABELS[key] || key;
+  const isReduction = key === 'food_consumption_reduction_pct';
+  const sign = isReduction ? '-' : (value >= 0 ? '+' : '');
+  return `${label}: ${sign}${Math.abs(Number(value || 0)).toFixed(2)}%`;
+};
+
+const PRAYER_EFFECT_LABELS: Record<string, string> = {
+  food: 'Food',
+  wood: 'Wood',
+  stone: 'Stone',
+  minerals: 'Minerals',
+  gold: 'Gold',
+  faith: 'Faith',
+  research: 'Research',
+  population: 'Population',
+  soldiers: 'Soldiers',
+  sick_injured_recovered: 'Recovered Sick/Injured',
+  prisoners_converted_to_population: 'Prisoners Converted',
+  slaves_freed_to_population: 'Slaves Freed',
+};
+
+const formatPrayerEffectValue = (key: string, value: number) => {
+  const label = PRAYER_EFFECT_LABELS[key] || key;
+  const numeric = Number(value || 0);
+  const sign = numeric >= 0 ? '+' : '';
+  return `${label}: ${sign}${numeric.toFixed(0)}`;
+};
+
+const formatResourceLabel = (key: string) => {
+  const normalized = String(key || '').toLowerCase();
+  return PRAYER_EFFECT_LABELS[normalized] || normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
 const LOGISTICS_BUILDING_TYPES = new Set([
@@ -326,6 +388,38 @@ const KingdomTab: React.FC<Props> = ({
   const [hoveredBuilding, setHoveredBuilding] = useState<{ building: any; x: number; y: number } | null>(null);
   const selectedFiefIdRef = React.useRef<number | null>(null);
 
+  const [managementMode, setManagementMode] = useState<ManagementMode>('fief');
+  const [kingdomManagementLoading, setKingdomManagementLoading] = useState(false);
+  const [legendaryCharacters, setLegendaryCharacters] = useState<LegendaryCharacter[]>([]);
+  const [legendarySlotsPerFief, setLegendarySlotsPerFief] = useState(0);
+  const [prayers, setPrayers] = useState<PrayerDefinition[]>([]);
+  const [pooledFaith, setPooledFaith] = useState(0);
+  const [tradeDepot, setTradeDepot] = useState<KingdomTradeDepot | null>(null);
+  const [showLegendaryCreateModal, setShowLegendaryCreateModal] = useState(false);
+  const [legendaryForm, setLegendaryForm] = useState({
+    name: '',
+    description: '',
+    wood_bonus_pct: 0,
+    stone_bonus_pct: 0,
+    iron_bonus_pct: 0,
+    meat_bonus_pct: 0,
+    vegetables_bonus_pct: 0,
+    gold_bonus_pct: 0,
+    research_bonus_pct: 0,
+    faith_bonus_pct: 0,
+    building_bonus_pct: 0,
+    population_growth_bonus_pct: 0,
+    food_consumption_reduction_pct: 0,
+  });
+  const [legendaryAssignFief, setLegendaryAssignFief] = useState<Record<number, number>>({});
+  const [prayerTargetFiefId, setPrayerTargetFiefId] = useState<number | null>(null);
+  const [tradeSourceFiefId, setTradeSourceFiefId] = useState<number | null>(null);
+  const [tradeResourceKey, setTradeResourceKey] = useState('wood');
+  const [tradeResourceAmount, setTradeResourceAmount] = useState('0');
+  const [tradePopulationAmount, setTradePopulationAmount] = useState('0');
+  const [tradeSlavesAmount, setTradeSlavesAmount] = useState('0');
+  const [tradeDesiredText, setTradeDesiredText] = useState('');
+
   const fetchKingdoms = useCallback(async () => {
     try {
       const result = await kingdomAPI.getCampaignKingdoms(campaignId);
@@ -442,6 +536,67 @@ const KingdomTab: React.FC<Props> = ({
     () => visibleKingdoms.flatMap((k) => k.fiefs || []),
     [visibleKingdoms]
   );
+
+  const selectedKingdom = useMemo(() => {
+    if (!visibleKingdoms.length) return null;
+    if (selectedFiefId) {
+      const withSelectedFief = visibleKingdoms.find((k) => (k.fiefs || []).some((f) => Number(f.id) === Number(selectedFiefId)));
+      if (withSelectedFief) return withSelectedFief;
+    }
+    return visibleKingdoms[0] || null;
+  }, [visibleKingdoms, selectedFiefId]);
+
+  const selectedKingdomHighestTier = useMemo(() => {
+    if (!selectedKingdom) return 0;
+    return (selectedKingdom.fiefs || []).reduce((max, f) => Math.max(max, Number(f.tier || 0)), 0);
+  }, [selectedKingdom]);
+
+  const canUseKingdomManagement = selectedKingdomHighestTier >= 3;
+
+  useEffect(() => {
+    if (!canUseKingdomManagement && managementMode !== 'fief') {
+      setManagementMode('fief');
+    }
+  }, [canUseKingdomManagement, managementMode]);
+
+  useEffect(() => {
+    if (!selectedKingdom) return;
+    if (prayerTargetFiefId == null) {
+      const fallback = (selectedKingdom.fiefs || [])[0];
+      if (fallback) setPrayerTargetFiefId(Number(fallback.id));
+    }
+    if (tradeSourceFiefId == null) {
+      const fallback = (selectedKingdom.fiefs || []).find((f) => f.is_capital) || (selectedKingdom.fiefs || [])[0];
+      if (fallback) setTradeSourceFiefId(Number(fallback.id));
+    }
+  }, [selectedKingdom, prayerTargetFiefId, tradeSourceFiefId]);
+
+  const fetchKingdomManagementData = useCallback(async () => {
+    if (!selectedKingdom || !canUseKingdomManagement) return;
+    setKingdomManagementLoading(true);
+    try {
+      const [legendaryRes, prayersRes, depotRes] = await Promise.all([
+        kingdomAPI.getLegendaryCharacters(Number(selectedKingdom.id)),
+        kingdomAPI.getPrayers(Number(selectedKingdom.id)),
+        kingdomAPI.getTradeDepot(Number(selectedKingdom.id)),
+      ]);
+      setLegendaryCharacters(legendaryRes.characters || []);
+      setLegendarySlotsPerFief(Math.max(0, Number(legendaryRes.slotsPerFief || 0)));
+      setPrayers(prayersRes.prayers || []);
+      setPooledFaith(Math.max(0, Number(prayersRes.pooledFaith || 0)));
+      setTradeDepot(depotRes.depot || null);
+      setTradeDesiredText(String(depotRes.depot?.desired_resource_text || ''));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to load kingdom management data');
+    } finally {
+      setKingdomManagementLoading(false);
+    }
+  }, [selectedKingdom, canUseKingdomManagement, pushToast]);
+
+  useEffect(() => {
+    if (managementMode !== 'kingdom') return;
+    fetchKingdomManagementData();
+  }, [managementMode, fetchKingdomManagementData]);
 
   useEffect(() => {
     if (!visibleKingdoms.length) {
@@ -869,26 +1024,54 @@ const KingdomTab: React.FC<Props> = ({
     const workersFaith = Math.max(0, Number(assignments.faith || 0));
 
     const slaveMeat = Math.max(0, Number(slaveAssignments.meat || 0));
-    const slaveVegetables = Math.max(0, Number(slaveAssignments.vegetables || 0));
     const slaveWood = Math.max(0, Number(slaveAssignments.wood || 0));
     const slaveStone = Math.max(0, Number(slaveAssignments.stone || 0));
     const slaveIron = Math.max(0, Number(slaveAssignments.iron || 0));
     const slaveGold = Math.max(0, Number(slaveAssignments.gold || 0));
 
-    // Use server-tracked harvest state to show accurate cycle progress
-    const harvestState = (fiefDetails?.vegetable_harvest_state || { day_in_cycle: 0, accumulated_worker_days: 0 }) as { day_in_cycle: number; accumulated_worker_days: number };
-    const dayInCycle = Math.max(0, Number(harvestState.day_in_cycle || 0));
-    const accumulatedWorkerDays = Math.max(0, Number(harvestState.accumulated_worker_days || 0));
-    const daysLeftInCycle = Math.max(0, VEGETABLE_HARVEST_INTERVAL_DAYS - dayInCycle);
-    // Projected yield = accumulated so far + today's workers * remaining days (including today's contribution next day)
-    const totalVegetableWorkers = workersVegetables + slaveVegetables;
-    const effectiveVegWorkersPerDay = computeTieredWorkerOutput(totalVegetableWorkers, completedBuildings, VEG_BUILDING_CHAIN);
-    const projectedAccumulated = accumulatedWorkerDays + (effectiveVegWorkersPerDay * tierWorkerYieldMultiplier * vegetableResearchMultiplier * daysLeftInCycle);
-    const projectedVegetableYieldBase = projectedAccumulated;
-    const projectedVegetableYield = applyAllModifiers('vegetables', projectedVegetableYieldBase);
+    // Use server-tracked vegetable phase state to show accurate cycle behavior.
+    const harvestState = (fiefDetails?.vegetable_harvest_state || {
+      phase: 'assigning',
+      day_in_phase: 0,
+      locked_workers: 0,
+      day_in_cycle: 0,
+      accumulated_worker_days: 0,
+    }) as { phase?: string; day_in_phase?: number; locked_workers?: number; day_in_cycle?: number; accumulated_worker_days?: number };
+    const vegetablePhase = String(harvestState.phase || 'assigning').toLowerCase();
+    const vegetableDayInPhase = Math.max(0, Number(harvestState.day_in_phase || 0));
+    const lockedVegetableWorkers = Math.max(0, Number(harvestState.locked_workers || 0));
+    const activeHarvestWorkers = vegetablePhase === 'harvesting' ? lockedVegetableWorkers : 0;
+
+    const effectiveHarvestWorkers = computeTieredWorkerOutput(activeHarvestWorkers, completedBuildings, VEG_BUILDING_CHAIN);
+    const vegetablesFromWorkers = effectiveHarvestWorkers
+      * tierWorkerYieldMultiplier
+      * vegetableResearchMultiplier
+      * VEGETABLE_HARVEST_PER_WORKER_PER_DAY;
+
+    let daysLeftInCycle = 0;
+    if (vegetablePhase === 'assigning') {
+      daysLeftInCycle = Math.max(0, (VEGETABLE_ASSIGNMENT_DAYS - vegetableDayInPhase) + VEGETABLE_GROWTH_DAYS);
+    } else if (vegetablePhase === 'growing') {
+      daysLeftInCycle = Math.max(0, VEGETABLE_GROWTH_DAYS - vegetableDayInPhase);
+    }
     const nextDayIsHarvest = daysLeftInCycle <= 1;
 
-    let vegetables = 0;
+    const projectedWorkerBase = vegetablePhase === 'harvesting'
+      ? (vegetablesFromWorkers * Math.max(0, VEGETABLE_HARVEST_DAYS - vegetableDayInPhase))
+      : (
+          computeTieredWorkerOutput(
+            vegetablePhase === 'assigning' ? workersVegetables : lockedVegetableWorkers,
+            completedBuildings,
+            VEG_BUILDING_CHAIN
+          )
+          * tierWorkerYieldMultiplier
+          * vegetableResearchMultiplier
+          * VEGETABLE_HARVEST_PER_WORKER_PER_DAY
+          * VEGETABLE_HARVEST_DAYS
+        );
+    const projectedVegetableYield = applyAllModifiers('vegetables', projectedWorkerBase);
+
+    let vegetables = vegetablesFromWorkers;
     let meat = computeTieredWorkerOutput(workersMeat + slaveMeat, completedBuildings, MEAT_BUILDING_CHAIN) * tierWorkerYieldMultiplier * hunterResearchMultiplier;
     output.wood += (workersWood + slaveWood) * tierWorkerYieldMultiplier;
     output.stone += (workersStone + slaveStone) * tierWorkerYieldMultiplier;
@@ -905,7 +1088,9 @@ const KingdomTab: React.FC<Props> = ({
         : {};
       for (const [resource, raw] of Object.entries(buildingOutput)) {
         const amount = Math.max(0, Number(raw || 0));
-        if (resource === 'vegetables') vegetables += amount;
+        if (resource === 'vegetables') {
+          if (vegetablePhase === 'harvesting') vegetables += amount;
+        }
         else if (resource === 'meat') meat += amount;
         else if (resource === 'food') vegetables += amount;
         else if (resource === 'wood') output.wood += amount;
@@ -943,6 +1128,7 @@ const KingdomTab: React.FC<Props> = ({
         nextDayIsHarvest,
         projectedVegetableYield,
         daysLeftInCycle,
+        vegetablePhase,
         logisticsLevel,
       },
     };
@@ -1046,6 +1232,53 @@ const KingdomTab: React.FC<Props> = ({
 
     current[resource] = target;
     await submitSlaveWorkers(current);
+  };
+
+  const unassignAllCitizenWorkers = async () => {
+    if (!fiefDetails) return;
+    const current = { ...((fiefDetails.worker_assignments || {}) as Record<string, number>) };
+    const phase = String((fiefDetails.vegetable_harvest_state as any)?.phase || 'assigning').toLowerCase();
+    const canClearVegetables = phase === 'assigning';
+
+    let changed = false;
+    const next: Record<string, number> = { ...current };
+    for (const key of Object.keys(next)) {
+      if (key === 'vegetables' && !canClearVegetables) continue;
+      if (Math.max(0, Number(next[key] || 0)) > 0) {
+        next[key] = 0;
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      pushToast(canClearVegetables ? 'No citizen workers are currently assigned.' : 'No removable citizen workers are currently assigned.');
+      return;
+    }
+
+    await submitWorkers(next);
+    if (!canClearVegetables && Math.max(0, Number(current.vegetables || 0)) > 0) {
+      pushToast('Cleared all available citizen lanes. Vegetable workers stay locked until assignment phase.');
+    }
+  };
+
+  const unassignAllSlaveWorkers = async () => {
+    if (!fiefDetails) return;
+    const current = { ...((fiefDetails.slave_worker_assignments || {}) as Record<string, number>) };
+    const next: Record<string, number> = {};
+    let changed = false;
+
+    for (const key of Object.keys(current)) {
+      const value = Math.max(0, Number(current[key] || 0));
+      next[key] = 0;
+      if (value > 0) changed = true;
+    }
+
+    if (!changed) {
+      pushToast('No slave workers are currently assigned.');
+      return;
+    }
+
+    await submitSlaveWorkers(next);
   };
 
   const trainSoldiers = async () => {
@@ -1259,6 +1492,215 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const fiefLegendaryCount = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const item of (legendaryCharacters || [])) {
+      const fid = Number(item.assigned_fief_id || 0);
+      if (!Number.isFinite(fid) || fid <= 0) continue;
+      counts[fid] = (counts[fid] || 0) + 1;
+    }
+    return counts;
+  }, [legendaryCharacters]);
+
+  const legendaryByFief = useMemo(() => {
+    const map: Record<number, LegendaryCharacter[]> = {};
+    for (const item of (legendaryCharacters || [])) {
+      const fid = Number(item.assigned_fief_id || 0);
+      if (!Number.isFinite(fid) || fid <= 0) continue;
+      if (!map[fid]) map[fid] = [];
+      map[fid].push(item);
+    }
+    Object.values(map).forEach((arr) => arr.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))));
+    return map;
+  }, [legendaryCharacters]);
+
+  const tradeResourceEntries = useMemo(() => {
+    const entries = Object.entries(tradeDepot?.resources || {})
+      .filter(([, v]) => Number(v || 0) > 0)
+      .sort(([a], [b]) => a.localeCompare(b));
+    return entries;
+  }, [tradeDepot]);
+
+  const createLegendaryCharacter = async () => {
+    if (!selectedKingdom || !isDungeonMaster) return;
+    if (!legendaryForm.name.trim()) {
+      pushToast('Legendary character name is required');
+      return;
+    }
+
+    setBusy('legendary-create');
+    try {
+      const payload = {
+        name: legendaryForm.name.trim(),
+        description: legendaryForm.description.trim(),
+        bonuses: {
+          wood_bonus_pct: Number(legendaryForm.wood_bonus_pct || 0),
+          stone_bonus_pct: Number(legendaryForm.stone_bonus_pct || 0),
+          iron_bonus_pct: Number(legendaryForm.iron_bonus_pct || 0),
+          meat_bonus_pct: Number(legendaryForm.meat_bonus_pct || 0),
+          vegetables_bonus_pct: Number(legendaryForm.vegetables_bonus_pct || 0),
+          gold_bonus_pct: Number(legendaryForm.gold_bonus_pct || 0),
+          research_bonus_pct: Number(legendaryForm.research_bonus_pct || 0),
+          faith_bonus_pct: Number(legendaryForm.faith_bonus_pct || 0),
+          building_bonus_pct: Number(legendaryForm.building_bonus_pct || 0),
+          population_growth_bonus_pct: Number(legendaryForm.population_growth_bonus_pct || 0),
+          food_consumption_reduction_pct: Number(legendaryForm.food_consumption_reduction_pct || 0),
+        },
+      };
+
+      await kingdomAPI.createLegendaryCharacter(Number(selectedKingdom.id), payload);
+      setShowLegendaryCreateModal(false);
+      setLegendaryForm({
+        name: '',
+        description: '',
+        wood_bonus_pct: 0,
+        stone_bonus_pct: 0,
+        iron_bonus_pct: 0,
+        meat_bonus_pct: 0,
+        vegetables_bonus_pct: 0,
+        gold_bonus_pct: 0,
+        research_bonus_pct: 0,
+        faith_bonus_pct: 0,
+        building_bonus_pct: 0,
+        population_growth_bonus_pct: 0,
+        food_consumption_reduction_pct: 0,
+      });
+      await fetchKingdomManagementData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to create legendary character');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const assignLegendary = async (legendaryId: number, fiefId: number) => {
+    setBusy(`legendary-assign-${legendaryId}`);
+    try {
+      await kingdomAPI.assignLegendaryCharacter(fiefId, legendaryId);
+      await fetchKingdomManagementData();
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to assign legendary character');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const unassignLegendary = async (legendaryId: number, fiefId: number) => {
+    setBusy(`legendary-unassign-${legendaryId}`);
+    try {
+      await kingdomAPI.unassignLegendaryCharacter(fiefId, legendaryId);
+      await fetchKingdomManagementData();
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to unassign legendary character');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const castPrayer = async (prayerKey: string) => {
+    if (!selectedKingdom) return;
+    setBusy(`prayer-${prayerKey}`);
+    try {
+      await kingdomAPI.castPrayer(Number(selectedKingdom.id), prayerKey, {
+        targetFiefId: prayerTargetFiefId || undefined,
+      });
+      await fetchKingdomManagementData();
+      await fetchKingdoms();
+      if (selectedFiefId) await fetchFief(selectedFiefId);
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to cast prayer');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveDesiredTradeText = async () => {
+    if (!selectedKingdom) return;
+    setBusy('trade-desired');
+    try {
+      const res = await kingdomAPI.setTradeDesiredResource(Number(selectedKingdom.id), tradeDesiredText);
+      setTradeDepot(res.depot);
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to save desired trade text');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const submitTradeMovement = async (direction: 'deposit' | 'withdraw') => {
+    if (!selectedKingdom || !tradeSourceFiefId) {
+      pushToast('Select a fief first');
+      return;
+    }
+
+    const amount = Math.max(0, Number(tradeResourceAmount || 0));
+    const population = Math.max(0, Math.floor(Number(tradePopulationAmount || 0)));
+    const slavesAmount = Math.max(0, Math.floor(Number(tradeSlavesAmount || 0)));
+    const hasResource = amount > 0;
+    const hasPopulation = population > 0;
+    const hasSlaves = slavesAmount > 0;
+
+    if (!hasResource && !hasPopulation && !hasSlaves) {
+      pushToast('Enter at least one amount to move');
+      return;
+    }
+
+    setBusy(`trade-${direction}`);
+    try {
+      const payload = {
+        fiefId: Number(tradeSourceFiefId),
+        resources: hasResource ? { [tradeResourceKey]: amount } : undefined,
+        population: hasPopulation ? population : undefined,
+        slaves: hasSlaves ? slavesAmount : undefined,
+      };
+
+      const result = direction === 'deposit'
+        ? await kingdomAPI.depositTradeDepot(Number(selectedKingdom.id), payload)
+        : await kingdomAPI.withdrawTradeDepot(Number(selectedKingdom.id), payload);
+
+      setTradeDepot(result.depot);
+      setTradeResourceAmount('0');
+      setTradePopulationAmount('0');
+      setTradeSlavesAmount('0');
+      await fetchKingdoms();
+      if (selectedFiefId) await fetchFief(selectedFiefId);
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || `Failed to ${direction} trade depot`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const acceptTrade = async (takeAll: boolean) => {
+    if (!selectedKingdom || !isDungeonMaster) return;
+    setBusy(takeAll ? 'trade-accept-all' : 'trade-accept-partial');
+    try {
+      const amount = Math.max(0, Number(tradeResourceAmount || 0));
+      const population = Math.max(0, Math.floor(Number(tradePopulationAmount || 0)));
+      const slavesAmount = Math.max(0, Math.floor(Number(tradeSlavesAmount || 0)));
+
+      const payload = takeAll
+        ? { takeAll: true }
+        : {
+            resources: amount > 0 ? { [tradeResourceKey]: amount } : undefined,
+            population: population > 0 ? population : undefined,
+            slaves: slavesAmount > 0 ? slavesAmount : undefined,
+          };
+
+      const result = await kingdomAPI.acceptTradeDepot(Number(selectedKingdom.id), payload);
+      setTradeDepot(result.depot);
+      setTradeResourceAmount('0');
+      setTradePopulationAmount('0');
+      setTradeSlavesAmount('0');
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to accept trade');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
@@ -1371,6 +1813,9 @@ const KingdomTab: React.FC<Props> = ({
               (p) => Number(p.id) !== Number(k.player_id) && !coOwnerPlayerIds.has(Number(p.id))
             );
             const isAddingCoOwner = coOwnerTargetKingdomId === Number(k.id);
+            const highestTierInKingdom = (k.fiefs || []).reduce((max, f) => Math.max(max, Number(f.tier || 0)), 0);
+            const canToggleManagement = highestTierInKingdom >= 3;
+            const isSelectedKingdom = Number(selectedKingdom?.id) === Number(k.id);
             return (
               <div key={k.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)', overflow: 'hidden', marginBottom: '0.5rem' }}>
                 {/* Kingdom header */}
@@ -1524,12 +1969,323 @@ const KingdomTab: React.FC<Props> = ({
                       + New Fief
                     </button>
                   )}
+                  {canToggleManagement && isSelectedKingdom && (
+                    <button
+                      onClick={() => setManagementMode((prev) => (prev === 'fief' ? 'kingdom' : 'fief'))}
+                      style={{
+                        marginLeft: 'auto',
+                        padding: '0.4rem 0.75rem',
+                        borderRadius: '0.45rem',
+                        border: '1px solid rgba(96,165,250,0.45)',
+                        background: managementMode === 'kingdom' ? 'rgba(30,58,138,0.35)' : 'rgba(15,23,42,0.4)',
+                        color: managementMode === 'kingdom' ? '#93c5fd' : '#cbd5e1',
+                        cursor: 'pointer',
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                      }}
+                      title="Toggle between fief and kingdom management views"
+                    >
+                      {managementMode === 'fief' ? 'Fief Management' : 'Kingdom Management'}
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
 
-          {fiefDetails && (
+          {managementMode === 'kingdom' && selectedKingdom && canUseKingdomManagement && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+              <div style={{ padding: '1rem', border: '1px solid rgba(96,165,250,0.35)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(2,6,23,0.8))' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.55rem', marginBottom: '0.8rem' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ color: '#bfdbfe', fontWeight: 800, fontSize: '1rem' }}>Legendary Command</div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Inventory and active assignments across all fiefs</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>Slot cap per fief: {legendarySlotsPerFief}</span>
+                    {isDungeonMaster && (
+                      <button
+                        onClick={() => setShowLegendaryCreateModal(true)}
+                        style={{ padding: '0.35rem 0.65rem', borderRadius: '0.4rem', border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Add Legendary
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {kingdomManagementLoading ? (
+                  <div style={{ color: '#64748b' }}>Loading legendary management...</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 1.2fr) minmax(320px, 1fr)', gap: '0.8rem' }}>
+                    <div style={{ border: '1px solid rgba(148,163,184,0.22)', borderRadius: '0.65rem', background: 'rgba(2,6,23,0.55)', padding: '0.65rem' }}>
+                      <div style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: '0.55rem', textAlign: 'center' }}>Legendary Inventory</div>
+                      {legendaryCharacters.length === 0 ? (
+                        <div style={{ color: '#64748b', fontSize: '0.82rem' }}>No legendary characters available.</div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.5rem', maxHeight: '430px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                          {legendaryCharacters.map((legendary) => {
+                            const assignedFief = (selectedKingdom.fiefs || []).find((f) => Number(f.id) === Number(legendary.assigned_fief_id));
+                            const canAssign = Boolean(selectedKingdom);
+                            const selectedTargetFiefId = Number(legendaryAssignFief[legendary.id] || 0);
+                            const selectedTargetFief = (selectedKingdom.fiefs || []).find((f) => Number(f.id) === selectedTargetFiefId);
+                            const selectedAssignedCount = selectedTargetFief
+                              ? Number(fiefLegendaryCount[Number(selectedTargetFief.id)] || 0)
+                              : 0;
+                            const selectedIsCurrent = selectedTargetFief
+                              ? Number(legendary.assigned_fief_id) === Number(selectedTargetFief.id)
+                              : false;
+                            const selectedRemainingSlots = selectedTargetFief
+                              ? Math.max(0, legendarySlotsPerFief - (selectedIsCurrent ? selectedAssignedCount - 1 : selectedAssignedCount))
+                              : 0;
+                            const assignDisabled = busy === `legendary-assign-${legendary.id}`
+                              || !selectedTargetFiefId
+                              || !canAssign
+                              || (!selectedIsCurrent && selectedRemainingSlots <= 0);
+
+                            return (
+                              <div key={legendary.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.55rem', background: 'rgba(8,15,35,0.65)', padding: '0.55rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
+                                  <div style={{ color: '#f1f5f9', fontWeight: 700 }}>{legendary.name}</div>
+                                  <div style={{ color: assignedFief ? '#93c5fd' : '#94a3b8', fontSize: '0.72rem' }}>
+                                    {assignedFief ? `Assigned: ${assignedFief.name}` : 'Unassigned'}
+                                  </div>
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.76rem', marginTop: '0.15rem' }}>{legendary.description || 'No description'}</div>
+                                {legendary.bonuses && Object.keys(legendary.bonuses).length > 0 && (
+                                  <div style={{ marginTop: '0.35rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                                    {Object.entries(legendary.bonuses)
+                                      .sort(([a], [b]) => a.localeCompare(b))
+                                      .map(([k, v]) => (
+                                      <span key={k} style={{ fontSize: '0.7rem', color: '#bfdbfe', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '0.35rem', padding: '0.08rem 0.35rem', background: 'rgba(30,58,138,0.25)' }}>
+                                        {formatLegendaryBonus(k, Number(v || 0))}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 1fr) auto auto', gap: '0.35rem', marginTop: '0.45rem', alignItems: 'center' }}>
+                                  <select
+                                    value={legendaryAssignFief[legendary.id] || legendary.assigned_fief_id || ''}
+                                    onChange={(e) => {
+                                      const next = Number(e.target.value || 0);
+                                      setLegendaryAssignFief((prev) => ({ ...prev, [legendary.id]: next }));
+                                    }}
+                                    style={{ padding: '0.25rem 0.38rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0', fontSize: '0.78rem' }}
+                                  >
+                                    <option value="">Select fief</option>
+                                    {(selectedKingdom.fiefs || []).map((f) => {
+                                      const assignedCount = Number(fiefLegendaryCount[Number(f.id)] || 0);
+                                      const isCurrent = Number(legendary.assigned_fief_id) === Number(f.id);
+                                      const remainingSlots = Math.max(0, legendarySlotsPerFief - (isCurrent ? assignedCount - 1 : assignedCount));
+                                      const disabled = remainingSlots <= 0 && !isCurrent;
+                                      return (
+                                        <option key={f.id} value={f.id} disabled={disabled}>
+                                          {f.name} ({Math.max(0, remainingSlots)} slots)
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                  <button
+                                    disabled={assignDisabled}
+                                    onClick={() => assignLegendary(legendary.id, Number(legendaryAssignFief[legendary.id]))}
+                                    style={{ padding: '0.25rem 0.56rem', borderRadius: '0.34rem', border: '1px solid rgba(34,197,94,0.42)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}
+                                  >
+                                    Assign
+                                  </button>
+                                  {legendary.assigned_fief_id ? (
+                                    <button
+                                      disabled={busy === `legendary-unassign-${legendary.id}`}
+                                      onClick={() => unassignLegendary(legendary.id, Number(legendary.assigned_fief_id))}
+                                      style={{ padding: '0.25rem 0.56rem', borderRadius: '0.34rem', border: '1px solid rgba(239,68,68,0.42)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}
+                                    >
+                                      Unassign
+                                    </button>
+                                  ) : <span />}
+                                </div>
+                                {selectedTargetFiefId > 0 && (
+                                  <div style={{ marginTop: '0.22rem', color: selectedRemainingSlots <= 0 && !selectedIsCurrent ? '#fca5a5' : '#94a3b8', fontSize: '0.72rem' }}>
+                                    Remaining slots in target: {selectedRemainingSlots}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ border: '1px solid rgba(148,163,184,0.22)', borderRadius: '0.65rem', background: 'rgba(2,6,23,0.55)', padding: '0.65rem' }}>
+                      <div style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: '0.55rem', textAlign: 'center' }}>Fief Assignments</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.45rem', maxHeight: '430px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                        {(selectedKingdom.fiefs || []).map((fief) => {
+                          const assignedList = legendaryByFief[Number(fief.id)] || [];
+                          const remaining = Math.max(0, legendarySlotsPerFief - assignedList.length);
+                          return (
+                            <div key={fief.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.5rem', background: 'rgba(8,15,35,0.65)', padding: '0.5rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                                <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.86rem' }}>{fief.name}</div>
+                                <div style={{ color: remaining === 0 ? '#fca5a5' : '#93c5fd', fontSize: '0.72rem' }}>{assignedList.length}/{legendarySlotsPerFief} used</div>
+                              </div>
+                              <div style={{ marginTop: '0.35rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                                {assignedList.length === 0 ? (
+                                  <span style={{ color: '#64748b', fontSize: '0.74rem' }}>No legendary assigned</span>
+                                ) : assignedList.map((legendary) => (
+                                  <span key={legendary.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '0.35rem', padding: '0.09rem 0.35rem', background: 'rgba(30,58,138,0.22)', color: '#bfdbfe', fontSize: '0.72rem' }}>
+                                    {legendary.name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: '1rem', border: '1px solid rgba(196,181,253,0.35)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(46,16,101,0.34), rgba(30,27,75,0.28))' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ color: '#ddd6fe', fontWeight: 800, fontSize: '1rem' }}>Prayer Chamber</div>
+                    <div style={{ color: '#c4b5fd', fontSize: '0.78rem' }}>Effects are shown as exact gains at your current kingdom tier</div>
+                  </div>
+                  <div style={{ color: '#e2e8f0', fontSize: '0.82rem', textAlign: 'center' }}>
+                    Pooled faith: <span style={{ color: '#fde68a', fontWeight: 800 }}>{pooledFaith.toFixed(1)}</span>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '0.7rem', maxWidth: '320px', marginLeft: 'auto', marginRight: 'auto' }}>
+                  <select
+                    value={prayerTargetFiefId || ''}
+                    onChange={(e) => setPrayerTargetFiefId(Number(e.target.value || 0) || null)}
+                    style={{ width: '100%', padding: '0.33rem 0.45rem', borderRadius: '0.4rem', border: '1px solid rgba(167,139,250,0.5)', background: 'rgba(15,23,42,0.72)', color: '#e2e8f0', fontSize: '0.82rem' }}
+                  >
+                    {(selectedKingdom.fiefs || []).map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {prayers.length === 0 ? (
+                  <div style={{ color: '#a78bfa', fontSize: '0.82rem' }}>No prayers unlocked yet.</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.55rem' }}>
+                    {prayers.map((prayer) => (
+                      <div key={prayer.key} style={{ border: '1px solid rgba(167,139,250,0.35)', borderRadius: '0.55rem', background: 'rgba(15,23,42,0.5)', padding: '0.55rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.45rem', alignItems: 'center' }}>
+                          <div style={{ color: '#f8fafc', fontWeight: 700 }}>{prayer.name}</div>
+                          <div style={{ color: '#fde68a', fontSize: '0.74rem', fontWeight: 700 }}>{prayer.faithCost.toFixed(0)} faith</div>
+                        </div>
+                        <div style={{ color: '#c4b5fd', fontSize: '0.74rem', marginTop: '0.15rem' }}>{prayer.description}</div>
+                        {prayer.effects && Object.keys(prayer.effects).length > 0 && (
+                          <div style={{ marginTop: '0.35rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                            {Object.entries(prayer.effects)
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([key, value]) => (
+                                <span key={key} style={{ border: '1px solid rgba(196,181,253,0.45)', borderRadius: '0.34rem', padding: '0.08rem 0.3rem', color: '#e9d5ff', fontSize: '0.7rem', background: 'rgba(76,29,149,0.24)' }}>
+                                  {formatPrayerEffectValue(key, Number(value || 0))}
+                                </span>
+                              ))}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => castPrayer(prayer.key)}
+                          disabled={busy === `prayer-${prayer.key}` || pooledFaith < prayer.faithCost}
+                          style={{ marginTop: '0.42rem', padding: '0.28rem 0.62rem', borderRadius: '0.36rem', border: '1px solid rgba(139,92,246,0.55)', background: 'rgba(91,33,182,0.4)', color: '#ede9fe', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}
+                        >
+                          Cast Prayer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: '1rem', border: '1px solid rgba(16,185,129,0.38)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(6,78,59,0.4), rgba(6,95,70,0.25))' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.55rem', marginBottom: '0.7rem' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ color: '#a7f3d0', fontWeight: 800, fontSize: '1rem' }}>Trading Depot</div>
+                    <div style={{ color: '#99f6e4', fontSize: '0.78rem' }}>Centralized logistics and transfer control</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <div style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(2,44,34,0.5)', color: '#d1fae5', fontSize: '0.75rem' }}>
+                      Capacity Used: {Number(tradeDepot?.capacity_used || 0).toFixed(1)}
+                    </div>
+                    <div style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(2,44,34,0.5)', color: '#d1fae5', fontSize: '0.75rem' }}>
+                      Capacity Max: {Number(tradeDepot?.capacity_max || 0).toFixed(1)}
+                    </div>
+                    <div style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(2,44,34,0.5)', color: '#d1fae5', fontSize: '0.75rem' }}>
+                      Population: {Number(tradeDepot?.population || 0)}
+                    </div>
+                    <div style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(2,44,34,0.5)', color: '#d1fae5', fontSize: '0.75rem' }}>
+                      Slaves: {Number(tradeDepot?.slaves || 0)}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.45rem', marginBottom: '0.75rem' }}>
+                  {tradeResourceEntries.length > 0 ? tradeResourceEntries.map(([k, v]) => (
+                    <div key={k} style={{ border: '1px solid rgba(148,163,184,0.25)', borderRadius: '0.45rem', background: 'rgba(2,6,23,0.45)', padding: '0.35rem 0.45rem' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{formatResourceLabel(k)}</div>
+                      <div style={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700 }}>{Number(v || 0).toFixed(1)}</div>
+                    </div>
+                  )) : (
+                    <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>No stored resources in the depot yet.</div>
+                  )}
+                </div>
+
+                <div style={{ border: '1px solid rgba(148,163,184,0.24)', borderRadius: '0.55rem', background: 'rgba(2,6,23,0.48)', padding: '0.55rem', marginBottom: '0.65rem' }}>
+                  <div style={{ color: '#e2e8f0', fontSize: '0.79rem', fontWeight: 700, marginBottom: '0.38rem' }}>Transfer Console</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.35rem', alignItems: 'center' }}>
+                    <select
+                      value={tradeSourceFiefId || ''}
+                      onChange={(e) => setTradeSourceFiefId(Number(e.target.value || 0) || null)}
+                      style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0', fontSize: '0.78rem' }}
+                    >
+                      {(selectedKingdom.fiefs || []).map((f) => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={tradeResourceKey}
+                      onChange={(e) => setTradeResourceKey(e.target.value)}
+                      style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0', fontSize: '0.78rem' }}
+                    >
+                      {['wood', 'stone', 'minerals', 'food', 'gold', 'faith', 'research', 'meat', 'vegetables'].map((k) => (
+                        <option key={k} value={k}>{formatResourceLabel(k)}</option>
+                      ))}
+                    </select>
+                    <input value={tradeResourceAmount} onChange={(e) => setTradeResourceAmount(e.target.value)} type="number" min="0" step="1" placeholder="Resource" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }} />
+                    <input value={tradePopulationAmount} onChange={(e) => setTradePopulationAmount(e.target.value)} type="number" min="0" step="1" placeholder="Pop" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }} />
+                    <input value={tradeSlavesAmount} onChange={(e) => setTradeSlavesAmount(e.target.value)} type="number" min="0" step="1" placeholder="Slaves" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }} />
+                    <button onClick={() => submitTradeMovement('deposit')} disabled={busy === 'trade-deposit'} style={{ padding: '0.28rem 0.56rem', borderRadius: '0.34rem', border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>Deposit</button>
+                    <button onClick={() => submitTradeMovement('withdraw')} disabled={busy === 'trade-withdraw'} style={{ padding: '0.28rem 0.56rem', borderRadius: '0.34rem', border: '1px solid rgba(59,130,246,0.45)', background: 'rgba(30,58,138,0.35)', color: '#93c5fd', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>Withdraw</button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.4rem', alignItems: 'center', marginBottom: '0.65rem' }}>
+                  <input
+                    value={tradeDesiredText}
+                    onChange={(e) => setTradeDesiredText(e.target.value)}
+                    placeholder="Desired resource / request text"
+                    style={{ width: '100%', padding: '0.33rem 0.45rem', borderRadius: '0.38rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }}
+                  />
+                  <button onClick={saveDesiredTradeText} disabled={busy === 'trade-desired'} style={{ padding: '0.32rem 0.62rem', borderRadius: '0.34rem', border: '1px solid rgba(16,185,129,0.45)', background: 'rgba(6,78,59,0.4)', color: '#6ee7b7', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>Save</button>
+                </div>
+
+                {isDungeonMaster && (
+                  <div style={{ display: 'flex', gap: '0.42rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => acceptTrade(false)} disabled={busy === 'trade-accept-partial'} style={{ padding: '0.3rem 0.62rem', borderRadius: '0.34rem', border: '1px solid rgba(234,179,8,0.52)', background: 'rgba(120,53,15,0.4)', color: '#fde68a', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>DM Take Partial</button>
+                    <button onClick={() => acceptTrade(true)} disabled={busy === 'trade-accept-all'} style={{ padding: '0.3rem 0.62rem', borderRadius: '0.34rem', border: '1px solid rgba(239,68,68,0.52)', background: 'rgba(127,29,29,0.35)', color: '#fecaca', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>DM Take All</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {managementMode === 'fief' && fiefDetails && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
               {Number(fiefDetails.travel_days_remaining || 0) > 0 ? (
                 <div style={{ padding: '1.5rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.55)', textAlign: 'center' }}>
@@ -1545,8 +2301,10 @@ const KingdomTab: React.FC<Props> = ({
               <>
               <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
                 {(() => {
-                  const totalStored = Object.values((fiefDetails.stored_resources || {}) as Record<string, number>)
-                    .reduce((a, b) => a + Number(b || 0), 0);
+                  const storageEntries = Object.entries((fiefDetails.stored_resources || {}) as Record<string, number>)
+                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research');
+                  const totalStored = storageEntries
+                    .reduce((sum, [, amount]) => sum + Math.max(0, Number(amount || 0)), 0);
                   const cap = Number(fiefDetails.storage_capacity || 100);
                   const available = Math.max(0, cap - totalStored);
                   const { output: prodOutput, foodBreakdown } = productionByLane;
@@ -1944,13 +2702,51 @@ const KingdomTab: React.FC<Props> = ({
                       </div>
                       <div style={{ background: 'rgba(148,163,184,0.15)' }} />
                       <div style={{ padding: '0.7rem 0.8rem 0.5rem' }}>
-                        <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.95rem' }}>⚒ Workers — Citizens</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.95rem' }}>⚒ Workers — Citizens</div>
+                          <button
+                            onClick={unassignAllCitizenWorkers}
+                            disabled={busy === 'workers' || totalAssigned <= 0}
+                            style={{
+                              padding: '0.2rem 0.52rem',
+                              borderRadius: '0.35rem',
+                              border: '1px solid rgba(239,68,68,0.45)',
+                              background: 'rgba(127,29,29,0.35)',
+                              color: '#fca5a5',
+                              fontWeight: 700,
+                              fontSize: '0.72rem',
+                              cursor: (busy === 'workers' || totalAssigned <= 0) ? 'not-allowed' : 'pointer',
+                              opacity: (busy === 'workers' || totalAssigned <= 0) ? 0.55 : 1,
+                            }}
+                          >
+                            Unassign All
+                          </button>
+                        </div>
                         <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalAssigned} / {assignablePopulation} assignable adults</div>
                       </div>
                       {showSlaves && <div style={{ background: 'rgba(148,163,184,0.15)' }} />}
                       {showSlaves && (
                         <div style={{ padding: '0.7rem 0.8rem 0.5rem', background: 'rgba(120,53,15,0.18)' }}>
-                          <div style={{ color: '#fde68a', fontWeight: 700, fontSize: '0.95rem' }}>⛓ Workers — Slave Labor</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ color: '#fde68a', fontWeight: 700, fontSize: '0.95rem' }}>⛓ Workers — Slave Labor</div>
+                            <button
+                              onClick={unassignAllSlaveWorkers}
+                              disabled={busy === 'slave-workers' || totalSlaveAssigned <= 0}
+                              style={{
+                                padding: '0.2rem 0.52rem',
+                                borderRadius: '0.35rem',
+                                border: '1px solid rgba(239,68,68,0.45)',
+                                background: 'rgba(127,29,29,0.35)',
+                                color: '#fca5a5',
+                                fontWeight: 700,
+                                fontSize: '0.72rem',
+                                cursor: (busy === 'slave-workers' || totalSlaveAssigned <= 0) ? 'not-allowed' : 'pointer',
+                                opacity: (busy === 'slave-workers' || totalSlaveAssigned <= 0) ? 0.55 : 1,
+                              }}
+                            >
+                              Unassign All
+                            </button>
+                          </div>
                           <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalSlaveAssigned} / {slaves} slaves</div>
                         </div>
                       )}
@@ -2489,6 +3285,71 @@ const KingdomTab: React.FC<Props> = ({
             </div>
           );
         })(),
+        document.body
+      )}
+
+      {showLegendaryCreateModal && isDungeonMaster && ReactDOM.createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 10003, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLegendaryCreateModal(false); }}
+        >
+          <div style={{ width: '100%', maxWidth: '620px', background: 'rgba(18,18,18,0.97)', border: '1px solid rgba(96,165,250,0.35)', borderRadius: '12px', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Create Legendary Character</h3>
+              <button className="modal-close" onClick={() => setShowLegendaryCreateModal(false)} aria-label="Close">×</button>
+            </div>
+            <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+              <input
+                value={legendaryForm.name}
+                onChange={(e) => setLegendaryForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Legendary character name"
+                style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.65)', color: '#e2e8f0' }}
+              />
+              <textarea
+                value={legendaryForm.description}
+                onChange={(e) => setLegendaryForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Description"
+                rows={3}
+                style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.65)', color: '#e2e8f0', resize: 'vertical' }}
+              />
+
+              <div style={{ color: '#93c5fd', fontSize: '0.8rem', fontWeight: 700 }}>Fixed Bonuses</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(160px, 1fr))', gap: '0.45rem' }}>
+                {[
+                  ['wood_bonus_pct', 'Wood %'],
+                  ['stone_bonus_pct', 'Stone %'],
+                  ['iron_bonus_pct', 'Iron %'],
+                  ['meat_bonus_pct', 'Meat %'],
+                  ['vegetables_bonus_pct', 'Vegetables %'],
+                  ['gold_bonus_pct', 'Gold %'],
+                  ['research_bonus_pct', 'Research %'],
+                  ['faith_bonus_pct', 'Faith %'],
+                  ['building_bonus_pct', 'Building %'],
+                  ['population_growth_bonus_pct', 'Pop Growth %'],
+                  ['food_consumption_reduction_pct', 'Food Use Reduction %'],
+                ].map(([key, label]) => (
+                  <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', color: '#cbd5e1', fontSize: '0.76rem' }}>
+                    {label}
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={Number((legendaryForm as any)[key] || 0)}
+                      onChange={(e) => setLegendaryForm((prev) => ({ ...prev, [key]: Number(e.target.value || 0) } as any))}
+                      style={{ padding: '0.32rem 0.42rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.7)', color: '#e2e8f0' }}
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button className="btn btn-secondary" onClick={() => setShowLegendaryCreateModal(false)}>Cancel</button>
+                <button className="btn btn-primary" disabled={busy === 'legendary-create' || !legendaryForm.name.trim()} onClick={createLegendaryCharacter}>
+                  {busy === 'legendary-create' ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
         document.body
       )}
 

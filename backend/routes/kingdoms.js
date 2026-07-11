@@ -51,7 +51,7 @@ const BUILDING_CATALOG = {
   farm: {
     key: 'farm',
     name: 'Vegetable Patch',
-    description: 'Unlocks the vegetable worker lane with a cap of +20 farmers. Passively yields +1 vegetable per harvest cycle (every 10 days). Farmers contribute 1× rate per harvest.',
+    description: 'Unlocks the vegetable lane with +20 farmer capacity. Farming now runs as 4 days assignment, 6 days growth, and 4 days harvest collection.',
     tierRequired: 1,
     cost: { wood: 8 },
     days: 3,
@@ -92,7 +92,7 @@ const BUILDING_CATALOG = {
   irrigated_farm: {
     key: 'irrigated_farm',
     name: 'Irrigated Fields',
-    description: 'Raises the farmer worker cap by +20. Passively yields +2 vegetables per harvest cycle. Farmers in this building contribute at 1.15× rate (up from 1× at Vegetable Patch).',
+    description: 'Raises farmer capacity by +20. During harvest days, farmers in this building collect at 1.15x rate (up from 1x at Vegetable Patch).',
     tierRequired: 2,
     cost: { wood: 16, stone: 12 },
     days: 2,
@@ -242,7 +242,7 @@ const BUILDING_CATALOG = {
   farm_advanced: {
     key: 'farm_advanced',
     name: 'Premium Farmland',
-    description: 'Raises the farmer worker cap by +20. Passively yields +3 vegetables per harvest cycle. Farmers in this building contribute at 1.30× rate (up from 1.0× at Vegetable Patch, +30% over base). Best food output per building.',
+    description: 'Raises farmer capacity by +20. During harvest days, farmers collect at 1.30x rate (up from 1.0x at Vegetable Patch). Best vegetable throughput per building.',
     tierRequired: 3,
     cost: { wood: 20, stone: 14, iron: 6 },
     days: 3,
@@ -1539,6 +1539,7 @@ const normalizeStoredResources = (value) => {
   const out = { ...source, food };
   delete out.meat;
   delete out.vegetables;
+  delete out.research;
   return out;
 };
 
@@ -1730,6 +1731,163 @@ const withPopulationBreakdown = (fief) => {
     soldiers: Math.max(0, Number(fief?.soldiers || 0)),
     prisoners: Math.max(0, Number(fief?.prisoners || 0)),
     slaves: Math.max(0, Number(fief?.slaves || 0)),
+  };
+};
+
+const toPositiveInt = (value) => {
+  const n = Math.floor(Number(value) || 0);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+};
+
+const normalizeResourceDeltaMap = (source) => {
+  const raw = (source && typeof source === 'object' && !Array.isArray(source)) ? source : {};
+  const result = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const normalizedKey = String(key || '').trim().toLowerCase();
+    if (!normalizedKey) continue;
+    if (!['wood', 'stone', 'minerals', 'food', 'gold', 'faith', 'research', 'meat', 'vegetables', 'iron'].includes(normalizedKey)) continue;
+    const targetKey = normalizedKey === 'iron' ? 'minerals' : normalizedKey;
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    result[targetKey] = (Number(result[targetKey] || 0) + amount);
+  }
+  return result;
+};
+
+const getKingdomContext = async (kingdomId) => {
+  const result = await pool.query(
+    `SELECT k.*, c.dungeon_master_id
+     FROM kingdoms k
+     JOIN campaigns c ON c.id = k.campaign_id
+     WHERE k.id = $1`,
+    [kingdomId]
+  );
+  const kingdom = result.rows[0] || null;
+  if (!kingdom) return null;
+
+  try {
+    const coOwners = await pool.query(
+      `SELECT player_id FROM kingdom_co_owners WHERE kingdom_id = $1`,
+      [kingdomId]
+    );
+    kingdom.co_owner_ids = coOwners.rows.map((r) => Number(r.player_id));
+  } catch (_) {
+    kingdom.co_owner_ids = [];
+  }
+
+  return kingdom;
+};
+
+const canManageKingdom = (user, kingdom) => {
+  if (!user || !kingdom) return false;
+  if (user.role === 'Dungeon Master') {
+    return Number(kingdom.dungeon_master_id) === Number(user.id);
+  }
+  if (Number(kingdom.player_id) === Number(user.id)) return true;
+  if (Array.isArray(kingdom.co_owner_ids) && kingdom.co_owner_ids.includes(Number(user.id))) return true;
+  return false;
+};
+
+const LEGENDARY_BONUS_KEYS = [
+  'wood_bonus_pct',
+  'stone_bonus_pct',
+  'iron_bonus_pct',
+  'meat_bonus_pct',
+  'vegetables_bonus_pct',
+  'gold_bonus_pct',
+  'research_bonus_pct',
+  'faith_bonus_pct',
+  'building_bonus_pct',
+  'population_growth_bonus_pct',
+  'food_consumption_reduction_pct',
+];
+
+const sanitizeLegendaryBonuses = (raw) => {
+  const result = {};
+  const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  for (const key of LEGENDARY_BONUS_KEYS) {
+    const value = Number(source[key] || 0);
+    if (!Number.isFinite(value)) continue;
+    if (value !== 0) result[key] = value;
+  }
+  return result;
+};
+
+const getKingdomHighestTier = async (kingdomId) => {
+  const result = await pool.query(
+    `SELECT COALESCE(MAX(tier), 0) AS max_tier FROM fiefs WHERE kingdom_id = $1`,
+    [kingdomId]
+  );
+  return Math.max(0, Number(result.rows[0]?.max_tier || 0));
+};
+
+const getLegendarySlotsPerFief = (highestTier) => {
+  return Math.max(0, Math.floor(Number(highestTier || 0)) - 2);
+};
+
+const TRADE_CAP_BUILDINGS = new Set([
+  'trade_post',
+  'market_hall',
+  'merchant_exchange',
+  'grand_bazaar',
+  'great_market',
+  'trade_consortium',
+  'royal_exchange',
+  'imperial_trade_forum',
+]);
+
+const getTradeDepotCapacity = async (kingdomId) => {
+  const result = await pool.query(
+    `SELECT COUNT(*) AS c
+     FROM fief_buildings fb
+     JOIN fiefs f ON f.id = fb.fief_id
+     WHERE f.kingdom_id = $1
+       AND fb.is_complete = true
+       AND fb.building_type = ANY($2::text[])`,
+    [kingdomId, Array.from(TRADE_CAP_BUILDINGS)]
+  );
+  const count = Math.max(0, Number(result.rows[0]?.c || 0));
+  return count * 100;
+};
+
+const getOrCreateTradeDepot = async (kingdomId) => {
+  await pool.query(
+    `INSERT INTO kingdom_trade_depots (kingdom_id)
+     VALUES ($1)
+     ON CONFLICT (kingdom_id) DO NOTHING`,
+    [kingdomId]
+  );
+
+  const result = await pool.query(
+    `SELECT kingdom_id,
+            COALESCE(resources, '{}'::jsonb) AS resources,
+            COALESCE(population, 0) AS population,
+            COALESCE(slaves, 0) AS slaves,
+            COALESCE(desired_resource_text, '') AS desired_resource_text
+     FROM kingdom_trade_depots
+     WHERE kingdom_id = $1`,
+    [kingdomId]
+  );
+  return result.rows[0];
+};
+
+const toDepotViewModel = async (depotRow, kingdomId) => {
+  const resources = normalizeStoredResources(depotRow?.resources);
+  const population = Math.max(0, Number(depotRow?.population || 0));
+  const slaves = Math.max(0, Number(depotRow?.slaves || 0));
+  const capacityMax = await getTradeDepotCapacity(kingdomId);
+  const capacityUsed = Object.values(resources).reduce((sum, value) => sum + Math.max(0, Number(value || 0)), 0)
+    + population
+    + slaves;
+
+  return {
+    kingdom_id: Number(kingdomId),
+    resources,
+    population,
+    slaves,
+    desired_resource_text: String(depotRow?.desired_resource_text || ''),
+    capacity_used: Math.max(0, Number(capacityUsed || 0)),
+    capacity_max: Math.max(0, Number(capacityMax || 0)),
   };
 };
 
@@ -2366,6 +2524,18 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       ? { ...fief.max_workers_per_resource }
       : {};
     const capAdjusted = applyBuildingBasedWorkerCaps(unlockedResources, maxWorkers, completedBuildings);
+    const rawVegetableState = (fief?.vegetable_harvest_state && typeof fief.vegetable_harvest_state === 'object')
+      ? fief.vegetable_harvest_state
+      : { phase: 'assigning', day_in_phase: 0, locked_workers: 0, day_in_cycle: 0, accumulated_worker_days: 0 };
+    const vegetablePhase = String(rawVegetableState.phase || '').toLowerCase();
+    const currentVegetableWorkers = Math.max(0, Math.floor(Number((fief?.worker_assignments || {}).vegetables || 0)));
+    const lockedVegetableWorkers = Math.max(0, Math.floor(Number(rawVegetableState.locked_workers || 0)));
+    const effectiveVegetablePhase = (vegetablePhase && vegetablePhase !== 'assigning' && lockedVegetableWorkers <= 0)
+      ? 'assigning'
+      : (vegetablePhase || 'assigning');
+    if (effectiveVegetablePhase === 'growing') {
+      capAdjusted.nextMaxWorkers.vegetables = 0;
+    }
     const housingCapacity = calculateHousingCapacityFromBuildings(completedBuildings, Array.from(completedResearch));
     const prisonerCapacity = calculatePrisonerCapacityFromBuildings(buildingsResult.rows);
 
@@ -2379,9 +2549,13 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         slave_worker_assignments: normalizeSlaveWorkerAssignments(fief?.slave_worker_assignments),
         unlocked_resources: capAdjusted.nextUnlocked,
         max_workers_per_resource: capAdjusted.nextMaxWorkers,
-        vegetable_harvest_state: (fief?.vegetable_harvest_state && typeof fief.vegetable_harvest_state === 'object')
-          ? fief.vegetable_harvest_state
-          : { day_in_cycle: 0, accumulated_worker_days: 0 },
+        vegetable_harvest_state: {
+          ...rawVegetableState,
+          phase: effectiveVegetablePhase,
+          ...(effectiveVegetablePhase === 'assigning' && lockedVegetableWorkers <= 0
+            ? { day_in_phase: 0, day_in_cycle: 0, locked_workers: 0, accumulated_worker_days: 0 }
+            : {}),
+        },
         location_modifiers: (fief?.location_modifiers && typeof fief.location_modifiers === 'object')
           ? fief.location_modifiers
           : {},
@@ -2418,9 +2592,27 @@ router.patch('/fiefs/:id/workers', authenticateToken, async (req, res) => {
       ? owned.max_workers_per_resource
       : {};
 
+    const normalizedInput = normalizeWorkerAssignments(assignments);
+    const rawVegetableState = (owned.vegetable_harvest_state && typeof owned.vegetable_harvest_state === 'object')
+      ? owned.vegetable_harvest_state
+      : { phase: 'assigning', day_in_phase: 0, locked_workers: 0, day_in_cycle: 0, accumulated_worker_days: 0 };
+    const vegetablePhase = String(rawVegetableState.phase || '').toLowerCase();
+    const currentVegetableWorkers = Math.max(0, Math.floor(Number((owned.worker_assignments || {}).vegetables || 0)));
+    const lockedVegetableWorkers = Math.max(0, Math.floor(Number(rawVegetableState.locked_workers || 0)));
+    const effectiveVegetablePhase = (vegetablePhase && vegetablePhase !== 'assigning' && lockedVegetableWorkers <= 0)
+      ? 'assigning'
+      : (vegetablePhase || 'assigning');
+    const isVegetableLaneLocked = effectiveVegetablePhase !== 'assigning';
+    if (isVegetableLaneLocked) {
+      const requestedVegetableWorkers = Math.max(0, Math.floor(Number(normalizedInput.vegetables || 0)));
+      if (requestedVegetableWorkers !== currentVegetableWorkers) {
+        return res.status(400).json({ error: 'Vegetable workers are locked for the current farming phase and cannot be changed yet' });
+      }
+    }
+
     const normalized = {};
     let totalAssigned = 0;
-    for (const [resource, value] of Object.entries(normalizeWorkerAssignments(assignments))) {
+    for (const [resource, value] of Object.entries(normalizedInput)) {
       const num = Math.max(0, Math.floor(Number(value) || 0));
       const maxForLane = Number(maxByResource[resource]);
       normalized[resource] = Number.isFinite(maxForLane) ? Math.min(num, Math.max(0, maxForLane)) : num;
@@ -3623,6 +3815,1081 @@ router.patch('/fiefs/:id/location-modifiers', authenticateToken, async (req, res
   } catch (error) {
     console.error('Error setting fief location modifiers:', error);
     res.status(500).json({ error: 'Failed to set fief location modifiers' });
+  }
+});
+
+const PRAYER_DEFINITIONS = [
+  {
+    key: 'harvest_rite',
+    name: 'Harvest Rite',
+    description: 'Call for abundance, generating immediate food reserves in your target fief.',
+    minTier: 3,
+    baseFaithCost: 20,
+    buildEffects: (highestTier) => ({
+      food: 40 + (Math.max(0, highestTier - 3) * 20),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const bonusFood = 40 + (Math.max(0, highestTier - 3) * 20);
+      await client.query(
+        `UPDATE fiefs
+         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb) || jsonb_build_object(
+           'food', GREATEST(0, COALESCE((stored_resources->>'food')::float, 0) + $2)
+         )
+         WHERE id = $1`,
+        [targetFiefId, bonusFood]
+      );
+    },
+  },
+  {
+    key: 'founders_blessing',
+    name: 'Founder\'s Blessing',
+    description: 'Grant a direct population increase to a fief to accelerate growth.',
+    minTier: 3,
+    baseFaithCost: 30,
+    buildEffects: (highestTier) => ({
+      population: 1 + Math.floor(Math.max(0, highestTier - 3) / 2),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const delta = 1 + Math.floor(Math.max(0, highestTier - 3) / 2);
+      await client.query(
+        `UPDATE fiefs
+         SET population = GREATEST(0, COALESCE(population, 0) + $2)
+         WHERE id = $1`,
+        [targetFiefId, delta]
+      );
+    },
+  },
+  {
+    key: 'artisans_favor',
+    name: 'Artisan\'s Favor',
+    description: 'Invoke craft and labor blessings to inject wood, stone, and minerals.',
+    minTier: 4,
+    baseFaithCost: 45,
+    buildEffects: (highestTier) => {
+      const scale = 1 + (Math.max(0, highestTier - 4) * 0.5);
+      return {
+        wood: Math.floor(30 * scale),
+        stone: Math.floor(20 * scale),
+        minerals: Math.floor(10 * scale),
+      };
+    },
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const scale = 1 + (Math.max(0, highestTier - 4) * 0.5);
+      const wood = Math.floor(30 * scale);
+      const stone = Math.floor(20 * scale);
+      const minerals = Math.floor(10 * scale);
+      await client.query(
+        `UPDATE fiefs
+         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
+           || jsonb_build_object(
+             'wood', GREATEST(0, COALESCE((stored_resources->>'wood')::float, 0) + $2),
+             'stone', GREATEST(0, COALESCE((stored_resources->>'stone')::float, 0) + $3),
+             'minerals', GREATEST(0, COALESCE((stored_resources->>'minerals')::float, 0) + $4)
+           )
+         WHERE id = $1`,
+        [targetFiefId, wood, stone, minerals]
+      );
+    },
+  },
+  {
+    key: 'miners_hymn',
+    name: 'Miner\'s Hymn',
+    description: 'Bless quarries and mines, yielding a surge of minerals and gold.',
+    minTier: 4,
+    baseFaithCost: 50,
+    buildEffects: (highestTier) => {
+      const scale = 1 + (Math.max(0, highestTier - 4) * 0.5);
+      return {
+        minerals: Math.floor(35 * scale),
+        gold: Math.floor(16 * scale),
+      };
+    },
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const scale = 1 + (Math.max(0, highestTier - 4) * 0.5);
+      const minerals = Math.floor(35 * scale);
+      const gold = Math.floor(16 * scale);
+      await client.query(
+        `UPDATE fiefs
+         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
+           || jsonb_build_object(
+             'minerals', GREATEST(0, COALESCE((stored_resources->>'minerals')::float, 0) + $2),
+             'gold', GREATEST(0, COALESCE((stored_resources->>'gold')::float, 0) + $3)
+           )
+         WHERE id = $1`,
+        [targetFiefId, minerals, gold]
+      );
+    },
+  },
+  {
+    key: 'scholar_communion',
+    name: 'Scholar Communion',
+    description: 'Guide sages in their studies, granting immediate research progress reserves.',
+    minTier: 4,
+    baseFaithCost: 42,
+    buildEffects: (highestTier) => ({
+      research: 16 + (Math.max(0, highestTier - 4) * 8),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const research = 16 + (Math.max(0, highestTier - 4) * 8);
+      await client.query(
+        `UPDATE fiefs
+         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
+           || jsonb_build_object(
+             'research', GREATEST(0, COALESCE((stored_resources->>'research')::float, 0) + $2)
+           )
+         WHERE id = $1`,
+        [targetFiefId, research]
+      );
+    },
+  },
+  {
+    key: 'restoration_litany',
+    name: 'Restoration Litany',
+    description: 'Heals the sick and injured, returning laborers to the active population pool.',
+    minTier: 3,
+    baseFaithCost: 34,
+    buildEffects: (highestTier) => ({
+      sick_injured_recovered: 2 + Math.max(0, highestTier - 3),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const recover = 2 + Math.max(0, highestTier - 3);
+      await client.query(
+        `UPDATE fiefs
+         SET sick_injured_population = GREATEST(0, COALESCE(sick_injured_population, 0) - $2)
+         WHERE id = $1`,
+        [targetFiefId, recover]
+      );
+    },
+  },
+  {
+    key: 'mustering_anthem',
+    name: 'Mustering Anthem',
+    description: 'Rally and train civilians into armed defenders instantly.',
+    minTier: 4,
+    baseFaithCost: 48,
+    buildEffects: (highestTier) => ({
+      soldiers: 2 + Math.floor(Math.max(0, highestTier - 4) * 1.5),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const recruit = 2 + Math.floor(Math.max(0, highestTier - 4) * 1.5);
+      await client.query(
+        `UPDATE fiefs
+         SET population = GREATEST(0, COALESCE(population, 0) - LEAST(COALESCE(population, 0), $2)),
+             soldiers = GREATEST(0, COALESCE(soldiers, 0) + LEAST(COALESCE(population, 0), $2))
+         WHERE id = $1`,
+        [targetFiefId, recruit]
+      );
+    },
+  },
+  {
+    key: 'chains_to_ploughshares',
+    name: 'Chains to Ploughshares',
+    description: 'Converts captured prisoners into willing settlers for the target fief.',
+    minTier: 4,
+    baseFaithCost: 40,
+    buildEffects: (highestTier) => ({
+      prisoners_converted_to_population: 2 + Math.floor(Math.max(0, highestTier - 4) * 1.5),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const convert = 2 + Math.floor(Math.max(0, highestTier - 4) * 1.5);
+      await client.query(
+        `UPDATE fiefs
+         SET prisoners = GREATEST(0, COALESCE(prisoners, 0) - LEAST(COALESCE(prisoners, 0), $2)),
+             population = GREATEST(0, COALESCE(population, 0) + LEAST(COALESCE(prisoners, 0), $2))
+         WHERE id = $1`,
+        [targetFiefId, convert]
+      );
+    },
+  },
+  {
+    key: 'edict_of_emancipation',
+    name: 'Edict of Emancipation',
+    description: 'Frees a portion of slave labor into citizen population.',
+    minTier: 5,
+    baseFaithCost: 60,
+    buildEffects: (highestTier) => ({
+      slaves_freed_to_population: 3 + Math.floor(Math.max(0, highestTier - 5) * 2),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const free = 3 + Math.floor(Math.max(0, highestTier - 5) * 2);
+      await client.query(
+        `UPDATE fiefs
+         SET slaves = GREATEST(0, COALESCE(slaves, 0) - LEAST(COALESCE(slaves, 0), $2)),
+             population = GREATEST(0, COALESCE(population, 0) + LEAST(COALESCE(slaves, 0), $2))
+         WHERE id = $1`,
+        [targetFiefId, free]
+      );
+    },
+  },
+  {
+    key: 'tithe_of_plenty',
+    name: 'Tithe of Plenty',
+    description: 'A broad blessing that grants food, faith, and a modest gold windfall.',
+    minTier: 5,
+    baseFaithCost: 66,
+    buildEffects: (highestTier) => {
+      const scale = 1 + (Math.max(0, highestTier - 5) * 0.4);
+      return {
+        food: Math.floor(60 * scale),
+        faith: Math.floor(14 * scale),
+        gold: Math.floor(14 * scale),
+      };
+    },
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const scale = 1 + (Math.max(0, highestTier - 5) * 0.4);
+      const food = Math.floor(60 * scale);
+      const faith = Math.floor(14 * scale);
+      const gold = Math.floor(14 * scale);
+      await client.query(
+        `UPDATE fiefs
+         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
+           || jsonb_build_object(
+             'food', GREATEST(0, COALESCE((stored_resources->>'food')::float, 0) + $2),
+             'faith', GREATEST(0, COALESCE((stored_resources->>'faith')::float, 0) + $3),
+             'gold', GREATEST(0, COALESCE((stored_resources->>'gold')::float, 0) + $4)
+           )
+         WHERE id = $1`,
+        [targetFiefId, food, faith, gold]
+      );
+    },
+  },
+  {
+    key: 'imperial_levy',
+    name: 'Imperial Levy',
+    description: 'Sanctions emergency extraction from subjects to rapidly fill the treasury.',
+    minTier: 6,
+    baseFaithCost: 72,
+    buildEffects: (highestTier) => ({
+      gold: 80 + (Math.max(0, highestTier - 6) * 25),
+      population: -1,
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const gold = 80 + (Math.max(0, highestTier - 6) * 25);
+      await client.query(
+        `UPDATE fiefs
+         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
+           || jsonb_build_object(
+             'gold', GREATEST(0, COALESCE((stored_resources->>'gold')::float, 0) + $2)
+           ),
+             population = GREATEST(0, COALESCE(population, 0) - 1)
+         WHERE id = $1`,
+        [targetFiefId, gold]
+      );
+    },
+  },
+  {
+    key: 'grace_of_the_hearth',
+    name: 'Grace of the Hearth',
+    description: 'Stimulates household growth with food stores and faster family expansion.',
+    minTier: 5,
+    baseFaithCost: 58,
+    buildEffects: (highestTier) => ({
+      food: 36 + (Math.max(0, highestTier - 5) * 14),
+      population: 1 + Math.floor(Math.max(0, highestTier - 5) / 2),
+    }),
+    apply: async ({ client, targetFiefId, highestTier }) => {
+      const food = 36 + (Math.max(0, highestTier - 5) * 14);
+      const population = 1 + Math.floor(Math.max(0, highestTier - 5) / 2);
+      await client.query(
+        `UPDATE fiefs
+         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
+           || jsonb_build_object(
+             'food', GREATEST(0, COALESCE((stored_resources->>'food')::float, 0) + $2)
+           ),
+             population = GREATEST(0, COALESCE(population, 0) + $3)
+         WHERE id = $1`,
+        [targetFiefId, food, population]
+      );
+    },
+  },
+];
+
+const buildPrayerPresentation = (highestTier) => {
+  const tier = Math.max(0, Number(highestTier || 0));
+  return PRAYER_DEFINITIONS
+    .filter((p) => tier >= p.minTier)
+    .map((p) => {
+      const scaleFactor = 1 + (Math.max(0, tier - p.minTier) * 0.2);
+      return {
+        key: p.key,
+        name: p.name,
+        description: p.description,
+        minTier: p.minTier,
+        faithCost: Math.ceil(p.baseFaithCost * scaleFactor),
+        effects: p.buildEffects(tier),
+      };
+    });
+};
+
+const sumKingdomPooledFaith = async (kingdomId) => {
+  const result = await pool.query(
+    `SELECT COALESCE((stored_resources->>'faith')::float, 0) AS faith
+     FROM fiefs
+     WHERE kingdom_id = $1
+     ORDER BY COALESCE((stored_resources->>'faith')::float, 0) DESC, id ASC`,
+    [kingdomId]
+  );
+  return result.rows.reduce((sum, row) => sum + Math.max(0, Number(row.faith || 0)), 0);
+};
+
+const spendKingdomFaith = async (client, kingdomId, amount) => {
+  let remaining = Math.max(0, Number(amount || 0));
+  if (remaining <= 0) return;
+
+  const result = await client.query(
+    `SELECT id, COALESCE(stored_resources, '{}'::jsonb) AS stored_resources,
+            COALESCE((stored_resources->>'faith')::float, 0) AS faith
+     FROM fiefs
+     WHERE kingdom_id = $1
+     ORDER BY COALESCE((stored_resources->>'faith')::float, 0) DESC, id ASC
+     FOR UPDATE`,
+    [kingdomId]
+  );
+
+  for (const row of result.rows) {
+    if (remaining <= 0) break;
+    const currentFaith = Math.max(0, Number(row.faith || 0));
+    if (currentFaith <= 0) continue;
+    const spend = Math.min(currentFaith, remaining);
+    remaining -= spend;
+    await client.query(
+      `UPDATE fiefs
+       SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
+         || jsonb_build_object('faith', GREATEST(0, COALESCE((stored_resources->>'faith')::float, 0) - $2))
+       WHERE id = $1`,
+      [Number(row.id), spend]
+    );
+  }
+
+  if (remaining > 0) {
+    throw new Error('Not enough pooled faith');
+  }
+};
+
+const getKingdomPrimaryFiefId = async (kingdomId) => {
+  const result = await pool.query(
+    `SELECT id
+     FROM fiefs
+     WHERE kingdom_id = $1
+     ORDER BY is_capital DESC, id ASC
+     LIMIT 1`,
+    [kingdomId]
+  );
+  return result.rows[0] ? Number(result.rows[0].id) : null;
+};
+
+const ensureTargetFiefInKingdom = async (kingdomId, fiefId) => {
+  if (!Number.isFinite(Number(fiefId))) return null;
+  const result = await pool.query(
+    `SELECT id FROM fiefs WHERE id = $1 AND kingdom_id = $2 LIMIT 1`,
+    [Number(fiefId), Number(kingdomId)]
+  );
+  return result.rows[0] ? Number(result.rows[0].id) : null;
+};
+
+router.get('/:id/legendary-characters', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const highestTier = await getKingdomHighestTier(kingdomId);
+    const slotsPerFief = getLegendarySlotsPerFief(highestTier);
+
+    const result = await pool.query(
+      `SELECT lc.*,
+              la.fief_id AS assigned_fief_id,
+              la.assigned_at AS assigned_at
+       FROM kingdom_legendary_characters lc
+       LEFT JOIN kingdom_legendary_assignments la ON la.legendary_id = lc.id
+       WHERE lc.kingdom_id = $1
+       ORDER BY lc.created_at ASC`,
+      [kingdomId]
+    );
+
+    const characters = result.rows.map((row) => ({
+      ...row,
+      bonuses: (row.bonuses && typeof row.bonuses === 'object') ? row.bonuses : {},
+      assigned_fief_id: row.assigned_fief_id == null ? null : Number(row.assigned_fief_id),
+    }));
+
+    res.json({ characters, slotsPerFief, highestTier });
+  } catch (error) {
+    console.error('Error loading legendary characters:', error);
+    res.status(500).json({ error: 'Failed to load legendary characters' });
+  }
+});
+
+router.post('/:id/legendary-characters', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const kingdomId = Number(req.params.id);
+    const name = String(req.body?.name || '').trim();
+    const description = String(req.body?.description || '').trim();
+    const bonuses = sanitizeLegendaryBonuses(req.body?.bonuses);
+
+    if (!Number.isFinite(kingdomId) || !name) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (Number(kingdom.dungeon_master_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO kingdom_legendary_characters (kingdom_id, name, description, bonuses, created_by)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
+       RETURNING *`,
+      [kingdomId, name, description, JSON.stringify(bonuses), req.user.id]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+
+    res.status(201).json({ character: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating legendary character:', error);
+    res.status(500).json({ error: 'Failed to create legendary character' });
+  }
+});
+
+router.post('/fiefs/:id/legendary-assignments', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const legendaryId = Number(req.body?.legendaryId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(legendaryId)) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    await client.query('BEGIN');
+
+    const fiefResult = await client.query(
+      `SELECT f.id, f.kingdom_id, k.campaign_id, k.player_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+
+    const kingdom = await getKingdomContext(Number(fief.kingdom_id));
+    if (!canManageKingdom(req.user, kingdom)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const legendaryResult = await client.query(
+      `SELECT id, kingdom_id
+       FROM kingdom_legendary_characters
+       WHERE id = $1 AND is_active = true
+       FOR UPDATE`,
+      [legendaryId]
+    );
+    const legendary = legendaryResult.rows[0];
+    if (!legendary) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Legendary character not found' });
+    }
+    if (Number(legendary.kingdom_id) !== Number(fief.kingdom_id)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Legendary character belongs to a different kingdom' });
+    }
+
+    const highestTier = await getKingdomHighestTier(Number(fief.kingdom_id));
+    const slotsPerFief = getLegendarySlotsPerFief(highestTier);
+    if (slotsPerFief <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Kingdom has no legendary slots yet' });
+    }
+
+    const existingAssignment = await client.query(
+      `SELECT fief_id
+       FROM kingdom_legendary_assignments
+       WHERE legendary_id = $1
+       LIMIT 1`,
+      [legendaryId]
+    );
+    const currentlyAssignedFiefId = Number(existingAssignment.rows[0]?.fief_id || 0);
+    if (currentlyAssignedFiefId === Number(fiefId)) {
+      await client.query(
+        `UPDATE kingdom_legendary_assignments
+         SET assigned_by = $2,
+             assigned_at = NOW()
+         WHERE legendary_id = $1`,
+        [legendaryId, req.user.id]
+      );
+      await client.query('COMMIT');
+
+      if (req.io) {
+        req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+      }
+
+      return res.json({ message: 'Legendary character assignment refreshed' });
+    }
+
+    const slotCount = await client.query(
+      `SELECT COUNT(*) AS c
+       FROM kingdom_legendary_assignments
+       WHERE fief_id = $1`,
+      [fiefId]
+    );
+    const currentSlots = Number(slotCount.rows[0]?.c || 0);
+    if (currentSlots >= slotsPerFief) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Fief has reached its legendary slot cap (${slotsPerFief})` });
+    }
+
+    await client.query(
+      `INSERT INTO kingdom_legendary_assignments (legendary_id, fief_id, assigned_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (legendary_id)
+       DO UPDATE SET fief_id = EXCLUDED.fief_id,
+                     assigned_by = EXCLUDED.assigned_by,
+                     assigned_at = NOW()`,
+      [legendaryId, fiefId, req.user.id]
+    );
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ message: 'Legendary character assigned' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error assigning legendary character:', error);
+    res.status(500).json({ error: 'Failed to assign legendary character' });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete('/fiefs/:id/legendary-assignments/:legendaryId', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    const legendaryId = Number(req.params.legendaryId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(legendaryId)) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const fiefResult = await pool.query(
+      `SELECT f.id, f.kingdom_id, k.campaign_id, k.player_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief) return res.status(404).json({ error: 'Fief not found' });
+
+    const kingdom = await getKingdomContext(Number(fief.kingdom_id));
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    await pool.query(
+      `DELETE FROM kingdom_legendary_assignments
+       WHERE fief_id = $1 AND legendary_id = $2`,
+      [fiefId, legendaryId]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ message: 'Legendary character unassigned' });
+  } catch (error) {
+    console.error('Error unassigning legendary character:', error);
+    res.status(500).json({ error: 'Failed to unassign legendary character' });
+  }
+});
+
+router.get('/:id/prayers', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const highestTier = await getKingdomHighestTier(kingdomId);
+    const pooledFaith = await sumKingdomPooledFaith(kingdomId);
+    const prayers = buildPrayerPresentation(highestTier);
+    res.json({ prayers, pooledFaith, highestTier });
+  } catch (error) {
+    console.error('Error loading prayers:', error);
+    res.status(500).json({ error: 'Failed to load prayers' });
+  }
+});
+
+router.post('/:id/prayers/:prayerKey/cast', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const prayerKey = String(req.params.prayerKey || '').trim();
+    if (!Number.isFinite(kingdomId) || !prayerKey) return res.status(400).json({ error: 'Invalid payload' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const highestTier = await getKingdomHighestTier(kingdomId);
+    const prayers = buildPrayerPresentation(highestTier);
+    const prayer = prayers.find((p) => p.key === prayerKey);
+    if (!prayer) return res.status(400).json({ error: 'Prayer not available at current tier' });
+
+    const basePrayer = PRAYER_DEFINITIONS.find((p) => p.key === prayer.key);
+    if (!basePrayer) return res.status(400).json({ error: 'Unknown prayer' });
+
+    const pooledFaith = await sumKingdomPooledFaith(kingdomId);
+    if (pooledFaith < prayer.faithCost) {
+      return res.status(400).json({ error: `Not enough pooled faith (${pooledFaith.toFixed(1)} / ${prayer.faithCost})` });
+    }
+
+    const requestedTarget = req.body?.targetFiefId == null ? null : Number(req.body.targetFiefId);
+    let targetFiefId = await ensureTargetFiefInKingdom(kingdomId, requestedTarget);
+    if (!targetFiefId) {
+      targetFiefId = await getKingdomPrimaryFiefId(kingdomId);
+    }
+    if (!targetFiefId) return res.status(400).json({ error: 'No target fief available for prayer effect' });
+
+    await client.query('BEGIN');
+    await spendKingdomFaith(client, kingdomId, prayer.faithCost);
+    await basePrayer.apply({ client, targetFiefId, highestTier });
+
+    await client.query(
+      `INSERT INTO kingdom_prayer_casts (kingdom_id, prayer_key, cast_by, target_fief_id, faith_spent, payload)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [kingdomId, prayerKey, req.user.id, targetFiefId, prayer.faithCost, JSON.stringify(prayer.effects || {})]
+    );
+
+    await client.query('COMMIT');
+
+    const remainingFaith = await sumKingdomPooledFaith(kingdomId);
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+
+    res.json({ message: `${prayer.name} cast successfully`, pooledFaith: remainingFaith });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error casting prayer:', error);
+    res.status(500).json({ error: error.message || 'Failed to cast prayer' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/:id/trade-depot', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const depot = await getOrCreateTradeDepot(kingdomId);
+    res.json({ depot: await toDepotViewModel(depot, kingdomId) });
+  } catch (error) {
+    console.error('Error loading trade depot:', error);
+    res.status(500).json({ error: 'Failed to load trade depot' });
+  }
+});
+
+router.patch('/:id/trade-depot/desired', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    const desiredText = String(req.body?.desiredText || '').trim();
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    await pool.query(
+      `INSERT INTO kingdom_trade_depots (kingdom_id, desired_resource_text)
+       VALUES ($1, $2)
+       ON CONFLICT (kingdom_id)
+       DO UPDATE SET desired_resource_text = EXCLUDED.desired_resource_text,
+                     updated_at = NOW()`,
+      [kingdomId, desiredText]
+    );
+
+    const depot = await getOrCreateTradeDepot(kingdomId);
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+    res.json({ depot: await toDepotViewModel(depot, kingdomId) });
+  } catch (error) {
+    console.error('Error updating desired resource text:', error);
+    res.status(500).json({ error: 'Failed to update desired resource text' });
+  }
+});
+
+router.post('/:id/trade-depot/deposit', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const fiefId = Number(req.body?.fiefId);
+    const resources = normalizeResourceDeltaMap(req.body?.resources);
+    const population = toPositiveInt(req.body?.population);
+    const slaves = toPositiveInt(req.body?.slaves);
+    const totalDelta = Object.values(resources).reduce((sum, v) => sum + Number(v || 0), 0) + population + slaves;
+
+    if (!Number.isFinite(kingdomId) || !Number.isFinite(fiefId) || totalDelta <= 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    await client.query('BEGIN');
+
+    const fiefResult = await client.query(
+      `SELECT id,
+              kingdom_id,
+              population,
+              slaves,
+              COALESCE(stored_resources, '{}'::jsonb) AS stored_resources,
+              COALESCE(worker_assignments, '{}'::jsonb) AS worker_assignments,
+              COALESCE(slave_worker_assignments, '{}'::jsonb) AS slave_worker_assignments,
+              COALESCE(max_workers_per_resource, '{}'::jsonb) AS max_workers_per_resource,
+              COALESCE(population_maturation_schedule, '{}'::jsonb) AS population_maturation_schedule,
+              COALESCE(sick_injured_population, 0) AS sick_injured_population
+       FROM fiefs
+       WHERE id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief || Number(fief.kingdom_id) !== kingdomId) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found in kingdom' });
+    }
+
+    const currentResources = normalizeStoredResources(fief.stored_resources);
+    for (const [key, value] of Object.entries(resources)) {
+      const available = Math.max(0, Number(currentResources[key] || 0));
+      if (available < Number(value || 0)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Not enough ${key} in selected fief` });
+      }
+    }
+    const currentPopulation = Math.max(0, Number(fief.population || 0));
+    const schedule = normalizeMaturationSchedule(fief.population_maturation_schedule || {});
+    const sickInjured = Math.max(0, Number(fief.sick_injured_population || 0));
+    const assignablePopulation = getAssignablePopulation(currentPopulation, schedule, sickInjured);
+    if (assignablePopulation < population) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Not enough assignable population in selected fief' });
+    }
+    const currentSlaves = Math.max(0, Number(fief.slaves || 0));
+    if (currentSlaves < slaves) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Not enough slaves in selected fief' });
+    }
+
+    const depotRow = await getOrCreateTradeDepot(kingdomId);
+    const capacityMax = await getTradeDepotCapacity(kingdomId);
+    const depotResources = normalizeStoredResources(depotRow.resources);
+    const currentUsed = Object.values(depotResources).reduce((sum, v) => sum + Math.max(0, Number(v || 0)), 0)
+      + Math.max(0, Number(depotRow.population || 0))
+      + Math.max(0, Number(depotRow.slaves || 0));
+
+    if ((currentUsed + totalDelta) > capacityMax) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Trade depot capacity exceeded (${currentUsed + totalDelta} / ${capacityMax})` });
+    }
+
+    for (const [key, value] of Object.entries(resources)) {
+      currentResources[key] = Math.max(0, Number(currentResources[key] || 0) - Number(value || 0));
+      depotResources[key] = Math.max(0, Number(depotResources[key] || 0) + Number(value || 0));
+    }
+
+    const nextPopulation = Math.max(0, currentPopulation - population);
+    const nextWorkerAssignments = clampWorkersToAssignablePopulation(
+      normalizeWorkerAssignments(fief.worker_assignments),
+      fief.max_workers_per_resource || {},
+      getAssignablePopulation(nextPopulation, schedule, sickInjured)
+    );
+
+    const nextSlaves = Math.max(0, currentSlaves - slaves);
+    const nextSlaveAssignments = clampSlaveAssignmentsToPool(
+      normalizeSlaveWorkerAssignments(fief.slave_worker_assignments),
+      nextSlaves
+    );
+
+    await client.query(
+      `UPDATE fiefs
+       SET stored_resources = $2::jsonb,
+           population = GREATEST(0, COALESCE(population, 0) - $3),
+           slaves = GREATEST(0, COALESCE(slaves, 0) - $4),
+           worker_assignments = $5::jsonb,
+           slave_worker_assignments = $6::jsonb
+       WHERE id = $1`,
+      [
+        fiefId,
+        JSON.stringify(currentResources),
+        population,
+        slaves,
+        JSON.stringify(nextWorkerAssignments),
+        JSON.stringify(nextSlaveAssignments),
+      ]
+    );
+
+    await client.query(
+      `UPDATE kingdom_trade_depots
+       SET resources = $2::jsonb,
+           population = GREATEST(0, COALESCE(population, 0) + $3),
+           slaves = GREATEST(0, COALESCE(slaves, 0) + $4),
+           updated_at = NOW()
+       WHERE kingdom_id = $1`,
+      [kingdomId, JSON.stringify(depotResources), population, slaves]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedDepot = await getOrCreateTradeDepot(kingdomId);
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId, fiefId });
+    }
+    res.json({ depot: await toDepotViewModel(updatedDepot, kingdomId) });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error depositing to trade depot:', error);
+    res.status(500).json({ error: 'Failed to deposit to trade depot' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/:id/trade-depot/withdraw', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const fiefId = Number(req.body?.fiefId);
+    const resources = normalizeResourceDeltaMap(req.body?.resources);
+    const population = toPositiveInt(req.body?.population);
+    const slaves = toPositiveInt(req.body?.slaves);
+    const totalDelta = Object.values(resources).reduce((sum, v) => sum + Number(v || 0), 0) + population + slaves;
+
+    if (!Number.isFinite(kingdomId) || !Number.isFinite(fiefId) || totalDelta <= 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    await client.query('BEGIN');
+
+    const fiefResult = await client.query(
+      `SELECT id, kingdom_id, COALESCE(stored_resources, '{}'::jsonb) AS stored_resources
+       FROM fiefs
+       WHERE id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief || Number(fief.kingdom_id) !== kingdomId) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found in kingdom' });
+    }
+
+    const depotResult = await client.query(
+      `SELECT resources, population, slaves
+       FROM kingdom_trade_depots
+       WHERE kingdom_id = $1
+       FOR UPDATE`,
+      [kingdomId]
+    );
+    const depot = depotResult.rows[0] || { resources: {}, population: 0, slaves: 0 };
+
+    const depotResources = normalizeStoredResources(depot.resources);
+    for (const [key, value] of Object.entries(resources)) {
+      const available = Math.max(0, Number(depotResources[key] || 0));
+      if (available < Number(value || 0)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Not enough ${key} in trade depot` });
+      }
+    }
+    if (Math.max(0, Number(depot.population || 0)) < population) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Not enough population in trade depot' });
+    }
+    if (Math.max(0, Number(depot.slaves || 0)) < slaves) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Not enough slaves in trade depot' });
+    }
+
+    const fiefResources = normalizeStoredResources(fief.stored_resources);
+    for (const [key, value] of Object.entries(resources)) {
+      depotResources[key] = Math.max(0, Number(depotResources[key] || 0) - Number(value || 0));
+      fiefResources[key] = Math.max(0, Number(fiefResources[key] || 0) + Number(value || 0));
+    }
+
+    await client.query(
+      `UPDATE fiefs
+       SET stored_resources = $2::jsonb,
+           population = GREATEST(0, COALESCE(population, 0) + $3),
+           slaves = GREATEST(0, COALESCE(slaves, 0) + $4)
+       WHERE id = $1`,
+      [fiefId, JSON.stringify(fiefResources), population, slaves]
+    );
+
+    await client.query(
+      `UPDATE kingdom_trade_depots
+       SET resources = $2::jsonb,
+           population = GREATEST(0, COALESCE(population, 0) - $3),
+           slaves = GREATEST(0, COALESCE(slaves, 0) - $4),
+           updated_at = NOW()
+       WHERE kingdom_id = $1`,
+      [kingdomId, JSON.stringify(depotResources), population, slaves]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedDepot = await getOrCreateTradeDepot(kingdomId);
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId, fiefId });
+    }
+    res.json({ depot: await toDepotViewModel(updatedDepot, kingdomId) });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error withdrawing from trade depot:', error);
+    res.status(500).json({ error: 'Failed to withdraw from trade depot' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/:id/trade-depot/accept', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!requireDM(req, res)) return;
+
+    const kingdomId = Number(req.params.id);
+    const takeAll = Boolean(req.body?.takeAll);
+    const requestedResources = normalizeResourceDeltaMap(req.body?.resources);
+    const requestedPopulation = toPositiveInt(req.body?.population);
+    const requestedSlaves = toPositiveInt(req.body?.slaves);
+
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (Number(kingdom.dungeon_master_id) !== Number(req.user.id)) return res.status(403).json({ error: 'Not authorized' });
+
+    await client.query('BEGIN');
+
+    const depotResult = await client.query(
+      `SELECT resources, population, slaves
+       FROM kingdom_trade_depots
+       WHERE kingdom_id = $1
+       FOR UPDATE`,
+      [kingdomId]
+    );
+    const depot = depotResult.rows[0];
+    if (!depot) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Trade depot not found' });
+    }
+
+    const currentResources = normalizeStoredResources(depot.resources);
+    const nextResources = { ...currentResources };
+    let nextPopulation = Math.max(0, Number(depot.population || 0));
+    let nextSlaves = Math.max(0, Number(depot.slaves || 0));
+
+    if (takeAll) {
+      for (const key of Object.keys(nextResources)) {
+        nextResources[key] = 0;
+      }
+      nextPopulation = 0;
+      nextSlaves = 0;
+    } else {
+      const anyChange = Object.keys(requestedResources).length > 0 || requestedPopulation > 0 || requestedSlaves > 0;
+      if (!anyChange) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'No trade amounts provided' });
+      }
+
+      for (const [key, value] of Object.entries(requestedResources)) {
+        const available = Math.max(0, Number(nextResources[key] || 0));
+        if (available < Number(value || 0)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: `Not enough ${key} in depot` });
+        }
+        nextResources[key] = available - Number(value || 0);
+      }
+
+      if (nextPopulation < requestedPopulation) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Not enough population in depot' });
+      }
+      if (nextSlaves < requestedSlaves) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Not enough slaves in depot' });
+      }
+
+      nextPopulation -= requestedPopulation;
+      nextSlaves -= requestedSlaves;
+    }
+
+    await client.query(
+      `UPDATE kingdom_trade_depots
+       SET resources = $2::jsonb,
+           population = $3,
+           slaves = $4,
+           updated_at = NOW()
+       WHERE kingdom_id = $1`,
+      [kingdomId, JSON.stringify(nextResources), nextPopulation, nextSlaves]
+    );
+
+    await client.query(
+      `INSERT INTO kingdom_trade_depot_events (kingdom_id, actor_id, action, payload)
+       VALUES ($1, $2, $3, $4::jsonb)`,
+      [
+        kingdomId,
+        req.user.id,
+        takeAll ? 'accept_all' : 'accept_partial',
+        JSON.stringify({ resources: requestedResources, population: requestedPopulation, slaves: requestedSlaves }),
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedDepot = await getOrCreateTradeDepot(kingdomId);
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+
+    res.json({
+      message: takeAll ? 'Trade taken (all)' : 'Trade taken (partial)',
+      depot: await toDepotViewModel(updatedDepot, kingdomId),
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error accepting trade:', error);
+    res.status(500).json({ error: 'Failed to accept trade' });
+  } finally {
+    client.release();
   }
 });
 
