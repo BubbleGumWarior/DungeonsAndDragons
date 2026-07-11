@@ -887,7 +887,11 @@ const KingdomTab: React.FC<Props> = ({
     0,
     Number(storedResources.food || 0) + Number(storedResources.meat || 0) + Number(storedResources.vegetables || 0)
   );
-  const dailyFoodConsumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1));
+  const directFoodReductionPct = Math.max(0, Number((fiefDetails?.legendary_bonuses || {}).food_consumption_reduction_pct || 0));
+  const directFoodConsumptionMultiplier = Math.max(0, 1 - (directFoodReductionPct / 100));
+  const baseDailyFoodConsumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
+    + (slaves + prisoners) * 0.5;
+  const dailyFoodConsumption = Math.max(0, baseDailyFoodConsumption * directFoodConsumptionMultiplier);
   const foodDaysLeftIfNoProduction = dailyFoodConsumption > 0 ? (storedFood / dailyFoodConsumption) : Number.POSITIVE_INFINITY;
   const unassignedAdults = Math.max(0, assignablePopulation - totalAssigned);
 
@@ -969,6 +973,37 @@ const KingdomTab: React.FC<Props> = ({
       .sort((a, b) => a.ageYears - b.ageYears);
   }, [maturationSchedule, currentCampaignDay]);
 
+  const fiefLegendaryBonuses = useMemo(() => {
+    const direct = (fiefDetails?.legendary_bonuses && typeof fiefDetails.legendary_bonuses === 'object')
+      ? fiefDetails.legendary_bonuses as Record<string, number>
+      : null;
+    if (direct) {
+      const normalized: Record<string, number> = {};
+      for (const [key, raw] of Object.entries(direct)) {
+        const value = Number(raw || 0);
+        if (!Number.isFinite(value) || value === 0) continue;
+        normalized[key] = value;
+      }
+      return normalized;
+    }
+
+    const totals: Record<string, number> = {};
+    const currentFiefId = Number(fiefDetails?.id || 0);
+    if (!currentFiefId) return totals;
+
+    for (const item of (legendaryCharacters || [])) {
+      if (Number(item.assigned_fief_id || 0) !== currentFiefId) continue;
+      const bonuses = (item.bonuses && typeof item.bonuses === 'object') ? item.bonuses : {};
+      for (const [key, raw] of Object.entries(bonuses)) {
+        const value = Number(raw || 0);
+        if (!Number.isFinite(value) || value === 0) continue;
+        totals[key] = (Number(totals[key] || 0) + value);
+      }
+    }
+
+    return totals;
+  }, [fiefDetails?.id, fiefDetails?.legendary_bonuses, legendaryCharacters]);
+
   const productionByLane = useMemo(() => {
     const output: Record<string, number> = {
       meat: 0,
@@ -1011,6 +1046,26 @@ const KingdomTab: React.FC<Props> = ({
       const totalMod = seasonMod + locationMod + logMod;
       if (totalMod === 0) return amount;
       return Math.max(0, amount * (1 + totalMod));
+    };
+
+    const LEGENDARY_BONUS_KEY_BY_RESOURCE: Record<string, string> = {
+      wood: 'wood_bonus_pct',
+      stone: 'stone_bonus_pct',
+      iron: 'iron_bonus_pct',
+      meat: 'meat_bonus_pct',
+      vegetables: 'vegetables_bonus_pct',
+      gold: 'gold_bonus_pct',
+      research: 'research_bonus_pct',
+      faith: 'faith_bonus_pct',
+      building: 'building_bonus_pct',
+    };
+
+    const applyLegendaryBonus = (resourceKey: string, amount: number) => {
+      const bonusKey = LEGENDARY_BONUS_KEY_BY_RESOURCE[resourceKey];
+      if (!bonusKey) return amount;
+      const pct = Number(fiefLegendaryBonuses[bonusKey] || 0);
+      if (!Number.isFinite(pct) || pct === 0) return amount;
+      return Math.max(0, amount * (1 + (pct / 100)));
     };
 
     const workersMeat = Math.max(0, Number(assignments.meat || 0)) + Math.max(0, Number(assignments.food || 0));
@@ -1102,19 +1157,23 @@ const KingdomTab: React.FC<Props> = ({
       }
     }
 
-    output.vegetables = applyAllModifiers('vegetables', vegetables);
-    output.meat = applyAllModifiers('meat', meat);
-    output.wood = applyAllModifiers('wood', output.wood);
-    output.stone = applyAllModifiers('stone', output.stone);
-    output.iron = applyAllModifiers('iron', output.iron);
-    output.gold = applyAllModifiers('gold', output.gold);
-    output.faith = applyAllModifiers('faith', output.faith);
-    output.research = applyAllModifiers('research', output.research);
-    output.building = applyAllModifiers('building', output.building);
+    output.vegetables = applyLegendaryBonus('vegetables', applyAllModifiers('vegetables', vegetables));
+    output.meat = applyLegendaryBonus('meat', applyAllModifiers('meat', meat));
+    output.wood = applyLegendaryBonus('wood', applyAllModifiers('wood', output.wood));
+    output.stone = applyLegendaryBonus('stone', applyAllModifiers('stone', output.stone));
+    output.iron = applyLegendaryBonus('iron', applyAllModifiers('iron', output.iron));
+    output.gold = applyLegendaryBonus('gold', applyAllModifiers('gold', output.gold));
+    output.faith = applyLegendaryBonus('faith', applyAllModifiers('faith', output.faith));
+    output.research = applyLegendaryBonus('research', applyAllModifiers('research', output.research));
+    output.building = applyLegendaryBonus('building', applyAllModifiers('building', output.building));
 
     const foodTotal = output.vegetables + output.meat;
-    const consumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
-      + (slaves + prisoners) * 0.5;
+    const foodConsumptionReductionPct = Math.max(0, Number(fiefLegendaryBonuses.food_consumption_reduction_pct || 0));
+    const consumptionMultiplier = Math.max(0, 1 - (foodConsumptionReductionPct / 100));
+    const consumption = (
+      totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
+      + (slaves + prisoners) * 0.5
+    ) * consumptionMultiplier;
     const net = foodTotal - consumption;
 
     return {
@@ -1132,7 +1191,7 @@ const KingdomTab: React.FC<Props> = ({
         logisticsLevel,
       },
     };
-  }, [fiefDetails, totalPopulation, currentSeasonEffects, slaves, prisoners]);
+  }, [fiefDetails, totalPopulation, currentSeasonEffects, slaves, prisoners, fiefLegendaryBonuses]);
 
   const researchQueue = useMemo(() => {
     return [...(fiefDetails?.researchQueue || [])].sort((a, b) => {
@@ -2621,6 +2680,27 @@ const KingdomTab: React.FC<Props> = ({
                         </span>
                       );
                     }
+                  }
+
+                  const legendaryBonusByResource: Record<string, string> = {
+                    wood: 'wood_bonus_pct',
+                    stone: 'stone_bonus_pct',
+                    iron: 'iron_bonus_pct',
+                    meat: 'meat_bonus_pct',
+                    vegetables: 'vegetables_bonus_pct',
+                    gold: 'gold_bonus_pct',
+                    research: 'research_bonus_pct',
+                    faith: 'faith_bonus_pct',
+                    building: 'building_bonus_pct',
+                  };
+                  const legendaryBonusKey = legendaryBonusByResource[key];
+                  const legendaryPct = legendaryBonusKey ? Number(fiefLegendaryBonuses[legendaryBonusKey] || 0) : 0;
+                  if (legendaryPct !== 0) {
+                    badges.push(
+                      <span key="legendary" style={{ color: '#93c5fd', fontSize: '0.72rem', fontWeight: 600 }}>
+                        ⭐ {legendaryPct > 0 ? '+' : ''}{Math.round(legendaryPct)}% legendary
+                      </span>
+                    );
                   }
 
                   if (badges.length === 0) return null;

@@ -2538,6 +2538,34 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     }
     const housingCapacity = calculateHousingCapacityFromBuildings(completedBuildings, Array.from(completedResearch));
     const prisonerCapacity = calculatePrisonerCapacityFromBuildings(buildingsResult.rows);
+    let legendaryBonuses = {};
+    const legendaryTableCheck = await pool.query(
+      `SELECT to_regclass('public.kingdom_legendary_assignments') AS assignments,
+              to_regclass('public.kingdom_legendary_characters') AS characters`
+    );
+    const canUseLegendary = Boolean(
+      legendaryTableCheck.rows[0]?.assignments &&
+      legendaryTableCheck.rows[0]?.characters
+    );
+    if (canUseLegendary) {
+      const legendaryRows = await pool.query(
+        `SELECT lc.bonuses
+         FROM kingdom_legendary_assignments la
+         JOIN kingdom_legendary_characters lc ON lc.id = la.legendary_id
+         WHERE la.fief_id = $1
+           AND lc.is_active = true`,
+        [fiefId]
+      );
+
+      for (const row of legendaryRows.rows) {
+        const bonuses = (row?.bonuses && typeof row.bonuses === 'object') ? row.bonuses : {};
+        for (const [key, raw] of Object.entries(bonuses)) {
+          const value = Number(raw || 0);
+          if (!Number.isFinite(value) || value === 0) continue;
+          legendaryBonuses[key] = Number(legendaryBonuses[key] || 0) + value;
+        }
+      }
+    }
 
     res.json({
       fief: {
@@ -2559,6 +2587,7 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         location_modifiers: (fief?.location_modifiers && typeof fief.location_modifiers === 'object')
           ? fief.location_modifiers
           : {},
+        legendary_bonuses: legendaryBonuses,
         buildings: buildingsResult.rows,
         researchQueue,
         availableResearch,

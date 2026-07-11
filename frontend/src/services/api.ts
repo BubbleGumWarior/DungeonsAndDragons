@@ -1323,6 +1323,7 @@ export interface KingdomFief {
   completed_research?: string[];
   vegetable_harvest_state?: { day_in_cycle: number; accumulated_worker_days: number };
   location_modifiers?: Record<string, number>;
+  legendary_bonuses?: Record<string, number>;
   travel_days_remaining?: number;
 }
 
