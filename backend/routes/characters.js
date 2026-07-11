@@ -1594,6 +1594,266 @@ router.put('/:id/concealed-class', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Feats ───────────────────────────────────────────────────────────────────
+
+const getFeatStateForCharacter = async (characterId) => {
+  const characterResult = await pool.query(
+    `SELECT id, campaign_id, player_id FROM characters WHERE id = $1`,
+    [characterId]
+  );
+  if (characterResult.rows.length === 0) return null;
+
+  const character = characterResult.rows[0];
+
+  const [catalogResult, chosenResult, grantResult, usedResult] = await Promise.all([
+    pool.query(
+      `SELECT id, campaign_id, name, description, is_custom, created_by_user_id, created_at
+         FROM feat_catalog
+        WHERE campaign_id = $1
+        ORDER BY LOWER(name) ASC`,
+      [character.campaign_id]
+    ),
+    pool.query(
+      `SELECT cf.id, cf.feat_id, cf.picked_at,
+              fc.name, fc.description, fc.is_custom
+         FROM character_feats cf
+         JOIN feat_catalog fc ON fc.id = cf.feat_id
+        WHERE cf.character_id = $1
+        ORDER BY cf.picked_at DESC`,
+      [character.id]
+    ),
+    pool.query(
+      `SELECT granted_count FROM campaign_feat_grants WHERE character_id = $1`,
+      [character.id]
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS used_count FROM character_feats WHERE character_id = $1`,
+      [character.id]
+    )
+  ]);
+
+  const grantedCount = grantResult.rows[0]?.granted_count || 0;
+  const usedCount = usedResult.rows[0]?.used_count || 0;
+  const remainingCount = Math.max(0, grantedCount - usedCount);
+
+  return {
+    characterId: Number(character.id),
+    campaignId: Number(character.campaign_id),
+    playerId: Number(character.player_id),
+    grantedCount,
+    usedCount,
+    remainingCount,
+    availableFeats: catalogResult.rows,
+    chosenFeats: chosenResult.rows,
+  };
+};
+
+// Get feat state for a character (owner or DM)
+router.get('/:id/feats', authenticateToken, async (req, res) => {
+  try {
+    const characterId = Number(req.params.id);
+    if (!Number.isFinite(characterId)) return res.status(400).json({ error: 'Invalid character ID' });
+
+    const featState = await getFeatStateForCharacter(characterId);
+    if (!featState) return res.status(404).json({ error: 'Character not found' });
+
+    const campaign = await Campaign.findById(featState.campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const isOwner = Number(featState.playerId) === Number(req.user.id);
+    const isDM = req.user.role === 'Dungeon Master' && Number(campaign.dungeon_master_id) === Number(req.user.id);
+    if (!isOwner && !isDM) return res.status(403).json({ error: 'Access denied' });
+
+    res.json(featState);
+  } catch (error) {
+    console.error('Error fetching character feats:', error);
+    res.status(500).json({ error: 'Failed to fetch feats' });
+  }
+});
+
+// DM: grant +1 feat pick to all characters in a campaign
+router.post('/campaign/:campaignId/feats/grant-all', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const campaignId = Number(req.params.campaignId);
+    if (!Number.isFinite(campaignId)) return res.status(400).json({ error: 'Invalid campaign ID' });
+
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only the Dungeon Master can grant feats to all' });
+    }
+
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    if (Number(campaign.dungeon_master_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'You can only manage campaigns you own' });
+    }
+
+    await client.query('BEGIN');
+
+    const characterCountResult = await client.query(
+      `SELECT COUNT(*)::int AS count FROM characters WHERE campaign_id = $1`,
+      [campaignId]
+    );
+
+    const characterCount = characterCountResult.rows[0]?.count || 0;
+
+    await client.query(
+      `INSERT INTO campaign_feat_grants (character_id, granted_count, updated_at)
+       SELECT id, 1, NOW()
+         FROM characters
+        WHERE campaign_id = $1
+       ON CONFLICT (character_id)
+       DO UPDATE
+         SET granted_count = campaign_feat_grants.granted_count + 1,
+             updated_at = NOW()`,
+      [campaignId]
+    );
+
+    await client.query('COMMIT');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${campaignId}`).emit('featGrantedToAll', {
+        campaignId,
+        grantedBy: req.user.id,
+        grantAmount: 1,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.json({
+      message: `Granted +1 feat pick to ${characterCount} character(s)`,
+      campaignId,
+      characterCount,
+      grantAmount: 1,
+    });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error('Error granting feats to all:', error);
+    res.status(500).json({ error: 'Failed to grant feats to all' });
+  } finally {
+    client.release();
+  }
+});
+
+// DM: create a custom campaign feat
+router.post('/campaign/:campaignId/feats/custom', authenticateToken, async (req, res) => {
+  try {
+    const campaignId = Number(req.params.campaignId);
+    if (!Number.isFinite(campaignId)) return res.status(400).json({ error: 'Invalid campaign ID' });
+
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only the Dungeon Master can create custom feats' });
+    }
+
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    if (Number(campaign.dungeon_master_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'You can only manage campaigns you own' });
+    }
+
+    const name = String(req.body?.name || '').trim();
+    const description = String(req.body?.description || '').trim();
+
+    if (!name) return res.status(400).json({ error: 'Feat name is required' });
+    if (!description) return res.status(400).json({ error: 'Feat description is required' });
+
+    const result = await pool.query(
+      `INSERT INTO feat_catalog (campaign_id, name, description, is_custom, created_by_user_id)
+       VALUES ($1, $2, $3, TRUE, $4)
+       RETURNING id, campaign_id, name, description, is_custom, created_by_user_id, created_at`,
+      [campaignId, name.slice(0, 120), description, req.user.id]
+    );
+
+    const feat = result.rows[0];
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${campaignId}`).emit('featCatalogUpdated', {
+        campaignId,
+        feat,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.status(201).json({ message: 'Custom feat created', feat });
+  } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(400).json({ error: 'A feat with this name already exists in this campaign' });
+    }
+    console.error('Error creating custom feat:', error);
+    res.status(500).json({ error: 'Failed to create custom feat' });
+  }
+});
+
+// Choose a feat for a character (owner or DM)
+router.post('/:id/feats/choose', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const characterId = Number(req.params.id);
+    const featId = Number(req.body?.featId);
+
+    if (!Number.isFinite(characterId)) return res.status(400).json({ error: 'Invalid character ID' });
+    if (!Number.isFinite(featId)) return res.status(400).json({ error: 'Invalid feat ID' });
+
+    const featState = await getFeatStateForCharacter(characterId);
+    if (!featState) return res.status(404).json({ error: 'Character not found' });
+
+    const campaign = await Campaign.findById(featState.campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const isOwner = Number(featState.playerId) === Number(req.user.id);
+    const isDM = req.user.role === 'Dungeon Master' && Number(campaign.dungeon_master_id) === Number(req.user.id);
+    if (!isOwner && !isDM) return res.status(403).json({ error: 'Access denied' });
+
+    const feat = featState.availableFeats.find((f) => Number(f.id) === featId);
+    if (!feat) return res.status(404).json({ error: 'Feat not found for this campaign' });
+
+    if (featState.remainingCount <= 0) {
+      return res.status(400).json({ error: 'No feat picks remaining for this character' });
+    }
+
+    await client.query('BEGIN');
+
+    const insertResult = await client.query(
+      `INSERT INTO character_feats (character_id, feat_id)
+       VALUES ($1, $2)
+       RETURNING id, character_id, feat_id, picked_at`,
+      [characterId, featId]
+    );
+
+    await client.query('COMMIT');
+
+    const chosen = {
+      ...insertResult.rows[0],
+      name: feat.name,
+      description: feat.description,
+      is_custom: feat.is_custom,
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${featState.campaignId}`).emit('featChosen', {
+        campaignId: featState.campaignId,
+        characterId,
+        feat: chosen,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.status(201).json({ message: 'Feat chosen', feat: chosen });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (error?.code === '23505') {
+      return res.status(400).json({ error: 'This character already has that feat' });
+    }
+    console.error('Error choosing feat:', error);
+    res.status(500).json({ error: 'Failed to choose feat' });
+  } finally {
+    client.release();
+  }
+});
+
 // ── Character Notes ──────────────────────────────────────────────────────────
 
 // Get all notes for a character (owner or DM of campaign)

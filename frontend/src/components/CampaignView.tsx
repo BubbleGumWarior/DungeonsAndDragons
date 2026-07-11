@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, kingdomAPI } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, kingdomAPI, CharacterFeatState } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
@@ -537,7 +537,7 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others'>('board');
   const [characterNotes, setCharacterNotes] = useState<{ [charId: number]: { id: number; title: string; content: string; created_at: string }[] }>({});
   const [notesLoading, setNotesLoading] = useState<{ [charId: number]: boolean }>({});
   const [noteEditModal, setNoteEditModal] = useState<{ charId: number; note: { id: number; title: string; content: string } | null } | null>(null);
@@ -600,6 +600,12 @@ const CampaignView: React.FC = () => {
     rarity: 'Common',
     properties: []
   });
+  const [characterFeatStates, setCharacterFeatStates] = useState<Record<number, CharacterFeatState>>({});
+  const [featLoadingByCharacter, setFeatLoadingByCharacter] = useState<Record<number, boolean>>({});
+  const [grantFeatLoading, setGrantFeatLoading] = useState(false);
+  const [showCreateCustomFeatModal, setShowCreateCustomFeatModal] = useState(false);
+  const [customFeatForm, setCustomFeatForm] = useState({ name: '', description: '' });
+  const [createCustomFeatLoading, setCreateCustomFeatLoading] = useState(false);
 
   // Damage dice state (for weapons)
   const [damageCount, setDamageCount] = useState<number>(1);
@@ -2481,6 +2487,84 @@ const CampaignView: React.FC = () => {
       console.error('Error loading character skills:', error);
     }
   }, []);
+
+  const loadCharacterFeats = useCallback(async (characterId: number) => {
+    setFeatLoadingByCharacter(prev => ({ ...prev, [characterId]: true }));
+    try {
+      const featState = await characterAPI.getFeats(characterId);
+      setCharacterFeatStates(prev => ({ ...prev, [characterId]: featState }));
+    } catch (error) {
+      console.error('Error loading character feats:', error);
+      setCharacterFeatStates(prev => {
+        const next = { ...prev };
+        delete next[characterId];
+        return next;
+      });
+    } finally {
+      setFeatLoadingByCharacter(prev => ({ ...prev, [characterId]: false }));
+    }
+  }, []);
+
+  const refreshAccessibleCharacterFeats = useCallback(async () => {
+    if (!currentCampaign || !user) return;
+    if (user.role === 'Dungeon Master') {
+      await Promise.all(currentCampaign.characters.map(c => loadCharacterFeats(c.id)));
+      return;
+    }
+    const ownCharacterId = currentCampaign.userCharacter?.id;
+    if (ownCharacterId) {
+      await loadCharacterFeats(ownCharacterId);
+    }
+  }, [currentCampaign, user, loadCharacterFeats]);
+
+  const handleGrantFeatToAll = async () => {
+    if (!currentCampaign || user?.role !== 'Dungeon Master' || grantFeatLoading) return;
+    try {
+      setGrantFeatLoading(true);
+      const result = await characterAPI.grantFeatToAll(currentCampaign.campaign.id);
+      toast(result.message);
+      await refreshAccessibleCharacterFeats();
+    } catch (error: any) {
+      console.error('Error granting feats to all:', error);
+      toast(error?.response?.data?.error || 'Failed to grant feats to all');
+    } finally {
+      setGrantFeatLoading(false);
+    }
+  };
+
+  const handleCreateCustomFeat = async () => {
+    if (!currentCampaign || user?.role !== 'Dungeon Master' || createCustomFeatLoading) return;
+    const name = customFeatForm.name.trim();
+    const description = customFeatForm.description.trim();
+    if (!name || !description) {
+      toast('Custom feat name and description are required');
+      return;
+    }
+    try {
+      setCreateCustomFeatLoading(true);
+      const result = await characterAPI.createCustomFeat(currentCampaign.campaign.id, { name, description });
+      toast(result.message);
+      setCustomFeatForm({ name: '', description: '' });
+      setShowCreateCustomFeatModal(false);
+      await refreshAccessibleCharacterFeats();
+    } catch (error: any) {
+      console.error('Error creating custom feat:', error);
+      toast(error?.response?.data?.error || 'Failed to create custom feat');
+    } finally {
+      setCreateCustomFeatLoading(false);
+    }
+  };
+
+  const handleChooseFeat = async (characterId: number, featId: number) => {
+    try {
+      await characterAPI.chooseFeat(characterId, featId);
+      await loadCharacterFeats(characterId);
+      toast('Feat chosen');
+    } catch (error: any) {
+      console.error('Error choosing feat:', error);
+      toast(error?.response?.data?.error || 'Failed to choose feat');
+    }
+  };
 
   // ── Pre-load skills for all combatants so DM darkvision zones render correctly ──
   // Without this, characterSkills is empty for player characters the DM hasn't
@@ -4954,6 +5038,24 @@ const CampaignView: React.FC = () => {
         }
       });
 
+      // Feats updates
+      newSocket.on('featGrantedToAll', (data: { campaignId: number; grantedBy: number; grantAmount: number; timestamp: string }) => {
+        if (Number(data.campaignId) !== Number(currentCampaignRef.current?.campaign.id)) return;
+        refreshAccessibleCharacterFeats();
+        setToastMessage('Feat pick granted to all characters');
+        setTimeout(() => setToastMessage(null), 3000);
+      });
+
+      newSocket.on('featCatalogUpdated', (data: { campaignId: number; timestamp: string }) => {
+        if (Number(data.campaignId) !== Number(currentCampaignRef.current?.campaign.id)) return;
+        refreshAccessibleCharacterFeats();
+      });
+
+      newSocket.on('featChosen', (data: { campaignId: number; characterId: number; timestamp: string }) => {
+        if (Number(data.campaignId) !== Number(currentCampaignRef.current?.campaign.id)) return;
+        loadCharacterFeats(Number(data.characterId));
+      });
+
       // Listen for NPC reveals
       newSocket.on('npcRevealed', (npc: CampaignNPC) => {
         setCampaignNPCs(prev => prev.find(n => n.id === npc.id) ? prev : [...prev, npc]);
@@ -5050,6 +5152,13 @@ const CampaignView: React.FC = () => {
       loadCharacterSkills(selectedCharacter);
     }
   }, [selectedCharacter, loadCharacterSkills]);
+
+  // Load character feats when selected character changes
+  useEffect(() => {
+    if (selectedCharacter) {
+      loadCharacterFeats(selectedCharacter);
+    }
+  }, [selectedCharacter, loadCharacterFeats]);
 
   const renderEquipTab = (character: any) => {
     // Define equipment slots with their names and types
@@ -5970,6 +6079,156 @@ const CampaignView: React.FC = () => {
     );
   };
 
+  const formatFeatDescription = (description: string) => {
+    return String(description || '').replace(/^\s*\[[^\]]+\]\s*/, '').trim();
+  };
+
+  const renderFeatsTab = (character: any) => {
+    const featState = characterFeatStates[character.id];
+    const isLoadingFeats = !!featLoadingByCharacter[character.id];
+    const chosenIds = new Set((featState?.chosenFeats || []).map(f => Number(f.feat_id)));
+
+    if (isLoadingFeats && !featState) {
+      return (
+        <div className="glass-panel">
+          <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>🏅 Feats</h5>
+          <p className="text-muted">Loading feats...</p>
+        </div>
+      );
+    }
+
+    if (!featState) {
+      return (
+        <div className="glass-panel">
+          <h5 style={{ color: 'var(--text-gold)', marginBottom: '1rem' }}>🏅 Feats</h5>
+          <p className="text-muted">No feats available yet.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="glass-panel">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🏅 Feats</h5>
+          {user?.role === 'Dungeon Master' && (
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleGrantFeatToAll}
+                className="btn btn-secondary"
+                disabled={grantFeatLoading}
+                style={{ opacity: grantFeatLoading ? 0.6 : 1 }}
+              >
+                🏅 Give Feat To All
+              </button>
+              <button
+                onClick={() => setShowCreateCustomFeatModal(true)}
+                className="btn btn-secondary"
+              >
+                ✍️ Add Custom Feat
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: '0.75rem',
+          marginBottom: '1.25rem'
+        }}>
+          <div style={{ padding: '0.75rem', border: '1px solid rgba(var(--theme-accent-rgb), 0.35)', borderRadius: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Granted</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-gold)' }}>{featState.grantedCount}</div>
+          </div>
+          <div style={{ padding: '0.75rem', border: '1px solid rgba(var(--theme-accent-rgb), 0.35)', borderRadius: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Used</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fca5a5' }}>{featState.usedCount}</div>
+          </div>
+          <div style={{ padding: '0.75rem', border: '1px solid rgba(var(--theme-accent-rgb), 0.35)', borderRadius: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Remaining</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#86efac' }}>{featState.remainingCount}</div>
+          </div>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: '1rem',
+          alignItems: 'start'
+        }}>
+          <div>
+            <h6 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>Owned Feats</h6>
+            {featState.chosenFeats.length > 0 ? (
+              <div style={{ display: 'grid', gap: '0.6rem' }}>
+                {featState.chosenFeats.map((feat) => (
+                  <div key={feat.id} style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid rgba(34, 197, 94, 0.35)',
+                    background: 'rgba(34, 197, 94, 0.08)'
+                  }}>
+                    <div style={{ fontWeight: 700, color: 'var(--text-gold)', marginBottom: '0.3rem' }}>
+                      {feat.name} {feat.is_custom ? <span style={{ color: '#93c5fd', fontSize: '0.75rem' }}>(Custom)</span> : null}
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{formatFeatDescription(feat.description)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted" style={{ margin: 0 }}>No feats chosen yet.</p>
+            )}
+          </div>
+
+          <div>
+            <h6 style={{ color: 'var(--text-gold)', marginBottom: '0.5rem' }}>All Available Feats</h6>
+            {featState.availableFeats.length > 0 ? (
+              <div style={{ display: 'grid', gap: '0.6rem' }}>
+                {featState.availableFeats.map((feat) => {
+                  const isChosen = chosenIds.has(Number(feat.id));
+                  const canChoose = featState.remainingCount > 0 && !isChosen;
+                  return (
+                    <div key={feat.id} style={{
+                      padding: '0.75rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '0.75rem'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-gold)', marginBottom: '0.25rem' }}>
+                          {feat.name} {feat.is_custom ? <span style={{ color: '#93c5fd', fontSize: '0.75rem' }}>(Custom)</span> : null}
+                        </div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{formatFeatDescription(feat.description)}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {isChosen ? (
+                          <span style={{ color: '#86efac', fontSize: '0.85rem', fontWeight: 700 }}>Chosen</span>
+                        ) : (
+                          <button
+                            onClick={() => handleChooseFeat(character.id, feat.id)}
+                            disabled={!canChoose}
+                            className="btn btn-secondary"
+                            style={{ opacity: canChoose ? 1 : 0.5, cursor: canChoose ? 'pointer' : 'not-allowed' }}
+                          >
+                            Choose
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-muted" style={{ margin: 0 }}>No feats are available in this campaign yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="container fade-in">
@@ -6064,12 +6323,13 @@ const CampaignView: React.FC = () => {
   ] as const;
 
   const characterTabConfig: Record<
-    'board' | 'sheet' | 'inventory' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others',
+    'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others',
     { label: string; icon: string }
   > = {
     board: { label: 'Overview', icon: '📋' },
     sheet: { label: 'Character Sheet', icon: '📊' },
     inventory: { label: 'Inventory', icon: '🎒' },
+    feats: { label: 'Feats', icon: '🏅' },
     skills: { label: 'Skills', icon: '✨' },
     equip: { label: 'Equipment', icon: '🛡️' },
     armies: { label: 'Armies', icon: '⚔️' },
@@ -6087,9 +6347,18 @@ const CampaignView: React.FC = () => {
     ? (user?.role === 'Dungeon Master' || canViewAllTabs(selectedCharacterData.id) || Number(selectedCharacterData.player_id) === Number(user?.id))
     : false;
 
+  const shouldShowFeatsTab = (characterId: number): boolean => {
+    if (user?.role === 'Dungeon Master') return true;
+    const state = characterFeatStates[characterId];
+    if (!state || (state.remainingCount === 0 && state.chosenFeats.length === 0)) return false;
+    return state.remainingCount > 0 || state.chosenFeats.length > 0;
+  };
+
   const availableCharacterTabs = selectedCharacterData
     ? (isOwnCharacter
-        ? (['board', 'sheet', 'npcs', 'notes', 'inventory', 'skills', 'equip', 'armies', 'mounts', 'pets' as const,
+        ? (['board', 'sheet', 'npcs', 'notes', 'inventory',
+          ...(shouldShowFeatsTab(selectedCharacterData.id) ? ['feats' as const] : []),
+          'skills', 'equip', 'armies', 'mounts', 'pets' as const,
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
             ...(shouldShowShadowsTab(selectedCharacterData) ? ['shadows' as const] : []),
             ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : []),
@@ -9355,44 +9624,13 @@ const CampaignView: React.FC = () => {
                             ref={battlefieldDarknessCanvasRef}
                             style={{
                               position: 'absolute',
-                              top: 0,
-                              left: 0,
+                              inset: 0,
                               width: '100%',
                               height: '100%',
                               pointerEvents: 'none',
-                              zIndex: 998,
+                              zIndex: 401
                             }}
                           />
-
-                          {/* Hover range ring */}
-                          {hoveredBattlefieldParticipantId !== null && activeBattle.participants && (() => {
-                            const hoveredParticipant = activeBattle.participants?.find(p => p.id === hoveredBattlefieldParticipantId);
-                            if (!hoveredParticipant) return null;
-                            const category = getParticipantCategory(hoveredParticipant);
-                            const rangeFeet = getArmyRangeFeet(category);
-                            const rangePercent = rangeFeet / BATTLEFIELD_FEET_PER_PERCENT;
-                            const positionX = hoveredParticipant.position_x ?? 50;
-                            const positionY = hoveredParticipant.position_y ?? 50;
-                            const ringColor = hoveredParticipant.faction_color
-                              || (hoveredParticipant.team_name === 'A' ? '#3b82f6' : '#ef4444');
-                            return (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: `${positionX}%`,
-                                  top: `${positionY}%`,
-                                  width: `${rangePercent * 2}%`,
-                                  height: `${rangePercent * 2}%`,
-                                  transform: 'translate(-50%, -50%)',
-                                  border: `2px dashed ${ringColor}b3`,
-                                  borderRadius: '50%',
-                                  boxShadow: `0 0 56px ${ringColor}b3`,
-                                  pointerEvents: 'none',
-                                  zIndex: 500
-                                }}
-                              />
-                            );
-                          })()}
 
                           {/* Drag distance line */}
                           {draggedArmyParticipant !== null && dragStartPosition && (currentDragPosition || dragStartPosition) && 
@@ -13152,6 +13390,7 @@ const CampaignView: React.FC = () => {
 
                 {activeTab === 'inventory' && canViewAllTabs(selectedCharacterData.id) && renderInventoryTab(selectedCharacterData)}
                 {activeTab === 'equip' && canViewAllTabs(selectedCharacterData.id) && renderEquipTab(selectedCharacterData)}
+                {activeTab === 'feats' && canViewAllTabs(selectedCharacterData.id) && renderFeatsTab(selectedCharacterData)}
                 
                 {/* Skills Tab */}
                 {activeTab === 'skills' && canViewAllTabs(selectedCharacterData.id) && (
@@ -14796,7 +15035,7 @@ const CampaignView: React.FC = () => {
                 )}
 
                 {/* Show access denied message for restricted tabs */}
-                {(activeTab === 'inventory' || activeTab === 'equip' || activeTab === 'armies' || activeTab === 'pets' || activeTab === 'npcs') && !canViewAllTabs(selectedCharacterData.id) && (
+                {(activeTab === 'inventory' || activeTab === 'feats' || activeTab === 'equip' || activeTab === 'armies' || activeTab === 'pets' || activeTab === 'npcs') && !canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
                       <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔒</div>
@@ -15678,6 +15917,92 @@ const CampaignView: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Custom Feat Modal */}
+        {showCreateCustomFeatModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1200,
+            backdropFilter: 'blur(2px)'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(20, 20, 30, 0.98) 0%, rgba(30, 30, 40, 0.98) 100%)',
+              borderRadius: '0.9rem',
+              padding: '1.25rem',
+              width: '92%',
+              maxWidth: '620px',
+              border: '1px solid rgba(var(--theme-accent-rgb), 0.35)'
+            }}>
+              <h4 style={{ color: 'var(--text-gold)', marginTop: 0, marginBottom: '1rem' }}>✍️ Add Custom Feat</h4>
+
+              <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 700 }}>
+                Feat Name
+              </label>
+              <input
+                value={customFeatForm.name}
+                onChange={(e) => setCustomFeatForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Enter feat name"
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  marginBottom: '0.8rem',
+                  borderRadius: '0.45rem',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: 'white'
+                }}
+              />
+
+              <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-gold)', fontSize: '0.85rem', fontWeight: 700 }}>
+                Description
+              </label>
+              <textarea
+                value={customFeatForm.description}
+                onChange={(e) => setCustomFeatForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe the custom feat"
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  marginBottom: '1rem',
+                  borderRadius: '0.45rem',
+                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: 'white',
+                  resize: 'vertical'
+                }}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
+                <button
+                  onClick={() => {
+                    setShowCreateCustomFeatModal(false);
+                    setCustomFeatForm({ name: '', description: '' });
+                  }}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCustomFeat}
+                  className="btn btn-primary"
+                  disabled={createCustomFeatLoading}
+                  style={{ opacity: createCustomFeatLoading ? 0.7 : 1 }}
+                >
+                  {createCustomFeatLoading ? 'Saving...' : 'Save Feat'}
+                </button>
               </div>
             </div>
           </div>

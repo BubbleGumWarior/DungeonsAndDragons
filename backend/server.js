@@ -357,6 +357,7 @@ const startServer = async () => {
         { name: 'addAllyCombatant', fn: require('./migrations/add_ally_combatant') },
         { name: 'addCharacterNotes', fn: require('./migrations/add_character_notes') },
         { name: 'addCampaignGoals', fn: require('./migrations/add_campaign_goals') },
+        { name: 'addCampaignFeatsSystem', fn: require('./migrations/add_campaign_feats_system') },
         { name: 'addProficienciesToCharacters', fn: require('./migrations/add_proficiencies_to_characters') },
         { name: 'addCharacterGold', fn: require('./migrations/add_character_gold') },
         { name: 'rebalanceArmorAc', fn: require('./migrations/rebalance_armor_ac') },

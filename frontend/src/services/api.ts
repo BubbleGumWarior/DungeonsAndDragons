@@ -211,6 +211,36 @@ export interface Skill {
   created_at: string;
 }
 
+export interface FeatCatalogItem {
+  id: number;
+  campaign_id: number;
+  name: string;
+  description: string;
+  is_custom: boolean;
+  created_by_user_id?: number | null;
+  created_at: string;
+}
+
+export interface CharacterFeatChoice {
+  id: number;
+  feat_id: number;
+  picked_at: string;
+  name: string;
+  description: string;
+  is_custom: boolean;
+}
+
+export interface CharacterFeatState {
+  characterId: number;
+  campaignId: number;
+  playerId: number;
+  grantedCount: number;
+  usedCount: number;
+  remainingCount: number;
+  availableFeats: FeatCatalogItem[];
+  chosenFeats: CharacterFeatChoice[];
+}
+
 export interface Beast {
   id: number;
   character_id: number;
@@ -569,6 +599,26 @@ export const characterAPI = {
 
   setConcealedClass: async (characterId: number, concealedClass: string | null): Promise<{ message: string; concealedClass: string | null }> => {
     const response = await api.put(`/characters/${characterId}/concealed-class`, { concealedClass });
+    return response.data;
+  },
+
+  getFeats: async (characterId: number): Promise<CharacterFeatState> => {
+    const response = await api.get(`/characters/${characterId}/feats`);
+    return response.data;
+  },
+
+  grantFeatToAll: async (campaignId: number): Promise<{ message: string; campaignId: number; characterCount: number; grantAmount: number }> => {
+    const response = await api.post(`/characters/campaign/${campaignId}/feats/grant-all`);
+    return response.data;
+  },
+
+  createCustomFeat: async (campaignId: number, data: { name: string; description: string }): Promise<{ message: string; feat: FeatCatalogItem }> => {
+    const response = await api.post(`/characters/campaign/${campaignId}/feats/custom`, data);
+    return response.data;
+  },
+
+  chooseFeat: async (characterId: number, featId: number): Promise<{ message: string; feat: CharacterFeatChoice }> => {
+    const response = await api.post(`/characters/${characterId}/feats/choose`, { featId });
     return response.data;
   }
 };
