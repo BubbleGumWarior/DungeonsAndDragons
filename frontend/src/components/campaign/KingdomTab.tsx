@@ -3321,7 +3321,7 @@ const KingdomTab: React.FC<Props> = ({
                               groupsByKey.set(groupKey, { rep: b, ids: [Number(b.id)] });
                             }
                           }
-                          const groups = [...groupsByKey.values()].sort((a, b) => String(a.rep.name || '').localeCompare(String(b.rep.name || '')));
+                          const groups = Array.from(groupsByKey.values()).sort((a, b) => String(a.rep.name || '').localeCompare(String(b.rep.name || '')));
 
                           return groups.map(({ rep: b, ids }) => {
                             const upgrade = upgradeByBuildingId.get(Number(b.id));
