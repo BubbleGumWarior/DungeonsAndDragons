@@ -44,11 +44,21 @@ const VEGETABLE_HARVEST_PER_WORKER_PER_DAY = 9.375;
 
 // Must stay in sync with Campaign.MEAT_BUILDING_CHAIN / VEG_BUILDING_CHAIN on the backend.
 const MEAT_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
+  { type: 'great_hunters_keep',     rate: 2.95, capacity: 20 },
+  { type: 'warden_lodge',           rate: 2.75, capacity: 20 },
+  { type: 'beastmaster_hall',       rate: 2.55, capacity: 20 },
+  { type: 'ranger_hall',            rate: 2.35, capacity: 20 },
+  { type: 'tracker_lodge',          rate: 2.15, capacity: 20 },
   { type: 'hunters_lodge_advanced', rate: 1.95, capacity: 20 },
   { type: 'hunting_lodge',          rate: 1.73, capacity: 20 },
   { type: 'hunters_guild',          rate: 1.5,  capacity: 20 },
 ];
 const VEG_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
+  { type: 'hydroponic_conservatory', rate: 4.10, capacity: 20 },
+  { type: 'greenhouse_complex',      rate: 3.80, capacity: 20 },
+  { type: 'fertile_estates',         rate: 3.50, capacity: 20 },
+  { type: 'orchard_farms',           rate: 3.20, capacity: 20 },
+  { type: 'terrace_fields',          rate: 2.90, capacity: 20 },
   { type: 'farm_advanced',  rate: 2.60, capacity: 20 },
   { type: 'irrigated_farm', rate: 2.30, capacity: 20 },
   { type: 'farm',           rate: 2.0,  capacity: 20 },
@@ -142,13 +152,16 @@ const LEGENDARY_BONUS_LABELS: Record<string, string> = {
   building_bonus_pct: 'Building',
   population_growth_bonus_pct: 'Population Growth',
   food_consumption_reduction_pct: 'Food Use Reduction',
+  unit_training_speed_reduction_pct: 'Unit Training Speed',
 };
 
 const formatLegendaryBonus = (key: string, value: number) => {
   const label = LEGENDARY_BONUS_LABELS[key] || key;
-  const isReduction = key === 'food_consumption_reduction_pct';
-  const sign = isReduction ? '-' : (value >= 0 ? '+' : '');
-  return `${label}: ${sign}${Math.abs(Number(value || 0)).toFixed(2)}%`;
+  const numValue = Number(value || 0);
+  // Reduction-style stats are inverted: a positive value reduces (shown as "-"), negative worsens (shown as "+").
+  const isReduction = key === 'food_consumption_reduction_pct' || key === 'unit_training_speed_reduction_pct';
+  const sign = isReduction ? (numValue >= 0 ? '-' : '+') : (numValue >= 0 ? '+' : '-');
+  return `${label}: ${sign}${Math.abs(numValue).toFixed(2)}%`;
 };
 
 const PRAYER_EFFECT_LABELS: Record<string, string> = {
@@ -235,17 +248,17 @@ const BUILD_TAB_COLORS: Record<BuildTabId, { text: string; border: string; backg
 const getBuildingCategory = (building: any): BuildTabId => {
   const key = String(building?.key || building?.building_type || '').trim();
   // Food
-  if (['farm', 'irrigated_farm', 'farm_advanced', 'hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced'].includes(key)) return 'food';
+  if (['farm', 'irrigated_farm', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'].includes(key)) return 'food';
   // Wood
-  if (['lumber_mill'].includes(key)) return 'wood';
+  if (['lumber_mill', 'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works'].includes(key)) return 'wood';
   // Stone & Mining (includes smithy/forge chain)
-  if (['quarry', 'quarry_advanced', 'mine', 'mine_advanced', 'smithy', 'forge', 'master_smithy', 'royal_forge', 'grand_forge', 'war_smithy', 'imperial_forge'].includes(key)) return 'stone';
+  if (['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry', 'mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine', 'smithy', 'forge', 'master_smithy', 'royal_forge', 'grand_forge', 'war_smithy', 'imperial_forge'].includes(key)) return 'stone';
   // Research
-  if (['research_lab', 'research_lab_advanced'].includes(key)) return 'research';
+  if (['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'].includes(key)) return 'research';
   // Faith
-  if (key === 'faith_temple') return 'faith';
+  if (['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'].includes(key)) return 'faith';
   // Storage & Housing
-  if (['housing', 'wood_lodge', 'storage', 'storage_shack', 'storage_advanced', 'granary', 'builders_hut'].includes(key)) return 'storage';
+  if (['housing', 'wood_lodge', 'reinforced_lodge', 'stone_lodge', 'longhouse_block', 'manor_house', 'townhouse_row', 'urban_residence', 'noble_residence', 'royal_estate', 'storage', 'storage_shack', 'advanced_storage_tent', 'storehouse', 'reinforced_storehouse', 'central_storehouse', 'storage_advanced', 'vaulted_warehouse', 'granary', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'builders_hut', 'masons_workshop', 'engineers_lodge', 'construction_guildhall', 'master_builder_hall', 'grand_architect_hall'].includes(key)) return 'storage';
   // Military
   if (['militia_camp', 'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
        'stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables',
@@ -344,11 +357,11 @@ const KingdomTab: React.FC<Props> = ({
   // Keep a ref in sync so socket handlers always read the latest value without needing re-registration
   const [fiefDetails, setFiefDetails] = useState<KingdomFief | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; message: string; tone: 'error' | 'success' | 'info' }[]>([]);
   const toastIdRef = React.useRef(0);
-  const pushToast = React.useCallback((message: string) => {
+  const pushToast = React.useCallback((message: string, tone: 'error' | 'success' | 'info' = 'error') => {
     const id = ++toastIdRef.current;
-    setToasts(prev => [...prev, { id, message }]);
+    setToasts(prev => [...prev, { id, message, tone }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
@@ -410,7 +423,13 @@ const KingdomTab: React.FC<Props> = ({
     building_bonus_pct: 0,
     population_growth_bonus_pct: 0,
     food_consumption_reduction_pct: 0,
+    unit_training_speed_reduction_pct: 0,
   });
+  const [selectedTrainUnitType, setSelectedTrainUnitType] = useState('Militia');
+  const [trainUnitsAmount, setTrainUnitsAmount] = useState('1');
+  const [upgradeAmountByUnit, setUpgradeAmountByUnit] = useState<Record<string, string>>({});
+  const [dmUnitAdjustType, setDmUnitAdjustType] = useState('Militia');
+  const [dmUnitAdjustAmount, setDmUnitAdjustAmount] = useState('1');
   const [legendaryAssignFief, setLegendaryAssignFief] = useState<Record<number, number>>({});
   const [prayerTargetFiefId, setPrayerTargetFiefId] = useState<number | null>(null);
   const [tradeSourceFiefId, setTradeSourceFiefId] = useState<number | null>(null);
@@ -887,7 +906,7 @@ const KingdomTab: React.FC<Props> = ({
     0,
     Number(storedResources.food || 0) + Number(storedResources.meat || 0) + Number(storedResources.vegetables || 0)
   );
-  const directFoodReductionPct = Math.max(0, Number((fiefDetails?.legendary_bonuses || {}).food_consumption_reduction_pct || 0));
+  const directFoodReductionPct = Number((fiefDetails?.legendary_bonuses || {}).food_consumption_reduction_pct || 0);
   const directFoodConsumptionMultiplier = Math.max(0, 1 - (directFoodReductionPct / 100));
   const baseDailyFoodConsumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
     + (slaves + prisoners) * 0.5;
@@ -900,13 +919,15 @@ const KingdomTab: React.FC<Props> = ({
     // Fallback: compute from buildings if API field not present
     const completedBuildings = (fiefDetails?.buildings || []).filter((b: any) => Boolean(b?.is_complete));
     const completedResearch: string[] = fiefDetails?.completed_research || [];
-    const done = new Set(completedResearch.map(String));
-    const perBuilding = done.has('tier3_housing') ? 12 : done.has('tier2_housing') ? 8 : 4;
-    const count = completedBuildings.filter((b: any) => {
+    const HOUSING_CAPACITY_BY_TYPE: Record<string, number> = {
+      housing: 4, wood_lodge: 8, reinforced_lodge: 12, stone_lodge: 16, longhouse_block: 20,
+      manor_house: 24, townhouse_row: 28, urban_residence: 32, noble_residence: 36, royal_estate: 40,
+    };
+    void completedResearch;
+    return completedBuildings.reduce((sum: number, b: any) => {
       const t = String(b?.building_type || '');
-      return t === 'housing' || t === 'wood_lodge';
-    }).length;
-    return count * perBuilding;
+      return sum + (HOUSING_CAPACITY_BY_TYPE[t] || 0);
+    }, 0);
   }, [fiefDetails?.housing_capacity, fiefDetails?.buildings, fiefDetails?.completed_research]);
   const hasPrisonInfrastructure = Boolean(
     (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && [
@@ -925,7 +946,7 @@ const KingdomTab: React.FC<Props> = ({
       .reduce((sum: number, b: any) => sum + (PRISON_CAPS_BY_TYPE[String(b?.building_type || '')] || 0), 0);
   }, [fiefDetails?.prisoner_capacity, fiefDetails?.buildings, PRISON_CAPS_BY_TYPE]);
   const hasMilitiaBuilding = Boolean(
-    (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && ['militia_camp', 'militia_barracks', 'veteran_barracks'].includes(String(b?.building_type)))
+    (fiefDetails?.trainable_unit_types || []).length > 0 || Object.keys(fiefDetails?.unit_reserves || {}).length > 0
   );
 
   const maturationSchedule = useMemo(() => {
@@ -1168,7 +1189,7 @@ const KingdomTab: React.FC<Props> = ({
     output.building = applyLegendaryBonus('building', applyAllModifiers('building', output.building));
 
     const foodTotal = output.vegetables + output.meat;
-    const foodConsumptionReductionPct = Math.max(0, Number(fiefLegendaryBonuses.food_consumption_reduction_pct || 0));
+    const foodConsumptionReductionPct = Number(fiefLegendaryBonuses.food_consumption_reduction_pct || 0);
     const consumptionMultiplier = Math.max(0, 1 - (foodConsumptionReductionPct / 100));
     const consumption = (
       totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
@@ -1310,13 +1331,13 @@ const KingdomTab: React.FC<Props> = ({
     }
 
     if (!changed) {
-      pushToast(canClearVegetables ? 'No citizen workers are currently assigned.' : 'No removable citizen workers are currently assigned.');
+      pushToast(canClearVegetables ? 'No citizen workers are currently assigned.' : 'No removable citizen workers are currently assigned.', 'info');
       return;
     }
 
     await submitWorkers(next);
     if (!canClearVegetables && Math.max(0, Number(current.vegetables || 0)) > 0) {
-      pushToast('Cleared all available citizen lanes. Vegetable workers stay locked until assignment phase.');
+      pushToast('Cleared all available citizen lanes. Vegetable workers stay locked until assignment phase.', 'success');
     }
   };
 
@@ -1340,22 +1361,115 @@ const KingdomTab: React.FC<Props> = ({
     await submitSlaveWorkers(next);
   };
 
+  useEffect(() => {
+    const trainable = fiefDetails?.trainable_unit_types || [];
+    if (trainable.length > 0 && !trainable.includes(selectedTrainUnitType)) {
+      setSelectedTrainUnitType(trainable[0]);
+    }
+  }, [fiefDetails?.trainable_unit_types, selectedTrainUnitType]);
+
   const trainSoldiers = async () => {
     if (!fiefDetails) return;
-    const input = window.prompt('How many unassigned adults should train as soldiers?', '1');
-    if (input == null) return;
-    const amount = Math.max(0, Math.floor(Number(input) || 0));
+    const amount = Math.max(0, Math.floor(Number(trainUnitsAmount) || 0));
     if (amount <= 0) {
       pushToast('Enter a positive whole number.');
       return;
     }
 
+    const unitType = String(selectedTrainUnitType || 'Militia').trim();
+    if (!unitType) {
+      pushToast('Select a unit type to train.');
+      return;
+    }
+
     setBusy('train-soldiers');
     try {
-      await kingdomAPI.trainSoldiers(Number(fiefDetails.id), amount);
+      await kingdomAPI.trainUnits(Number(fiefDetails.id), unitType, amount);
+      await fetchFief(Number(fiefDetails.id));
+      setTrainUnitsAmount('1');
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to queue unit training');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const collectTrainedUnits = async () => {
+    if (!fiefDetails) return;
+    setBusy('collect-units');
+    try {
+      const result = await kingdomAPI.collectTrainedUnits(Number(fiefDetails.id));
+      if (Number(result?.collected || 0) > 0) {
+        pushToast(`Collected ${Number(result.collected)} trained units.`, 'success');
+      } else {
+        pushToast('No completed units to collect yet.', 'info');
+      }
       await fetchFief(Number(fiefDetails.id));
     } catch (e: any) {
-      pushToast(e?.response?.data?.error || 'Failed to train soldiers');
+      pushToast(e?.response?.data?.error || 'Failed to collect trained units');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const upgradeMilitiaUnits = async (fromUnitType: string, amount: number) => {
+    if (!fiefDetails) return;
+    if (amount <= 0) {
+      pushToast('Enter a positive whole number.');
+      return;
+    }
+    if (!fromUnitType) {
+      pushToast('Choose a unit to upgrade.');
+      return;
+    }
+
+    setBusy(`upgrade-units-${fromUnitType}`);
+    try {
+      await kingdomAPI.upgradeUnit(Number(fiefDetails.id), fromUnitType, amount);
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to queue unit upgrade');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const dmAdjustUnits = async (direction: 1 | -1) => {
+    if (!fiefDetails || !isDungeonMaster) return;
+    const amount = Math.max(0, Math.floor(Number(dmUnitAdjustAmount) || 0));
+    if (amount <= 0) {
+      pushToast('Enter a positive whole number.');
+      return;
+    }
+    const unitType = String(dmUnitAdjustType || '').trim();
+    if (!unitType) {
+      pushToast('Choose a unit type first.');
+      return;
+    }
+
+    setBusy('dm-adjust-units');
+    try {
+      await kingdomAPI.adjustUnitReserves(Number(fiefDetails.id), unitType, direction * amount);
+      await fetchFief(Number(fiefDetails.id));
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to adjust units');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const adjustBuildingGuardsDirect = async (buildingType: string, unitType: string, delta: number) => {
+    if (!fiefDetails) return;
+    const normalizedType = String(unitType || '').trim();
+    if (!normalizedType || delta === 0) return;
+
+    setBusy(`guards-${buildingType}`);
+    try {
+      await kingdomAPI.adjustBuildingGuards(Number(fiefDetails.id), buildingType, normalizedType, delta);
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to update guard assignment');
     } finally {
       setBusy(null);
     }
@@ -1516,7 +1630,7 @@ const KingdomTab: React.FC<Props> = ({
       await kingdomAPI.giveBirth(Number(fiefDetails.id));
       await fetchFief(Number(fiefDetails.id));
       await fetchKingdoms();
-      pushToast('A child was born!');
+      pushToast('A child was born!', 'success');
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to give birth');
     } finally {
@@ -1604,6 +1718,7 @@ const KingdomTab: React.FC<Props> = ({
           building_bonus_pct: Number(legendaryForm.building_bonus_pct || 0),
           population_growth_bonus_pct: Number(legendaryForm.population_growth_bonus_pct || 0),
           food_consumption_reduction_pct: Number(legendaryForm.food_consumption_reduction_pct || 0),
+          unit_training_speed_reduction_pct: Number(legendaryForm.unit_training_speed_reduction_pct || 0),
         },
       };
 
@@ -1623,6 +1738,7 @@ const KingdomTab: React.FC<Props> = ({
         building_bonus_pct: 0,
         population_growth_bonus_pct: 0,
         food_consumption_reduction_pct: 0,
+        unit_training_speed_reduction_pct: 0,
       });
       await fetchKingdomManagementData();
     } catch (e: any) {
@@ -1792,11 +1908,18 @@ const KingdomTab: React.FC<Props> = ({
 
       {toasts.length > 0 && ReactDOM.createPortal(
         <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
-          {toasts.map(t => (
-            <div key={t.id} style={{ padding: '0.65rem 1rem', borderRadius: '0.45rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.92)', color: '#fca5a5', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', maxWidth: '22rem', fontSize: '0.9rem' }}>
-              {t.message}
-            </div>
-          ))}
+          {toasts.map(t => {
+            const toneStyles = t.tone === 'success'
+              ? { border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.92)', color: '#86efac' }
+              : t.tone === 'info'
+                ? { border: '1px solid rgba(59,130,246,0.45)', background: 'rgba(30,58,138,0.92)', color: '#bfdbfe' }
+                : { border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.92)', color: '#fca5a5' };
+            return (
+              <div key={t.id} style={{ padding: '0.65rem 1rem', borderRadius: '0.45rem', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', maxWidth: '22rem', fontSize: '0.9rem', ...toneStyles }}>
+                {t.message}
+              </div>
+            );
+          })}
         </div>,
         document.body
       )}
@@ -2607,7 +2730,45 @@ const KingdomTab: React.FC<Props> = ({
               {hasMilitiaBuilding && (
               <div style={{ padding: '0.8rem', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '0.6rem', background: 'rgba(8,47,73,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ color: '#93c5fd', fontWeight: 700 }}>Militia & Soldiers</div>
+                  <div style={{ color: '#93c5fd', fontWeight: 700 }}>Militia & Unit Training</div>
+                  <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
+                </div>
+
+                <div style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.45rem', alignItems: 'end' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
+                    Unit Type
+                    <select
+                      value={selectedTrainUnitType}
+                      onChange={(e) => setSelectedTrainUnitType(String(e.target.value || 'Militia'))}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                    >
+                      {(fiefDetails?.trainable_unit_types || []).length === 0 ? (
+                        <option value="">No units unlocked yet</option>
+                      ) : (
+                        (fiefDetails?.trainable_unit_types || []).map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))
+                      )}
+                    </select>
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
+                    Amount
+                    <input
+                      type="number"
+                      min={1}
+                      value={trainUnitsAmount}
+                      onChange={(e) => setTrainUnitsAmount(e.target.value)}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                    />
+                  </label>
+                  <div style={{ color: '#93c5fd', fontSize: '0.75rem' }}>
+                    {(() => {
+                      const speedPct = Math.min(90, Number((fiefDetails?.legendary_bonuses || {}).unit_training_speed_reduction_pct || 0));
+                      return speedPct >= 0
+                        ? `Speed bonus: -${speedPct.toFixed(1)}%`
+                        : `Speed penalty: +${Math.abs(speedPct).toFixed(1)}%`;
+                    })()}
+                  </div>
                   <button
                     onClick={trainSoldiers}
                     disabled={busy === 'train-soldiers' || unassignedAdults <= 0}
@@ -2622,13 +2783,233 @@ const KingdomTab: React.FC<Props> = ({
                       opacity: (busy === 'train-soldiers' || unassignedAdults <= 0) ? 0.6 : 1,
                     }}
                   >
-                    {busy === 'train-soldiers' ? 'Training...' : 'Train Soldiers'}
+                    {busy === 'train-soldiers' ? 'Queueing...' : 'Queue Training'}
                   </button>
                 </div>
-                <div style={{ marginTop: '0.55rem', color: '#cbd5e1', fontSize: '0.9rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                  <span>Standing soldiers: {soldiers}</span>
-                  <span>Unassigned adults: {unassignedAdults}</span>
+
+                <div style={{ marginTop: '0.65rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={collectTrainedUnits}
+                    disabled={busy === 'collect-units'}
+                    style={{ padding: '0.25rem 0.55rem', borderRadius: '0.35rem', border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {busy === 'collect-units' ? 'Collecting...' : 'Collect Completed Units'}
+                  </button>
                 </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training (Per Unit Timers)</div>
+                  {(fiefDetails?.training_queue || []).length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No units currently in training.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {(fiefDetails?.training_queue || []).map((row) => {
+                        const isReady = String(row.status || '').toLowerCase() === 'ready';
+                        return (
+                          <div
+                            key={row.id}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1.4fr 0.9fr 0.9fr 1.2fr',
+                              gap: '0.4rem',
+                              alignItems: 'center',
+                              padding: '0.3rem 0.4rem',
+                              borderRadius: '0.35rem',
+                              background: isReady ? 'rgba(20,83,45,0.35)' : 'rgba(15,23,42,0.45)',
+                              border: isReady ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(148,163,184,0.18)',
+                              boxShadow: isReady ? 'inset 0 0 0 1px rgba(34,197,94,0.25)' : undefined,
+                            }}
+                          >
+                            <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600 }}>{row.unit_type}</span>
+                            <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>#{row.id}</span>
+                            <span style={{ color: isReady ? '#86efac' : '#bfdbfe', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
+                              {isReady ? 'Ready to collect' : row.status}
+                            </span>
+                            <span style={{ color: isReady ? '#bbf7d0' : '#93c5fd', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
+                              {isReady ? 'Collect now' : `${Math.max(0, Number(row.days_remaining || 0))}d left`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Reserve Units</div>
+                  {Object.keys(fiefDetails?.unit_reserves || {}).length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units available yet.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {Object.entries(fiefDetails?.unit_reserves || {}).map(([unit, amount]) => (
+                        <span key={unit} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.28rem', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '0.35rem', padding: '0.15rem 0.45rem', background: 'rgba(30,58,138,0.2)', color: '#bfdbfe', fontSize: '0.76rem' }}>
+                          <strong style={{ color: '#e2e8f0' }}>{unit}</strong>
+                          <span>{Math.max(0, Number(amount || 0))}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Upgrade Units</div>
+                  {(fiefDetails?.upgradable_units || []).length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units are eligible for an upgrade yet.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {(fiefDetails?.upgradable_units || []).map((u) => {
+                        const amountKey = u.unit_type;
+                        const amount = upgradeAmountByUnit[amountKey] || '1';
+                        const busyKey = `upgrade-units-${u.unit_type}`;
+                        return (
+                          <div key={u.unit_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                              <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
+                              <span style={{ color: u.unlocked ? '#86efac' : '#fca5a5', fontSize: '0.72rem' }}>
+                                {u.unlocked ? `${u.next_base_days}d training` : `Requires ${u.required_building_type || 'higher tier building'}`}
+                              </span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.35rem', alignItems: 'end' }}>
+                              <input
+                                type="number"
+                                min={1}
+                                max={u.available}
+                                value={amount}
+                                onChange={(e) => setUpgradeAmountByUnit((prev) => ({ ...prev, [amountKey]: e.target.value }))}
+                                style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                              />
+                              <button
+                                onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)))}
+                                disabled={!u.unlocked || busy === busyKey}
+                                style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(59,130,246,0.45)', background: 'rgba(30,64,175,0.35)', color: '#bfdbfe', fontWeight: 700, cursor: 'pointer', opacity: (!u.unlocked || busy === busyKey) ? 0.55 : 1 }}
+                              >
+                                {busy === busyKey ? 'Queueing...' : `Upgrade (${u.available} available)`}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Defensive Guards</div>
+                  {(fiefDetails?.guard_assignments || []).length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No eligible defensive buildings with guard capacity.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {(fiefDetails?.guard_assignments || []).map((g) => {
+                        const pct = g.capacity > 0 ? Math.min(1, g.assigned_total / g.capacity) : 0;
+                        const barColor = pct >= 1 ? '#ef4444' : pct >= 0.75 ? '#fbbf24' : '#22c55e';
+                        const reserveEntries = Object.entries(fiefDetails?.unit_reserves || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
+                        const assignedEntries = Object.entries(g.assigned_by_type || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
+                        const remainingCapacity = Math.max(0, g.capacity - g.assigned_total);
+                        return (
+                          <div key={g.building_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.5rem', background: 'rgba(15,23,42,0.45)', padding: '0.55rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                              <span style={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>{g.building_name}</span>
+                              <span style={{ color: barColor, fontSize: '0.75rem', fontWeight: 700 }}>{g.assigned_total} / {g.capacity} guards</span>
+                            </div>
+                            <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: '0.55rem' }}>
+                              <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                              {/* Left: unassigned reserves available to post here */}
+                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Unassigned Reserves</div>
+                                {reserveEntries.length === 0 ? (
+                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No reserve units available.</div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    {reserveEntries.map(([unit, count]) => (
+                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
+                                        <span style={{ color: '#cbd5e1', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                        <button
+                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, 1)}
+                                          disabled={busy === `guards-${g.building_type}` || remainingCapacity <= 0}
+                                          title={remainingCapacity <= 0 ? 'Post is at capacity' : `Assign 1 ${unit}`}
+                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: (busy === `guards-${g.building_type}` || remainingCapacity <= 0) ? 0.5 : 1 }}
+                                        >
+                                          Assign →
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Right: units currently posted here */}
+                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Assigned Here</div>
+                                {assignedEntries.length === 0 ? (
+                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No units posted yet.</div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    {assignedEntries.map(([unit, count]) => (
+                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
+                                        <span style={{ color: '#bfdbfe', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                        <button
+                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, -1)}
+                                          disabled={busy === `guards-${g.building_type}`}
+                                          title={`Unassign 1 ${unit}`}
+                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: busy === `guards-${g.building_type}` ? 0.5 : 1 }}
+                                        >
+                                          ← Unassign
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {isDungeonMaster && (
+                  <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                    <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>DM Unit Controls (Population Unchanged)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto auto', gap: '0.35rem', alignItems: 'end' }}>
+                      <select
+                        value={dmUnitAdjustType}
+                        onChange={(e) => setDmUnitAdjustType(String(e.target.value || 'Militia'))}
+                        style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                      >
+                        <option value="Militia">Militia</option>
+                        <option value="Archer">Archer</option>
+                        <option value="Man-at-Arms">Man-at-Arms</option>
+                        <option value="Guard">Guard</option>
+                        <option value="Knight">Knight</option>
+                      </select>
+                      <input
+                        type="number"
+                        min={1}
+                        value={dmUnitAdjustAmount}
+                        onChange={(e) => setDmUnitAdjustAmount(e.target.value)}
+                        style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                      />
+                      <button
+                        onClick={() => dmAdjustUnits(1)}
+                        disabled={busy === 'dm-adjust-units'}
+                        style={{ padding: '0.25rem 0.45rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        + Add
+                      </button>
+                      <button
+                        onClick={() => dmAdjustUnits(-1)}
+                        disabled={busy === 'dm-adjust-units'}
+                        style={{ padding: '0.25rem 0.45rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        - Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               )}
 
@@ -2924,13 +3305,31 @@ const KingdomTab: React.FC<Props> = ({
                         {BUILD_TAB_LABELS[category]}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '0.6rem' }}>
-                        {[...buildingsInCategory].sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || ''))).map((b: any) => (
-                          (() => {
+                        {(() => {
+                          // Group identical tiles (same type, tier/level and construction status) and show a count badge instead of one tile per building.
+                          const groupsByKey = new Map<string, { rep: any; ids: number[] }>();
+                          for (const b of buildingsInCategory) {
+                            const groupKey = [
+                              String(b.building_type),
+                              Number(b.level || 1),
+                              b.is_complete ? 'done' : `building:${Number(b.days_remaining || 0)}`,
+                            ].join('|');
+                            const existing = groupsByKey.get(groupKey);
+                            if (existing) {
+                              existing.ids.push(Number(b.id));
+                            } else {
+                              groupsByKey.set(groupKey, { rep: b, ids: [Number(b.id)] });
+                            }
+                          }
+                          const groups = [...groupsByKey.values()].sort((a, b) => String(a.rep.name || '').localeCompare(String(b.rep.name || '')));
+
+                          return groups.map(({ rep: b, ids }) => {
                             const upgrade = upgradeByBuildingId.get(Number(b.id));
+                            const count = ids.length;
 
                             return (
                               <div
-                                key={Number(b.id)}
+                                key={ids.join(',')}
                                 onMouseEnter={b.is_complete ? (e) => {
                                   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                                   setHoveredBuilding({ building: b, x: rect.left, y: rect.bottom + 6 });
@@ -2946,8 +3345,30 @@ const KingdomTab: React.FC<Props> = ({
                                   flexDirection: 'column',
                                   gap: '0.16rem',
                                   cursor: b.is_complete ? 'default' : undefined,
+                                  position: 'relative',
                                 }}
                               >
+                                {count > 1 && (
+                                  <span style={{
+                                    position: 'absolute',
+                                    top: '-0.4rem',
+                                    right: '-0.4rem',
+                                    background: 'var(--text-gold)',
+                                    color: '#1c1206',
+                                    borderRadius: '999px',
+                                    minWidth: '1.3rem',
+                                    height: '1.3rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 800,
+                                    padding: '0 0.3rem',
+                                    boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+                                  }}>
+                                    ×{count}
+                                  </span>
+                                )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
                                   <span style={{ color: '#e2e8f0', fontSize: '0.9rem', fontWeight: 700 }}>{b.name}</span>
                                   {upgrade && (
@@ -2980,7 +3401,8 @@ const KingdomTab: React.FC<Props> = ({
                                         fontWeight: 700,
                                       }}
                                     >
-                                      {busy === `upgrade-building-${Number(b.id)}` ? '...' : '↑ Upgrade'}
+                                      {/* Upgrade always targets a single building's id — grouping never lets one upgrade affect the whole stack. */}
+                                      {busy === `upgrade-building-${Number(b.id)}` ? '...' : (count > 1 ? '↑ Upgrade 1' : '↑ Upgrade')}
                                     </button>
                                   )}
                                 </div>
@@ -2988,10 +3410,15 @@ const KingdomTab: React.FC<Props> = ({
                                 <span style={{ fontSize: '0.8rem', color: b.is_complete ? '#86efac' : 'var(--text-gold)' }}>
                                   {b.is_complete ? 'Completed' : `${Number(b.days_remaining || 0)} day(s) remaining`}
                                 </span>
+                                {count > 1 && upgrade && (
+                                  <span style={{ color: '#64748b', fontSize: '0.68rem', fontStyle: 'italic' }}>
+                                    Upgrades 1 of {count} — cost applies once
+                                  </span>
+                                )}
                               </div>
                             );
-                          })()
-                        ))}
+                          });
+                        })()}
                       </div>
                     </div>
                   );
@@ -3407,6 +3834,7 @@ const KingdomTab: React.FC<Props> = ({
                   ['building_bonus_pct', 'Building %'],
                   ['population_growth_bonus_pct', 'Pop Growth %'],
                   ['food_consumption_reduction_pct', 'Food Use Reduction %'],
+                  ['unit_training_speed_reduction_pct', 'Unit Training Speed Reduction %'],
                 ].map(([key, label]) => (
                   <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', color: '#cbd5e1', fontSize: '0.76rem' }}>
                     {label}

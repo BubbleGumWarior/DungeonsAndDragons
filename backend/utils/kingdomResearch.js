@@ -37,7 +37,7 @@ const RESEARCH_CATALOG = {
   tier3_housing: {
     id: 'tier3_housing',
     name: 'Tier 3 Housing',
-    description: 'Unlock Wooden Lodges (Tier 3 housing structures).',
+    description: 'Unlock Reinforced Lodges (Tier 3 housing structures, +12 pop each). Upgrade your Wooden Lodges to build them.',
     pointsRequired: 150,
     tierRequired: 3,
     prerequisites: ['tier2_housing'],

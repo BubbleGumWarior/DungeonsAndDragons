@@ -252,12 +252,12 @@ const BUILDING_CATALOG = {
   storage_advanced: {
     key: 'storage_advanced',
     name: 'Advanced Warehouse',
-    description: 'Adds +300 storage capacity. The highest single-building storage bonus available.',
-    tierRequired: 3,
-    cost: { wood: 32, stone: 24, iron: 12 },
-    days: 4,
+    description: 'Adds +700 storage capacity.',
+    tierRequired: 7,
+    cost: { wood: 50, stone: 40, iron: 16 },
+    days: 7,
     resourceOutput: {},
-    prerequisites: [{ type: 'granary', minCount: 1 }],
+    prerequisites: [{ type: 'central_storehouse', minCount: 1 }],
   },
   quarry_advanced: {
     key: 'quarry_advanced',
@@ -1310,6 +1310,450 @@ Object.assign(BUILDING_CATALOG, {
   },
 });
 
+Object.assign(BUILDING_CATALOG, {
+  // ── Housing tiers 3-10 (matches BUILDING_TIER_MATRIX.md) ──────────────────
+  reinforced_lodge: {
+    key: 'reinforced_lodge', name: 'Reinforced Lodge',
+    description: 'Adds +12 population capacity per building (requires Tier 3 Housing research). Stacks with other housing.',
+    tierRequired: 3, cost: { wood: 22, stone: 14, iron: 6 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'wood_lodge', minCount: 1 }],
+  },
+  stone_lodge: {
+    key: 'stone_lodge', name: 'Stone Lodge',
+    description: 'Adds +16 population capacity per building. Stacks with other housing.',
+    tierRequired: 4, cost: { wood: 28, stone: 20, iron: 10 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'reinforced_lodge', minCount: 1 }],
+  },
+  longhouse_block: {
+    key: 'longhouse_block', name: 'Longhouse Block',
+    description: 'Adds +20 population capacity per building. Stacks with other housing.',
+    tierRequired: 5, cost: { wood: 34, stone: 26, iron: 14 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'stone_lodge', minCount: 1 }],
+  },
+  manor_house: {
+    key: 'manor_house', name: 'Manor House',
+    description: 'Adds +24 population capacity per building. Stacks with other housing.',
+    tierRequired: 6, cost: { wood: 40, stone: 32, iron: 18 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'longhouse_block', minCount: 1 }],
+  },
+  townhouse_row: {
+    key: 'townhouse_row', name: 'Townhouse Row',
+    description: 'Adds +28 population capacity per building. Stacks with other housing.',
+    tierRequired: 7, cost: { wood: 46, stone: 38, iron: 22 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'manor_house', minCount: 1 }],
+  },
+  urban_residence: {
+    key: 'urban_residence', name: 'Urban Residence',
+    description: 'Adds +32 population capacity per building. Stacks with other housing.',
+    tierRequired: 8, cost: { wood: 52, stone: 44, iron: 26 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'townhouse_row', minCount: 1 }],
+  },
+  noble_residence: {
+    key: 'noble_residence', name: 'Noble Residence',
+    description: 'Adds +36 population capacity per building. Stacks with other housing.',
+    tierRequired: 9, cost: { wood: 58, stone: 50, iron: 30 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'urban_residence', minCount: 1 }],
+  },
+  royal_estate: {
+    key: 'royal_estate', name: 'Royal Estate',
+    description: 'Adds +40 population capacity per building — the highest housing tier. Stacks with other housing.',
+    tierRequired: 10, cost: { wood: 64, stone: 56, iron: 34 }, days: 10, resourceOutput: {},
+    prerequisites: [{ type: 'noble_residence', minCount: 1 }],
+  },
+
+  // ── Storage tiers 3-8 (matches BUILDING_TIER_MATRIX.md) ────────────────────
+  advanced_storage_tent: {
+    key: 'advanced_storage_tent', name: 'Advanced Storage Tent',
+    description: 'Adds +300 storage capacity.',
+    tierRequired: 3, cost: { wood: 26, stone: 16 }, days: 3, resourceOutput: {},
+    prerequisites: [{ type: 'storage_shack', minCount: 1 }],
+  },
+  storehouse: {
+    key: 'storehouse', name: 'Storehouse',
+    description: 'Adds +400 storage capacity.',
+    tierRequired: 4, cost: { wood: 32, stone: 22, iron: 4 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'advanced_storage_tent', minCount: 1 }],
+  },
+  reinforced_storehouse: {
+    key: 'reinforced_storehouse', name: 'Reinforced Storehouse',
+    description: 'Adds +500 storage capacity.',
+    tierRequired: 5, cost: { wood: 38, stone: 28, iron: 8 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'storehouse', minCount: 1 }],
+  },
+  central_storehouse: {
+    key: 'central_storehouse', name: 'Central Storehouse',
+    description: 'Adds +600 storage capacity.',
+    tierRequired: 6, cost: { wood: 44, stone: 34, iron: 12 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'reinforced_storehouse', minCount: 1 }],
+  },
+  vaulted_warehouse: {
+    key: 'vaulted_warehouse', name: 'Vaulted Warehouse',
+    description: 'Adds +800 storage capacity — the highest single-building storage bonus available.',
+    tierRequired: 8, cost: { wood: 56, stone: 46, iron: 20 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'storage_advanced', minCount: 1 }],
+  },
+
+  // ── Hunter tiers 4-8 (matches BUILDING_TIER_MATRIX.md) ─────────────────────
+  tracker_lodge: {
+    key: 'tracker_lodge', name: 'Tracker Lodge',
+    description: 'Raises the hunter worker cap by +20. Passively produces +1 meat/day. Hunters here add +2.15 meat/day each.',
+    tierRequired: 4, cost: { wood: 30, stone: 22, iron: 12 }, days: 5, resourceOutput: { meat: 1 },
+    prerequisites: [{ type: 'hunters_lodge_advanced', minCount: 1 }],
+  },
+  ranger_hall: {
+    key: 'ranger_hall', name: 'Ranger Hall',
+    description: 'Raises the hunter worker cap by +20. Passively produces +2 meat/day. Hunters here add +2.35 meat/day each.',
+    tierRequired: 5, cost: { wood: 36, stone: 28, iron: 16 }, days: 6, resourceOutput: { meat: 2 },
+    prerequisites: [{ type: 'tracker_lodge', minCount: 1 }],
+  },
+  beastmaster_hall: {
+    key: 'beastmaster_hall', name: 'Beastmaster Hall',
+    description: 'Raises the hunter worker cap by +20. Passively produces +2 meat/day. Hunters here add +2.55 meat/day each.',
+    tierRequired: 6, cost: { wood: 42, stone: 34, iron: 20 }, days: 7, resourceOutput: { meat: 2 },
+    prerequisites: [{ type: 'ranger_hall', minCount: 1 }],
+  },
+  warden_lodge: {
+    key: 'warden_lodge', name: 'Warden Lodge',
+    description: 'Raises the hunter worker cap by +20. Passively produces +3 meat/day. Hunters here add +2.75 meat/day each.',
+    tierRequired: 7, cost: { wood: 48, stone: 40, iron: 24 }, days: 8, resourceOutput: { meat: 3 },
+    prerequisites: [{ type: 'beastmaster_hall', minCount: 1 }],
+  },
+  great_hunters_keep: {
+    key: 'great_hunters_keep', name: "Great Hunter's Keep",
+    description: 'Raises the hunter worker cap by +20. Passively produces +3 meat/day. Hunters here add +2.95 meat/day each — the best hunting throughput available.',
+    tierRequired: 8, cost: { wood: 56, stone: 46, iron: 28 }, days: 9, resourceOutput: { meat: 3 },
+    prerequisites: [{ type: 'warden_lodge', minCount: 1 }],
+  },
+
+  // ── Vegetable tiers 4-8 (matches BUILDING_TIER_MATRIX.md) ──────────────────
+  terrace_fields: {
+    key: 'terrace_fields', name: 'Terrace Fields',
+    description: 'Raises farmer capacity by +20. During harvest days, farmers here collect at 1.45x rate.',
+    tierRequired: 4, cost: { wood: 26, stone: 18, iron: 8 }, days: 4, resourceOutput: { vegetables: 4 },
+    prerequisites: [{ type: 'farm_advanced', minCount: 1 }],
+  },
+  orchard_farms: {
+    key: 'orchard_farms', name: 'Orchard Farms',
+    description: 'Raises farmer capacity by +20. During harvest days, farmers here collect at 1.60x rate.',
+    tierRequired: 5, cost: { wood: 32, stone: 24, iron: 12 }, days: 5, resourceOutput: { vegetables: 5 },
+    prerequisites: [{ type: 'terrace_fields', minCount: 1 }],
+  },
+  fertile_estates: {
+    key: 'fertile_estates', name: 'Fertile Estates',
+    description: 'Raises farmer capacity by +20. During harvest days, farmers here collect at 1.75x rate.',
+    tierRequired: 6, cost: { wood: 38, stone: 30, iron: 16 }, days: 6, resourceOutput: { vegetables: 6 },
+    prerequisites: [{ type: 'orchard_farms', minCount: 1 }],
+  },
+  greenhouse_complex: {
+    key: 'greenhouse_complex', name: 'Greenhouse Complex',
+    description: 'Raises farmer capacity by +20. During harvest days, farmers here collect at 1.90x rate.',
+    tierRequired: 7, cost: { wood: 44, stone: 36, iron: 20 }, days: 7, resourceOutput: { vegetables: 7 },
+    prerequisites: [{ type: 'fertile_estates', minCount: 1 }],
+  },
+  hydroponic_conservatory: {
+    key: 'hydroponic_conservatory', name: 'Hydroponic Conservatory',
+    description: 'Raises farmer capacity by +20. During harvest days, farmers here collect at 2.05x rate — the best vegetable throughput available.',
+    tierRequired: 8, cost: { wood: 52, stone: 42, iron: 24 }, days: 8, resourceOutput: { vegetables: 8 },
+    prerequisites: [{ type: 'greenhouse_complex', minCount: 1 }],
+  },
+
+  // ── Quarry tiers 4-10 (matches BUILDING_TIER_MATRIX.md) ────────────────────
+  reinforced_quarry: {
+    key: 'reinforced_quarry', name: 'Reinforced Quarry',
+    description: 'Raises the stone worker cap by +20. Passively produces +2 stone/day.',
+    tierRequired: 4, cost: { wood: 32, stone: 24, iron: 12 }, days: 5, resourceOutput: { stone: 2 },
+    prerequisites: [{ type: 'quarry_advanced', minCount: 1 }],
+  },
+  deepstone_quarry: {
+    key: 'deepstone_quarry', name: 'Deepstone Quarry',
+    description: 'Raises the stone worker cap by +20. Passively produces +3 stone/day.',
+    tierRequired: 5, cost: { wood: 38, stone: 30, iron: 16 }, days: 6, resourceOutput: { stone: 3 },
+    prerequisites: [{ type: 'reinforced_quarry', minCount: 1 }],
+  },
+  heavy_quarry_works: {
+    key: 'heavy_quarry_works', name: 'Heavy Quarry Works',
+    description: 'Raises the stone worker cap by +20. Passively produces +3 stone/day.',
+    tierRequired: 6, cost: { wood: 44, stone: 36, iron: 20 }, days: 7, resourceOutput: { stone: 3 },
+    prerequisites: [{ type: 'deepstone_quarry', minCount: 1 }],
+  },
+  industrial_quarry: {
+    key: 'industrial_quarry', name: 'Industrial Quarry',
+    description: 'Raises the stone worker cap by +20. Passively produces +4 stone/day.',
+    tierRequired: 7, cost: { wood: 50, stone: 42, iron: 24 }, days: 8, resourceOutput: { stone: 4 },
+    prerequisites: [{ type: 'heavy_quarry_works', minCount: 1 }],
+  },
+  grand_quarry_complex: {
+    key: 'grand_quarry_complex', name: 'Grand Quarry Complex',
+    description: 'Raises the stone worker cap by +20. Passively produces +4 stone/day.',
+    tierRequired: 8, cost: { wood: 56, stone: 48, iron: 28 }, days: 9, resourceOutput: { stone: 4 },
+    prerequisites: [{ type: 'industrial_quarry', minCount: 1 }],
+  },
+  earthsplit_quarry: {
+    key: 'earthsplit_quarry', name: 'Earthsplit Quarry',
+    description: 'Raises the stone worker cap by +20. Passively produces +5 stone/day.',
+    tierRequired: 9, cost: { wood: 62, stone: 54, iron: 32 }, days: 10, resourceOutput: { stone: 5 },
+    prerequisites: [{ type: 'grand_quarry_complex', minCount: 1 }],
+  },
+  titan_quarry: {
+    key: 'titan_quarry', name: 'Titan Quarry',
+    description: 'Raises the stone worker cap by +20. Passively produces +5 stone/day — the best stone throughput available.',
+    tierRequired: 10, cost: { wood: 70, stone: 60, iron: 38 }, days: 11, resourceOutput: { stone: 5 },
+    prerequisites: [{ type: 'earthsplit_quarry', minCount: 1 }],
+  },
+
+  // ── Mine tiers 4-10 (matches BUILDING_TIER_MATRIX.md) ──────────────────────
+  reinforced_mine: {
+    key: 'reinforced_mine', name: 'Reinforced Mine',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +2 minerals/day.',
+    tierRequired: 4, cost: { wood: 36, stone: 30, iron: 16 }, days: 5, resourceOutput: { minerals: 2 },
+    prerequisites: [{ type: 'mine_advanced', minCount: 1 }],
+  },
+  crystal_mine: {
+    key: 'crystal_mine', name: 'Crystal Mine',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +3 minerals/day.',
+    tierRequired: 5, cost: { wood: 42, stone: 36, iron: 20 }, days: 6, resourceOutput: { minerals: 3 },
+    prerequisites: [{ type: 'reinforced_mine', minCount: 1 }],
+  },
+  industrial_mine: {
+    key: 'industrial_mine', name: 'Industrial Mine',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +3 minerals/day.',
+    tierRequired: 6, cost: { wood: 48, stone: 42, iron: 24 }, days: 7, resourceOutput: { minerals: 3 },
+    prerequisites: [{ type: 'crystal_mine', minCount: 1 }],
+  },
+  great_foundry_mine: {
+    key: 'great_foundry_mine', name: 'Great Foundry Mine',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +4 minerals/day.',
+    tierRequired: 7, cost: { wood: 54, stone: 48, iron: 28 }, days: 8, resourceOutput: { minerals: 4 },
+    prerequisites: [{ type: 'industrial_mine', minCount: 1 }],
+  },
+  abyssal_mine: {
+    key: 'abyssal_mine', name: 'Abyssal Mine',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +4 minerals/day.',
+    tierRequired: 8, cost: { wood: 60, stone: 54, iron: 32 }, days: 9, resourceOutput: { minerals: 4 },
+    prerequisites: [{ type: 'great_foundry_mine', minCount: 1 }],
+  },
+  mythril_mine: {
+    key: 'mythril_mine', name: 'Mythril Mine',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +5 minerals/day.',
+    tierRequired: 9, cost: { wood: 66, stone: 60, iron: 36 }, days: 10, resourceOutput: { minerals: 5 },
+    prerequisites: [{ type: 'abyssal_mine', minCount: 1 }],
+  },
+  primordial_core_mine: {
+    key: 'primordial_core_mine', name: 'Primordial Core Mine',
+    description: 'Raises the iron/minerals worker cap by +20. Passively produces +5 minerals/day — the best mineral throughput available.',
+    tierRequired: 10, cost: { wood: 74, stone: 66, iron: 42 }, days: 11, resourceOutput: { minerals: 5 },
+    prerequisites: [{ type: 'mythril_mine', minCount: 1 }],
+  },
+
+  // ── Research Lab tiers 4-10 (matches BUILDING_TIER_MATRIX.md) ──────────────
+  applied_sciences_lab: {
+    key: 'applied_sciences_lab', name: 'Applied Sciences Lab',
+    description: 'Raises the research worker cap by +20. Passively generates +2 research/day.',
+    tierRequired: 4, cost: { wood: 36, stone: 32, iron: 18 }, days: 5, resourceOutput: { research: 2 },
+    prerequisites: [{ type: 'research_lab_advanced', minCount: 1 }],
+  },
+  innovation_institute: {
+    key: 'innovation_institute', name: 'Innovation Institute',
+    description: 'Raises the research worker cap by +20. Passively generates +3 research/day.',
+    tierRequired: 5, cost: { wood: 42, stone: 38, iron: 22 }, days: 6, resourceOutput: { research: 3 },
+    prerequisites: [{ type: 'applied_sciences_lab', minCount: 1 }],
+  },
+  arcane_research_institute: {
+    key: 'arcane_research_institute', name: 'Arcane Research Institute',
+    description: 'Raises the research worker cap by +20. Passively generates +3 research/day.',
+    tierRequired: 6, cost: { wood: 48, stone: 44, iron: 26 }, days: 7, resourceOutput: { research: 3 },
+    prerequisites: [{ type: 'innovation_institute', minCount: 1 }],
+  },
+  grand_academy_of_sciences: {
+    key: 'grand_academy_of_sciences', name: 'Grand Academy of Sciences',
+    description: 'Raises the research worker cap by +20. Passively generates +4 research/day.',
+    tierRequired: 7, cost: { wood: 54, stone: 50, iron: 30 }, days: 8, resourceOutput: { research: 4 },
+    prerequisites: [{ type: 'arcane_research_institute', minCount: 1 }],
+  },
+  experimental_nexus: {
+    key: 'experimental_nexus', name: 'Experimental Nexus',
+    description: 'Raises the research worker cap by +20. Passively generates +4 research/day.',
+    tierRequired: 8, cost: { wood: 60, stone: 56, iron: 34 }, days: 9, resourceOutput: { research: 4 },
+    prerequisites: [{ type: 'grand_academy_of_sciences', minCount: 1 }],
+  },
+  transcendent_research_complex: {
+    key: 'transcendent_research_complex', name: 'Transcendent Research Complex',
+    description: 'Raises the research worker cap by +20. Passively generates +5 research/day.',
+    tierRequired: 9, cost: { wood: 66, stone: 62, iron: 38 }, days: 10, resourceOutput: { research: 5 },
+    prerequisites: [{ type: 'experimental_nexus', minCount: 1 }],
+  },
+  omniscience_institute: {
+    key: 'omniscience_institute', name: 'Omniscience Institute',
+    description: 'Raises the research worker cap by +20. Passively generates +5 research/day — the best research throughput available.',
+    tierRequired: 10, cost: { wood: 74, stone: 68, iron: 44 }, days: 11, resourceOutput: { research: 5 },
+    prerequisites: [{ type: 'transcendent_research_complex', minCount: 1 }],
+  },
+
+  // ── Granary tiers 3-10 (matches BUILDING_TIER_MATRIX.md) ───────────────────
+  reinforced_granary: {
+    key: 'reinforced_granary', name: 'Reinforced Granary',
+    description: 'Adds +250 storage capacity and raises the vegetable worker cap by +20.',
+    tierRequired: 3, cost: { wood: 28, stone: 18 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'granary', minCount: 1 }],
+  },
+  cold_cellar_granary: {
+    key: 'cold_cellar_granary', name: 'Cold-Cellar Granary',
+    description: 'Adds +300 storage capacity and raises the vegetable worker cap by +20.',
+    tierRequired: 4, cost: { wood: 34, stone: 24, iron: 6 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'reinforced_granary', minCount: 1 }],
+  },
+  regional_granary: {
+    key: 'regional_granary', name: 'Regional Granary',
+    description: 'Adds +350 storage capacity and raises the vegetable worker cap by +20.',
+    tierRequired: 5, cost: { wood: 40, stone: 30, iron: 10 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'cold_cellar_granary', minCount: 1 }],
+  },
+  central_food_reserve: {
+    key: 'central_food_reserve', name: 'Central Food Reserve',
+    description: 'Adds +400 storage capacity and raises the vegetable worker cap by +20.',
+    tierRequired: 6, cost: { wood: 46, stone: 36, iron: 14 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'regional_granary', minCount: 1 }],
+  },
+  preservation_complex: {
+    key: 'preservation_complex', name: 'Preservation Complex',
+    description: 'Adds +450 storage capacity and raises the vegetable worker cap by +20.',
+    tierRequired: 7, cost: { wood: 52, stone: 42, iron: 18 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'central_food_reserve', minCount: 1 }],
+  },
+  nutrient_reserve_hall: {
+    key: 'nutrient_reserve_hall', name: 'Nutrient Reserve Hall',
+    description: 'Adds +500 storage capacity and raises the vegetable worker cap by +20.',
+    tierRequired: 8, cost: { wood: 58, stone: 48, iron: 22 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'preservation_complex', minCount: 1 }],
+  },
+  strategic_food_vault: {
+    key: 'strategic_food_vault', name: 'Strategic Food Vault',
+    description: 'Adds +550 storage capacity and raises the vegetable worker cap by +20.',
+    tierRequired: 9, cost: { wood: 64, stone: 54, iron: 26 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'nutrient_reserve_hall', minCount: 1 }],
+  },
+  eternal_harvest_vault: {
+    key: 'eternal_harvest_vault', name: 'Eternal Harvest Vault',
+    description: 'Adds +600 storage capacity and raises the vegetable worker cap by +20 — the best food reserve available.',
+    tierRequired: 10, cost: { wood: 70, stone: 60, iron: 30 }, days: 10, resourceOutput: {},
+    prerequisites: [{ type: 'strategic_food_vault', minCount: 1 }],
+  },
+
+  // ── Lumber Mill tiers 3-7 (matches BUILDING_TIER_MATRIX.md) ────────────────
+  timber_mill: {
+    key: 'timber_mill', name: 'Timber Mill',
+    description: 'Raises the wood worker cap by +20. Passively produces +2 wood/day.',
+    tierRequired: 3, cost: { wood: 26, stone: 12 }, days: 5, resourceOutput: { wood: 2 },
+    prerequisites: [{ type: 'lumber_mill', minCount: 1 }],
+  },
+  advanced_timber_mill: {
+    key: 'advanced_timber_mill', name: 'Advanced Timber Mill',
+    description: 'Raises the wood worker cap by +20. Passively produces +2 wood/day.',
+    tierRequired: 4, cost: { wood: 32, stone: 18, iron: 6 }, days: 5, resourceOutput: { wood: 2 },
+    prerequisites: [{ type: 'timber_mill', minCount: 1 }],
+  },
+  sawmill_complex: {
+    key: 'sawmill_complex', name: 'Sawmill Complex',
+    description: 'Raises the wood worker cap by +20. Passively produces +3 wood/day.',
+    tierRequired: 5, cost: { wood: 38, stone: 24, iron: 10 }, days: 6, resourceOutput: { wood: 3 },
+    prerequisites: [{ type: 'advanced_timber_mill', minCount: 1 }],
+  },
+  industrial_sawmill: {
+    key: 'industrial_sawmill', name: 'Industrial Sawmill',
+    description: 'Raises the wood worker cap by +20. Passively produces +3 wood/day.',
+    tierRequired: 6, cost: { wood: 44, stone: 30, iron: 14 }, days: 7, resourceOutput: { wood: 3 },
+    prerequisites: [{ type: 'sawmill_complex', minCount: 1 }],
+  },
+  great_lumber_works: {
+    key: 'great_lumber_works', name: 'Great Lumber Works',
+    description: 'Raises the wood worker cap by +20. Passively produces +4 wood/day — the best wood throughput available.',
+    tierRequired: 7, cost: { wood: 50, stone: 36, iron: 18 }, days: 8, resourceOutput: { wood: 4 },
+    prerequisites: [{ type: 'industrial_sawmill', minCount: 1 }],
+  },
+
+  // ── Faith Temple tiers 3-10 (matches BUILDING_TIER_MATRIX.md) ──────────────
+  great_temple: {
+    key: 'great_temple', name: 'Great Temple',
+    description: 'Raises the faith worker cap by +20. Passively produces +1 faith/day.',
+    tierRequired: 3, cost: { wood: 24, stone: 26, iron: 8 }, days: 5, resourceOutput: { faith: 1 },
+    prerequisites: [{ type: 'faith_temple', minCount: 1 }],
+  },
+  sanctified_basilica: {
+    key: 'sanctified_basilica', name: 'Sanctified Basilica',
+    description: 'Raises the faith worker cap by +20. Passively produces +2 faith/day.',
+    tierRequired: 4, cost: { wood: 30, stone: 32, iron: 12 }, days: 6, resourceOutput: { faith: 2 },
+    prerequisites: [{ type: 'great_temple', minCount: 1 }],
+  },
+  pilgrim_cathedral: {
+    key: 'pilgrim_cathedral', name: 'Pilgrim Cathedral',
+    description: 'Raises the faith worker cap by +20. Passively produces +2 faith/day.',
+    tierRequired: 5, cost: { wood: 36, stone: 38, iron: 16 }, days: 7, resourceOutput: { faith: 2 },
+    prerequisites: [{ type: 'sanctified_basilica', minCount: 1 }],
+  },
+  divine_sanctuary: {
+    key: 'divine_sanctuary', name: 'Divine Sanctuary',
+    description: 'Raises the faith worker cap by +20. Passively produces +3 faith/day.',
+    tierRequired: 6, cost: { wood: 42, stone: 44, iron: 20 }, days: 8, resourceOutput: { faith: 3 },
+    prerequisites: [{ type: 'pilgrim_cathedral', minCount: 1 }],
+  },
+  celestial_cathedral: {
+    key: 'celestial_cathedral', name: 'Celestial Cathedral',
+    description: 'Raises the faith worker cap by +20. Passively produces +3 faith/day.',
+    tierRequired: 7, cost: { wood: 48, stone: 50, iron: 24 }, days: 9, resourceOutput: { faith: 3 },
+    prerequisites: [{ type: 'divine_sanctuary', minCount: 1 }],
+  },
+  high_sacred_citadel: {
+    key: 'high_sacred_citadel', name: 'High Sacred Citadel',
+    description: 'Raises the faith worker cap by +20. Passively produces +4 faith/day.',
+    tierRequired: 8, cost: { wood: 54, stone: 56, iron: 28 }, days: 9, resourceOutput: { faith: 4 },
+    prerequisites: [{ type: 'celestial_cathedral', minCount: 1 }],
+  },
+  eternal_shrine_complex: {
+    key: 'eternal_shrine_complex', name: 'Eternal Shrine Complex',
+    description: 'Raises the faith worker cap by +20. Passively produces +4 faith/day.',
+    tierRequired: 9, cost: { wood: 60, stone: 62, iron: 32 }, days: 10, resourceOutput: { faith: 4 },
+    prerequisites: [{ type: 'high_sacred_citadel', minCount: 1 }],
+  },
+  pantheon_spire: {
+    key: 'pantheon_spire', name: 'Pantheon Spire',
+    description: 'Raises the faith worker cap by +20. Passively produces +5 faith/day — the best faith throughput available.',
+    tierRequired: 10, cost: { wood: 68, stone: 70, iron: 38 }, days: 11, resourceOutput: { faith: 5 },
+    prerequisites: [{ type: 'eternal_shrine_complex', minCount: 1 }],
+  },
+
+  // ── Builder's Hut tiers 4-8 (matches BUILDING_TIER_MATRIX.md) ──────────────
+  masons_workshop: {
+    key: 'masons_workshop', name: "Mason's Workshop",
+    description: "Passively adds +6 to the construction lane each day. Stacks with other Builder's Hut chain buildings.",
+    tierRequired: 4, cost: { wood: 26, stone: 22, iron: 10 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'builders_hut', minCount: 1 }],
+  },
+  engineers_lodge: {
+    key: 'engineers_lodge', name: "Engineer's Lodge",
+    description: "Passively adds +9 to the construction lane each day. Stacks with other Builder's Hut chain buildings.",
+    tierRequired: 5, cost: { wood: 32, stone: 28, iron: 14 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'masons_workshop', minCount: 1 }],
+  },
+  construction_guildhall: {
+    key: 'construction_guildhall', name: 'Construction Guildhall',
+    description: "Passively adds +12 to the construction lane each day. Stacks with other Builder's Hut chain buildings.",
+    tierRequired: 6, cost: { wood: 38, stone: 34, iron: 18 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'engineers_lodge', minCount: 1 }],
+  },
+  master_builder_hall: {
+    key: 'master_builder_hall', name: 'Master Builder Hall',
+    description: "Passively adds +15 to the construction lane each day. Stacks with other Builder's Hut chain buildings.",
+    tierRequired: 7, cost: { wood: 44, stone: 40, iron: 22 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'construction_guildhall', minCount: 1 }],
+  },
+  grand_architect_hall: {
+    key: 'grand_architect_hall', name: 'Grand Architect Hall',
+    description: "Passively adds +18 to the construction lane each day — the best building speed bonus available.",
+    tierRequired: 8, cost: { wood: 50, stone: 46, iron: 26 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'master_builder_hall', minCount: 1 }],
+  },
+});
+
 const TIER1_BUILDING_TYPES = new Set(['housing', 'storage', 'hunters_guild', 'farm', 'quarry']);
 const TIER2_BUILDING_TYPES = new Set(['lumber_mill', 'granary', 'hunting_lodge', 'irrigated_farm', 'mine', 'research_lab', 'faith_temple', 'trade_post', 'logistics_depot', 'prison', 'watchtower', 'palisades', 'infirmary', 'wood_lodge', 'storage_shack']);
 const TIER3_BUILDING_TYPES = new Set(['hunters_lodge_advanced', 'farm_advanced', 'storage_advanced', 'quarry_advanced', 'mine_advanced', 'research_lab_advanced', 'builders_hut', 'embassy', 'smithy']);
@@ -1320,15 +1764,20 @@ const BUILDING_UPGRADE_MAP = {
     upgradedBuilding: 'wood_lodge',
     tier3: 'wood_lodge',
   },
+  wood_lodge: {
+    researchRequired: 'tier3_housing',
+    upgradedBuilding: 'reinforced_lodge',
+    tier3: 'reinforced_lodge',
+  },
   storage: {
     researchRequired: 'tier2_storage',
     upgradedBuilding: 'storage_shack',
-    tier3: 'storage_advanced',
+    tier3: 'advanced_storage_tent',
   },
   storage_shack: {
     researchRequired: 'tier3_storage',
-    upgradedBuilding: 'storage_advanced',
-    tier3: 'storage_advanced',
+    upgradedBuilding: 'advanced_storage_tent',
+    tier3: 'advanced_storage_tent',
   },
   hunters_guild: {
     researchRequired: 'tier2_hunter',
@@ -1474,6 +1923,86 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   siege_foundry: { researchRequired: null, upgradedBuilding: 'war_engine_forge', tier3: 'war_engine_forge' },
   war_engine_forge: { researchRequired: null, upgradedBuilding: 'advanced_siege_workshop', tier3: 'advanced_siege_workshop' },
   advanced_siege_workshop: { researchRequired: null, upgradedBuilding: 'imperial_siege_hall', tier3: 'imperial_siege_hall' },
+
+  reinforced_lodge: { researchRequired: null, upgradedBuilding: 'stone_lodge', tier3: 'stone_lodge' },
+  stone_lodge: { researchRequired: null, upgradedBuilding: 'longhouse_block', tier3: 'longhouse_block' },
+  longhouse_block: { researchRequired: null, upgradedBuilding: 'manor_house', tier3: 'manor_house' },
+  manor_house: { researchRequired: null, upgradedBuilding: 'townhouse_row', tier3: 'townhouse_row' },
+  townhouse_row: { researchRequired: null, upgradedBuilding: 'urban_residence', tier3: 'urban_residence' },
+  urban_residence: { researchRequired: null, upgradedBuilding: 'noble_residence', tier3: 'noble_residence' },
+  noble_residence: { researchRequired: null, upgradedBuilding: 'royal_estate', tier3: 'royal_estate' },
+
+  advanced_storage_tent: { researchRequired: null, upgradedBuilding: 'storehouse', tier3: 'storehouse' },
+  storehouse: { researchRequired: null, upgradedBuilding: 'reinforced_storehouse', tier3: 'reinforced_storehouse' },
+  reinforced_storehouse: { researchRequired: null, upgradedBuilding: 'central_storehouse', tier3: 'central_storehouse' },
+  central_storehouse: { researchRequired: null, upgradedBuilding: 'storage_advanced', tier3: 'storage_advanced' },
+  storage_advanced: { researchRequired: null, upgradedBuilding: 'vaulted_warehouse', tier3: 'vaulted_warehouse' },
+
+  hunters_lodge_advanced: { researchRequired: null, upgradedBuilding: 'tracker_lodge', tier3: 'tracker_lodge' },
+  tracker_lodge: { researchRequired: null, upgradedBuilding: 'ranger_hall', tier3: 'ranger_hall' },
+  ranger_hall: { researchRequired: null, upgradedBuilding: 'beastmaster_hall', tier3: 'beastmaster_hall' },
+  beastmaster_hall: { researchRequired: null, upgradedBuilding: 'warden_lodge', tier3: 'warden_lodge' },
+  warden_lodge: { researchRequired: null, upgradedBuilding: 'great_hunters_keep', tier3: 'great_hunters_keep' },
+
+  farm_advanced: { researchRequired: null, upgradedBuilding: 'terrace_fields', tier3: 'terrace_fields' },
+  terrace_fields: { researchRequired: null, upgradedBuilding: 'orchard_farms', tier3: 'orchard_farms' },
+  orchard_farms: { researchRequired: null, upgradedBuilding: 'fertile_estates', tier3: 'fertile_estates' },
+  fertile_estates: { researchRequired: null, upgradedBuilding: 'greenhouse_complex', tier3: 'greenhouse_complex' },
+  greenhouse_complex: { researchRequired: null, upgradedBuilding: 'hydroponic_conservatory', tier3: 'hydroponic_conservatory' },
+
+  quarry_advanced: { researchRequired: null, upgradedBuilding: 'reinforced_quarry', tier3: 'reinforced_quarry' },
+  reinforced_quarry: { researchRequired: null, upgradedBuilding: 'deepstone_quarry', tier3: 'deepstone_quarry' },
+  deepstone_quarry: { researchRequired: null, upgradedBuilding: 'heavy_quarry_works', tier3: 'heavy_quarry_works' },
+  heavy_quarry_works: { researchRequired: null, upgradedBuilding: 'industrial_quarry', tier3: 'industrial_quarry' },
+  industrial_quarry: { researchRequired: null, upgradedBuilding: 'grand_quarry_complex', tier3: 'grand_quarry_complex' },
+  grand_quarry_complex: { researchRequired: null, upgradedBuilding: 'earthsplit_quarry', tier3: 'earthsplit_quarry' },
+  earthsplit_quarry: { researchRequired: null, upgradedBuilding: 'titan_quarry', tier3: 'titan_quarry' },
+
+  mine_advanced: { researchRequired: null, upgradedBuilding: 'reinforced_mine', tier3: 'reinforced_mine' },
+  reinforced_mine: { researchRequired: null, upgradedBuilding: 'crystal_mine', tier3: 'crystal_mine' },
+  crystal_mine: { researchRequired: null, upgradedBuilding: 'industrial_mine', tier3: 'industrial_mine' },
+  industrial_mine: { researchRequired: null, upgradedBuilding: 'great_foundry_mine', tier3: 'great_foundry_mine' },
+  great_foundry_mine: { researchRequired: null, upgradedBuilding: 'abyssal_mine', tier3: 'abyssal_mine' },
+  abyssal_mine: { researchRequired: null, upgradedBuilding: 'mythril_mine', tier3: 'mythril_mine' },
+  mythril_mine: { researchRequired: null, upgradedBuilding: 'primordial_core_mine', tier3: 'primordial_core_mine' },
+
+  research_lab_advanced: { researchRequired: null, upgradedBuilding: 'applied_sciences_lab', tier3: 'applied_sciences_lab' },
+  applied_sciences_lab: { researchRequired: null, upgradedBuilding: 'innovation_institute', tier3: 'innovation_institute' },
+  innovation_institute: { researchRequired: null, upgradedBuilding: 'arcane_research_institute', tier3: 'arcane_research_institute' },
+  arcane_research_institute: { researchRequired: null, upgradedBuilding: 'grand_academy_of_sciences', tier3: 'grand_academy_of_sciences' },
+  grand_academy_of_sciences: { researchRequired: null, upgradedBuilding: 'experimental_nexus', tier3: 'experimental_nexus' },
+  experimental_nexus: { researchRequired: null, upgradedBuilding: 'transcendent_research_complex', tier3: 'transcendent_research_complex' },
+  transcendent_research_complex: { researchRequired: null, upgradedBuilding: 'omniscience_institute', tier3: 'omniscience_institute' },
+
+  granary: { researchRequired: null, upgradedBuilding: 'reinforced_granary', tier3: 'reinforced_granary' },
+  reinforced_granary: { researchRequired: null, upgradedBuilding: 'cold_cellar_granary', tier3: 'cold_cellar_granary' },
+  cold_cellar_granary: { researchRequired: null, upgradedBuilding: 'regional_granary', tier3: 'regional_granary' },
+  regional_granary: { researchRequired: null, upgradedBuilding: 'central_food_reserve', tier3: 'central_food_reserve' },
+  central_food_reserve: { researchRequired: null, upgradedBuilding: 'preservation_complex', tier3: 'preservation_complex' },
+  preservation_complex: { researchRequired: null, upgradedBuilding: 'nutrient_reserve_hall', tier3: 'nutrient_reserve_hall' },
+  nutrient_reserve_hall: { researchRequired: null, upgradedBuilding: 'strategic_food_vault', tier3: 'strategic_food_vault' },
+  strategic_food_vault: { researchRequired: null, upgradedBuilding: 'eternal_harvest_vault', tier3: 'eternal_harvest_vault' },
+
+  lumber_mill: { researchRequired: null, upgradedBuilding: 'timber_mill', tier3: 'timber_mill' },
+  timber_mill: { researchRequired: null, upgradedBuilding: 'advanced_timber_mill', tier3: 'advanced_timber_mill' },
+  advanced_timber_mill: { researchRequired: null, upgradedBuilding: 'sawmill_complex', tier3: 'sawmill_complex' },
+  sawmill_complex: { researchRequired: null, upgradedBuilding: 'industrial_sawmill', tier3: 'industrial_sawmill' },
+  industrial_sawmill: { researchRequired: null, upgradedBuilding: 'great_lumber_works', tier3: 'great_lumber_works' },
+
+  faith_temple: { researchRequired: null, upgradedBuilding: 'great_temple', tier3: 'great_temple' },
+  great_temple: { researchRequired: null, upgradedBuilding: 'sanctified_basilica', tier3: 'sanctified_basilica' },
+  sanctified_basilica: { researchRequired: null, upgradedBuilding: 'pilgrim_cathedral', tier3: 'pilgrim_cathedral' },
+  pilgrim_cathedral: { researchRequired: null, upgradedBuilding: 'divine_sanctuary', tier3: 'divine_sanctuary' },
+  divine_sanctuary: { researchRequired: null, upgradedBuilding: 'celestial_cathedral', tier3: 'celestial_cathedral' },
+  celestial_cathedral: { researchRequired: null, upgradedBuilding: 'high_sacred_citadel', tier3: 'high_sacred_citadel' },
+  high_sacred_citadel: { researchRequired: null, upgradedBuilding: 'eternal_shrine_complex', tier3: 'eternal_shrine_complex' },
+  eternal_shrine_complex: { researchRequired: null, upgradedBuilding: 'pantheon_spire', tier3: 'pantheon_spire' },
+
+  builders_hut: { researchRequired: null, upgradedBuilding: 'masons_workshop', tier3: 'masons_workshop' },
+  masons_workshop: { researchRequired: null, upgradedBuilding: 'engineers_lodge', tier3: 'engineers_lodge' },
+  engineers_lodge: { researchRequired: null, upgradedBuilding: 'construction_guildhall', tier3: 'construction_guildhall' },
+  construction_guildhall: { researchRequired: null, upgradedBuilding: 'master_builder_hall', tier3: 'master_builder_hall' },
+  master_builder_hall: { researchRequired: null, upgradedBuilding: 'grand_architect_hall', tier3: 'grand_architect_hall' },
 });
 
 const UPGRADE_ONLY_BUILDING_TYPES = new Set([
@@ -1487,6 +2016,17 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'quarry_advanced',
   'mine_advanced',
   'research_lab_advanced',
+  'reinforced_lodge', 'stone_lodge', 'longhouse_block', 'manor_house', 'townhouse_row', 'urban_residence', 'noble_residence', 'royal_estate',
+  'advanced_storage_tent', 'storehouse', 'reinforced_storehouse', 'central_storehouse', 'vaulted_warehouse',
+  'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep',
+  'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory',
+  'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry',
+  'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine',
+  'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute',
+  'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault',
+  'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works',
+  'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire',
+  'masons_workshop', 'engineers_lodge', 'construction_guildhall', 'master_builder_hall', 'grand_architect_hall',
 ]);
 
 [
@@ -1590,14 +2130,14 @@ const clampSlaveAssignmentsToPool = (assignments, newPool) => {
 };
 
 const WORKER_CAP_BUILDING_MAP = {
-  wood: ['lumber_mill', 'wood_lodge'],
-  meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced'],
-  vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced'],
-  stone: ['quarry', 'quarry_advanced'],
-  iron: ['mine', 'mine_advanced'],
+  wood: ['lumber_mill', 'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works'],
+  meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'],
+  vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault'],
+  stone: ['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry'],
+  iron: ['mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine'],
   gold: ['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum'],
-  research: ['research_lab', 'research_lab_advanced'],
-  faith: ['faith_temple'],
+  research: ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'],
+  faith: ['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'],
 };
 
 const applyBuildingBasedWorkerCaps = (unlockedResources, maxWorkersPerResource, completedBuildings) => {
@@ -1618,13 +2158,29 @@ const applyBuildingBasedWorkerCaps = (unlockedResources, maxWorkersPerResource, 
   return { nextUnlocked, nextMaxWorkers };
 };
 
+const STORAGE_CAPACITY_BONUS_BY_TYPE = {
+  storage: 100,
+  storage_shack: 200,
+  granary: 200,
+  reinforced_granary: 250,
+  cold_cellar_granary: 300,
+  regional_granary: 350,
+  central_food_reserve: 400,
+  preservation_complex: 450,
+  nutrient_reserve_hall: 500,
+  strategic_food_vault: 550,
+  eternal_harvest_vault: 600,
+  advanced_storage_tent: 300,
+  storehouse: 400,
+  reinforced_storehouse: 500,
+  central_storehouse: 600,
+  storage_advanced: 700,
+  vaulted_warehouse: 800,
+};
+
 const getStorageCapacityBonusForBuilding = (buildingType) => {
   const key = String(buildingType || '');
-  if (key === 'storage') return 100;
-  if (key === 'storage_shack') return 200;
-  if (key === 'granary') return 200;
-  if (key === 'storage_advanced') return 300;
-  return 0;
+  return STORAGE_CAPACITY_BONUS_BY_TYPE[key] || 0;
 };
 
 const calculateStorageCapacityFromBuildings = (buildings) => {
@@ -1637,22 +2193,27 @@ const calculateStorageCapacityFromBuildings = (buildings) => {
   return Math.max(baseCapacity, baseCapacity + bonus);
 };
 
-const getHousingCapPerBuilding = (completedResearchSet) => {
-  if (completedResearchSet.has('tier3_housing')) return 12;
-  if (completedResearchSet.has('tier2_housing')) return 8;
-  return 4;
+const HOUSING_CAPACITY_BY_TYPE = {
+  housing: 4,
+  wood_lodge: 8,
+  reinforced_lodge: 12,
+  stone_lodge: 16,
+  longhouse_block: 20,
+  manor_house: 24,
+  townhouse_row: 28,
+  urban_residence: 32,
+  noble_residence: 36,
+  royal_estate: 40,
 };
 
-const calculateHousingCapacityFromBuildings = (buildings, completedResearchArr) => {
-  const done = new Set(Array.isArray(completedResearchArr) ? completedResearchArr.map(String) : []);
-  const perBuilding = getHousingCapPerBuilding(done);
-  let count = 0;
+const calculateHousingCapacityFromBuildings = (buildings) => {
+  let total = 0;
   for (const building of (buildings || [])) {
     if (!building?.is_complete) continue;
     const type = String(building.building_type || '');
-    if (type === 'housing' || type === 'wood_lodge') count += 1;
+    total += HOUSING_CAPACITY_BY_TYPE[type] || 0;
   }
-  return count * perBuilding;
+  return total;
 };
 
 const PRISONER_CAP_BY_BUILDING = {
@@ -1663,6 +2224,351 @@ const PRISONER_CAP_BY_BUILDING = {
   high_security_prison: 100,
   iron_keep: 120,
   shadow_vault: 140,
+};
+
+const MILITIA_UNIT_TYPE = 'Militia';
+
+// ─── Unit training lines ────────────────────────────────────────────────────
+// Each line is tied to a real building upgrade chain (buildings mutate the same
+// row in-place on upgrade, so at any time a fief has at most one building_type
+// from a given chain marked is_complete). Training via /military/train ALWAYS
+// produces the tier-1 unit of a line — you can't skip straight to a higher
+// tier. Getting a higher tier requires upgrading an already-trained unit via
+// /military/upgrade, which is only unlocked once the matching building tier
+// has been completed, and takes its own (longer) training duration.
+const MILITIA_LINE_BUILDINGS = [
+  'militia_camp',
+  'militia_barracks',
+  'veteran_barracks',
+  'elite_garrison',
+  'war_garrison',
+  'legion_garrison',
+  'imperial_muster_hall',
+];
+const ARCHER_LINE_BUILDINGS = ['archer_range', 'bowyer_hall', 'master_fletcher_range', 'elite_fletching_hall', 'royal_marksman_range'];
+const CAVALRY_LINE_BUILDINGS = ['stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables'];
+const SWORDSMEN_LINE_BUILDINGS = ['swordsmith_hall', 'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge'];
+const SPEARMEN_LINE_BUILDINGS = ['spear_drill_yard', 'pike_yard', 'formation_citadel', 'shieldwall_hall', 'phalanx_command'];
+const SIEGE_LINE_BUILDINGS = ['siege_engine_workshop', 'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall'];
+
+const UNIT_LINES = {
+  Militia: {
+    buildingChain: MILITIA_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Militia', baseDays: 10 },
+    ],
+  },
+  Archer: {
+    buildingChain: ARCHER_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Skirmisher', baseDays: 5 },
+      { unitType: 'Ranger', baseDays: 10 },
+      { unitType: 'Archer', baseDays: 20 },
+      { unitType: 'Longbowman', baseDays: 40 },
+    ],
+  },
+  Cavalry: {
+    buildingChain: CAVALRY_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Squire', baseDays: 7 },
+      { unitType: 'Man-at-Arms', baseDays: 14 },
+      { unitType: 'Heavy Cavalry', baseDays: 28 },
+      { unitType: 'Knight', baseDays: 56 },
+    ],
+  },
+  Swordsmen: {
+    buildingChain: SWORDSMEN_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Swordsman', baseDays: 8 },
+      { unitType: 'Veteran Swordsman', baseDays: 16 },
+      { unitType: 'Blade Champion', baseDays: 32 },
+      { unitType: 'Royal Blademaster', baseDays: 64 },
+    ],
+  },
+  Spearmen: {
+    buildingChain: SPEARMEN_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Spearman', baseDays: 8 },
+      { unitType: 'Pikeman', baseDays: 16 },
+      { unitType: 'Phalanx Guard', baseDays: 32 },
+      { unitType: 'Shieldwall Champion', baseDays: 64 },
+    ],
+  },
+  Siege: {
+    buildingChain: SIEGE_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Siege Laborer', baseDays: 10 },
+      { unitType: 'Siege Engineer', baseDays: 20 },
+      { unitType: 'Siege Master', baseDays: 40 },
+      { unitType: 'Grand Siegemaster', baseDays: 80 },
+    ],
+  },
+};
+
+// Reverse lookup: unitType -> { lineKey, tierIndex }
+const UNIT_TYPE_LOOKUP = {};
+for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
+  line.tiers.forEach((tierDef, tierIndex) => {
+    UNIT_TYPE_LOOKUP[tierDef.unitType] = { lineKey, tierIndex };
+  });
+}
+
+// Highest index within a building chain that the fief currently has completed (-1 if none).
+const getCompletedLineTierIndex = (buildingChain, completedBuildings) => {
+  let highest = -1;
+  for (let i = 0; i < buildingChain.length; i += 1) {
+    const hasBuilding = (completedBuildings || []).some((b) => String(b?.building_type || '') === buildingChain[i]);
+    if (hasBuilding) highest = i;
+  }
+  return highest;
+};
+
+const getUnitLineInfo = (unitType) => {
+  const info = UNIT_TYPE_LOOKUP[String(unitType || '')];
+  if (!info) return null;
+  const line = UNIT_LINES[info.lineKey];
+  if (!line) return null;
+  return { lineKey: info.lineKey, tierIndex: info.tierIndex, line, tierDef: line.tiers[info.tierIndex] };
+};
+
+// Tier-1 unit types unlocked for direct training given a fief's completed buildings.
+const getTrainableUnitTypesForFief = (completedBuildings) => {
+  const out = [];
+  for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
+    const completedTierIndex = getCompletedLineTierIndex(line.buildingChain, completedBuildings);
+    if (completedTierIndex >= 0) out.push(line.tiers[0].unitType);
+  }
+  return out;
+};
+
+// For each unit type currently held in reserves, describe whether it can be upgraded to the next tier.
+const getUpgradableEntriesForFief = (reserves, completedBuildings) => {
+  const out = [];
+  for (const [unitType, count] of Object.entries(reserves || {})) {
+    if (Math.max(0, Number(count || 0)) <= 0) continue;
+    const info = getUnitLineInfo(unitType);
+    if (!info) continue;
+    const nextTierIndex = info.tierIndex + 1;
+    const nextTierDef = info.line.tiers[nextTierIndex];
+    if (!nextTierDef) continue;
+    const completedTierIndex = getCompletedLineTierIndex(info.line.buildingChain, completedBuildings);
+    out.push({
+      unit_type: unitType,
+      next_unit_type: nextTierDef.unitType,
+      next_base_days: nextTierDef.baseDays,
+      required_building_type: info.line.buildingChain[nextTierIndex] || null,
+      unlocked: completedTierIndex >= nextTierIndex,
+      available: Math.max(0, Number(count || 0)),
+    });
+  }
+  return out;
+};
+
+const DEFENSIVE_GUARD_CAPACITY = {
+  palisades: 5,
+  fortified_palisades: 8,
+  wooden_ramparts: 12,
+  stone_walls: 16,
+  reinforced_walls: 21,
+  fortified_walls: 27,
+  bastion_walls: 34,
+  citadel_walls: 42,
+  fortress_walls: 51,
+  watchtower: 4,
+  signal_tower: 6,
+  sentinel_tower: 8,
+  border_tower: 10,
+  high_watch: 13,
+  beacon_tower: 16,
+  watch_bastion: 20,
+  prison: 2,
+  dungeon: 4,
+  black_cells: 6,
+  deep_prison: 8,
+  high_security_prison: 10,
+  iron_keep: 12,
+  shadow_vault: 14,
+};
+
+const DEFENSIVE_GUARD_BUILDING_TYPES = new Set(Object.keys(DEFENSIVE_GUARD_CAPACITY));
+
+const normalizeUnitReserves = (raw) => {
+  const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const result = {};
+  for (const [key, value] of Object.entries(source)) {
+    const unitType = String(key || '').trim();
+    if (!unitType) continue;
+    result[unitType] = Math.max(0, Math.floor(Number(value) || 0));
+  }
+  return result;
+};
+
+const getTotalAssignedGuards = (raw) => {
+  const normalized = normalizeUnitReserves(raw);
+  return Object.values(normalized).reduce((sum, value) => sum + Math.max(0, Number(value || 0)), 0);
+};
+
+const getTrainingSpeedReductionPct = (legendaryBonuses) => {
+  const raw = Number((legendaryBonuses || {}).unit_training_speed_reduction_pct || 0);
+  if (!Number.isFinite(raw)) return 0;
+  // Negative values are intentional debuffs and slow training instead of speeding it up.
+  return Math.min(90, raw);
+};
+
+const getBaseTrainingDaysForUnit = (unitType) => {
+  const info = getUnitLineInfo(unitType);
+  if (!info) return null;
+  return Math.max(1, Math.floor(Number(info.tierDef.baseDays || 1)));
+};
+
+const getEffectiveTrainingDaysForUnit = (unitType, legendaryBonuses) => {
+  const base = getBaseTrainingDaysForUnit(unitType);
+  if (!base) return null;
+  const reductionPct = getTrainingSpeedReductionPct(legendaryBonuses);
+  const reduced = base * (1 - (reductionPct / 100));
+  return Math.max(1, Math.ceil(reduced));
+};
+
+// Only tier-1 units of an unlocked line can be trained directly. Higher tiers must be reached via upgrade.
+const isUnitUnlockedForFief = (unitType, completedBuildings) => {
+  const info = getUnitLineInfo(unitType);
+  if (!info) return false;
+  if (info.tierIndex !== 0) return false;
+  return getCompletedLineTierIndex(info.line.buildingChain, completedBuildings) >= 0;
+};
+
+// Determine if a reserve unit can be upgraded to its line's next tier, and what that entails.
+const getUpgradeInfoForUnit = (unitType, completedBuildings) => {
+  const info = getUnitLineInfo(unitType);
+  if (!info) return null;
+  const nextTierIndex = info.tierIndex + 1;
+  const nextTierDef = info.line.tiers[nextTierIndex];
+  if (!nextTierDef) return null;
+  const completedTierIndex = getCompletedLineTierIndex(info.line.buildingChain, completedBuildings);
+  return {
+    lineKey: info.lineKey,
+    nextUnitType: nextTierDef.unitType,
+    nextBaseDays: nextTierDef.baseDays,
+    requiredBuildingType: info.line.buildingChain[nextTierIndex] || null,
+    unlocked: completedTierIndex >= nextTierIndex,
+  };
+};
+
+const getLegendaryBonusesForFief = async (fiefId) => {
+  let legendaryBonuses = {};
+  const legendaryTableCheck = await pool.query(
+    `SELECT to_regclass('public.kingdom_legendary_assignments') AS assignments,
+            to_regclass('public.kingdom_legendary_characters') AS characters`
+  );
+  const canUseLegendary = Boolean(
+    legendaryTableCheck.rows[0]?.assignments &&
+    legendaryTableCheck.rows[0]?.characters
+  );
+  if (!canUseLegendary) return legendaryBonuses;
+
+  const legendaryRows = await pool.query(
+    `SELECT lc.bonuses
+     FROM kingdom_legendary_assignments la
+     JOIN kingdom_legendary_characters lc ON lc.id = la.legendary_id
+     WHERE la.fief_id = $1
+       AND lc.is_active = true`,
+    [fiefId]
+  );
+
+  for (const row of legendaryRows.rows) {
+    const bonuses = (row?.bonuses && typeof row.bonuses === 'object') ? row.bonuses : {};
+    for (const [key, raw] of Object.entries(bonuses)) {
+      const value = Number(raw || 0);
+      if (!Number.isFinite(value) || value === 0) continue;
+      legendaryBonuses[key] = Number(legendaryBonuses[key] || 0) + value;
+    }
+  }
+  return legendaryBonuses;
+};
+
+const getCampaignCurrentDay = async (campaignId) => {
+  const dayResult = await pool.query(
+    `SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`,
+    [campaignId]
+  );
+  return Math.max(1, Math.floor(Number(dayResult.rows[0]?.current_day || 1)));
+};
+
+const getFiefTrainingQueue = async (fiefId, currentDay) => {
+  const tableResult = await pool.query(`SELECT to_regclass('public.fief_training') AS name`);
+  if (!tableResult.rows[0]?.name) return [];
+
+  const queueResult = await pool.query(
+    `SELECT id,
+            unit_type,
+            source_unit_type,
+            status,
+            training_days_required,
+            days_remaining,
+            started_day,
+            complete_day,
+            created_at
+     FROM fief_training
+     WHERE fief_id = $1
+       AND status IN ('training', 'ready')
+     ORDER BY status ASC, complete_day ASC NULLS LAST, id ASC`,
+    [fiefId]
+  );
+
+  return queueResult.rows.map((row) => {
+    const completeDay = row.complete_day == null ? null : Math.max(0, Number(row.complete_day));
+    const daysRemaining = completeDay == null
+      ? Math.max(0, Number(row.days_remaining || 0))
+      : Math.max(0, completeDay - currentDay);
+    return {
+      id: Number(row.id),
+      unit_type: String(row.unit_type || ''),
+      source_unit_type: row.source_unit_type ? String(row.source_unit_type) : null,
+      status: String(row.status || 'training'),
+      training_days_required: Math.max(0, Number(row.training_days_required || 0)),
+      days_remaining: daysRemaining,
+      started_day: row.started_day == null ? null : Number(row.started_day),
+      complete_day: completeDay,
+      created_at: row.created_at,
+    };
+  });
+};
+
+const buildGuardAssignmentsView = (buildings) => {
+  const groups = new Map();
+  for (const building of (buildings || [])) {
+    if (!building?.is_complete) continue;
+    const type = String(building.building_type || '');
+    const cap = Number(DEFENSIVE_GUARD_CAPACITY[type] || 0);
+    if (cap <= 0) continue;
+
+    if (!groups.has(type)) {
+      groups.set(type, {
+        building_type: type,
+        building_name: String(building.name || type),
+        capacity: 0,
+        assigned_by_type: {},
+        building_ids: [],
+      });
+    }
+    const group = groups.get(type);
+    group.capacity += cap;
+    group.building_ids.push(Number(building.id));
+
+    const assignedByType = normalizeUnitReserves(building.assigned_guards_by_type);
+    for (const [unitType, count] of Object.entries(assignedByType)) {
+      group.assigned_by_type[unitType] = Math.max(0, Number(group.assigned_by_type[unitType] || 0)) + Math.max(0, Number(count || 0));
+    }
+  }
+
+  return Array.from(groups.values()).map((group) => ({
+    building_type: group.building_type,
+    building_name: group.building_name,
+    capacity: group.capacity,
+    assigned_total: getTotalAssignedGuards(group.assigned_by_type),
+    assigned_by_type: group.assigned_by_type,
+    building_ids: group.building_ids,
+  }));
 };
 
 const calculatePrisonerCapacityFromBuildings = (buildings) => {
@@ -1800,6 +2706,7 @@ const LEGENDARY_BONUS_KEYS = [
   'building_bonus_pct',
   'population_growth_bonus_pct',
   'food_consumption_reduction_pct',
+  'unit_training_speed_reduction_pct',
 ];
 
 const sanitizeLegendaryBonuses = (raw) => {
@@ -1954,6 +2861,12 @@ const getUpgradeChainFrom = (baseType) => {
   return result;
 };
 
+// All building types that count as "a Tier 1 building" for anyTier1Completed checks,
+// including every upgraded form of each Tier 1 building line so upgrading doesn't lose the count.
+const TIER1_CHAIN_BUILDING_TYPES = new Set(
+  Array.from(TIER1_BUILDING_TYPES).flatMap((type) => Array.from(getUpgradeChainFrom(type)))
+);
+
 // Count how many completed buildings satisfy a prerequisite type (including higher-tier upgrades).
 const countSatisfying = (requiredType, byTypeCount) => {
   const chain = getUpgradeChainFrom(requiredType);
@@ -1974,7 +2887,7 @@ const hasPrerequisites = (catalogEntry, completedBuildings) => {
 
   for (const req of list) {
     if (req.anyTier1Completed) {
-      const count = completedBuildings.filter((b) => TIER1_BUILDING_TYPES.has(String(b.building_type || ''))).length;
+      const count = completedBuildings.filter((b) => TIER1_CHAIN_BUILDING_TYPES.has(String(b.building_type || ''))).length;
       if (count < req.anyTier1Completed) return false;
       continue;
     }
@@ -2432,7 +3345,7 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         const missing = [];
         for (const req of prereqList) {
           if (req.anyTier1Completed) {
-            const count = completedBuildings.filter((b) => TIER1_BUILDING_TYPES.has(String(b.building_type || ''))).length;
+            const count = completedBuildings.filter((b) => TIER1_CHAIN_BUILDING_TYPES.has(String(b.building_type || ''))).length;
             if (count < req.anyTier1Completed) {
               missing.push(`${req.anyTier1Completed} Tier 1 building${req.anyTier1Completed > 1 ? 's' : ''}`);
             }
@@ -2536,36 +3449,14 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     if (effectiveVegetablePhase === 'growing') {
       capAdjusted.nextMaxWorkers.vegetables = 0;
     }
-    const housingCapacity = calculateHousingCapacityFromBuildings(completedBuildings, Array.from(completedResearch));
+    const housingCapacity = calculateHousingCapacityFromBuildings(completedBuildings);
     const prisonerCapacity = calculatePrisonerCapacityFromBuildings(buildingsResult.rows);
-    let legendaryBonuses = {};
-    const legendaryTableCheck = await pool.query(
-      `SELECT to_regclass('public.kingdom_legendary_assignments') AS assignments,
-              to_regclass('public.kingdom_legendary_characters') AS characters`
-    );
-    const canUseLegendary = Boolean(
-      legendaryTableCheck.rows[0]?.assignments &&
-      legendaryTableCheck.rows[0]?.characters
-    );
-    if (canUseLegendary) {
-      const legendaryRows = await pool.query(
-        `SELECT lc.bonuses
-         FROM kingdom_legendary_assignments la
-         JOIN kingdom_legendary_characters lc ON lc.id = la.legendary_id
-         WHERE la.fief_id = $1
-           AND lc.is_active = true`,
-        [fiefId]
-      );
-
-      for (const row of legendaryRows.rows) {
-        const bonuses = (row?.bonuses && typeof row.bonuses === 'object') ? row.bonuses : {};
-        for (const [key, raw] of Object.entries(bonuses)) {
-          const value = Number(raw || 0);
-          if (!Number.isFinite(value) || value === 0) continue;
-          legendaryBonuses[key] = Number(legendaryBonuses[key] || 0) + value;
-        }
-      }
-    }
+    const legendaryBonuses = await getLegendaryBonusesForFief(fiefId);
+    const currentCampaignDay = await getCampaignCurrentDay(fief.campaign_id);
+    const trainingQueue = await getFiefTrainingQueue(fiefId, currentCampaignDay);
+    const guardAssignments = buildGuardAssignmentsView(buildingsResult.rows);
+    const trainableUnitTypes = getTrainableUnitTypesForFief(completedBuildings);
+    const upgradableUnits = getUpgradableEntriesForFief(normalizeUnitReserves(fief?.unit_reserves), completedBuildings);
 
     res.json({
       fief: {
@@ -2588,6 +3479,11 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
           ? fief.location_modifiers
           : {},
         legendary_bonuses: legendaryBonuses,
+        unit_reserves: normalizeUnitReserves(fief?.unit_reserves),
+        training_queue: trainingQueue,
+        guard_assignments: guardAssignments,
+        trainable_unit_types: trainableUnitTypes,
+        upgradable_units: upgradableUnits,
         buildings: buildingsResult.rows,
         researchQueue,
         availableResearch,
@@ -2735,9 +3631,13 @@ router.patch('/fiefs/:id/slave-workers', authenticateToken, async (req, res) => 
 });
 
 router.patch('/fiefs/:id/military/train', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
   try {
     const fiefId = Number(req.params.id);
     const amount = Math.max(0, Math.floor(Number(req.body?.amount) || 0));
+    const requestedUnitType = String(req.body?.unitType || MILITIA_UNIT_TYPE).trim();
+    const unitType = requestedUnitType || MILITIA_UNIT_TYPE;
+
     if (!Number.isFinite(fiefId) || amount <= 0) {
       return res.status(400).json({ error: 'Invalid payload' });
     }
@@ -2748,35 +3648,518 @@ router.patch('/fiefs/:id/military/train', authenticateToken, async (req, res) =>
       return res.status(403).json({ error: 'Not authorized to manage this fief' });
     }
 
-    const assignablePopulation = getAssignablePopulation(
-      owned.population,
-      owned.population_maturation_schedule,
-      owned.sick_injured_population
+    const buildingsResult = await client.query(
+      `SELECT building_type, level, is_complete
+       FROM fief_buildings
+       WHERE fief_id = $1`,
+      [fiefId]
     );
-    const currentWorkers = normalizeWorkerAssignments(owned.worker_assignments);
+    const completedBuildings = buildingsResult.rows.filter((b) => Boolean(b.is_complete));
+    if (!isUnitUnlockedForFief(unitType, completedBuildings)) {
+      return res.status(400).json({ error: `${unitType} is not unlocked by this fief's completed buildings.` });
+    }
+
+    const legendaryBonuses = await getLegendaryBonusesForFief(fiefId);
+    const effectiveDays = getEffectiveTrainingDaysForUnit(unitType, legendaryBonuses);
+    if (!effectiveDays) {
+      return res.status(400).json({ error: `Unknown or unsupported unit type: ${unitType}` });
+    }
+
+    await client.query('BEGIN');
+
+    const lockResult = await client.query(
+      `SELECT population,
+              population_maturation_schedule,
+              sick_injured_population,
+              worker_assignments,
+              unit_reserves,
+              COALESCE(soldiers, 0) AS soldiers
+       FROM fiefs
+       WHERE id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+
+    const locked = lockResult.rows[0];
+    if (!locked) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+
+    const assignablePopulation = getAssignablePopulation(
+      locked.population,
+      locked.population_maturation_schedule,
+      locked.sick_injured_population
+    );
+    const currentWorkers = normalizeWorkerAssignments(locked.worker_assignments);
     const assignedWorkers = Object.values(currentWorkers).reduce((sum, n) => sum + Math.max(0, Number(n) || 0), 0);
     const freeAdults = Math.max(0, assignablePopulation - assignedWorkers);
 
     if (amount > freeAdults) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: `Cannot train ${amount}. Only ${freeAdults} assignable adults are unassigned.` });
     }
 
-    const updateResult = await pool.query(
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+
+    for (let i = 0; i < amount; i += 1) {
+      await client.query(
+        `INSERT INTO fief_training
+           (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier)
+         VALUES
+           ($1, $2, NULL, 1, $3, $3, 'training', $4, $5, '{}'::jsonb, 1)`,
+        [
+          fiefId,
+          unitType,
+          effectiveDays,
+          currentDay,
+          currentDay + effectiveDays,
+        ]
+      );
+    }
+
+    await client.query(
       `UPDATE fiefs
-       SET soldiers = COALESCE(soldiers, 0) + $2
-       WHERE id = $1
-       RETURNING id, population, population_maturation_schedule, sick_injured_population, soldiers, prisoners, slaves, worker_assignments`,
+       SET population = GREATEST(0, COALESCE(population, 0) - $2)
+       WHERE id = $1`,
       [fiefId, amount]
     );
+
+    await client.query('COMMIT');
 
     if (req.io) {
       req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
     }
 
-    res.json({ fief: withPopulationBreakdown(updateResult.rows[0]) });
+    const refreshed = await getFiefContext(fiefId);
+    const currentCampaignDay = await getCampaignCurrentDay(owned.campaign_id);
+    const trainingQueue = await getFiefTrainingQueue(fiefId, currentCampaignDay);
+    res.json({
+      fief: {
+        ...withPopulationBreakdown(refreshed),
+        unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
+        training_queue: trainingQueue,
+      },
+    });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error training soldiers:', error);
     res.status(500).json({ error: 'Failed to train soldiers' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/fiefs/:id/military/training', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+    const queue = await getFiefTrainingQueue(fiefId, currentDay);
+    res.json({ queue, current_day: currentDay });
+  } catch (error) {
+    console.error('Error fetching military training queue:', error);
+    res.status(500).json({ error: 'Failed to fetch training queue' });
+  }
+});
+
+router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+
+    await client.query('BEGIN');
+
+    const readyRowsResult = await client.query(
+      `SELECT id, unit_type
+       FROM fief_training
+       WHERE fief_id = $1
+         AND status IN ('training', 'ready')
+         AND COALESCE(complete_day, 0) <= $2
+       FOR UPDATE`,
+      [fiefId, currentDay]
+    );
+
+    const readyRows = readyRowsResult.rows;
+    if (readyRows.length > 0) {
+      const reservesLock = await client.query(
+        `SELECT unit_reserves, soldiers
+         FROM fiefs
+         WHERE id = $1
+         FOR UPDATE`,
+        [fiefId]
+      );
+
+      const currentReserves = normalizeUnitReserves(reservesLock.rows[0]?.unit_reserves);
+      for (const row of readyRows) {
+        const unitType = String(row.unit_type || MILITIA_UNIT_TYPE);
+        currentReserves[unitType] = Math.max(0, Number(currentReserves[unitType] || 0)) + 1;
+      }
+
+      const militiaCount = Math.max(0, Number(currentReserves[MILITIA_UNIT_TYPE] || 0));
+
+      await client.query(
+        `UPDATE fiefs
+         SET unit_reserves = $2::jsonb,
+             soldiers = $3
+         WHERE id = $1`,
+        [fiefId, JSON.stringify(currentReserves), militiaCount]
+      );
+
+      await client.query(
+        `UPDATE fief_training
+         SET status = 'collected',
+             days_remaining = 0
+         WHERE id = ANY($1::int[])`,
+        [readyRows.map((r) => Number(r.id))]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    const refreshed = await getFiefContext(fiefId);
+    const queue = await getFiefTrainingQueue(fiefId, currentDay);
+    res.json({
+      collected: readyRows.length,
+      fief: {
+        ...withPopulationBreakdown(refreshed),
+        unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
+        training_queue: queue,
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error collecting trained units:', error);
+    res.status(500).json({ error: 'Failed to collect trained units' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const fromUnitType = String(req.body?.fromUnitType || req.body?.toUnitType || '').trim();
+    const amount = Math.max(0, Math.floor(Number(req.body?.amount) || 0));
+
+    if (!Number.isFinite(fiefId) || !fromUnitType || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    const buildingsResult = await client.query(
+      `SELECT building_type, level, is_complete
+       FROM fief_buildings
+       WHERE fief_id = $1`,
+      [fiefId]
+    );
+    const completedBuildings = buildingsResult.rows.filter((b) => Boolean(b.is_complete));
+
+    const upgradeInfo = getUpgradeInfoForUnit(fromUnitType, completedBuildings);
+    if (!upgradeInfo) {
+      return res.status(400).json({ error: `${fromUnitType} has no further upgrade available.` });
+    }
+    if (!upgradeInfo.unlocked) {
+      return res.status(400).json({ error: `Requires the ${upgradeInfo.requiredBuildingType} building to upgrade ${fromUnitType} into ${upgradeInfo.nextUnitType}.` });
+    }
+
+    const toUnitType = upgradeInfo.nextUnitType;
+    const legendaryBonuses = await getLegendaryBonusesForFief(fiefId);
+    const effectiveDays = getEffectiveTrainingDaysForUnit(toUnitType, legendaryBonuses);
+    if (!effectiveDays) {
+      return res.status(400).json({ error: `Unknown or unsupported unit type: ${toUnitType}` });
+    }
+
+    await client.query('BEGIN');
+
+    const lockResult = await client.query(
+      `SELECT unit_reserves
+       FROM fiefs
+       WHERE id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const reserves = normalizeUnitReserves(lockResult.rows[0]?.unit_reserves);
+    const availableSource = Math.max(0, Number(reserves[fromUnitType] || 0));
+    if (amount > availableSource) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Cannot upgrade ${amount}. Only ${availableSource} ${fromUnitType} available.` });
+    }
+
+    reserves[fromUnitType] = availableSource - amount;
+
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+    for (let i = 0; i < amount; i += 1) {
+      await client.query(
+        `INSERT INTO fief_training
+           (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier)
+         VALUES
+           ($1, $2, $3, 1, $4, $4, 'training', $5, $6, '{}'::jsonb, 1)`,
+        [
+          fiefId,
+          toUnitType,
+          fromUnitType,
+          effectiveDays,
+          currentDay,
+          currentDay + effectiveDays,
+        ]
+      );
+    }
+
+    await client.query(
+      `UPDATE fiefs
+       SET unit_reserves = $2::jsonb,
+           soldiers = $3
+       WHERE id = $1`,
+      [
+        fiefId,
+        JSON.stringify(reserves),
+        Math.max(0, Number(reserves[MILITIA_UNIT_TYPE] || 0)),
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    const refreshed = await getFiefContext(fiefId);
+    const queue = await getFiefTrainingQueue(fiefId, currentDay);
+    res.json({
+      fief: {
+        ...withPopulationBreakdown(refreshed),
+        unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
+        training_queue: queue,
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error upgrading militia units:', error);
+    res.status(500).json({ error: 'Failed to upgrade militia units' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/fiefs/:id/military/units/adjust', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    const unitType = String(req.body?.unitType || '').trim();
+    const delta = Math.floor(Number(req.body?.delta) || 0);
+    if (!Number.isFinite(fiefId) || !unitType || delta === 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    await client.query('BEGIN');
+
+    const lockResult = await client.query(
+      `SELECT unit_reserves
+       FROM fiefs
+       WHERE id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const reserves = normalizeUnitReserves(lockResult.rows[0]?.unit_reserves);
+    const next = Math.max(0, Math.floor(Number(reserves[unitType] || 0) + delta));
+    reserves[unitType] = next;
+
+    await client.query(
+      `UPDATE fiefs
+       SET unit_reserves = $2::jsonb,
+           soldiers = $3
+       WHERE id = $1`,
+      [fiefId, JSON.stringify(reserves), Math.max(0, Number(reserves[MILITIA_UNIT_TYPE] || 0))]
+    );
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    const refreshed = await getFiefContext(fiefId);
+    res.json({
+      fief: {
+        ...withPopulationBreakdown(refreshed),
+        unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error adjusting unit reserves:', error);
+    res.status(500).json({ error: 'Failed to adjust unit reserves' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/fiefs/:id/buildings/guards', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const buildingType = String(req.body?.buildingType || '').trim();
+    const unitType = String(req.body?.unitType || '').trim();
+    const delta = Math.floor(Number(req.body?.delta) || 0);
+
+    if (!Number.isFinite(fiefId) || !buildingType || !unitType || delta === 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    const capacityPerBuilding = Number(DEFENSIVE_GUARD_CAPACITY[buildingType] || 0);
+    if (!DEFENSIVE_GUARD_BUILDING_TYPES.has(buildingType) || capacityPerBuilding <= 0) {
+      return res.status(400).json({ error: 'This building type cannot receive guard assignments.' });
+    }
+
+    await client.query('BEGIN');
+
+    const buildingsResult = await client.query(
+      `SELECT id, name, building_type, is_complete, assigned_guards_by_type
+       FROM fief_buildings
+       WHERE fief_id = $1 AND building_type = $2 AND is_complete = true
+       ORDER BY id ASC
+       FOR UPDATE`,
+      [fiefId, buildingType]
+    );
+    const rows = buildingsResult.rows;
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'No completed buildings of this type found for this fief' });
+    }
+
+    const rowStates = rows.map((row) => ({
+      id: Number(row.id),
+      assignedByType: normalizeUnitReserves(row.assigned_guards_by_type),
+    }));
+    const totalCapacity = capacityPerBuilding * rows.length;
+    const totalAssigned = rowStates.reduce((sum, r) => sum + getTotalAssignedGuards(r.assignedByType), 0);
+
+    const lockFief = await client.query(
+      `SELECT unit_reserves
+       FROM fiefs
+       WHERE id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const reserves = normalizeUnitReserves(lockFief.rows[0]?.unit_reserves);
+
+    if (delta > 0) {
+      const remainingCapacity = Math.max(0, totalCapacity - totalAssigned);
+      if (delta > remainingCapacity) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Cannot assign ${delta}. Capacity ${totalCapacity}, currently assigned ${totalAssigned}.` });
+      }
+      const available = Math.max(0, Number(reserves[unitType] || 0));
+      if (delta > available) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Cannot assign ${delta}. Only ${available} ${unitType} available in reserves.` });
+      }
+
+      let remaining = delta;
+      for (const rowState of rowStates) {
+        if (remaining <= 0) break;
+        const rowAssignedTotal = getTotalAssignedGuards(rowState.assignedByType);
+        const room = Math.max(0, capacityPerBuilding - rowAssignedTotal);
+        const take = Math.min(remaining, room);
+        if (take <= 0) continue;
+        rowState.assignedByType[unitType] = Math.max(0, Number(rowState.assignedByType[unitType] || 0)) + take;
+        remaining -= take;
+        await client.query(
+          `UPDATE fief_buildings SET assigned_guards_by_type = $2::jsonb WHERE id = $1`,
+          [rowState.id, JSON.stringify(rowState.assignedByType)]
+        );
+      }
+
+      reserves[unitType] = available - delta;
+    } else {
+      const removeAmount = Math.abs(delta);
+      const currentAssignedOfType = rowStates.reduce((sum, r) => sum + Math.max(0, Number(r.assignedByType[unitType] || 0)), 0);
+      if (removeAmount > currentAssignedOfType) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Cannot unassign ${removeAmount}. Only ${currentAssignedOfType} ${unitType} assigned.` });
+      }
+
+      let remaining = removeAmount;
+      for (const rowState of rowStates) {
+        if (remaining <= 0) break;
+        const rowHas = Math.max(0, Number(rowState.assignedByType[unitType] || 0));
+        const take = Math.min(remaining, rowHas);
+        if (take <= 0) continue;
+        rowState.assignedByType[unitType] = rowHas - take;
+        if (rowState.assignedByType[unitType] <= 0) delete rowState.assignedByType[unitType];
+        remaining -= take;
+        await client.query(
+          `UPDATE fief_buildings SET assigned_guards_by_type = $2::jsonb WHERE id = $1`,
+          [rowState.id, JSON.stringify(rowState.assignedByType)]
+        );
+      }
+
+      reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + removeAmount;
+    }
+
+    await client.query(
+      `UPDATE fiefs
+       SET unit_reserves = $2::jsonb,
+           soldiers = $3
+       WHERE id = $1`,
+      [fiefId, JSON.stringify(reserves), Math.max(0, Number(reserves[MILITIA_UNIT_TYPE] || 0))]
+    );
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    const refreshedBuildings = await pool.query(
+      `SELECT * FROM fief_buildings WHERE fief_id = $1 ORDER BY id ASC`,
+      [fiefId]
+    );
+    const refreshed = await getFiefContext(fiefId);
+    res.json({
+      fief: {
+        ...withPopulationBreakdown(refreshed),
+        unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
+        guard_assignments: buildGuardAssignmentsView(refreshedBuildings.rows),
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating guard assignments:', error);
+    res.status(500).json({ error: 'Failed to update guard assignments' });
+  } finally {
+    client.release();
   }
 });
 

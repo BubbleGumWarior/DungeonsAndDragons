@@ -334,6 +334,7 @@ const startServer = async () => {
         { name: 'addVegetableHarvestState', fn: require('./migrations/add_vegetable_harvest_state') },
         { name: 'addConsecutiveStarvationDays', fn: require('./migrations/add_consecutive_starvation_days') },
         { name: 'addFiefPopulationMilitaryColumns', fn: require('./migrations/add_fief_population_military_columns') },
+        { name: 'addGarrisonTraining', fn: require('./migrations/add_garrison_training') },
         { name: 'addPlayerArmyTraining', fn: require('./migrations/add_player_army_training') },
         { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') },
         { name: 'addCombatSystem', fn: addCombatSystem },
@@ -370,22 +371,28 @@ const startServer = async () => {
         { name: 'addKingdomLegendarySystem', fn: require('./migrations/add_kingdom_legendary_system') },
         { name: 'addKingdomPrayersSystem', fn: require('./migrations/add_kingdom_prayers_system') },
         { name: 'addKingdomTradeDepot', fn: require('./migrations/add_kingdom_trade_depot') },
+        { name: 'addMilitiaTrainingSystem', fn: require('./migrations/add_militia_training_system') },
       ];
       
+      const failedMigrations = [];
       for (const migration of migrations) {
         try {
           await migration.fn();
         } catch (error) {
-          console.warn(`⚠️  Migration "${migration.name}" failed (non-fatal):`, error.message);
-          // Continue with next migration instead of crashing
+          failedMigrations.push({ name: migration.name, message: error?.message || String(error) });
+          console.error(`❌ Migration "${migration.name}" failed:`, error.message);
         }
       }
+
+      if (failedMigrations.length > 0) {
+        const summary = failedMigrations.map((m) => `${m.name}: ${m.message}`).join('; ');
+        throw new Error(`Migration startup failed. ${failedMigrations.length} migration(s) failed: ${summary}`);
+      }
       
-      console.log('✅ Migration phase completed (some migrations may have failed)');
+      console.log('✅ Migration phase completed');
     } catch (error) {
       console.error('❌ Critical error during migrations:', error.message);
-      // Don't exit - let server start anyway so we can access the app
-      console.log('⚠️  Server continuing despite migration errors...');
+      throw error;
     }
     
     // Create HTTP server (Railway handles SSL termination)

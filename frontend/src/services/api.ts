@@ -1325,6 +1325,35 @@ export interface KingdomFief {
   underage_population?: number;
   sick_injured_population?: number;
   soldiers?: number;
+  unit_reserves?: Record<string, number>;
+  training_queue?: Array<{
+    id: number;
+    unit_type: string;
+    source_unit_type?: string | null;
+    status: 'training' | 'ready';
+    training_days_required: number;
+    days_remaining: number;
+    started_day?: number | null;
+    complete_day?: number | null;
+    created_at?: string;
+  }>;
+  guard_assignments?: Array<{
+    building_type: string;
+    building_name: string;
+    capacity: number;
+    assigned_total: number;
+    assigned_by_type: Record<string, number>;
+    building_ids?: number[];
+  }>;
+  trainable_unit_types?: string[];
+  upgradable_units?: Array<{
+    unit_type: string;
+    next_unit_type: string;
+    next_base_days: number;
+    required_building_type: string | null;
+    unlocked: boolean;
+    available: number;
+  }>;
   prisoners?: number;
   slaves?: number;
   population_maturation_schedule?: Record<string, number>;
@@ -1534,7 +1563,37 @@ export const kingdomAPI = {
   },
 
   trainSoldiers: async (fiefId: number, amount: number): Promise<{ fief: KingdomFief }> => {
-    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/train`, { amount });
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/train`, { amount, unitType: 'Militia' });
+    return response.data;
+  },
+
+  trainUnits: async (fiefId: number, unitType: string, amount: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/train`, { unitType, amount });
+    return response.data;
+  },
+
+  getTrainingQueue: async (fiefId: number): Promise<{ queue: KingdomFief['training_queue']; current_day: number }> => {
+    const response = await api.get(`/kingdoms/fiefs/${fiefId}/military/training`);
+    return response.data;
+  },
+
+  collectTrainedUnits: async (fiefId: number): Promise<{ collected: number; fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/collect`);
+    return response.data;
+  },
+
+  upgradeUnit: async (fiefId: number, fromUnitType: string, amount: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/upgrade`, { fromUnitType, amount });
+    return response.data;
+  },
+
+  adjustUnitReserves: async (fiefId: number, unitType: string, delta: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/units/adjust`, { unitType, delta });
+    return response.data;
+  },
+
+  adjustBuildingGuards: async (fiefId: number, buildingType: string, unitType: string, delta: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/buildings/guards`, { buildingType, unitType, delta });
     return response.data;
   },
 

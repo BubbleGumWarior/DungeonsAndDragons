@@ -4,14 +4,14 @@ const { normalizeMaturationSchedule, getAssignablePopulation } = require('../uti
 
 class Campaign {
   static WORKER_CAP_BUILDING_MAP = {
-    wood: ['lumber_mill'],
-    meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced'],
-    vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced'],
-    stone: ['quarry', 'quarry_advanced'],
-    iron: ['mine', 'mine_advanced'],
+    wood: ['lumber_mill', 'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works'],
+    meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'],
+    vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault'],
+    stone: ['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry'],
+    iron: ['mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine'],
     gold: ['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum'],
-    research: ['research_lab', 'research_lab_advanced'],
-    faith: ['faith_temple'],
+    research: ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'],
+    faith: ['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'],
   };
 
   static LOGISTICS_BUILDING_TYPES = [
@@ -28,6 +28,11 @@ class Campaign {
   // Workers are distributed into highest-tier building slots first (20 slots per building).
   // Only workers that fit within a building's capacity receive its rate.
   static MEAT_BUILDING_CHAIN = [
+    { type: 'great_hunters_keep',     rate: 2.95, capacity: 20 },
+    { type: 'warden_lodge',           rate: 2.75, capacity: 20 },
+    { type: 'beastmaster_hall',       rate: 2.55, capacity: 20 },
+    { type: 'ranger_hall',            rate: 2.35, capacity: 20 },
+    { type: 'tracker_lodge',          rate: 2.15, capacity: 20 },
     { type: 'hunters_lodge_advanced', rate: 1.95, capacity: 20 },
     { type: 'hunting_lodge',          rate: 1.73, capacity: 20 },
     { type: 'hunters_guild',          rate: 1.5,  capacity: 20 },
@@ -36,10 +41,23 @@ class Campaign {
   // Rates here are effective-worker multipliers: T1=1.0, T2=+15%, T3=+30% (flat over base).
   // granary adds lane cap but no production bonus so it shares the T1 rate.
   static VEG_BUILDING_CHAIN = [
-    { type: 'farm_advanced',   rate: 1.30, capacity: 20 },
-    { type: 'irrigated_farm',  rate: 1.15, capacity: 20 },
-    { type: 'farm',            rate: 1.0,  capacity: 20 },
-    { type: 'granary',         rate: 1.0,  capacity: 20 },
+    { type: 'hydroponic_conservatory', rate: 2.05, capacity: 20 },
+    { type: 'greenhouse_complex',      rate: 1.90, capacity: 20 },
+    { type: 'fertile_estates',         rate: 1.75, capacity: 20 },
+    { type: 'orchard_farms',           rate: 1.60, capacity: 20 },
+    { type: 'terrace_fields',          rate: 1.45, capacity: 20 },
+    { type: 'farm_advanced',           rate: 1.30, capacity: 20 },
+    { type: 'irrigated_farm',          rate: 1.15, capacity: 20 },
+    { type: 'farm',                    rate: 1.0,  capacity: 20 },
+    { type: 'granary',                 rate: 1.0,  capacity: 20 },
+    { type: 'reinforced_granary',      rate: 1.0,  capacity: 20 },
+    { type: 'cold_cellar_granary',     rate: 1.0,  capacity: 20 },
+    { type: 'regional_granary',        rate: 1.0,  capacity: 20 },
+    { type: 'central_food_reserve',    rate: 1.0,  capacity: 20 },
+    { type: 'preservation_complex',    rate: 1.0,  capacity: 20 },
+    { type: 'nutrient_reserve_hall',   rate: 1.0,  capacity: 20 },
+    { type: 'strategic_food_vault',    rate: 1.0,  capacity: 20 },
+    { type: 'eternal_harvest_vault',   rate: 1.0,  capacity: 20 },
   ];
 
   static getProductionConfig() {
@@ -232,11 +250,26 @@ class Campaign {
   }
 
   static getHousingPopulationPerBuilding(completedResearch) {
+    // Deprecated: capacity is now tracked per building type via HOUSING_CAPACITY_BY_TYPE.
+    // Kept for backward compatibility with any external callers.
     const done = new Set(Array.isArray(completedResearch) ? completedResearch : []);
     if (done.has('tier3_housing')) return 12;
     if (done.has('tier2_housing')) return 8;
     return 4;
   }
+
+  static HOUSING_CAPACITY_BY_TYPE = {
+    housing: 4,
+    wood_lodge: 8,
+    reinforced_lodge: 12,
+    stone_lodge: 16,
+    longhouse_block: 20,
+    manor_house: 24,
+    townhouse_row: 28,
+    urban_residence: 32,
+    noble_residence: 36,
+    royal_estate: 40,
+  };
 
   static getCompletedBuildingCount(completedBuildings, buildingTypes) {
     const types = new Set((buildingTypes || []).map((t) => String(t)));
@@ -246,13 +279,13 @@ class Campaign {
     }, 0);
   }
 
-  static calculateHousingCapacityFromCompletedBuildings(completedBuildings, completedResearch, floorPopulation = 0) {
-    const housingCount = Campaign.getCompletedBuildingCount(completedBuildings, ['housing', 'wood_lodge']);
-    const perBuilding = Campaign.getHousingPopulationPerBuilding(completedResearch);
-    return Math.max(
-      Math.max(0, Number(floorPopulation) || 0),
-      housingCount * perBuilding
-    );
+  static calculateHousingCapacityFromCompletedBuildings(completedBuildings, completedResearch = [], floorPopulation = 0) {
+    let capacity = 0;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      capacity += Campaign.HOUSING_CAPACITY_BY_TYPE[type] || 0;
+    }
+    return Math.max(Math.max(0, Number(floorPopulation) || 0), capacity);
   }
 
   static getPrisonerCapacityForBuildingType(type) {
@@ -298,12 +331,28 @@ class Campaign {
 
   static getStorageCapacityBonusForBuilding(buildingType) {
     const key = String(buildingType || '');
-    if (key === 'storage') return 100;
-    if (key === 'storage_shack') return 200;
-    if (key === 'granary') return 200;
-    if (key === 'storage_advanced') return 300;
-    return 0;
+    return Campaign.STORAGE_CAPACITY_BONUS_BY_TYPE[key] || 0;
   }
+
+  static STORAGE_CAPACITY_BONUS_BY_TYPE = {
+    storage: 100,
+    storage_shack: 200,
+    granary: 200,
+    reinforced_granary: 250,
+    cold_cellar_granary: 300,
+    regional_granary: 350,
+    central_food_reserve: 400,
+    preservation_complex: 450,
+    nutrient_reserve_hall: 500,
+    strategic_food_vault: 550,
+    eternal_harvest_vault: 600,
+    advanced_storage_tent: 300,
+    storehouse: 400,
+    reinforced_storehouse: 500,
+    central_storehouse: 600,
+    storage_advanced: 700,
+    vaulted_warehouse: 800,
+  };
 
   static getStorageCapacityResearchMultiplier(completedResearch) {
     const done = new Set(Array.isArray(completedResearch) ? completedResearch : []);
@@ -422,6 +471,23 @@ class Campaign {
       season,
       seasonEffects: Campaign.getSeasonEffects(season),
     };
+  }
+
+  static async updateMilitaryTrainingForDay(client, fiefId, dayNumber) {
+    const tableCheck = await client.query(`SELECT to_regclass('public.fief_training') AS name`);
+    if (!tableCheck.rows[0]?.name) return;
+
+    await client.query(
+      `UPDATE fief_training
+       SET days_remaining = GREATEST(0, COALESCE(complete_day, $2) - $2),
+           status = CASE
+             WHEN COALESCE(complete_day, $2) <= $2 THEN 'ready'
+             ELSE status
+           END
+       WHERE fief_id = $1
+         AND status = 'training'`,
+      [fiefId, dayNumber]
+    );
   }
 
   static toNumericResourceMap(value) {
@@ -1127,6 +1193,8 @@ class Campaign {
             continue;
           }
 
+          await Campaign.updateMilitaryTrainingForDay(client, fief.id, dayNumber);
+
           const matureToday = Math.max(0, Math.floor(Number(fief.populationMaturationSchedule[String(dayNumber)] || 0)));
           if (matureToday > 0) {
             delete fief.populationMaturationSchedule[String(dayNumber)];
@@ -1244,7 +1312,8 @@ class Campaign {
             resourcesGained[fief.id][resource] = (Number(resourcesGained[fief.id][resource]) || 0) + amount;
           }
 
-          const foodConsumptionReductionPct = Math.max(0, Number(legendaryBonuses.food_consumption_reduction_pct || 0));
+          // Negative values are intentional debuffs and increase consumption instead of reducing it.
+          const foodConsumptionReductionPct = Number(legendaryBonuses.food_consumption_reduction_pct || 0);
           const consumptionMultiplier = Math.max(0, 1 - (foodConsumptionReductionPct / 100));
           const dailyFoodNeeded = Campaign.getDailyFoodConsumption(fief.population, fief.tier)
             + (fief.slaves + fief.prisoners) * 0.5;
@@ -1298,9 +1367,10 @@ class Campaign {
           }
           const foodProducedToday = Math.max(0, Number(capacityApplied.applied.food || 0));
           const season = Campaign.getSeasonForDay(dayNumber);
-          const populationGrowthBonusPct = Math.max(0, Number(legendaryBonuses.population_growth_bonus_pct || 0));
-          const birthChanceMultiplier = Campaign.getBirthChanceMultiplier(foodProducedToday, adjustedDailyFoodNeeded, starvationDeaths, season)
-            * (1 + (populationGrowthBonusPct / 100));
+          // Negative values are intentional debuffs and reduce birth chance instead of boosting it.
+          const populationGrowthBonusPct = Number(legendaryBonuses.population_growth_bonus_pct || 0);
+          const birthChanceMultiplier = Math.max(0, Campaign.getBirthChanceMultiplier(foodProducedToday, adjustedDailyFoodNeeded, starvationDeaths, season)
+            * (1 + (populationGrowthBonusPct / 100)));
           const birthsToday = Campaign.sampleBirths(assignableAdults, populationConfig.dailyBirthChance * birthChanceMultiplier);
           const housingCapacity = Campaign.calculateHousingCapacityFromCompletedBuildings(completed, fief.completedResearch, fief.population);
 
@@ -1345,7 +1415,18 @@ class Campaign {
               Math.max(0, Number(fief.populationMaturationSchedule[maturityKey] || 0)) + birthsToApply;
           }
 
-          const passiveBuilderBonus = Campaign.getCompletedBuildingCount(completed, ['builders_hut']) * 3;
+          const BUILDER_HUT_BONUS_BY_TYPE = {
+            builders_hut: 3,
+            masons_workshop: 6,
+            engineers_lodge: 9,
+            construction_guildhall: 12,
+            master_builder_hall: 15,
+            grand_architect_hall: 18,
+          };
+          const passiveBuilderBonus = (completed || []).reduce((sum, b) => {
+            const type = String(b?.buildingType || b?.building_type || '');
+            return sum + (BUILDER_HUT_BONUS_BY_TYPE[type] || 0);
+          }, 0);
           const builderWorkers = Math.max(0, Number(fief.workerAssignments.building || 0))
             + Math.max(0, Number((fief.slaveWorkerAssignments || {}).building || 0))
             + passiveBuilderBonus;
@@ -1474,15 +1555,9 @@ class Campaign {
                     fief.completedResearch.push(activeResearch.researchId);
                   }
 
-                  // Apply instant housing expansion effects when housing research completes
-                  if (activeResearch.researchId === 'tier2_housing' || activeResearch.researchId === 'tier3_housing') {
-                    const housingBuildingsCount = Campaign.getCompletedBuildingCount(completed, ['housing', 'wood_lodge']);
-                    if (housingBuildingsCount > 0) {
-                      const addedPopulation = housingBuildingsCount * 4;
-                      fief.population += addedPopulation;
-                      populationGained[fief.id] = (Number(populationGained[fief.id]) || 0) + addedPopulation;
-                    }
-                  }
+                  // Housing capacity now scales per building type (see HOUSING_CAPACITY_BY_TYPE),
+                  // so completing tier2_housing/tier3_housing research no longer grants instant
+                  // population — players must build/upgrade the housing structures themselves.
 
                   const nextQueued = queue
                     .filter((entry) => entry.status === 'queued')
