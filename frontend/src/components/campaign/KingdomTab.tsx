@@ -2781,354 +2781,7 @@ const KingdomTab: React.FC<Props> = ({
               </>
               )}
 
-              {hasMilitiaBuilding && (
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Militia & Unit Training</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
-                    <button
-                      onClick={() => setShowProgressionModal(true)}
-                      style={{ padding: '0.25rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
-                    >
-                      📖 View Troop Progression
-                    </button>
-                  </div>
-                </div>
 
-                <div style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.45rem', alignItems: 'end' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
-                    Unit Type
-                    <select
-                      value={selectedTrainUnitType}
-                      onChange={(e) => setSelectedTrainUnitType(String(e.target.value || 'Militia'))}
-                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
-                    >
-                      {(fiefDetails?.trainable_unit_types || []).length === 0 ? (
-                        <option value="">No units unlocked yet</option>
-                      ) : (
-                        (fiefDetails?.trainable_unit_types || []).map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
-                    Amount
-                    <input
-                      type="number"
-                      min={1}
-                      value={trainUnitsAmount}
-                      onChange={(e) => setTrainUnitsAmount(e.target.value)}
-                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
-                    />
-                  </label>
-                  <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem' }}>
-                    {(() => {
-                      const speedPct = Math.min(90, Number((fiefDetails?.legendary_bonuses || {}).unit_training_speed_reduction_pct || 0));
-                      return speedPct >= 0
-                        ? `Speed bonus: -${speedPct.toFixed(1)}%`
-                        : `Speed penalty: +${Math.abs(speedPct).toFixed(1)}%`;
-                    })()}
-                  </div>
-                  <button
-                    onClick={trainSoldiers}
-                    disabled={busy === 'train-soldiers' || unassignedAdults <= 0}
-                    style={{
-                      padding: '0.3rem 0.65rem',
-                      borderRadius: '0.35rem',
-                      border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
-                      background: 'rgba(120,53,15,0.35)',
-                      color: 'var(--text-gold)',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      opacity: (busy === 'train-soldiers' || unassignedAdults <= 0) ? 0.6 : 1,
-                    }}
-                  >
-                    {busy === 'train-soldiers' ? 'Queueing...' : 'Queue Training'}
-                  </button>
-                </div>
-
-                <div style={{ marginTop: '0.65rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={collectTrainedUnits}
-                    disabled={busy === 'collect-units'}
-                    style={{ padding: '0.25rem 0.55rem', borderRadius: '0.35rem', border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    {busy === 'collect-units' ? 'Collecting...' : 'Collect Completed Units'}
-                  </button>
-                </div>
-
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training (Per Unit Timers)</div>
-                  {(fiefDetails?.training_queue || []).length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No units currently in training.</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      {(fiefDetails?.training_queue || []).map((row) => {
-                        const isReady = String(row.status || '').toLowerCase() === 'ready';
-                        return (
-                          <div
-                            key={row.id}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1.4fr 0.9fr 0.9fr 1.2fr',
-                              gap: '0.4rem',
-                              alignItems: 'center',
-                              padding: '0.3rem 0.4rem',
-                              borderRadius: '0.35rem',
-                              background: isReady ? 'rgba(20,83,45,0.35)' : 'rgba(15,23,42,0.45)',
-                              border: isReady ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(148,163,184,0.18)',
-                              boxShadow: isReady ? 'inset 0 0 0 1px rgba(34,197,94,0.25)' : undefined,
-                            }}
-                          >
-                            <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600 }}>{row.unit_type}</span>
-                            <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>#{row.id}</span>
-                            <span style={{ color: isReady ? '#86efac' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
-                              {isReady ? 'Ready to collect' : row.status}
-                            </span>
-                            <span style={{ color: isReady ? '#bbf7d0' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
-                              {isReady ? 'Collect now' : `${Math.max(0, Number(row.days_remaining || 0))}d left`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Reserve Units</div>
-                  {(() => {
-                    const entries = Object.entries(fiefDetails?.unit_reserves || {}).filter(([, amount]) => Math.max(0, Number(amount || 0)) > 0);
-                    if (entries.length === 0) {
-                      return <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units available yet.</div>;
-                    }
-                    const grouped = new Map<string, Array<[string, number]>>();
-                    for (const [unit, amount] of entries) {
-                      const lineKey = unitTypeToLine.get(unit) || 'Other';
-                      if (!grouped.has(lineKey)) grouped.set(lineKey, []);
-                      grouped.get(lineKey)!.push([unit, Math.max(0, Number(amount || 0))]);
-                    }
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                        {Array.from(grouped.entries()).map(([lineKey, unitEntries]) => (
-                          <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
-                            <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{lineKey}</div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                              {unitEntries.map(([unit, amount]) => (
-                                <span key={unit} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.28rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', borderRadius: '0.35rem', padding: '0.15rem 0.45rem', background: 'rgba(120,53,15,0.2)', color: 'var(--text-gold)', fontSize: '0.76rem' }}>
-                                  <strong style={{ color: '#e2e8f0' }}>{unit}</strong>
-                                  <span>{amount}</span>
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Upgrade Units</div>
-                  {(fiefDetails?.upgradable_units || []).length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units are eligible for an upgrade yet.</div>
-                  ) : (
-                    (() => {
-                      const grouped = new Map<string, Array<NonNullable<typeof fiefDetails.upgradable_units>[number]>>();
-                      for (const u of (fiefDetails?.upgradable_units || [])) {
-                        const lineKey = unitTypeToLine.get(u.unit_type) || 'Other';
-                        if (!grouped.has(lineKey)) grouped.set(lineKey, []);
-                        grouped.get(lineKey)!.push(u);
-                      }
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {Array.from(grouped.entries()).map(([lineKey, units]) => (
-                            <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
-                              <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{lineKey}</div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                {units.map((u) => {
-                                  const amountKey = u.unit_type;
-                                  const amount = upgradeAmountByUnit[amountKey] || '1';
-                                  const busyKey = `upgrade-units-${u.unit_type}`;
-                                  return (
-                                    <div key={u.unit_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                                        <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
-                                        <span style={{ color: u.unlocked ? '#86efac' : '#fca5a5', fontSize: '0.72rem' }}>
-                                          {u.unlocked ? `${u.next_base_days}d training` : `Requires ${u.required_building_type || 'higher tier building'}`}
-                                        </span>
-                                      </div>
-                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.35rem', alignItems: 'end' }}>
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          max={u.available}
-                                          value={amount}
-                                          onChange={(e) => setUpgradeAmountByUnit((prev) => ({ ...prev, [amountKey]: e.target.value }))}
-                                          style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
-                                        />
-                                        <button
-                                          onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)))}
-                                          disabled={!u.unlocked || busy === busyKey}
-                                          style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', opacity: (!u.unlocked || busy === busyKey) ? 0.55 : 1 }}
-                                        >
-                                          {busy === busyKey ? 'Queueing...' : `Upgrade (${u.available} available)`}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()
-                  )}
-                </div>
-
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Defensive Guards</div>
-                  {(fiefDetails?.guard_assignments || []).length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No eligible defensive buildings with guard capacity.</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {(fiefDetails?.guard_assignments || []).map((g) => {
-                        const pct = g.capacity > 0 ? Math.min(1, g.assigned_total / g.capacity) : 0;
-                        const barColor = pct >= 1 ? '#ef4444' : pct >= 0.75 ? '#fbbf24' : '#22c55e';
-                        const reserveEntries = Object.entries(fiefDetails?.unit_reserves || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
-                        const assignedEntries = Object.entries(g.assigned_by_type || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
-                        const remainingCapacity = Math.max(0, g.capacity - g.assigned_total);
-                        return (
-                          <div key={g.building_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.5rem', background: 'rgba(15,23,42,0.45)', padding: '0.55rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                              <span style={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>{g.building_name}</span>
-                              <span style={{ color: barColor, fontSize: '0.75rem', fontWeight: 700 }}>{g.assigned_total} / {g.capacity} guards</span>
-                            </div>
-                            <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: '0.55rem' }}>
-                              <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-                              {/* Left: unassigned reserves available to post here */}
-                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
-                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Unassigned Reserves</div>
-                                {reserveEntries.length === 0 ? (
-                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No reserve units available.</div>
-                                ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                                    {reserveEntries.map(([unit, count]) => (
-                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                        <span style={{ color: '#cbd5e1', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
-                                        <button
-                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, 1)}
-                                          disabled={busy === `guards-${g.building_type}` || remainingCapacity <= 0}
-                                          title={remainingCapacity <= 0 ? 'Post is at capacity' : `Assign 1 ${unit}`}
-                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: (busy === `guards-${g.building_type}` || remainingCapacity <= 0) ? 0.5 : 1 }}
-                                        >
-                                          Assign →
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Right: units currently posted here */}
-                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
-                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Assigned Here</div>
-                                {assignedEntries.length === 0 ? (
-                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No units posted yet.</div>
-                                ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                                    {assignedEntries.map(([unit, count]) => (
-                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                        <span style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
-                                        <button
-                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, -1)}
-                                          disabled={busy === `guards-${g.building_type}`}
-                                          title={`Unassign 1 ${unit}`}
-                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: busy === `guards-${g.building_type}` ? 0.5 : 1 }}
-                                        >
-                                          ← Unassign
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {isDungeonMaster && (
-                  <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                    <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>DM Unit Controls (Population Unchanged)</div>
-                    <div style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: '0.5rem' }}>
-                      Enter an amount next to any unit(s), then click Add or Remove once to apply them all.
-                    </div>
-                    <div style={{ display: 'block', width: '100%' }}>
-                      {(fiefDetails?.unit_progression || []).map((line) => (
-                        <div
-                          key={line.line_key}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            boxSizing: 'border-box',
-                            marginBottom: '0.5rem',
-                            padding: '0.5rem',
-                            border: '1px solid rgba(148,163,184,0.18)',
-                            borderRadius: '0.4rem',
-                            background: 'rgba(15,23,42,0.35)',
-                          }}
-                        >
-                          <div style={{ color: 'var(--text-gold)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem', textAlign: 'left' }}>{line.line_key}</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                            {line.tiers.map((tier) => (
-                              <label
-                                key={tier.unit_type}
-                                style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', color: '#cbd5e1', fontSize: '0.7rem', flex: '0 1 140px', textAlign: 'left' }}
-                              >
-                                {tier.unit_type}
-                                <input
-                                  type="number"
-                                  value={dmUnitAdjustAmounts[tier.unit_type] || ''}
-                                  onChange={(e) => setDmUnitAdjustAmounts((prev) => ({ ...prev, [tier.unit_type]: e.target.value }))}
-                                  placeholder="0"
-                                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.24rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.55rem' }}>
-                      <button
-                        onClick={() => dmAddUnitsBatch(1)}
-                        disabled={busy === 'dm-adjust-units'}
-                        style={{ padding: '0.32rem 0.6rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        {busy === 'dm-adjust-units' ? 'Applying...' : '+ Add'}
-                      </button>
-                      <button
-                        onClick={() => dmAddUnitsBatch(-1)}
-                        disabled={busy === 'dm-adjust-units'}
-                        style={{ padding: '0.32rem 0.6rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        {busy === 'dm-adjust-units' ? 'Applying...' : '- Remove'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              )}
 
 
 
@@ -3541,7 +3194,354 @@ const KingdomTab: React.FC<Props> = ({
                   );
                 })}
               </div>
+              {hasMilitiaBuilding && (
+              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Militia & Unit Training</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
+                    <button
+                      onClick={() => setShowProgressionModal(true)}
+                      style={{ padding: '0.25rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                    >
+                      📖 View Troop Progression
+                    </button>
+                  </div>
+                </div>
 
+                <div style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.45rem', alignItems: 'end' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
+                    Unit Type
+                    <select
+                      value={selectedTrainUnitType}
+                      onChange={(e) => setSelectedTrainUnitType(String(e.target.value || 'Militia'))}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                    >
+                      {(fiefDetails?.trainable_unit_types || []).length === 0 ? (
+                        <option value="">No units unlocked yet</option>
+                      ) : (
+                        (fiefDetails?.trainable_unit_types || []).map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))
+                      )}
+                    </select>
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
+                    Amount
+                    <input
+                      type="number"
+                      min={1}
+                      value={trainUnitsAmount}
+                      onChange={(e) => setTrainUnitsAmount(e.target.value)}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                    />
+                  </label>
+                  <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem' }}>
+                    {(() => {
+                      const speedPct = Math.min(90, Number((fiefDetails?.legendary_bonuses || {}).unit_training_speed_reduction_pct || 0));
+                      return speedPct >= 0
+                        ? `Speed bonus: -${speedPct.toFixed(1)}%`
+                        : `Speed penalty: +${Math.abs(speedPct).toFixed(1)}%`;
+                    })()}
+                  </div>
+                  <button
+                    onClick={trainSoldiers}
+                    disabled={busy === 'train-soldiers' || unassignedAdults <= 0}
+                    style={{
+                      padding: '0.3rem 0.65rem',
+                      borderRadius: '0.35rem',
+                      border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
+                      background: 'rgba(120,53,15,0.35)',
+                      color: 'var(--text-gold)',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      opacity: (busy === 'train-soldiers' || unassignedAdults <= 0) ? 0.6 : 1,
+                    }}
+                  >
+                    {busy === 'train-soldiers' ? 'Queueing...' : 'Queue Training'}
+                  </button>
+                </div>
+
+                <div style={{ marginTop: '0.65rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={collectTrainedUnits}
+                    disabled={busy === 'collect-units'}
+                    style={{ padding: '0.25rem 0.55rem', borderRadius: '0.35rem', border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {busy === 'collect-units' ? 'Collecting...' : 'Collect Completed Units'}
+                  </button>
+                </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training (Per Unit Timers)</div>
+                  {(fiefDetails?.training_queue || []).length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No units currently in training.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {(fiefDetails?.training_queue || []).map((row) => {
+                        const isReady = String(row.status || '').toLowerCase() === 'ready';
+                        return (
+                          <div
+                            key={row.id}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1.4fr 0.9fr 0.9fr 1.2fr',
+                              gap: '0.4rem',
+                              alignItems: 'center',
+                              padding: '0.3rem 0.4rem',
+                              borderRadius: '0.35rem',
+                              background: isReady ? 'rgba(20,83,45,0.35)' : 'rgba(15,23,42,0.45)',
+                              border: isReady ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(148,163,184,0.18)',
+                              boxShadow: isReady ? 'inset 0 0 0 1px rgba(34,197,94,0.25)' : undefined,
+                            }}
+                          >
+                            <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600 }}>{row.unit_type}</span>
+                            <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>#{row.id}</span>
+                            <span style={{ color: isReady ? '#86efac' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
+                              {isReady ? 'Ready to collect' : row.status}
+                            </span>
+                            <span style={{ color: isReady ? '#bbf7d0' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
+                              {isReady ? 'Collect now' : `${Math.max(0, Number(row.days_remaining || 0))}d left`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Reserve Units</div>
+                  {(() => {
+                    const entries = Object.entries(fiefDetails?.unit_reserves || {}).filter(([, amount]) => Math.max(0, Number(amount || 0)) > 0);
+                    if (entries.length === 0) {
+                      return <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units available yet.</div>;
+                    }
+                    const grouped = new Map<string, Array<[string, number]>>();
+                    for (const [unit, amount] of entries) {
+                      const lineKey = unitTypeToLine.get(unit) || 'Other';
+                      if (!grouped.has(lineKey)) grouped.set(lineKey, []);
+                      grouped.get(lineKey)!.push([unit, Math.max(0, Number(amount || 0))]);
+                    }
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                        {Array.from(grouped.entries()).map(([lineKey, unitEntries]) => (
+                          <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{lineKey}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                              {unitEntries.map(([unit, amount]) => (
+                                <span key={unit} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.28rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', borderRadius: '0.35rem', padding: '0.15rem 0.45rem', background: 'rgba(120,53,15,0.2)', color: 'var(--text-gold)', fontSize: '0.76rem' }}>
+                                  <strong style={{ color: '#e2e8f0' }}>{unit}</strong>
+                                  <span>{amount}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Upgrade Units</div>
+                  {(fiefDetails?.upgradable_units || []).length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units are eligible for an upgrade yet.</div>
+                  ) : (
+                    (() => {
+                      const grouped = new Map<string, Array<NonNullable<typeof fiefDetails.upgradable_units>[number]>>();
+                      for (const u of (fiefDetails?.upgradable_units || [])) {
+                        const lineKey = unitTypeToLine.get(u.unit_type) || 'Other';
+                        if (!grouped.has(lineKey)) grouped.set(lineKey, []);
+                        grouped.get(lineKey)!.push(u);
+                      }
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {Array.from(grouped.entries()).map(([lineKey, units]) => (
+                            <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{lineKey}</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                {units.map((u) => {
+                                  const amountKey = u.unit_type;
+                                  const amount = upgradeAmountByUnit[amountKey] || '1';
+                                  const busyKey = `upgrade-units-${u.unit_type}`;
+                                  return (
+                                    <div key={u.unit_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                                        <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
+                                        <span style={{ color: u.unlocked ? '#86efac' : '#fca5a5', fontSize: '0.72rem' }}>
+                                          {u.unlocked ? `${u.next_base_days}d training` : `Requires ${u.required_building_type || 'higher tier building'}`}
+                                        </span>
+                                      </div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.35rem', alignItems: 'end' }}>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={u.available}
+                                          value={amount}
+                                          onChange={(e) => setUpgradeAmountByUnit((prev) => ({ ...prev, [amountKey]: e.target.value }))}
+                                          style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                                        />
+                                        <button
+                                          onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)))}
+                                          disabled={!u.unlocked || busy === busyKey}
+                                          style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', opacity: (!u.unlocked || busy === busyKey) ? 0.55 : 1 }}
+                                        >
+                                          {busy === busyKey ? 'Queueing...' : `Upgrade (${u.available} available)`}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Defensive Guards</div>
+                  {(fiefDetails?.guard_assignments || []).length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No eligible defensive buildings with guard capacity.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {(fiefDetails?.guard_assignments || []).map((g) => {
+                        const pct = g.capacity > 0 ? Math.min(1, g.assigned_total / g.capacity) : 0;
+                        const barColor = pct >= 1 ? '#ef4444' : pct >= 0.75 ? '#fbbf24' : '#22c55e';
+                        const reserveEntries = Object.entries(fiefDetails?.unit_reserves || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
+                        const assignedEntries = Object.entries(g.assigned_by_type || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
+                        const remainingCapacity = Math.max(0, g.capacity - g.assigned_total);
+                        return (
+                          <div key={g.building_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.5rem', background: 'rgba(15,23,42,0.45)', padding: '0.55rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                              <span style={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>{g.building_name}</span>
+                              <span style={{ color: barColor, fontSize: '0.75rem', fontWeight: 700 }}>{g.assigned_total} / {g.capacity} guards</span>
+                            </div>
+                            <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: '0.55rem' }}>
+                              <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                              {/* Left: unassigned reserves available to post here */}
+                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Unassigned Reserves</div>
+                                {reserveEntries.length === 0 ? (
+                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No reserve units available.</div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    {reserveEntries.map(([unit, count]) => (
+                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
+                                        <span style={{ color: '#cbd5e1', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                        <button
+                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, 1)}
+                                          disabled={busy === `guards-${g.building_type}` || remainingCapacity <= 0}
+                                          title={remainingCapacity <= 0 ? 'Post is at capacity' : `Assign 1 ${unit}`}
+                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: (busy === `guards-${g.building_type}` || remainingCapacity <= 0) ? 0.5 : 1 }}
+                                        >
+                                          Assign →
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Right: units currently posted here */}
+                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Assigned Here</div>
+                                {assignedEntries.length === 0 ? (
+                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No units posted yet.</div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    {assignedEntries.map(([unit, count]) => (
+                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
+                                        <span style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                        <button
+                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, -1)}
+                                          disabled={busy === `guards-${g.building_type}`}
+                                          title={`Unassign 1 ${unit}`}
+                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: busy === `guards-${g.building_type}` ? 0.5 : 1 }}
+                                        >
+                                          ← Unassign
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {isDungeonMaster && (
+                  <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                    <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>DM Unit Controls (Population Unchanged)</div>
+                    <div style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: '0.5rem' }}>
+                      Enter an amount next to any unit(s), then click Add or Remove once to apply them all.
+                    </div>
+                    <div style={{ display: 'block', width: '100%' }}>
+                      {(fiefDetails?.unit_progression || []).map((line) => (
+                        <div
+                          key={line.line_key}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            marginBottom: '0.5rem',
+                            padding: '0.5rem',
+                            border: '1px solid rgba(148,163,184,0.18)',
+                            borderRadius: '0.4rem',
+                            background: 'rgba(15,23,42,0.35)',
+                          }}
+                        >
+                          <div style={{ color: 'var(--text-gold)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem', textAlign: 'left' }}>{line.line_key}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                            {line.tiers.map((tier) => (
+                              <label
+                                key={tier.unit_type}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', color: '#cbd5e1', fontSize: '0.7rem', flex: '0 1 140px', textAlign: 'left' }}
+                              >
+                                {tier.unit_type}
+                                <input
+                                  type="number"
+                                  value={dmUnitAdjustAmounts[tier.unit_type] || ''}
+                                  onChange={(e) => setDmUnitAdjustAmounts((prev) => ({ ...prev, [tier.unit_type]: e.target.value }))}
+                                  placeholder="0"
+                                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.24rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.55rem' }}>
+                      <button
+                        onClick={() => dmAddUnitsBatch(1)}
+                        disabled={busy === 'dm-adjust-units'}
+                        style={{ padding: '0.32rem 0.6rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        {busy === 'dm-adjust-units' ? 'Applying...' : '+ Add'}
+                      </button>
+                      <button
+                        onClick={() => dmAddUnitsBatch(-1)}
+                        disabled={busy === 'dm-adjust-units'}
+                        style={{ padding: '0.32rem 0.6rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        {busy === 'dm-adjust-units' ? 'Applying...' : '- Remove'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              )}
               <div style={{ padding: '0.8rem', border: '1px solid rgba(218,165,32,0.3)', borderRadius: '0.6rem', background: 'rgba(113,63,18,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1.05rem' }}>⬆️ Fief Tier Upgrade</div>
