@@ -2895,7 +2895,7 @@ const KingdomTab: React.FC<Props> = ({
                     <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units are eligible for an upgrade yet.</div>
                   ) : (
                     (() => {
-                      const grouped = new Map<string, typeof fiefDetails.upgradable_units>();
+                      const grouped = new Map<string, Array<NonNullable<typeof fiefDetails.upgradable_units>[number]>>();
                       for (const u of (fiefDetails?.upgradable_units || [])) {
                         const lineKey = unitTypeToLine.get(u.unit_type) || 'Other';
                         if (!grouped.has(lineKey)) grouped.set(lineKey, []);
