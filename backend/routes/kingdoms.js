@@ -1311,6 +1311,110 @@ Object.assign(BUILDING_CATALOG, {
 });
 
 Object.assign(BUILDING_CATALOG, {
+  // ── Guard Post chain (Watchman → Guard → Shield Guard → Royal Guard) ──────
+  guard_post: {
+    key: 'guard_post', name: 'Guard Post',
+    description: 'Basic sentry training post for local watch and defense duty.',
+    tierRequired: 3, cost: { wood: 20, stone: 12, iron: 4 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'militia_camp', minCount: 1 }],
+  },
+  guard_barracks: {
+    key: 'guard_barracks', name: 'Guard Barracks',
+    description: 'Standing watch barracks for disciplined guard formations.',
+    tierRequired: 4, cost: { wood: 26, stone: 18, iron: 8 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'guard_post', minCount: 1 }],
+  },
+  shield_hall: {
+    key: 'shield_hall', name: 'Shield Hall',
+    description: 'Shieldcraft and formation drills for veteran guard units.',
+    tierRequired: 5, cost: { wood: 32, stone: 24, iron: 12 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'guard_barracks', minCount: 1 }],
+  },
+  royal_guard_citadel: {
+    key: 'royal_guard_citadel', name: 'Royal Guard Citadel',
+    description: 'Elite guard command citadel for the realm\'s finest sentries.',
+    tierRequired: 6, cost: { wood: 40, stone: 30, iron: 16 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'shield_hall', minCount: 1 }],
+  },
+  blacksmith: {
+    key: 'blacksmith', name: 'Blacksmith',
+    description: 'Dedicated bladesmithing support for heavier guard weaponry.',
+    tierRequired: 3, cost: { wood: 16, stone: 12, iron: 12 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'smithy', minCount: 1 }],
+  },
+
+  // ── Thieves Guild chain (Street Informant → Infiltrator) + branches ───────
+  thieves_guild: {
+    key: 'thieves_guild', name: 'Thieves\' Guild',
+    description: 'Underground network for informants and covert recruitment.',
+    tierRequired: 3, cost: { wood: 20, stone: 12, iron: 4 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'militia_camp', minCount: 1 }],
+  },
+  thieves_den: {
+    key: 'thieves_den', name: 'Thieves\' Den',
+    description: 'Hidden operations base for trained infiltrators.',
+    tierRequired: 4, cost: { wood: 26, stone: 18, iron: 8 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'thieves_guild', minCount: 1 }],
+  },
+  scout_lodge: {
+    key: 'scout_lodge', name: 'Scout Lodge',
+    description: 'Reconnaissance training grounds for long-range scouting.',
+    tierRequired: 5, cost: { wood: 32, stone: 24, iron: 12 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'thieves_den', minCount: 1 }],
+  },
+  master_scout_lodge: {
+    key: 'master_scout_lodge', name: 'Master Scout Lodge',
+    description: 'Advanced scouting doctrine for elite reconnaissance units.',
+    tierRequired: 6, cost: { wood: 40, stone: 30, iron: 16 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'scout_lodge', minCount: 1 }],
+  },
+  spy_network: {
+    key: 'spy_network', name: 'Spy Network',
+    description: 'Covert intelligence network for infiltration operations.',
+    tierRequired: 5, cost: { wood: 32, stone: 24, iron: 12 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'thieves_den', minCount: 1 }],
+  },
+  master_spy_network: {
+    key: 'master_spy_network', name: 'Master Spy Network',
+    description: 'Elite intelligence tradecraft for master-level spies.',
+    tierRequired: 6, cost: { wood: 40, stone: 30, iron: 16 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'spy_network', minCount: 1 }],
+  },
+  assassin_den: {
+    key: 'assassin_den', name: 'Assassin\'s Den',
+    description: 'Secretive training ground for lethal covert operatives.',
+    tierRequired: 5, cost: { wood: 34, stone: 26, iron: 16 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'thieves_den', minCount: 1 }],
+  },
+  high_assassin_den: {
+    key: 'high_assassin_den', name: 'High Assassin\'s Den',
+    description: 'Refined shadow tradecraft for master assassins.',
+    tierRequired: 6, cost: { wood: 42, stone: 34, iron: 22 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'assassin_den', minCount: 1 }],
+  },
+  shadow_order: {
+    key: 'shadow_order', name: 'Shadow Order',
+    description: 'Secret society support required to train the deadliest operatives.',
+    tierRequired: 5, cost: { wood: 30, stone: 22, iron: 14 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'thieves_den', minCount: 1 }],
+  },
+
+  // ── Standalone support buildings for hybrid unit branches ─────────────────
+  workshop: {
+    key: 'workshop', name: 'Workshop',
+    description: 'Mechanical fabrication support for crossbow and siege crews.',
+    tierRequired: 4, cost: { wood: 24, stone: 16, iron: 10 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'archer_range', minCount: 1 }],
+  },
+  foundry: {
+    key: 'foundry', name: 'Foundry',
+    description: 'Heavy metal casting support for bombard-grade siege engines.',
+    tierRequired: 5, cost: { wood: 30, stone: 26, iron: 20 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'war_engine_forge', minCount: 1 }],
+  },
+});
+
+Object.assign(BUILDING_CATALOG, {
   // ── Housing tiers 3-10 (matches BUILDING_TIER_MATRIX.md) ──────────────────
   reinforced_lodge: {
     key: 'reinforced_lodge', name: 'Reinforced Lodge',
@@ -1924,6 +2028,15 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   war_engine_forge: { researchRequired: null, upgradedBuilding: 'advanced_siege_workshop', tier3: 'advanced_siege_workshop' },
   advanced_siege_workshop: { researchRequired: null, upgradedBuilding: 'imperial_siege_hall', tier3: 'imperial_siege_hall' },
 
+  guard_post: { researchRequired: null, upgradedBuilding: 'guard_barracks', tier3: 'guard_barracks' },
+  guard_barracks: { researchRequired: null, upgradedBuilding: 'shield_hall', tier3: 'shield_hall' },
+  shield_hall: { researchRequired: null, upgradedBuilding: 'royal_guard_citadel', tier3: 'royal_guard_citadel' },
+
+  thieves_guild: { researchRequired: null, upgradedBuilding: 'thieves_den', tier3: 'thieves_den' },
+  scout_lodge: { researchRequired: null, upgradedBuilding: 'master_scout_lodge', tier3: 'master_scout_lodge' },
+  spy_network: { researchRequired: null, upgradedBuilding: 'master_spy_network', tier3: 'master_spy_network' },
+  assassin_den: { researchRequired: null, upgradedBuilding: 'high_assassin_den', tier3: 'high_assassin_den' },
+
   reinforced_lodge: { researchRequired: null, upgradedBuilding: 'stone_lodge', tier3: 'stone_lodge' },
   stone_lodge: { researchRequired: null, upgradedBuilding: 'longhouse_block', tier3: 'longhouse_block' },
   longhouse_block: { researchRequired: null, upgradedBuilding: 'manor_house', tier3: 'manor_house' },
@@ -2250,6 +2363,25 @@ const CAVALRY_LINE_BUILDINGS = ['stables', 'war_stables', 'royal_stables', 'elit
 const SWORDSMEN_LINE_BUILDINGS = ['swordsmith_hall', 'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge'];
 const SPEARMEN_LINE_BUILDINGS = ['spear_drill_yard', 'pike_yard', 'formation_citadel', 'shieldwall_hall', 'phalanx_command'];
 const SIEGE_LINE_BUILDINGS = ['siege_engine_workshop', 'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall'];
+const GUARD_LINE_BUILDINGS = ['guard_post', 'guard_barracks', 'shield_hall', 'royal_guard_citadel'];
+const COVERT_LINE_BUILDINGS = ['thieves_guild', 'thieves_den'];
+// Hybrid lines: each tier here is an array of building types, ALL of which must be completed to unlock it.
+// These mirror unitTemplates.js's parallel branches (e.g. Horse Archer needs both an Archer Range and Stables).
+const HORSE_ARCHER_LINE_BUILDINGS = [['archer_range', 'stables'], ['bowyer_hall', 'war_stables']];
+const SHOCK_CAVALRY_LINE_BUILDINGS = [['spear_drill_yard', 'stables'], ['pike_yard', 'war_stables']];
+const RECRUIT_LINE_BUILDINGS = ['militia_camp', 'militia_barracks'];
+const TWO_HANDED_SWORD_LINE_BUILDINGS = [['militia_barracks', 'armory'], ['veteran_barracks', 'armory']];
+const CROSSBOW_LINE_BUILDINGS = [['archer_range', 'workshop'], ['bowyer_hall', 'workshop']];
+const LANCER_LINE_BUILDINGS = [['stables', 'armory'], ['war_stables', 'armory']];
+const AXEMAN_LINE_BUILDINGS = [['shield_hall', 'blacksmith'], ['royal_guard_citadel', 'blacksmith']];
+const SCOUT_LINE_BUILDINGS = [['thieves_den', 'scout_lodge'], ['thieves_den', 'master_scout_lodge']];
+const SPY_LINE_BUILDINGS = [['thieves_den', 'spy_network'], ['thieves_den', 'master_spy_network']];
+const ASSASSIN_LINE_BUILDINGS = [['thieves_den', 'assassin_den', 'shadow_order'], ['thieves_den', 'high_assassin_den', 'shadow_order']];
+const SIEGE_APPRENTICE_LINE_BUILDINGS = ['siege_foundry'];
+const BALLISTA_LINE_BUILDINGS = ['war_engine_forge', 'advanced_siege_workshop'];
+const CATAPULT_LINE_BUILDINGS = ['war_engine_forge', 'advanced_siege_workshop'];
+const SIEGE_TOWER_LINE_BUILDINGS = ['advanced_siege_workshop'];
+const BOMBARD_LINE_BUILDINGS = [['war_engine_forge', 'foundry'], ['advanced_siege_workshop', 'foundry']];
 
 const UNIT_LINES = {
   Militia: {
@@ -2303,7 +2435,127 @@ const UNIT_LINES = {
       { unitType: 'Grand Siegemaster', baseDays: 80 },
     ],
   },
+  Guard: {
+    buildingChain: GUARD_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Watchman', baseDays: 4 },
+      { unitType: 'Guard', baseDays: 8 },
+      { unitType: 'Shield Guard', baseDays: 16 },
+      { unitType: 'Royal Guard', baseDays: 32 },
+    ],
+  },
+  Covert: {
+    buildingChain: COVERT_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Street Informant', baseDays: 6 },
+      { unitType: 'Infiltrator', baseDays: 12 },
+    ],
+  },
+  'Horse Archer': {
+    buildingChain: HORSE_ARCHER_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Mounted Archer', baseDays: 20 },
+      { unitType: 'Horse Archer', baseDays: 40 },
+    ],
+  },
+  'Shock Cavalry': {
+    buildingChain: SHOCK_CAVALRY_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Spearman Cavalry', baseDays: 14 },
+      { unitType: 'Shock Cavalry', baseDays: 28 },
+    ],
+  },
+  Recruit: {
+    buildingChain: RECRUIT_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Recruit', baseDays: 3 },
+      { unitType: 'Soldier', baseDays: 6 },
+    ],
+  },
+  'Two-Handed Swordsman': {
+    buildingChain: TWO_HANDED_SWORD_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Two-Handed Swordsman', baseDays: 12 },
+      { unitType: 'Greatsword Master', baseDays: 24 },
+    ],
+  },
+  Crossbowman: {
+    buildingChain: CROSSBOW_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Crossbowman', baseDays: 20 },
+      { unitType: 'Arbalest', baseDays: 40 },
+    ],
+  },
+  Lancer: {
+    buildingChain: LANCER_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Lancer', baseDays: 28 },
+      { unitType: 'Royal Lancer', baseDays: 56 },
+    ],
+  },
+  Axeman: {
+    buildingChain: AXEMAN_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Axeman', baseDays: 16 },
+      { unitType: 'Battle Axeman', baseDays: 32 },
+    ],
+  },
+  Scout: {
+    buildingChain: SCOUT_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Scout', baseDays: 24 },
+      { unitType: 'Master Scout', baseDays: 48 },
+    ],
+  },
+  Spy: {
+    buildingChain: SPY_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Spy', baseDays: 24 },
+      { unitType: 'Master Spy', baseDays: 48 },
+    ],
+  },
+  Assassin: {
+    buildingChain: ASSASSIN_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Assassin', baseDays: 24 },
+      { unitType: 'Shadow Assassin', baseDays: 48 },
+    ],
+  },
+  'Siege Apprentice': {
+    buildingChain: SIEGE_APPRENTICE_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Siege Apprentice', baseDays: 10 },
+    ],
+  },
+  Ballista: {
+    buildingChain: BALLISTA_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Ballista Crew', baseDays: 20 },
+      { unitType: 'Heavy Ballista', baseDays: 40 },
+    ],
+  },
+  Catapult: {
+    buildingChain: CATAPULT_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Catapult Crew', baseDays: 20 },
+      { unitType: 'Trebuchet Crew', baseDays: 40 },
+    ],
+  },
+  'Siege Tower': {
+    buildingChain: SIEGE_TOWER_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Siege Tower Operator', baseDays: 40 },
+    ],
+  },
+  Bombard: {
+    buildingChain: BOMBARD_LINE_BUILDINGS,
+    tiers: [
+      { unitType: 'Bombard Crew', baseDays: 20 },
+      { unitType: 'Grand Bombard', baseDays: 40 },
+    ],
+  },
 };
+
 
 // Reverse lookup: unitType -> { lineKey, tierIndex }
 const UNIT_TYPE_LOOKUP = {};
@@ -2326,6 +2578,13 @@ const isTierBuildingRequirementMet = (buildingChain, tierIndex, completedBuildin
   const types = getRequiredBuildingsForTier(buildingChain, tierIndex);
   if (types.length === 0) return false;
   return types.every((type) => (completedBuildings || []).some((b) => String(b?.building_type || '') === type));
+};
+
+// Human-readable label for whatever building(s) a tier requires, e.g. "Pike Yard" or "Pike Yard + War Stables".
+const getRequiredBuildingsLabel = (buildingChain, tierIndex) => {
+  const types = getRequiredBuildingsForTier(buildingChain, tierIndex);
+  if (types.length === 0) return null;
+  return types.map((type) => BUILDING_CATALOG[type]?.name || type).join(' + ');
 };
 
 // Highest index within a building chain that the fief currently has completed (-1 if none).
@@ -2393,7 +2652,7 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings) => {
       unit_type: unitType,
       next_unit_type: nextTierDef.unitType,
       next_base_days: nextTierDef.baseDays,
-      required_building_type: info.line.buildingChain[nextTierIndex] || null,
+      required_building_type: getRequiredBuildingsLabel(info.line.buildingChain, nextTierIndex),
       unlocked: completedTierIndex >= nextTierIndex,
       available: Math.max(0, Number(count || 0)),
     });
@@ -2486,7 +2745,7 @@ const getUpgradeInfoForUnit = (unitType, completedBuildings) => {
     lineKey: info.lineKey,
     nextUnitType: nextTierDef.unitType,
     nextBaseDays: nextTierDef.baseDays,
-    requiredBuildingType: info.line.buildingChain[nextTierIndex] || null,
+    requiredBuildingType: getRequiredBuildingsLabel(info.line.buildingChain, nextTierIndex),
     unlocked: completedTierIndex >= nextTierIndex,
   };
 };

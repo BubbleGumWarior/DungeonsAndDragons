@@ -1241,6 +1241,47 @@ const KingdomTab: React.FC<Props> = ({
     return map;
   }, [fiefDetails?.unit_progression]);
 
+  // Splits unit_progression into "primary" single-building lines and "hybrid" lines whose tiers
+  // require more than one building (e.g. Horse Archer, Lancer) — hybrids are rendered as a branch
+  // row under every primary line whose building chain they draw from, instead of their own panel.
+  const progressionRenderModel = useMemo(() => {
+    const lines = fiefDetails?.unit_progression || [];
+    const isHybrid = (line: typeof lines[number]) => line.tiers.some((t) => t.required_buildings.length > 1);
+    const primaryLines = lines.filter((l) => !isHybrid(l));
+    const hybridLines = lines.filter(isHybrid);
+
+    const buildingOwnerLine = new Map<string, string>();
+    for (const line of primaryLines) {
+      for (const tier of line.tiers) {
+        for (const rb of tier.required_buildings) {
+          buildingOwnerLine.set(rb.building_type, line.line_key);
+        }
+      }
+    }
+
+    const branchesByParent = new Map<string, typeof hybridLines>();
+    for (const hybrid of hybridLines) {
+      const parentKeys = new Set<string>();
+      for (const tier of hybrid.tiers) {
+        for (const rb of tier.required_buildings) {
+          const owner = buildingOwnerLine.get(rb.building_type);
+          if (owner) parentKeys.add(owner);
+        }
+      }
+      for (const parentKey of parentKeys) {
+        if (!branchesByParent.has(parentKey)) branchesByParent.set(parentKey, []);
+        branchesByParent.get(parentKey)!.push(hybrid);
+      }
+    }
+
+    // Reference column count for right-aligning branches, taken from the longest primary line rather
+    // than the specific parent — so a branch attached to a short base (e.g. Covert's 2-tier Street
+    // Informant/Infiltrator) still lands in its true tier-3/4 columns instead of overlapping columns 0-1.
+    const maxPrimaryTierCount = primaryLines.reduce((max, l) => Math.max(max, l.tiers.length), 0);
+
+    return { primaryLines, branchesByParent, maxPrimaryTierCount };
+  }, [fiefDetails?.unit_progression]);
+
   const hasCompletedResearchLab = useMemo(
     () => (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && String(b?.building_type) === 'research_lab'),
     [fiefDetails?.buildings]
@@ -4599,7 +4640,7 @@ const KingdomTab: React.FC<Props> = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {(fiefDetails?.unit_progression || []).map((line) => (
+              {progressionRenderModel.primaryLines.map((line) => (
                 <div key={line.line_key} style={{ padding: '0.75rem', background: 'rgba(30,41,59,0.35)', borderRadius: '0.5rem', border: '1px solid rgba(148,163,184,0.2)' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{line.line_key}</div>
                   <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -4632,6 +4673,61 @@ const KingdomTab: React.FC<Props> = ({
                       </React.Fragment>
                     ))}
                   </div>
+
+                  {(progressionRenderModel.branchesByParent.get(line.line_key) || []).map((branch) => {
+                    // Right-align the branch's tiers under the LAST N columns of the widest primary line
+                    // (N = branch tier count) so equivalent-power units (matching base_days/tier) land in
+                    // the correct column even when their direct parent has fewer tiers than the full tree
+                    // (e.g. Covert only shows Street Informant/Infiltrator, but Assassin/Shadow Assassin
+                    // are tier-3/4 units and must land in columns 3-4, not overlap columns 1-2).
+                    const offset = Math.max(0, progressionRenderModel.maxPrimaryTierCount - branch.tiers.length);
+                    const totalSlots = offset + branch.tiers.length;
+                    return (
+                      <div key={branch.line_key} style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(148,163,184,0.2)' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontStyle: 'italic', marginBottom: '0.35rem' }}>
+                          ⤷ {branch.line_key}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          {Array.from({ length: totalSlots }).map((_, i) => {
+                            const isSpacer = i < offset;
+                            const tier = isSpacer ? null : branch.tiers[i - offset];
+                            return (
+                              <React.Fragment key={i}>
+                                {i > 0 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', color: '#64748b', fontSize: '1rem', visibility: i > offset ? 'visible' : 'hidden' }}>→</div>
+                                )}
+                                {isSpacer || !tier ? (
+                                  <div style={{ minWidth: '150px', visibility: 'hidden' }} />
+                                ) : (
+                                  <div
+                                    style={{
+                                      minWidth: '150px',
+                                      padding: '0.5rem',
+                                      borderRadius: '0.4rem',
+                                      border: `1px dashed ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
+                                      background: tier.unlocked ? 'rgba(20,83,45,0.18)' : 'rgba(15,23,42,0.3)',
+                                    }}
+                                  >
+                                    <div style={{ color: tier.unlocked ? '#86efac' : '#94a3b8', fontWeight: 700, fontSize: '0.82rem' }}>
+                                      {tier.unlocked ? '✅' : '🔒'} {tier.unit_type}
+                                    </div>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
+                                    <div style={{ marginTop: '0.3rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                                      {tier.required_buildings.map((rb) => (
+                                        <div key={rb.building_type} style={{ color: rb.completed ? '#86efac' : '#f87171', fontSize: '0.68rem' }}>
+                                          {rb.completed ? '✓' : '✗'} {rb.building_name}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
               {(fiefDetails?.unit_progression || []).length === 0 && (
