@@ -120,32 +120,47 @@ const getBattlefieldDistanceFeet = (
 // major: true => 5x base size (180px), default => 3x base size (108px)
 // playerCity: true => city has multiple images to cycle through
 const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolean; outline?: string; playerCity?: boolean }> = [
-  { name: 'North Pac',    x: 42.25,  y: 12 },
-  { name: 'Northington',  x: 36,  y: 24 },
-  { name: 'The Blairy',   x: 17.75,  y: 28.5 },
-  { name: 'Westreach',    x: 22.5,  y: 38,  major: true },
-  { name: 'Riverpoint',   x: 27,  y: 48 },
-  { name: 'Riverbasin',   x: 31.5,  y: 47 },
-  { name: 'Silva Umbra',  x: 37,  y: 50, playerCity: true},
-  { name: 'Outreach',     x: 18.2,  y: 60 },
-  { name: 'Northreach',   x: 15,  y: 70 },
-  { name: 'Southreach',   x: 18,  y: 74 },
-  { name: 'Gulltown',     x: 38,  y: 69 },
-  { name: 'Yllwyn',       x: 42.25,  y: 79, playerCity: true },
-  { name: 'Scolissaz',    x: 37.5,  y: 87.5},
-  { name: 'Fairy Grove',  x: 28.2,  y: 75 },
-  { name: 'Pass-Crown',   x: 50,  y: 46,  major: true },
-  { name: "Ruk'da",       x: 64,  y: 28 },
-  { name: 'Eastreach',    x: 71.5,  y: 40,  major: true },
-  { name: 'Ridagast',     x: 83.25,  y: 46.5 },
-  { name: 'Khairok',      x: 74.5,  y: 49 },
-  { name: 'Uhlruk',       x: 72,  y: 58, major: true },
+  { name: 'North Pac',                x: 42.25,  y: 12},
+  { name: 'Northington',              x: 36,  y: 24 },
+  { name: 'The Blairy',               x: 17.75,  y: 28.5 },
+  { name: 'Westrock',                 x: 38,  y: 34},
+  { name: 'Western Plain',            x: 31.5,  y: 35  },
+  { name: 'Westreach',                x: 22.5,  y: 38,  major: true },
+  { name: 'Riverpoint',               x: 27,  y: 48 },
+  { name: 'Riverbasin',               x: 31.5,  y: 47 },
+  { name: 'Silva Umbra',              x: 37,  y: 50, playerCity: true },
+  { name: 'Castellum in Montibus',    x: 41.5,  y: 46, playerCity: true},
+  { name: 'Outreach',                 x: 18.2,  y: 60 },
+  { name: 'Morbi Haven',              x: 39,  y: 63},
+  { name: 'Northreach',               x: 15,  y: 70 },
+  { name: 'Southreach',               x: 18,  y: 74 },
+  { name: 'Gulltown',                 x: 38,  y: 69 },
+  { name: 'Yllwyn',                   x: 42.25,  y: 79, playerCity: true },
+  { name: 'Aegis',                    x: 36.5,  y: 79, playerCity: true },
+  { name: 'Sconia',                   x: 34,  y: 82.5},
+  { name: 'Scolissaz',                x: 37.5,  y: 87.5},
+  { name: 'Fairy Grove',              x: 28.2,  y: 75 },
+  { name: 'Pass-Crown',               x: 50,  y: 46,  major: true },
+  { name: "Ruk'da",                   x: 64,  y: 28 },
+  { name: 'Eastreach',                x: 71.5,  y: 40,  major: true },
+  { name: 'Ridagast',                 x: 83.25,  y: 46.5 },
+  { name: 'Khairok',                  x: 74.5,  y: 49 },
+  { name: 'Uhlruk',                   x: 72,  y: 58, major: true },
 ];
 
 // Extra images for player cities (in addition to the default .jpg)
 const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
-  'Yllwyn': ['/images/CityImages/YllwynTerrain.png'],
+  'Yllwyn': [
+    '/images/CityImages/YllwynRiverBlockade.jpg',
+    '/images/CityImages/YllwynWesternBlockade.jpg',
+    '/images/CityImages/YllwynTerrain.png',
+  ],
   'Silva Umbra': ['/images/CityImages/SilvaUmbraTerrain.png'],
+  'Aegis': ['/images/CityImages/AegisTerrain.jpg'],
+  'Castellum in Montibus': [
+    '/images/CityImages/CastellumInMontibusInner.png',
+    '/images/CityImages/CastellumInMontibusTerrain.png',
+  ],
 };
 
 const getCityImageFilename = (cityName: string): string =>
