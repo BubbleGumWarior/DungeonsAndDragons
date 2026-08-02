@@ -1354,6 +1354,16 @@ export interface KingdomFief {
     unlocked: boolean;
     available: number;
   }>;
+  unit_progression?: Array<{
+    line_key: string;
+    tiers: Array<{
+      tier_index: number;
+      unit_type: string;
+      base_days: number;
+      required_buildings: Array<{ building_type: string; building_name: string; completed: boolean }>;
+      unlocked: boolean;
+    }>;
+  }>;
   prisoners?: number;
   slaves?: number;
   population_maturation_schedule?: Record<string, number>;
@@ -1589,6 +1599,11 @@ export const kingdomAPI = {
 
   adjustUnitReserves: async (fiefId: number, unitType: string, delta: number): Promise<{ fief: KingdomFief }> => {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/units/adjust`, { unitType, delta });
+    return response.data;
+  },
+
+  adjustUnitReservesBatch: async (fiefId: number, adjustments: Record<string, number>): Promise<{ fief: KingdomFief }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/units/adjust-batch`, { adjustments });
     return response.data;
   },
 

@@ -428,8 +428,8 @@ const KingdomTab: React.FC<Props> = ({
   const [selectedTrainUnitType, setSelectedTrainUnitType] = useState('Militia');
   const [trainUnitsAmount, setTrainUnitsAmount] = useState('1');
   const [upgradeAmountByUnit, setUpgradeAmountByUnit] = useState<Record<string, string>>({});
-  const [dmUnitAdjustType, setDmUnitAdjustType] = useState('Militia');
-  const [dmUnitAdjustAmount, setDmUnitAdjustAmount] = useState('1');
+  const [dmUnitAdjustAmounts, setDmUnitAdjustAmounts] = useState<Record<string, string>>({});
+  const [showProgressionModal, setShowProgressionModal] = useState(false);
   const [legendaryAssignFief, setLegendaryAssignFief] = useState<Record<number, number>>({});
   const [prayerTargetFiefId, setPrayerTargetFiefId] = useState<number | null>(null);
   const [tradeSourceFiefId, setTradeSourceFiefId] = useState<number | null>(null);
@@ -1230,6 +1230,17 @@ const KingdomTab: React.FC<Props> = ({
     return map;
   }, [fiefDetails?.availableUpgrades]);
 
+  // Maps a unit type (e.g. "Longbowman") to its progression line key (e.g. "Archer") for grouping panels.
+  const unitTypeToLine = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const line of (fiefDetails?.unit_progression || [])) {
+      for (const tier of (line.tiers || [])) {
+        map.set(tier.unit_type, line.line_key);
+      }
+    }
+    return map;
+  }, [fiefDetails?.unit_progression]);
+
   const hasCompletedResearchLab = useMemo(
     () => (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && String(b?.building_type) === 'research_lab'),
     [fiefDetails?.buildings]
@@ -1434,24 +1445,26 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const dmAdjustUnits = async (direction: 1 | -1) => {
+  // Applies every non-zero unit amount entered in the DM Unit Controls panel in a single request.
+  // direction flips the sign of every entered amount (magnitudes are entered as positive numbers).
+  const dmAddUnitsBatch = async (direction: 1 | -1) => {
     if (!fiefDetails || !isDungeonMaster) return;
-    const amount = Math.max(0, Math.floor(Number(dmUnitAdjustAmount) || 0));
-    if (amount <= 0) {
-      pushToast('Enter a positive whole number.');
-      return;
+    const adjustments: Record<string, number> = {};
+    for (const [unitType, raw] of Object.entries(dmUnitAdjustAmounts)) {
+      const delta = Math.floor(Math.abs(Number(raw) || 0)) * direction;
+      if (delta !== 0) adjustments[unitType] = delta;
     }
-    const unitType = String(dmUnitAdjustType || '').trim();
-    if (!unitType) {
-      pushToast('Choose a unit type first.');
+    if (Object.keys(adjustments).length === 0) {
+      pushToast('Enter at least one non-zero amount.');
       return;
     }
 
     setBusy('dm-adjust-units');
     try {
-      await kingdomAPI.adjustUnitReserves(Number(fiefDetails.id), unitType, direction * amount);
+      await kingdomAPI.adjustUnitReservesBatch(Number(fiefDetails.id), adjustments);
       await fetchFief(Number(fiefDetails.id));
       await fetchKingdoms();
+      setDmUnitAdjustAmounts({});
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to adjust units');
     } finally {
@@ -2728,10 +2741,18 @@ const KingdomTab: React.FC<Props> = ({
               )}
 
               {hasMilitiaBuilding && (
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '0.6rem', background: 'rgba(8,47,73,0.25)' }}>
+              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ color: '#93c5fd', fontWeight: 700 }}>Militia & Unit Training</div>
-                  <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Militia & Unit Training</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
+                    <button
+                      onClick={() => setShowProgressionModal(true)}
+                      style={{ padding: '0.25rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                    >
+                      📖 View Troop Progression
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.45rem', alignItems: 'end' }}>
@@ -2740,7 +2761,7 @@ const KingdomTab: React.FC<Props> = ({
                     <select
                       value={selectedTrainUnitType}
                       onChange={(e) => setSelectedTrainUnitType(String(e.target.value || 'Militia'))}
-                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
                     >
                       {(fiefDetails?.trainable_unit_types || []).length === 0 ? (
                         <option value="">No units unlocked yet</option>
@@ -2758,10 +2779,10 @@ const KingdomTab: React.FC<Props> = ({
                       min={1}
                       value={trainUnitsAmount}
                       onChange={(e) => setTrainUnitsAmount(e.target.value)}
-                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
                     />
                   </label>
-                  <div style={{ color: '#93c5fd', fontSize: '0.75rem' }}>
+                  <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem' }}>
                     {(() => {
                       const speedPct = Math.min(90, Number((fiefDetails?.legendary_bonuses || {}).unit_training_speed_reduction_pct || 0));
                       return speedPct >= 0
@@ -2775,9 +2796,9 @@ const KingdomTab: React.FC<Props> = ({
                     style={{
                       padding: '0.3rem 0.65rem',
                       borderRadius: '0.35rem',
-                      border: '1px solid rgba(59,130,246,0.45)',
-                      background: 'rgba(30,64,175,0.35)',
-                      color: '#bfdbfe',
+                      border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
+                      background: 'rgba(120,53,15,0.35)',
+                      color: 'var(--text-gold)',
                       fontWeight: 700,
                       cursor: 'pointer',
                       opacity: (busy === 'train-soldiers' || unassignedAdults <= 0) ? 0.6 : 1,
@@ -2798,7 +2819,7 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
 
                 <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training (Per Unit Timers)</div>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training (Per Unit Timers)</div>
                   {(fiefDetails?.training_queue || []).length === 0 ? (
                     <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No units currently in training.</div>
                   ) : (
@@ -2822,10 +2843,10 @@ const KingdomTab: React.FC<Props> = ({
                           >
                             <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600 }}>{row.unit_type}</span>
                             <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>#{row.id}</span>
-                            <span style={{ color: isReady ? '#86efac' : '#bfdbfe', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
+                            <span style={{ color: isReady ? '#86efac' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
                               {isReady ? 'Ready to collect' : row.status}
                             </span>
-                            <span style={{ color: isReady ? '#bbf7d0' : '#93c5fd', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
+                            <span style={{ color: isReady ? '#bbf7d0' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
                               {isReady ? 'Collect now' : `${Math.max(0, Number(row.days_remaining || 0))}d left`}
                             </span>
                           </div>
@@ -2836,65 +2857,99 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
 
                 <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Reserve Units</div>
-                  {Object.keys(fiefDetails?.unit_reserves || {}).length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units available yet.</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                      {Object.entries(fiefDetails?.unit_reserves || {}).map(([unit, amount]) => (
-                        <span key={unit} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.28rem', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '0.35rem', padding: '0.15rem 0.45rem', background: 'rgba(30,58,138,0.2)', color: '#bfdbfe', fontSize: '0.76rem' }}>
-                          <strong style={{ color: '#e2e8f0' }}>{unit}</strong>
-                          <span>{Math.max(0, Number(amount || 0))}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Reserve Units</div>
+                  {(() => {
+                    const entries = Object.entries(fiefDetails?.unit_reserves || {}).filter(([, amount]) => Math.max(0, Number(amount || 0)) > 0);
+                    if (entries.length === 0) {
+                      return <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units available yet.</div>;
+                    }
+                    const grouped = new Map<string, Array<[string, number]>>();
+                    for (const [unit, amount] of entries) {
+                      const lineKey = unitTypeToLine.get(unit) || 'Other';
+                      if (!grouped.has(lineKey)) grouped.set(lineKey, []);
+                      grouped.get(lineKey)!.push([unit, Math.max(0, Number(amount || 0))]);
+                    }
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                        {Array.from(grouped.entries()).map(([lineKey, unitEntries]) => (
+                          <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{lineKey}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                              {unitEntries.map(([unit, amount]) => (
+                                <span key={unit} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.28rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', borderRadius: '0.35rem', padding: '0.15rem 0.45rem', background: 'rgba(120,53,15,0.2)', color: 'var(--text-gold)', fontSize: '0.76rem' }}>
+                                  <strong style={{ color: '#e2e8f0' }}>{unit}</strong>
+                                  <span>{amount}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Upgrade Units</div>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Upgrade Units</div>
                   {(fiefDetails?.upgradable_units || []).length === 0 ? (
                     <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units are eligible for an upgrade yet.</div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      {(fiefDetails?.upgradable_units || []).map((u) => {
-                        const amountKey = u.unit_type;
-                        const amount = upgradeAmountByUnit[amountKey] || '1';
-                        const busyKey = `upgrade-units-${u.unit_type}`;
-                        return (
-                          <div key={u.unit_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                              <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
-                              <span style={{ color: u.unlocked ? '#86efac' : '#fca5a5', fontSize: '0.72rem' }}>
-                                {u.unlocked ? `${u.next_base_days}d training` : `Requires ${u.required_building_type || 'higher tier building'}`}
-                              </span>
+                    (() => {
+                      const grouped = new Map<string, typeof fiefDetails.upgradable_units>();
+                      for (const u of (fiefDetails?.upgradable_units || [])) {
+                        const lineKey = unitTypeToLine.get(u.unit_type) || 'Other';
+                        if (!grouped.has(lineKey)) grouped.set(lineKey, []);
+                        grouped.get(lineKey)!.push(u);
+                      }
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {Array.from(grouped.entries()).map(([lineKey, units]) => (
+                            <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{lineKey}</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                {units.map((u) => {
+                                  const amountKey = u.unit_type;
+                                  const amount = upgradeAmountByUnit[amountKey] || '1';
+                                  const busyKey = `upgrade-units-${u.unit_type}`;
+                                  return (
+                                    <div key={u.unit_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                                        <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
+                                        <span style={{ color: u.unlocked ? '#86efac' : '#fca5a5', fontSize: '0.72rem' }}>
+                                          {u.unlocked ? `${u.next_base_days}d training` : `Requires ${u.required_building_type || 'higher tier building'}`}
+                                        </span>
+                                      </div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.35rem', alignItems: 'end' }}>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={u.available}
+                                          value={amount}
+                                          onChange={(e) => setUpgradeAmountByUnit((prev) => ({ ...prev, [amountKey]: e.target.value }))}
+                                          style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                                        />
+                                        <button
+                                          onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)))}
+                                          disabled={!u.unlocked || busy === busyKey}
+                                          style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', opacity: (!u.unlocked || busy === busyKey) ? 0.55 : 1 }}
+                                        >
+                                          {busy === busyKey ? 'Queueing...' : `Upgrade (${u.available} available)`}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.35rem', alignItems: 'end' }}>
-                              <input
-                                type="number"
-                                min={1}
-                                max={u.available}
-                                value={amount}
-                                onChange={(e) => setUpgradeAmountByUnit((prev) => ({ ...prev, [amountKey]: e.target.value }))}
-                                style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
-                              />
-                              <button
-                                onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)))}
-                                disabled={!u.unlocked || busy === busyKey}
-                                style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(59,130,246,0.45)', background: 'rgba(30,64,175,0.35)', color: '#bfdbfe', fontWeight: 700, cursor: 'pointer', opacity: (!u.unlocked || busy === busyKey) ? 0.55 : 1 }}
-                              >
-                                {busy === busyKey ? 'Queueing...' : `Upgrade (${u.available} available)`}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          ))}
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
 
                 <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Defensive Guards</div>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Defensive Guards</div>
                   {(fiefDetails?.guard_assignments || []).length === 0 ? (
                     <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No eligible defensive buildings with guard capacity.</div>
                   ) : (
@@ -2949,7 +3004,7 @@ const KingdomTab: React.FC<Props> = ({
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                                     {assignedEntries.map(([unit, count]) => (
                                       <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                        <span style={{ color: '#bfdbfe', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                        <span style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
                                         <button
                                           onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, -1)}
                                           disabled={busy === `guards-${g.building_type}`}
@@ -2973,39 +3028,60 @@ const KingdomTab: React.FC<Props> = ({
 
                 {isDungeonMaster && (
                   <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
-                    <div style={{ color: '#bfdbfe', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>DM Unit Controls (Population Unchanged)</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto auto', gap: '0.35rem', alignItems: 'end' }}>
-                      <select
-                        value={dmUnitAdjustType}
-                        onChange={(e) => setDmUnitAdjustType(String(e.target.value || 'Militia'))}
-                        style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
-                      >
-                        <option value="Militia">Militia</option>
-                        <option value="Archer">Archer</option>
-                        <option value="Man-at-Arms">Man-at-Arms</option>
-                        <option value="Guard">Guard</option>
-                        <option value="Knight">Knight</option>
-                      </select>
-                      <input
-                        type="number"
-                        min={1}
-                        value={dmUnitAdjustAmount}
-                        onChange={(e) => setDmUnitAdjustAmount(e.target.value)}
-                        style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
-                      />
+                    <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>DM Unit Controls (Population Unchanged)</div>
+                    <div style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: '0.5rem' }}>
+                      Enter an amount next to any unit(s), then click Add or Remove once to apply them all.
+                    </div>
+                    <div style={{ display: 'block', width: '100%' }}>
+                      {(fiefDetails?.unit_progression || []).map((line) => (
+                        <div
+                          key={line.line_key}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            marginBottom: '0.5rem',
+                            padding: '0.5rem',
+                            border: '1px solid rgba(148,163,184,0.18)',
+                            borderRadius: '0.4rem',
+                            background: 'rgba(15,23,42,0.35)',
+                          }}
+                        >
+                          <div style={{ color: 'var(--text-gold)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem', textAlign: 'left' }}>{line.line_key}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                            {line.tiers.map((tier) => (
+                              <label
+                                key={tier.unit_type}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', color: '#cbd5e1', fontSize: '0.7rem', flex: '0 1 140px', textAlign: 'left' }}
+                              >
+                                {tier.unit_type}
+                                <input
+                                  type="number"
+                                  value={dmUnitAdjustAmounts[tier.unit_type] || ''}
+                                  onChange={(e) => setDmUnitAdjustAmounts((prev) => ({ ...prev, [tier.unit_type]: e.target.value }))}
+                                  placeholder="0"
+                                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.24rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.55rem' }}>
                       <button
-                        onClick={() => dmAdjustUnits(1)}
+                        onClick={() => dmAddUnitsBatch(1)}
                         disabled={busy === 'dm-adjust-units'}
-                        style={{ padding: '0.25rem 0.45rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
+                        style={{ padding: '0.32rem 0.6rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer' }}
                       >
-                        + Add
+                        {busy === 'dm-adjust-units' ? 'Applying...' : '+ Add'}
                       </button>
                       <button
-                        onClick={() => dmAdjustUnits(-1)}
+                        onClick={() => dmAddUnitsBatch(-1)}
                         disabled={busy === 'dm-adjust-units'}
-                        style={{ padding: '0.25rem 0.45rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}
+                        style={{ padding: '0.32rem 0.6rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}
                       >
-                        - Remove
+                        {busy === 'dm-adjust-units' ? 'Applying...' : '- Remove'}
                       </button>
                     </div>
                   </div>
@@ -4469,6 +4545,107 @@ const KingdomTab: React.FC<Props> = ({
                   {busy === 'release-slaves' ? 'Releasing…' : 'Release'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showProgressionModal && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            zIndex: 10020,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowProgressionModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: 'rgba(18, 18, 18, 0.96)',
+              border: '2px solid rgba(var(--theme-accent-rgb),0.4)',
+              borderRadius: '12px',
+              boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+              width: '100%',
+              maxWidth: '80vw',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              padding: '2rem',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+              <div>
+                <h2 style={{ color: 'var(--text-gold)', margin: 0, marginBottom: '0.25rem', fontSize: '1.3rem', fontWeight: 700 }}>
+                  Troop Progression
+                </h2>
+                <p style={{ color: '#94a3b8', margin: 0, fontSize: '0.82rem' }}>
+                  Train civilians into Militia, then upgrade reserve units up their line's tiers as the matching building is completed. Some tiers require more than one building to unlock.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowProgressionModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer', padding: 0 }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {(fiefDetails?.unit_progression || []).map((line) => (
+                <div key={line.line_key} style={{ padding: '0.75rem', background: 'rgba(30,41,59,0.35)', borderRadius: '0.5rem', border: '1px solid rgba(148,163,184,0.2)' }}>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{line.line_key}</div>
+                  <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    {line.tiers.map((tier, idx) => (
+                      <React.Fragment key={tier.unit_type}>
+                        {idx > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', color: '#64748b', fontSize: '1rem' }}>→</div>
+                        )}
+                        <div
+                          style={{
+                            minWidth: '150px',
+                            padding: '0.5rem',
+                            borderRadius: '0.4rem',
+                            border: `1px solid ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.25)'}`,
+                            background: tier.unlocked ? 'rgba(20,83,45,0.25)' : 'rgba(15,23,42,0.4)',
+                          }}
+                        >
+                          <div style={{ color: tier.unlocked ? '#86efac' : '#94a3b8', fontWeight: 700, fontSize: '0.82rem' }}>
+                            {tier.unlocked ? '✅' : '🔒'} {tier.unit_type}
+                          </div>
+                          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
+                          <div style={{ marginTop: '0.3rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                            {tier.required_buildings.map((rb) => (
+                              <div key={rb.building_type} style={{ color: rb.completed ? '#86efac' : '#f87171', fontSize: '0.68rem' }}>
+                                {rb.completed ? '✓' : '✗'} {rb.building_name}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {(fiefDetails?.unit_progression || []).length === 0 && (
+                <div style={{ color: '#64748b', fontSize: '0.85rem' }}>No unit progression data available for this fief yet.</div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+              <button
+                onClick={() => setShowProgressionModal(false)}
+                style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid rgba(148,163,184,0.3)', background: 'rgba(30,41,59,0.35)', color: '#cbd5e1', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>,

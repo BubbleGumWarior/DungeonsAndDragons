@@ -2313,12 +2313,26 @@ for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
   });
 }
 
+// A building-chain entry is normally a single building type, but some unit tiers (e.g. a
+// future "Horse Archer" needing both an archer range AND a stable) require more than one
+// building at once — represent those as an array of types, all of which must be completed.
+const getRequiredBuildingsForTier = (buildingChain, tierIndex) => {
+  const raw = buildingChain[tierIndex];
+  const types = Array.isArray(raw) ? raw : [raw];
+  return types.filter(Boolean);
+};
+
+const isTierBuildingRequirementMet = (buildingChain, tierIndex, completedBuildings) => {
+  const types = getRequiredBuildingsForTier(buildingChain, tierIndex);
+  if (types.length === 0) return false;
+  return types.every((type) => (completedBuildings || []).some((b) => String(b?.building_type || '') === type));
+};
+
 // Highest index within a building chain that the fief currently has completed (-1 if none).
 const getCompletedLineTierIndex = (buildingChain, completedBuildings) => {
   let highest = -1;
   for (let i = 0; i < buildingChain.length; i += 1) {
-    const hasBuilding = (completedBuildings || []).some((b) => String(b?.building_type || '') === buildingChain[i]);
-    if (hasBuilding) highest = i;
+    if (isTierBuildingRequirementMet(buildingChain, i, completedBuildings)) highest = i;
   }
   return highest;
 };
@@ -2329,6 +2343,29 @@ const getUnitLineInfo = (unitType) => {
   const line = UNIT_LINES[info.lineKey];
   if (!line) return null;
   return { lineKey: info.lineKey, tierIndex: info.tierIndex, line, tierDef: line.tiers[info.tierIndex] };
+};
+
+// Full troop progression tree (all lines/tiers) annotated with this fief's building-unlock status.
+// Used by the frontend "View Troop Progression" panel and the DM's flat unit-adjustment list.
+const getUnitProgressionView = (completedBuildings) => {
+  return Object.entries(UNIT_LINES).map(([lineKey, line]) => {
+    const completedTierIndex = getCompletedLineTierIndex(line.buildingChain, completedBuildings);
+    const tiers = line.tiers.map((tierDef, tierIndex) => {
+      const requiredBuildings = getRequiredBuildingsForTier(line.buildingChain, tierIndex).map((type) => ({
+        building_type: type,
+        building_name: BUILDING_CATALOG[type]?.name || type,
+        completed: (completedBuildings || []).some((b) => String(b?.building_type || '') === type),
+      }));
+      return {
+        tier_index: tierIndex,
+        unit_type: tierDef.unitType,
+        base_days: tierDef.baseDays,
+        required_buildings: requiredBuildings,
+        unlocked: completedTierIndex >= tierIndex,
+      };
+    });
+    return { line_key: lineKey, tiers };
+  });
 };
 
 // Tier-1 unit types unlocked for direct training given a fief's completed buildings.
@@ -2569,6 +2606,41 @@ const buildGuardAssignmentsView = (buildings) => {
     assigned_by_type: group.assigned_by_type,
     building_ids: group.building_ids,
   }));
+};
+
+// Removes `amount` of `unitType` from a fief: pulls from free reserves first, then — if that isn't
+// enough — pulls the rest from whatever's currently assigned as guards on defensive buildings, so a
+// DM "Remove" always actually removes units even when the whole stack is on garrison duty.
+const removeUnitsFromReservesAndGuards = async (client, fiefId, reserves, unitType, amount) => {
+  const available = Math.max(0, Number(reserves[unitType] || 0));
+  const fromReserves = Math.min(available, amount);
+  reserves[unitType] = available - fromReserves;
+  let remaining = amount - fromReserves;
+  if (remaining <= 0) return;
+
+  const buildingsResult = await client.query(
+    `SELECT id, assigned_guards_by_type
+     FROM fief_buildings
+     WHERE fief_id = $1 AND is_complete = true
+     ORDER BY id ASC
+     FOR UPDATE`,
+    [fiefId]
+  );
+  for (const row of buildingsResult.rows) {
+    if (remaining <= 0) break;
+    const assignedByType = normalizeUnitReserves(row.assigned_guards_by_type);
+    const rowHas = Math.max(0, Number(assignedByType[unitType] || 0));
+    if (rowHas <= 0) continue;
+    const take = Math.min(remaining, rowHas);
+    assignedByType[unitType] = rowHas - take;
+    if (assignedByType[unitType] <= 0) delete assignedByType[unitType];
+    remaining -= take;
+    await client.query(
+      `UPDATE fief_buildings SET assigned_guards_by_type = $2::jsonb WHERE id = $1`,
+      [row.id, JSON.stringify(assignedByType)]
+    );
+  }
+  // If remaining > 0 here, fewer than `amount` of this unit existed in total (reserves + guards) — clamps to what's available.
 };
 
 const calculatePrisonerCapacityFromBuildings = (buildings) => {
@@ -3484,6 +3556,7 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         guard_assignments: guardAssignments,
         trainable_unit_types: trainableUnitTypes,
         upgradable_units: upgradableUnits,
+        unit_progression: getUnitProgressionView(completedBuildings),
         buildings: buildingsResult.rows,
         researchQueue,
         availableResearch,
@@ -3988,8 +4061,11 @@ router.patch('/fiefs/:id/military/units/adjust', authenticateToken, async (req, 
       [fiefId]
     );
     const reserves = normalizeUnitReserves(lockResult.rows[0]?.unit_reserves);
-    const next = Math.max(0, Math.floor(Number(reserves[unitType] || 0) + delta));
-    reserves[unitType] = next;
+    if (delta > 0) {
+      reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + delta;
+    } else {
+      await removeUnitsFromReservesAndGuards(client, fiefId, reserves, unitType, Math.abs(delta));
+    }
 
     await client.query(
       `UPDATE fiefs
@@ -4005,16 +4081,93 @@ router.patch('/fiefs/:id/military/units/adjust', authenticateToken, async (req, 
       req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
     }
 
+    const refreshedBuildings = await pool.query(
+      `SELECT * FROM fief_buildings WHERE fief_id = $1 ORDER BY id ASC`,
+      [fiefId]
+    );
     const refreshed = await getFiefContext(fiefId);
     res.json({
       fief: {
         ...withPopulationBreakdown(refreshed),
         unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
+        guard_assignments: buildGuardAssignmentsView(refreshedBuildings.rows),
       },
     });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error adjusting unit reserves:', error);
+    res.status(500).json({ error: 'Failed to adjust unit reserves' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/fiefs/:id/military/units/adjust-batch', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    const rawAdjustments = (req.body?.adjustments && typeof req.body.adjustments === 'object') ? req.body.adjustments : {};
+    const entries = Object.entries(rawAdjustments)
+      .map(([unitType, delta]) => [String(unitType || '').trim(), Math.floor(Number(delta) || 0)])
+      .filter(([unitType, delta]) => unitType && delta !== 0);
+
+    if (!Number.isFinite(fiefId) || entries.length === 0) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    await client.query('BEGIN');
+
+    const lockResult = await client.query(
+      `SELECT unit_reserves
+       FROM fiefs
+       WHERE id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const reserves = normalizeUnitReserves(lockResult.rows[0]?.unit_reserves);
+    for (const [unitType, delta] of entries) {
+      if (delta > 0) {
+        reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + delta;
+      } else {
+        await removeUnitsFromReservesAndGuards(client, fiefId, reserves, unitType, Math.abs(delta));
+      }
+    }
+
+    await client.query(
+      `UPDATE fiefs
+       SET unit_reserves = $2::jsonb,
+           soldiers = $3
+       WHERE id = $1`,
+      [fiefId, JSON.stringify(reserves), Math.max(0, Number(reserves[MILITIA_UNIT_TYPE] || 0))]
+    );
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    const refreshedBuildings = await pool.query(
+      `SELECT * FROM fief_buildings WHERE fief_id = $1 ORDER BY id ASC`,
+      [fiefId]
+    );
+    const refreshed = await getFiefContext(fiefId);
+    res.json({
+      fief: {
+        ...withPopulationBreakdown(refreshed),
+        unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
+        guard_assignments: buildGuardAssignmentsView(refreshedBuildings.rows),
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error batch-adjusting unit reserves:', error);
     res.status(500).json({ error: 'Failed to adjust unit reserves' });
   } finally {
     client.release();
