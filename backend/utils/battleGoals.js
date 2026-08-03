@@ -33,7 +33,7 @@ const BATTLE_GOALS = {
       description: 'A devastating mounted charge aimed at breaking enemy lines.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Knights', 'Shock Cavalry', 'Heavy Cavalry', 'Light Cavalry', 'Lancers', 'Mounted Archers'],
+      eligible_categories: ['Knight', 'Heavy Cavalry', 'Royal Lancer', 'Lancer', 'Man-at-Arms', 'Mounted Archer', 'Horse Archer'],
       casualty_multiplier: 1.4,
       score_multiplier: 1.2,
       attack_bonus: 8
@@ -44,7 +44,7 @@ const BATTLE_GOALS = {
       description: 'Concentrated ranged volley to thin enemy ranks.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers', 'Ballistae'],
+      eligible_categories: ['Longbowman', 'Crossbowman', 'Arbalest', 'Skirmisher', 'Ranger', 'Mounted Archer', 'Horse Archer', 'Ballista Crew', 'Heavy Ballista'],
       casualty_multiplier: 1.1,
       score_multiplier: 1,
       attack_bonus: 4
@@ -55,7 +55,7 @@ const BATTLE_GOALS = {
       description: 'A disciplined spear thrust against a chosen enemy.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Spear Wall', 'Pikemen', 'Heavy Infantry'],
+      eligible_categories: ['Spearman', 'Pikeman', 'Shield Guard', 'Greatsword Master'],
       casualty_multiplier: 1.1,
       score_multiplier: 1,
       attack_bonus: 5
@@ -66,7 +66,7 @@ const BATTLE_GOALS = {
       description: 'Long-range siege fire directed at a target formation.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards'],
+      eligible_categories: ['Catapult Crew', 'Trebuchet Crew', 'Ballista Crew', 'Heavy Ballista', 'Bombard Crew', 'Grand Bombard'],
       casualty_multiplier: 1.3,
       score_multiplier: 1.1,
       attack_bonus: 6
@@ -77,7 +77,7 @@ const BATTLE_GOALS = {
       description: 'Execute a coordinated attack on enemy flanks and weak points.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Light Cavalry', 'Scouts', 'Light Infantry', 'Lancers'],
+      eligible_categories: ['Lancer', 'Royal Lancer', 'Man-at-Arms', 'Scout', 'Master Scout', 'Recruit', 'Soldier'],
       casualty_multiplier: 1.2,
       score_multiplier: 1.1,
       attack_bonus: 7,
@@ -89,7 +89,7 @@ const BATTLE_GOALS = {
       description: 'A risky raid launched when you are outmatched, aimed at disrupting a stronger foe.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Light Infantry'],
+      eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Skirmisher', 'Ranger', 'Recruit', 'Soldier'],
       casualty_multiplier: 1.2,
       score_multiplier: 1.1,
       attack_bonus: 6,
@@ -101,7 +101,7 @@ const BATTLE_GOALS = {
       description: 'All-out frontal assault with maximum force deployment.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Heavy Infantry', 'Knights', 'Shock Cavalry', 'Royal Guard'],
+      eligible_categories: ['Pikeman', 'Greatsword Master', 'Knight', 'Heavy Cavalry', 'Royal Guard'],
       casualty_multiplier: 1.4,
       score_multiplier: 1.2,
       attack_bonus: 6,
@@ -126,7 +126,7 @@ const BATTLE_GOALS = {
       description: 'Fortify your position to blunt enemy assaults.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Swordsmen', 'Shield Wall', 'Spear Wall', 'Pikemen', 'Heavy Infantry', 'Royal Guard'],
+      eligible_categories: ['Soldier', 'Spearman', 'Pikeman', 'Shield Guard', 'Greatsword Master', 'Royal Guard'],
       casualty_multiplier: 0.7,
       score_multiplier: 0.8,
       defense_bonus: 5
@@ -137,7 +137,7 @@ const BATTLE_GOALS = {
       description: 'Prepare to absorb the next enemy strike.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Knights'],
+      eligible_categories: ['Soldier', 'Spearman', 'Shield Guard', 'Pikeman', 'Knight'],
       casualty_multiplier: 0.6,
       score_multiplier: 0.7,
       defense_bonus: 10
@@ -148,7 +148,7 @@ const BATTLE_GOALS = {
       description: 'Find cover and minimize casualties from incoming attacks.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Light Infantry', 'Scouts'],
+      eligible_categories: ['Longbowman', 'Crossbowman', 'Arbalest', 'Skirmisher', 'Ranger', 'Recruit', 'Soldier', 'Scout', 'Master Scout'],
       casualty_multiplier: 0.5,
       score_multiplier: 0.6,
       defense_bonus: 12
@@ -159,7 +159,7 @@ const BATTLE_GOALS = {
       description: 'Dig in and create defensive works for siege units.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Catapults', 'Trebuchets', 'Ballistae', 'Bombards', 'Siege Towers'],
+      eligible_categories: ['Catapult Crew', 'Trebuchet Crew', 'Ballista Crew', 'Heavy Ballista', 'Bombard Crew', 'Grand Bombard', 'Siege Tower Operator'],
       casualty_multiplier: 0.6,
       score_multiplier: 0.8,
       defense_bonus: 8
@@ -170,7 +170,7 @@ const BATTLE_GOALS = {
       description: 'Form an impenetrable wall of shields and armor, maximizing defense.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Shield Wall', 'Heavy Infantry', 'Royal Guard', 'Pikemen'],
+      eligible_categories: ['Shield Guard', 'Pikeman', 'Greatsword Master', 'Royal Guard'],
       casualty_multiplier: 0.5,
       score_multiplier: 0.9,
       defense_bonus: 15
@@ -181,7 +181,7 @@ const BATTLE_GOALS = {
       description: 'Use evasion and mobility to avoid and counter enemy attacks.',
       goal_type: GOAL_TYPES.DEFEND,
       target_type: 'self',
-      eligible_categories: ['Scouts', 'Light Cavalry', 'Skirmishers', 'Mounted Archers'],
+      eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Skirmisher', 'Ranger', 'Mounted Archer', 'Horse Archer'],
       casualty_multiplier: 0.4,
       score_multiplier: 0.7,
       defense_bonus: 14
@@ -205,7 +205,7 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Spies', 'Assassins'],
+      eligible_categories: ['Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'],
       score_multiplier: 1.3
     },
     {
@@ -215,7 +215,7 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'enemy',
       effect: 'decrease_target',
-      eligible_categories: ['Scouts', 'Light Cavalry', 'Spies', 'Skirmishers'],
+      eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Spy', 'Master Spy', 'Skirmisher', 'Ranger'],
       score_multiplier: 1.1
     },
     {
@@ -225,7 +225,7 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Royal Guard', 'Knights', 'Swordsmen', 'Shield Wall', 'Heavy Infantry', 'Light Infantry'],
+      eligible_categories: ['Royal Guard', 'Knight', 'Soldier', 'Spearman', 'Shield Guard', 'Pikeman', 'Recruit'],
       score_multiplier: 0.9
     },
     {
@@ -235,7 +235,7 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Scouts', 'Spies', 'Light Infantry', 'Light Cavalry'],
+      eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Spy', 'Master Spy'],
       score_multiplier: 1.2
     },
     {
@@ -245,7 +245,7 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'enemy',
       effect: 'decrease_target',
-      eligible_categories: ['Spies', 'Scouts'],
+      eligible_categories: ['Spy', 'Master Spy', 'Scout', 'Master Scout'],
       score_multiplier: 1.3
     },
     {
@@ -255,7 +255,7 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Scouts', 'Light Cavalry', 'Spies'],
+      eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Spy', 'Master Spy'],
       score_multiplier: 1.1
     },
     {
@@ -265,7 +265,7 @@ const BATTLE_GOALS = {
       goal_type: GOAL_TYPES.LOGISTICS,
       target_type: 'self',
       effect: 'increase_self',
-      eligible_categories: ['Knights', 'Royal Guard', 'Swordsmen', 'Heavy Infantry'],
+      eligible_categories: ['Knight', 'Royal Guard', 'Soldier', 'Shield Guard', 'Pikeman'],
       score_multiplier: 1
     }
   ],
@@ -290,7 +290,7 @@ const BATTLE_GOALS = {
       goal_type: 'attack',
       target_type: 'enemy',
       effect: 'decrease_target_half_score',
-      eligible_categories: ['Assassins'],
+      eligible_categories: ['Assassin', 'Shadow Assassin'],
       casualty_multiplier: 2,
       score_multiplier: 2.5,
       attack_bonus: 10,
@@ -302,7 +302,7 @@ const BATTLE_GOALS = {
       description: 'A righteous charge by elite knights that hits hard while bolstering allied courage.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Knights'],
+      eligible_categories: ['Knight'],
       casualty_multiplier: 1.8,
       score_multiplier: 2,
       attack_bonus: 12,
@@ -314,7 +314,7 @@ const BATTLE_GOALS = {
       description: 'A precision strike guided by scouting that punishes exposed enemy weaknesses.',
       goal_type: GOAL_TYPES.ATTACK,
       target_type: 'enemy',
-      eligible_categories: ['Scouts'],
+      eligible_categories: ['Scout', 'Master Scout'],
       casualty_multiplier: 1.6,
       score_multiplier: 1.8,
       attack_bonus: 14,

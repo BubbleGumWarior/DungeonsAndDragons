@@ -962,9 +962,9 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
 
     // For non-temporary armies, use the actual army category from armies table
     // For temporary armies, use the temp_army_category
-    const category = participant.is_temporary 
-      ? (participant.temp_army_category || 'Swordsmen')
-      : (participant.army_category || participant.temp_army_category || 'Swordsmen');
+    const category = participant.is_temporary
+      ? (participant.temp_army_category || 'Recruit')
+      : (participant.army_category || participant.temp_army_category || 'Recruit');
     
     console.log(`🔍 Goal eligibility check for participant ${participant.id}:`, {
       is_temporary: participant.is_temporary,
