@@ -2627,21 +2627,40 @@ const getUnitProgressionView = (completedBuildings) => {
   });
 };
 
-// Tier-1 unit types unlocked for direct training given a fief's completed buildings.
+// Only Militia is recruited directly from civilians. Every other line's tier-1 unit is reached
+// by specializing reserve Militia via /military/upgrade instead.
 const getTrainableUnitTypesForFief = (completedBuildings) => {
-  const out = [];
-  for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
-    const completedTierIndex = getCompletedLineTierIndex(line.buildingChain, completedBuildings);
-    if (completedTierIndex >= 0) out.push(line.tiers[0].unitType);
-  }
-  return out;
+  const militiaLine = UNIT_LINES[MILITIA_UNIT_TYPE];
+  const completedTierIndex = getCompletedLineTierIndex(militiaLine.buildingChain, completedBuildings);
+  return completedTierIndex >= 0 ? [MILITIA_UNIT_TYPE] : [];
 };
 
-// For each unit type currently held in reserves, describe whether it can be upgraded to the next tier.
+// For each unit type currently held in reserves, describe what it can be upgraded/specialized into.
+// Militia can specialize into any other line's tier-1 unit (one entry per unlocked-or-lockable line).
+// Every other unit type follows its own line's next tier, as before.
 const getUpgradableEntriesForFief = (reserves, completedBuildings) => {
   const out = [];
   for (const [unitType, count] of Object.entries(reserves || {})) {
-    if (Math.max(0, Number(count || 0)) <= 0) continue;
+    const available = Math.max(0, Number(count || 0));
+    if (available <= 0) continue;
+
+    if (unitType === MILITIA_UNIT_TYPE) {
+      for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
+        if (lineKey === MILITIA_UNIT_TYPE) continue;
+        const tierDef = line.tiers[0];
+        const unlocked = getCompletedLineTierIndex(line.buildingChain, completedBuildings) >= 0;
+        out.push({
+          unit_type: unitType,
+          next_unit_type: tierDef.unitType,
+          next_base_days: tierDef.baseDays,
+          required_building_type: getRequiredBuildingsLabel(line.buildingChain, 0),
+          unlocked,
+          available,
+        });
+      }
+      continue;
+    }
+
     const info = getUnitLineInfo(unitType);
     if (!info) continue;
     const nextTierIndex = info.tierIndex + 1;
@@ -2654,7 +2673,7 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings) => {
       next_base_days: nextTierDef.baseDays,
       required_building_type: getRequiredBuildingsLabel(info.line.buildingChain, nextTierIndex),
       unlocked: completedTierIndex >= nextTierIndex,
-      available: Math.max(0, Number(count || 0)),
+      available,
     });
   }
   return out;
@@ -3973,6 +3992,9 @@ router.patch('/fiefs/:id/military/train', authenticateToken, async (req, res) =>
     if (!Number.isFinite(fiefId) || amount <= 0) {
       return res.status(400).json({ error: 'Invalid payload' });
     }
+    if (unitType !== MILITIA_UNIT_TYPE) {
+      return res.status(400).json({ error: 'Only Militia can be trained directly from civilians. Train Militia first, then specialize them into other unit types via upgrade.' });
+    }
 
     const owned = await getFiefContext(fiefId);
     if (!owned) return res.status(404).json({ error: 'Fief not found' });
@@ -4188,7 +4210,8 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
   const client = await pool.connect();
   try {
     const fiefId = Number(req.params.id);
-    const fromUnitType = String(req.body?.fromUnitType || req.body?.toUnitType || '').trim();
+    const fromUnitType = String(req.body?.fromUnitType || '').trim();
+    const requestedToUnitType = String(req.body?.toUnitType || '').trim();
     const amount = Math.max(0, Math.floor(Number(req.body?.amount) || 0));
 
     if (!Number.isFinite(fiefId) || !fromUnitType || amount <= 0) {
@@ -4207,15 +4230,36 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
     );
     const completedBuildings = buildingsResult.rows.filter((b) => Boolean(b.is_complete));
 
-    const upgradeInfo = getUpgradeInfoForUnit(fromUnitType, completedBuildings);
-    if (!upgradeInfo) {
-      return res.status(400).json({ error: `${fromUnitType} has no further upgrade available.` });
-    }
-    if (!upgradeInfo.unlocked) {
-      return res.status(400).json({ error: `Requires the ${upgradeInfo.requiredBuildingType} building to upgrade ${fromUnitType} into ${upgradeInfo.nextUnitType}.` });
+    let toUnitType;
+    let upgradeUnlocked;
+    let upgradeRequiredBuildingLabel;
+
+    if (fromUnitType === MILITIA_UNIT_TYPE) {
+      // Militia has no same-line next tier — it specializes into another line's tier-1 unit instead.
+      if (!requestedToUnitType) {
+        return res.status(400).json({ error: 'Choose a unit type to specialize Militia into.' });
+      }
+      const targetInfo = getUnitLineInfo(requestedToUnitType);
+      if (!targetInfo || targetInfo.tierIndex !== 0 || targetInfo.lineKey === MILITIA_UNIT_TYPE) {
+        return res.status(400).json({ error: `${requestedToUnitType} is not a valid specialization for Militia.` });
+      }
+      upgradeUnlocked = getCompletedLineTierIndex(targetInfo.line.buildingChain, completedBuildings) >= 0;
+      upgradeRequiredBuildingLabel = getRequiredBuildingsLabel(targetInfo.line.buildingChain, 0);
+      toUnitType = requestedToUnitType;
+    } else {
+      const upgradeInfo = getUpgradeInfoForUnit(fromUnitType, completedBuildings);
+      if (!upgradeInfo) {
+        return res.status(400).json({ error: `${fromUnitType} has no further upgrade available.` });
+      }
+      upgradeUnlocked = upgradeInfo.unlocked;
+      upgradeRequiredBuildingLabel = upgradeInfo.requiredBuildingType;
+      toUnitType = upgradeInfo.nextUnitType;
     }
 
-    const toUnitType = upgradeInfo.nextUnitType;
+    if (!upgradeUnlocked) {
+      return res.status(400).json({ error: `Requires the ${upgradeRequiredBuildingLabel} building to upgrade ${fromUnitType} into ${toUnitType}.` });
+    }
+
     const legendaryBonuses = await getLegendaryBonusesForFief(fiefId);
     const effectiveDays = getEffectiveTrainingDaysForUnit(toUnitType, legendaryBonuses);
     if (!effectiveDays) {

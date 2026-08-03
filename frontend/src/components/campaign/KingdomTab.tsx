@@ -201,6 +201,8 @@ const LOGISTICS_BUILDING_TYPES = new Set([
   'trade_route_office',
 ]);
 
+const RESEARCH_BUILDING_CHAIN = ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'];
+
 const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'civic'] as const;
 type BuildTabId = typeof BUILD_TABS[number];
 
@@ -254,7 +256,7 @@ const getBuildingCategory = (building: any): BuildTabId => {
   // Stone & Mining (includes smithy/forge chain)
   if (['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry', 'mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine', 'smithy', 'forge', 'master_smithy', 'royal_forge', 'grand_forge', 'war_smithy', 'imperial_forge'].includes(key)) return 'stone';
   // Research
-  if (['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'].includes(key)) return 'research';
+  if (RESEARCH_BUILDING_CHAIN.includes(key)) return 'research';
   // Faith
   if (['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'].includes(key)) return 'faith';
   // Storage & Housing
@@ -590,14 +592,20 @@ const KingdomTab: React.FC<Props> = ({
     }
   }, [selectedKingdom, prayerTargetFiefId, tradeSourceFiefId]);
 
+  // selectedKingdom is a derived object re-created on every kingdoms refetch (which happens on any
+  // player's kingdomDataChanged/dayAdvanced broadcast, not just changes to this kingdom). Depending
+  // on the object itself would re-run this fetch — and flash the loading placeholder — on every one
+  // of those unrelated events, so key off the stable id instead.
+  const selectedKingdomId = selectedKingdom?.id ?? null;
+
   const fetchKingdomManagementData = useCallback(async () => {
-    if (!selectedKingdom || !canUseKingdomManagement) return;
+    if (!selectedKingdomId || !canUseKingdomManagement) return;
     setKingdomManagementLoading(true);
     try {
       const [legendaryRes, prayersRes, depotRes] = await Promise.all([
-        kingdomAPI.getLegendaryCharacters(Number(selectedKingdom.id)),
-        kingdomAPI.getPrayers(Number(selectedKingdom.id)),
-        kingdomAPI.getTradeDepot(Number(selectedKingdom.id)),
+        kingdomAPI.getLegendaryCharacters(Number(selectedKingdomId)),
+        kingdomAPI.getPrayers(Number(selectedKingdomId)),
+        kingdomAPI.getTradeDepot(Number(selectedKingdomId)),
       ]);
       setLegendaryCharacters(legendaryRes.characters || []);
       setLegendarySlotsPerFief(Math.max(0, Number(legendaryRes.slotsPerFief || 0)));
@@ -610,7 +618,7 @@ const KingdomTab: React.FC<Props> = ({
     } finally {
       setKingdomManagementLoading(false);
     }
-  }, [selectedKingdom, canUseKingdomManagement, pushToast]);
+  }, [selectedKingdomId, canUseKingdomManagement, pushToast]);
 
   useEffect(() => {
     if (managementMode !== 'kingdom') return;
@@ -1283,7 +1291,7 @@ const KingdomTab: React.FC<Props> = ({
   }, [fiefDetails?.unit_progression]);
 
   const hasCompletedResearchLab = useMemo(
-    () => (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && String(b?.building_type) === 'research_lab'),
+    () => (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && RESEARCH_BUILDING_CHAIN.includes(String(b?.building_type))),
     [fiefDetails?.buildings]
   );
 
@@ -1464,7 +1472,7 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const upgradeMilitiaUnits = async (fromUnitType: string, amount: number) => {
+  const upgradeMilitiaUnits = async (fromUnitType: string, amount: number, toUnitType?: string) => {
     if (!fiefDetails) return;
     if (amount <= 0) {
       pushToast('Enter a positive whole number.');
@@ -1475,9 +1483,9 @@ const KingdomTab: React.FC<Props> = ({
       return;
     }
 
-    setBusy(`upgrade-units-${fromUnitType}`);
+    setBusy(`upgrade-units-${fromUnitType}-${toUnitType || ''}`);
     try {
-      await kingdomAPI.upgradeUnit(Number(fiefDetails.id), fromUnitType, amount);
+      await kingdomAPI.upgradeUnit(Number(fiefDetails.id), fromUnitType, amount, toUnitType);
       await fetchFief(Number(fiefDetails.id));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to queue unit upgrade');
@@ -3351,7 +3359,10 @@ const KingdomTab: React.FC<Props> = ({
                     (() => {
                       const grouped = new Map<string, Array<NonNullable<typeof fiefDetails.upgradable_units>[number]>>();
                       for (const u of (fiefDetails?.upgradable_units || [])) {
-                        const lineKey = unitTypeToLine.get(u.unit_type) || 'Other';
+                        // Militia specializes across many lines, so group those by the destination line instead of "Militia".
+                        const lineKey = u.unit_type === 'Militia'
+                          ? (unitTypeToLine.get(u.next_unit_type) || 'Other')
+                          : (unitTypeToLine.get(u.unit_type) || 'Other');
                         if (!grouped.has(lineKey)) grouped.set(lineKey, []);
                         grouped.get(lineKey)!.push(u);
                       }
@@ -3362,11 +3373,11 @@ const KingdomTab: React.FC<Props> = ({
                               <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{lineKey}</div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                                 {units.map((u) => {
-                                  const amountKey = u.unit_type;
+                                  const amountKey = `${u.unit_type}->${u.next_unit_type}`;
                                   const amount = upgradeAmountByUnit[amountKey] || '1';
-                                  const busyKey = `upgrade-units-${u.unit_type}`;
+                                  const busyKey = `upgrade-units-${u.unit_type}-${u.next_unit_type}`;
                                   return (
-                                    <div key={u.unit_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
+                                    <div key={amountKey} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
                                         <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
                                         <span style={{ color: u.unlocked ? '#86efac' : '#fca5a5', fontSize: '0.72rem' }}>
@@ -3383,7 +3394,7 @@ const KingdomTab: React.FC<Props> = ({
                                           style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
                                         />
                                         <button
-                                          onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)))}
+                                          onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)), u.next_unit_type)}
                                           disabled={!u.unlocked || busy === busyKey}
                                           style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', opacity: (!u.unlocked || busy === busyKey) ? 0.55 : 1 }}
                                         >

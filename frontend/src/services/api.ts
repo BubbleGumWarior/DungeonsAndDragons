@@ -1592,8 +1592,8 @@ export const kingdomAPI = {
     return response.data;
   },
 
-  upgradeUnit: async (fiefId: number, fromUnitType: string, amount: number): Promise<{ fief: KingdomFief }> => {
-    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/upgrade`, { fromUnitType, amount });
+  upgradeUnit: async (fiefId: number, fromUnitType: string, amount: number, toUnitType?: string): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/upgrade`, { fromUnitType, amount, toUnitType });
     return response.data;
   },
 
