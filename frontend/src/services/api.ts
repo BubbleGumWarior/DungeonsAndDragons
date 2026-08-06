@@ -1320,6 +1320,10 @@ export interface KingdomFief {
   tier: number;
   tier_upgrade_days_remaining?: number;
   tier_upgrade_days_remaining_3?: number;
+  tier_upgrade_days_remaining_4?: number;
+  tier_upgrade_days_remaining_5?: number;
+  consecutive_gold_shortage_days?: number;
+  unrest?: number;
   population: number;
   assignable_population?: number;
   underage_population?: number;
@@ -1647,8 +1651,28 @@ export const kingdomAPI = {
     return response.data;
   },
 
+  startTier4Upgrade: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/upgrade-tier-4`);
+    return response.data;
+  },
+
+  startTier5Upgrade: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/upgrade-tier-5`);
+    return response.data;
+  },
+
   upgradeBuilding: async (fiefId: number, buildingId: number): Promise<{ building: Record<string, any>; stored_resources: Record<string, number> }> => {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/buildings/${buildingId}/upgrade`);
+    return response.data;
+  },
+
+  reorderBuildQueue: async (fiefId: number, order: number[]): Promise<{ message: string }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/buildings/reorder`, { order });
+    return response.data;
+  },
+
+  cancelBuilding: async (fiefId: number, buildingId: number): Promise<{ cancelled: 'building' | 'upgrade'; reverted_to?: Record<string, any>; destroyed_building_id?: number }> => {
+    const response = await api.delete(`/kingdoms/fiefs/${fiefId}/buildings/${buildingId}`);
     return response.data;
   },
 

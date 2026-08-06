@@ -372,6 +372,11 @@ const startServer = async () => {
         { name: 'addKingdomPrayersSystem', fn: require('./migrations/add_kingdom_prayers_system') },
         { name: 'addKingdomTradeDepot', fn: require('./migrations/add_kingdom_trade_depot') },
         { name: 'addMilitiaTrainingSystem', fn: require('./migrations/add_militia_training_system') },
+        { name: 'addBuildingCancelSnapshot', fn: require('./migrations/add_building_cancel_snapshot') },
+        { name: 'addTier4Upgrade', fn: require('./migrations/add_tier4_upgrade') },
+        { name: 'addGoldUpkeep', fn: require('./migrations/add_gold_upkeep') },
+        { name: 'addFiefUnrest', fn: require('./migrations/add_fief_unrest') },
+        { name: 'addTier5Upgrade', fn: require('./migrations/add_tier5_upgrade') },
       ];
       
       const failedMigrations = [];

@@ -5014,10 +5014,13 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('kingdomProgressToast', (data: {
         campaignId: number;
-        type: 'research' | 'tier' | 'birth';
+        type: 'research' | 'tier' | 'birth' | 'revolt';
         fiefName?: string;
         researchId?: string;
         newTier?: number;
+        soldiersLost?: number;
+        populationLost?: number;
+        hadDefenders?: boolean;
       }) => {
         if (Number(data?.campaignId) !== Number(currentCampaign.campaign.id)) return;
 
@@ -5050,6 +5053,21 @@ const CampaignView: React.FC = () => {
             : `A fief advanced to Tier ${Number(data.newTier || 2)}`;
           setToastMessage(message);
           setTimeout(() => setToastMessage(null), 5000);
+          return;
+        }
+
+        if (data.type === 'revolt') {
+          const soldiersLost = Number(data.soldiersLost || 0);
+          const populationLost = Number(data.populationLost || 0);
+          const place = data.fiefName || 'A fief';
+          const defenderNote = data.hadDefenders ? '' : ' (no garrison to defend it)';
+          const losses = [
+            soldiersLost > 0 ? `${soldiersLost} soldier(s)` : null,
+            populationLost > 0 ? `${populationLost} citizen(s)` : null,
+          ].filter(Boolean).join(' and ');
+          const message = `⚠️ Unrest boiled over into revolt in ${place}${defenderNote}${losses ? ` — lost ${losses}` : ''}`;
+          setToastMessage(message);
+          setTimeout(() => setToastMessage(null), 7000);
         }
       });
 

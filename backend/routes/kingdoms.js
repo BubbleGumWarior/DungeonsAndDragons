@@ -5087,7 +5087,8 @@ router.patch('/fiefs/:id/buildings/:buildingId/upgrade', authenticateToken, asyn
       stored[resourceKey] = (stored[resourceKey] || 0) - needed;
     }
 
-    // Create upgrade in queue (mark as upgrade, not new build)
+    // Create upgrade in queue (mark as upgrade, not new build).
+    // Snapshot the building's pre-upgrade state so a cancelled upgrade can be reverted to it.
     const updateResult = await client.query(
       `UPDATE fief_buildings
        SET construction_days_required = $1,
@@ -5099,7 +5100,12 @@ router.patch('/fiefs/:id/buildings/:buildingId/upgrade', authenticateToken, asyn
            building_type = $5,
            name = $6,
            description = $7,
-           resource_output = $8::jsonb
+           resource_output = $8::jsonb,
+           previous_building_type = $9,
+           previous_name = $10,
+           previous_description = $11,
+           previous_resource_output = $12::jsonb,
+           previous_level = $13
        WHERE id = $3 AND fief_id = $4
        RETURNING *`,
       [
@@ -5111,6 +5117,11 @@ router.patch('/fiefs/:id/buildings/:buildingId/upgrade', authenticateToken, asyn
         String(upgradeBlueprintTemp.name || upgradeBuildingKey),
         String(upgradeBlueprintTemp.description || ''),
         JSON.stringify(upgradeBlueprintTemp.resourceOutput || {}),
+        building.building_type,
+        building.name,
+        building.description,
+        JSON.stringify(building.resource_output || {}),
+        Number(building.level || 1),
       ]
     );
 
@@ -5130,6 +5141,176 @@ router.patch('/fiefs/:id/buildings/:buildingId/upgrade', authenticateToken, asyn
     await client.query('ROLLBACK');
     console.error('Error upgrading building:', error);
     res.status(500).json({ error: 'Failed to upgrade building' });
+  } finally {
+    client.release();
+  }
+});
+
+// Reorder the build queue for a fief (drag-and-drop priority).
+// Body: { order: number[] } — the full list of in-progress building ids for
+// this fief, top-to-bottom in the desired priority order.
+router.patch('/fiefs/:id/buildings/reorder', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const order = Array.isArray(req.body?.order) ? req.body.order.map((v) => Number(v)) : null;
+    if (!Number.isFinite(fiefId) || !order || order.some((v) => !Number.isFinite(v))) {
+      return res.status(400).json({ error: 'fief id and an order array of building ids are required' });
+    }
+
+    await client.query('BEGIN');
+    const fiefResult = await client.query(
+      `SELECT f.*, k.player_id, k.campaign_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+    if (!canManageFief(req.user, fief)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Not authorized to manage this fief\'s build queue' });
+    }
+
+    const queuedResult = await client.query(
+      `SELECT id FROM fief_buildings WHERE fief_id = $1 AND is_complete = false`,
+      [fiefId]
+    );
+    const queuedIds = new Set(queuedResult.rows.map((r) => Number(r.id)));
+    const orderIds = new Set(order);
+    if (order.length !== queuedIds.size || [...queuedIds].some((id) => !orderIds.has(id))) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'order must contain exactly the fief\'s in-progress building ids' });
+    }
+
+    for (let i = 0; i < order.length; i++) {
+      await client.query(
+        `UPDATE fief_buildings SET queue_position = $1 WHERE id = $2 AND fief_id = $3`,
+        [i + 1, order[i], fiefId]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ message: 'Queue reordered' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error reordering build queue:', error);
+    res.status(500).json({ error: 'Failed to reorder build queue' });
+  } finally {
+    client.release();
+  }
+});
+
+// Cancel a queued/in-progress building or upgrade.
+// No resources are refunded. A cancelled brand-new (tier-1) building is
+// destroyed outright. A cancelled upgrade reverts the building to the
+// form it had before the upgrade started.
+router.delete('/fiefs/:id/buildings/:buildingId', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const buildingId = Number(req.params.buildingId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(buildingId)) {
+      return res.status(400).json({ error: 'Invalid fief or building ID' });
+    }
+
+    await client.query('BEGIN');
+    const fiefResult = await client.query(
+      `SELECT f.*, k.player_id, k.campaign_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+    if (!canManageFief(req.user, fief)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Not authorized to cancel builds on this fief' });
+    }
+
+    const buildingResult = await client.query(
+      `SELECT * FROM fief_buildings WHERE id = $1 AND fief_id = $2 FOR UPDATE`,
+      [buildingId, fiefId]
+    );
+    const building = buildingResult.rows[0];
+    if (!building) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Building not found' });
+    }
+    if (building.is_complete) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only queued or in-progress builds can be cancelled' });
+    }
+
+    const cancelledQueuePosition = building.queue_position == null ? null : Number(building.queue_position);
+    const wasUpgrade = building.previous_building_type != null;
+    let result;
+
+    if (wasUpgrade) {
+      // Revert to the pre-upgrade building — it was already complete, so no
+      // further construction time is owed on it.
+      const revertResult = await client.query(
+        `UPDATE fief_buildings
+         SET building_type = previous_building_type,
+             name = previous_name,
+             description = previous_description,
+             resource_output = COALESCE(previous_resource_output, '{}'::jsonb),
+             level = COALESCE(previous_level, GREATEST(level - 1, 1)),
+             is_complete = true,
+             days_remaining = 0,
+             queue_position = NULL,
+             previous_building_type = NULL,
+             previous_name = NULL,
+             previous_description = NULL,
+             previous_resource_output = NULL,
+             previous_level = NULL
+         WHERE id = $1 AND fief_id = $2
+         RETURNING *`,
+        [buildingId, fiefId]
+      );
+      result = { cancelled: 'upgrade', reverted_to: revertResult.rows[0] };
+    } else {
+      await client.query(`DELETE FROM fief_buildings WHERE id = $1 AND fief_id = $2`, [buildingId, fiefId]);
+      result = { cancelled: 'building', destroyed_building_id: buildingId };
+    }
+
+    if (cancelledQueuePosition != null) {
+      await client.query(
+        `UPDATE fief_buildings
+         SET queue_position = queue_position - 1
+         WHERE fief_id = $1 AND is_complete = false AND queue_position > $2`,
+        [fiefId, cancelledQueuePosition]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json(result);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error cancelling building:', error);
+    res.status(500).json({ error: 'Failed to cancel building' });
   } finally {
     client.release();
   }
@@ -5353,6 +5534,166 @@ router.post('/fiefs/:id/upgrade-tier-3', authenticateToken, async (req, res) => 
   } catch (error) {
     console.error('Error starting tier 3 upgrade:', error);
     res.status(500).json({ error: 'Failed to start tier 3 upgrade' });
+  }
+});
+
+router.post('/fiefs/:id/upgrade-tier-4', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const hasUpgradeDays4 = await pool.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_name = 'fiefs' AND column_name = 'tier_upgrade_days_remaining_4'`
+    );
+    if (hasUpgradeDays4.rows.length === 0) {
+      return res.status(400).json({ error: 'Tier 4 upgrade timer is not available yet' });
+    }
+
+    const fief = await getFiefContext(fiefId);
+    if (!fief) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, fief)) return res.status(403).json({ error: 'Not authorized to upgrade this fief' });
+
+    if (getNumber(fief.tier) < 3) {
+      return res.status(400).json({ error: 'Must reach Tier 3 before upgrading to Tier 4' });
+    }
+    if (getNumber(fief.tier) >= 4) {
+      return res.status(400).json({ error: 'Tier 4 is already reached' });
+    }
+    if (getNumber(fief.tier_upgrade_days_remaining_4 || 0) > 0) {
+      return res.status(400).json({ error: `Tier upgrade already in progress (${fief.tier_upgrade_days_remaining_4} day(s) remaining)` });
+    }
+
+    const storedResources = (fief.stored_resources || {});
+    const woodRequired = 4500;
+    const stoneRequired = 2000;
+    const ironRequired = 1000;
+    const goldRequired = 1000;
+
+    const woodAvailable = getNumber(storedResources.wood || 0);
+    const stoneAvailable = getNumber(storedResources.stone || 0);
+    const mineralsAvailable = getNumber(storedResources.minerals || 0);
+    const goldAvailable = getNumber(storedResources.gold || 0);
+
+    if (woodAvailable < woodRequired) {
+      return res.status(400).json({ error: `Not enough wood. Required: ${woodRequired}, Available: ${woodAvailable}` });
+    }
+    if (stoneAvailable < stoneRequired) {
+      return res.status(400).json({ error: `Not enough stone. Required: ${stoneRequired}, Available: ${stoneAvailable}` });
+    }
+    if (mineralsAvailable < ironRequired) {
+      return res.status(400).json({ error: `Not enough iron. Required: ${ironRequired}, Available: ${mineralsAvailable}` });
+    }
+    if (goldAvailable < goldRequired) {
+      return res.status(400).json({ error: `Not enough gold. Required: ${goldRequired}, Available: ${goldAvailable}` });
+    }
+
+    const updatedResources = {
+      ...storedResources,
+      wood: woodAvailable - woodRequired,
+      stone: stoneAvailable - stoneRequired,
+      minerals: mineralsAvailable - ironRequired,
+      gold: goldAvailable - goldRequired,
+    };
+
+    const updateResult = await pool.query(
+      `UPDATE fiefs
+       SET tier_upgrade_days_remaining_4 = 28,
+           stored_resources = $1::jsonb
+       WHERE id = $2
+       RETURNING id, tier, tier_upgrade_days_remaining_4`,
+      [JSON.stringify(updatedResources), fiefId]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ fief: updateResult.rows[0] });
+  } catch (error) {
+    console.error('Error starting tier 4 upgrade:', error);
+    res.status(500).json({ error: 'Failed to start tier 4 upgrade' });
+  }
+});
+
+router.post('/fiefs/:id/upgrade-tier-5', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const hasUpgradeDays5 = await pool.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_name = 'fiefs' AND column_name = 'tier_upgrade_days_remaining_5'`
+    );
+    if (hasUpgradeDays5.rows.length === 0) {
+      return res.status(400).json({ error: 'Tier 5 upgrade timer is not available yet' });
+    }
+
+    const fief = await getFiefContext(fiefId);
+    if (!fief) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, fief)) return res.status(403).json({ error: 'Not authorized to upgrade this fief' });
+
+    if (getNumber(fief.tier) < 4) {
+      return res.status(400).json({ error: 'Must reach Tier 4 before upgrading to Tier 5' });
+    }
+    if (getNumber(fief.tier) >= 5) {
+      return res.status(400).json({ error: 'Tier 5 is already reached' });
+    }
+    if (getNumber(fief.tier_upgrade_days_remaining_5 || 0) > 0) {
+      return res.status(400).json({ error: `Tier upgrade already in progress (${fief.tier_upgrade_days_remaining_5} day(s) remaining)` });
+    }
+
+    const storedResources = (fief.stored_resources || {});
+    const woodRequired = 19500;
+    const stoneRequired = 9000;
+    const ironRequired = 4500;
+    const goldRequired = 6000;
+
+    const woodAvailable = getNumber(storedResources.wood || 0);
+    const stoneAvailable = getNumber(storedResources.stone || 0);
+    const mineralsAvailable = getNumber(storedResources.minerals || 0);
+    const goldAvailable = getNumber(storedResources.gold || 0);
+
+    if (woodAvailable < woodRequired) {
+      return res.status(400).json({ error: `Not enough wood. Required: ${woodRequired}, Available: ${woodAvailable}` });
+    }
+    if (stoneAvailable < stoneRequired) {
+      return res.status(400).json({ error: `Not enough stone. Required: ${stoneRequired}, Available: ${stoneAvailable}` });
+    }
+    if (mineralsAvailable < ironRequired) {
+      return res.status(400).json({ error: `Not enough iron. Required: ${ironRequired}, Available: ${mineralsAvailable}` });
+    }
+    if (goldAvailable < goldRequired) {
+      return res.status(400).json({ error: `Not enough gold. Required: ${goldRequired}, Available: ${goldAvailable}` });
+    }
+
+    const updatedResources = {
+      ...storedResources,
+      wood: woodAvailable - woodRequired,
+      stone: stoneAvailable - stoneRequired,
+      minerals: mineralsAvailable - ironRequired,
+      gold: goldAvailable - goldRequired,
+    };
+
+    const updateResult = await pool.query(
+      `UPDATE fiefs
+       SET tier_upgrade_days_remaining_5 = 35,
+           stored_resources = $1::jsonb
+       WHERE id = $2
+       RETURNING id, tier, tier_upgrade_days_remaining_5`,
+      [JSON.stringify(updatedResources), fiefId]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ fief: updateResult.rows[0] });
+  } catch (error) {
+    console.error('Error starting tier 5 upgrade:', error);
+    res.status(500).json({ error: 'Failed to start tier 5 upgrade' });
   }
 });
 

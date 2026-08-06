@@ -344,6 +344,22 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
           });
         }
 
+        for (const item of (summary.revolts || [])) {
+          completedByFief.push({
+            type: 'revolt',
+            fiefId: Number(item.fiefId),
+            payload: {
+              campaignId: Number(req.params.id),
+              type: 'revolt',
+              fiefId: Number(item.fiefId),
+              fiefName: item.fiefName,
+              soldiersLost: Number(item.soldiersLost || 0),
+              populationLost: Number(item.populationLost || 0),
+              hadDefenders: Boolean(item.hadDefenders),
+            },
+          });
+        }
+
         if (completedByFief.length > 0) {
           const fiefIds = completedByFief.map((x) => x.fiefId).filter(Number.isFinite);
           if (fiefIds.length > 0) {

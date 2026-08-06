@@ -24,6 +24,119 @@ class Campaign {
     'trade_route_office',
   ];
 
+  // Tier 5+ civic stability: guard presence, faith, and governance buildings
+  // each raise how much population a fief can support before unrest builds.
+  static STABILITY_CAPACITY_BY_TYPE = {
+    // Guard chain — armed order enforcement
+    guard_post: 20,
+    guard_barracks: 40,
+    shield_hall: 70,
+    // Faith chain — spiritual contentment
+    faith_temple: 15,
+    great_temple: 25,
+    sanctified_basilica: 35,
+    pilgrim_cathedral: 45,
+    divine_sanctuary: 55,
+    celestial_cathedral: 65,
+    high_sacred_citadel: 75,
+    eternal_shrine_complex: 85,
+    pantheon_spire: 95,
+    // Governance chain — administration and civic order
+    council_hall: 35,
+    diplomatic_office: 60,
+  };
+
+  // Baseline population a fief's own tier of authority can keep orderly
+  // before civic buildings are needed at all.
+  static UNREST_BASELINE_POPULATION_PER_TIER = 40;
+  // Each point of stability capacity supports this many additional population.
+  static UNREST_STABILITY_POPULATION_PER_CAPACITY_POINT = 2;
+  // Unrest moves toward its target by at most this many points per day.
+  static UNREST_DAILY_STEP = 4;
+  // Below this unrest, production runs at full efficiency.
+  static UNREST_PENALTY_FLOOR = 30;
+  // Maximum production penalty (at unrest 100).
+  static UNREST_MAX_PRODUCTION_PENALTY_PCT = 50;
+  // Unrest must reach this before a revolt becomes possible.
+  static UNREST_REVOLT_FLOOR = 70;
+  // Maximum daily revolt chance (at unrest 100).
+  static UNREST_MAX_REVOLT_CHANCE = 0.25;
+
+  static getStabilityCapacity(completedBuildings) {
+    let capacity = 0;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      capacity += Campaign.STABILITY_CAPACITY_BY_TYPE[type] || 0;
+    }
+    return capacity;
+  }
+
+  static getUnrestSupportedPopulation(stabilityCapacity, tier) {
+    const numericTier = Math.max(1, Math.floor(Number(tier) || 1));
+    return (numericTier * Campaign.UNREST_BASELINE_POPULATION_PER_TIER)
+      + (Math.max(0, Number(stabilityCapacity) || 0) * Campaign.UNREST_STABILITY_POPULATION_PER_CAPACITY_POINT);
+  }
+
+  static getUnrestTarget(population, stabilityCapacity, tier) {
+    const numericTier = Math.max(1, Math.floor(Number(tier) || 1));
+    if (numericTier < 5) return 0;
+    const pop = Math.max(0, Number(population) || 0);
+    const supported = Campaign.getUnrestSupportedPopulation(stabilityCapacity, numericTier);
+    if (pop <= supported) return 0;
+    const overRatio = (pop - supported) / Math.max(1, supported);
+    return Math.min(100, overRatio * 100);
+  }
+
+  static getUnrestProductionPenaltyPct(unrest) {
+    const u = Math.max(0, Math.min(100, Number(unrest) || 0));
+    if (u <= Campaign.UNREST_PENALTY_FLOOR) return 0;
+    const span = 100 - Campaign.UNREST_PENALTY_FLOOR;
+    return Math.min(
+      Campaign.UNREST_MAX_PRODUCTION_PENALTY_PCT,
+      ((u - Campaign.UNREST_PENALTY_FLOOR) / span) * Campaign.UNREST_MAX_PRODUCTION_PENALTY_PCT
+    );
+  }
+
+  static getUnrestRevoltChance(unrest) {
+    const u = Math.max(0, Math.min(100, Number(unrest) || 0));
+    if (u < Campaign.UNREST_REVOLT_FLOOR) return 0;
+    const span = 100 - Campaign.UNREST_REVOLT_FLOOR;
+    return Math.min(
+      Campaign.UNREST_MAX_REVOLT_CHANCE,
+      ((u - Campaign.UNREST_REVOLT_FLOOR) / span) * Campaign.UNREST_MAX_REVOLT_CHANCE
+    );
+  }
+
+  static applyUnrestPenalty(production, penaltyPct) {
+    const pct = Math.max(0, Math.min(100, Number(penaltyPct) || 0));
+    if (pct <= 0) return { ...(production || {}) };
+    const multiplier = 1 - (pct / 100);
+    const next = {};
+    for (const [resource, amount] of Object.entries(production || {})) {
+      next[resource] = Math.max(0, Number(amount) || 0) * multiplier;
+    }
+    return next;
+  }
+
+  // Removes a fraction of each reserve unit type (rounded), used when a
+  // revolt kills garrisoned units suppressing it.
+  static reduceUnitReservesByFraction(reserves, fraction) {
+    const frac = Math.max(0, Math.min(1, Number(fraction) || 0));
+    const next = {};
+    let removed = 0;
+    for (const [unitType, countRaw] of Object.entries(reserves || {})) {
+      const count = Math.max(0, Math.floor(Number(countRaw) || 0));
+      if (count <= 0) {
+        next[unitType] = 0;
+        continue;
+      }
+      const loss = frac <= 0 ? 0 : Math.min(count, Math.round(count * frac));
+      next[unitType] = count - loss;
+      removed += loss;
+    }
+    return { reserves: next, removed };
+  }
+
   // Tiered per-worker production rates for food buildings.
   // Workers are distributed into highest-tier building slots first (20 slots per building).
   // Only workers that fit within a building's capacity receive its rate.
@@ -117,6 +230,27 @@ class Campaign {
   static getDailyFoodConsumption(population, tier) {
     const pop = Math.max(0, Number(population) || 0);
     return pop * Campaign.getFoodConsumptionRateForTier(tier);
+  }
+
+  // Tier 4+ fiefs must pay gold upkeep: 1 gold per 10 population, 1 gold per
+  // Militia in reserve, and 2 gold per any other reserve unit type. Below
+  // tier 4 no gold upkeep applies at all.
+  static getDailyGoldConsumption(population, unitReserves, tier) {
+    const numericTier = Math.max(1, Math.floor(Number(tier) || 1));
+    if (numericTier < 4) return 0;
+
+    const pop = Math.max(0, Number(population) || 0);
+    const reserves = (unitReserves && typeof unitReserves === 'object') ? unitReserves : {};
+    let militiaCount = 0;
+    let otherSoldierCount = 0;
+    for (const [unitType, countRaw] of Object.entries(reserves)) {
+      const count = Math.max(0, Number(countRaw) || 0);
+      if (count <= 0) continue;
+      if (String(unitType) === 'Militia') militiaCount += count;
+      else otherSoldierCount += count;
+    }
+
+    return (pop / 10) + (militiaCount * 1) + (otherSoldierCount * 2);
   }
 
   static getBirthChanceMultiplier(foodProducedToday, foodNeededToday, starvationDeaths, season = null) {
@@ -971,13 +1105,18 @@ class Campaign {
       );
 
       let hasConsecutiveStarvationDaysColumn = false;
+      let hasConsecutiveGoldShortageDaysColumn = false;
+      let hasUnrestColumn = false;
       let hasTierUpgradeDaysRemaining3Column = false;
+      let hasTierUpgradeDaysRemaining4Column = false;
+      let hasTierUpgradeDaysRemaining5Column = false;
       let hasCompletedResearchColumn = false;
       let hasVegetableHarvestStateColumn = false;
       let hasSickInjuredPopulationColumn = false;
       let hasSlaveWorkerAssignmentsColumn = false;
       let hasLocationModifiersColumn = false;
       let hasTravelDaysColumn = false;
+      let hasUnitReservesColumn = false;
       if (canSimulateKingdoms) {
         const fiefColumnsCheck = await client.query(
           `SELECT column_name
@@ -986,24 +1125,34 @@ class Campaign {
              AND column_name = ANY($1::text[])`,
           [[
             'consecutive_starvation_days',
+            'consecutive_gold_shortage_days',
             'tier_upgrade_days_remaining_3',
+            'tier_upgrade_days_remaining_4',
+            'tier_upgrade_days_remaining_5',
             'completed_research',
             'vegetable_harvest_state',
             'sick_injured_population',
             'slave_worker_assignments',
             'location_modifiers',
             'travel_days_remaining',
+            'unit_reserves',
+            'unrest',
           ]]
         );
         const availableColumns = new Set(fiefColumnsCheck.rows.map((r) => String(r.column_name || '')));
         hasConsecutiveStarvationDaysColumn = availableColumns.has('consecutive_starvation_days');
+        hasConsecutiveGoldShortageDaysColumn = availableColumns.has('consecutive_gold_shortage_days');
         hasTierUpgradeDaysRemaining3Column = availableColumns.has('tier_upgrade_days_remaining_3');
+        hasTierUpgradeDaysRemaining4Column = availableColumns.has('tier_upgrade_days_remaining_4');
+        hasTierUpgradeDaysRemaining5Column = availableColumns.has('tier_upgrade_days_remaining_5');
         hasCompletedResearchColumn = availableColumns.has('completed_research');
         hasVegetableHarvestStateColumn = availableColumns.has('vegetable_harvest_state');
         hasSickInjuredPopulationColumn = availableColumns.has('sick_injured_population');
         hasSlaveWorkerAssignmentsColumn = availableColumns.has('slave_worker_assignments');
         hasLocationModifiersColumn = availableColumns.has('location_modifiers');
         hasTravelDaysColumn = availableColumns.has('travel_days_remaining');
+        hasUnitReservesColumn = availableColumns.has('unit_reserves');
+        hasUnrestColumn = availableColumns.has('unrest');
       }
 
       const resourcesGained = {};
@@ -1011,6 +1160,7 @@ class Campaign {
       const completedBuildings = [];
       const completedResearch = [];
       const completedTierUpgrades = [];
+      const revolts = [];
 
       const fiefStates = [];
       const buildingsByFief = new Map();
@@ -1026,6 +1176,8 @@ class Campaign {
                   COALESCE(f.tier, 1) AS tier,
                   COALESCE(f.tier_upgrade_days_remaining, 0) AS tier_upgrade_days_remaining,
                     ${hasTierUpgradeDaysRemaining3Column ? "COALESCE(f.tier_upgrade_days_remaining_3, 0)" : '0'} AS tier_upgrade_days_remaining_3,
+                    ${hasTierUpgradeDaysRemaining4Column ? "COALESCE(f.tier_upgrade_days_remaining_4, 0)" : '0'} AS tier_upgrade_days_remaining_4,
+                    ${hasTierUpgradeDaysRemaining5Column ? "COALESCE(f.tier_upgrade_days_remaining_5, 0)" : '0'} AS tier_upgrade_days_remaining_5,
                   COALESCE(f.storage_capacity, 100) AS storage_capacity,
                   COALESCE(f.stored_resources, '{}'::jsonb) AS stored_resources,
                   COALESCE(f.worker_assignments, '{}'::jsonb) AS worker_assignments,
@@ -1034,11 +1186,13 @@ class Campaign {
                   COALESCE(f.max_workers_per_resource, '{}'::jsonb) AS max_workers_per_resource,
                     ${hasSickInjuredPopulationColumn ? 'COALESCE(f.sick_injured_population, 0)' : '0'} AS sick_injured_population,
                     ${hasCompletedResearchColumn ? "COALESCE(f.completed_research, '[]'::jsonb)" : "'[]'::jsonb"} AS completed_research,
-                    ${hasVegetableHarvestStateColumn ? "COALESCE(f.vegetable_harvest_state, '{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb)" : "'{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb"} AS vegetable_harvest_state${hasConsecutiveStarvationDaysColumn ? ",\n                  COALESCE(f.consecutive_starvation_days, 0) AS consecutive_starvation_days" : ''},
+                    ${hasVegetableHarvestStateColumn ? "COALESCE(f.vegetable_harvest_state, '{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb)" : "'{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb"} AS vegetable_harvest_state${hasConsecutiveStarvationDaysColumn ? ",\n                  COALESCE(f.consecutive_starvation_days, 0) AS consecutive_starvation_days" : ''}${hasConsecutiveGoldShortageDaysColumn ? ",\n                  COALESCE(f.consecutive_gold_shortage_days, 0) AS consecutive_gold_shortage_days" : ''},
                   COALESCE(f.slaves, 0) AS slaves,
                   COALESCE(f.prisoners, 0) AS prisoners,
                     ${hasLocationModifiersColumn ? "COALESCE(f.location_modifiers, '{}'::jsonb)" : "'{}'::jsonb"} AS location_modifiers,
-                    ${hasTravelDaysColumn ? 'COALESCE(f.travel_days_remaining, 0)' : '0'} AS travel_days_remaining
+                    ${hasTravelDaysColumn ? 'COALESCE(f.travel_days_remaining, 0)' : '0'} AS travel_days_remaining,
+                    ${hasUnitReservesColumn ? "COALESCE(f.unit_reserves, '{}'::jsonb)" : "'{}'::jsonb"} AS unit_reserves,
+                    ${hasUnrestColumn ? 'COALESCE(f.unrest, 0)' : '0'} AS unrest
            FROM fiefs f
            JOIN kingdoms k ON k.id = f.kingdom_id
            WHERE k.campaign_id = $1`,
@@ -1058,6 +1212,8 @@ class Campaign {
             tier: Number(row.tier || 1),
             tierUpgradeDaysRemaining: Number(row.tier_upgrade_days_remaining || 0),
             tierUpgradeDaysRemaining3: Number(row.tier_upgrade_days_remaining_3 || 0),
+            tierUpgradeDaysRemaining4: Number(row.tier_upgrade_days_remaining_4 || 0),
+            tierUpgradeDaysRemaining5: Number(row.tier_upgrade_days_remaining_5 || 0),
             storageCapacity: Number(row.storage_capacity || 100),
             storedResources: Campaign.toNumericResourceMap(row.stored_resources),
             workerAssignments: Campaign.toNumericResourceMap(row.worker_assignments),
@@ -1067,11 +1223,14 @@ class Campaign {
             sickInjuredPopulation: Math.max(0, Number(row.sick_injured_population || 0)),
             vegetableHarvestState: Campaign.normalizeVegetableHarvestState(row.vegetable_harvest_state),
             consecutiveStarvationDays: Number(row.consecutive_starvation_days || 0),
+            consecutiveGoldShortageDays: Number(row.consecutive_gold_shortage_days || 0),
             completedResearch: Array.isArray(row.completed_research) ? row.completed_research : [],
             slaves: Math.max(0, Number(row.slaves || 0)),
             prisoners: Math.max(0, Number(row.prisoners || 0)),
             locationModifiers: Campaign.toNumericResourceMap(row.location_modifiers),
             travelDaysRemaining: Number(row.travel_days_remaining || 0),
+            unitReserves: (row.unit_reserves && typeof row.unit_reserves === 'object' && !Array.isArray(row.unit_reserves)) ? row.unit_reserves : {},
+            unrest: Math.max(0, Math.min(100, Number(row.unrest || 0))),
           });
           resourcesGained[id] = {};
           populationGained[id] = 0;
@@ -1205,6 +1364,16 @@ class Campaign {
           fief.storageCapacity = Campaign.calculateStorageCapacityFromCompletedBuildings(completed, fief.completedResearch);
           Campaign.applyBuildingBasedWorkerCaps(fief, completed);
 
+          // Tier 5+ civic stability: unrest drifts toward a target set by population
+          // vs. guard/faith/governance building capacity, then saps production once high.
+          const stabilityCapacity = Campaign.getStabilityCapacity(completed);
+          const unrestTarget = Campaign.getUnrestTarget(fief.population, stabilityCapacity, fief.tier);
+          if (fief.unrest < unrestTarget) {
+            fief.unrest = Math.min(unrestTarget, fief.unrest + Campaign.UNREST_DAILY_STEP);
+          } else if (fief.unrest > unrestTarget) {
+            fief.unrest = Math.max(unrestTarget, fief.unrest - Campaign.UNREST_DAILY_STEP);
+          }
+
           const effectiveAssignments = { ...(fief.workerAssignments || {}) };
           for (const lane of ['meat', 'vegetables', 'wood', 'stone', 'iron', 'gold']) {
             effectiveAssignments[lane] =
@@ -1301,9 +1470,13 @@ class Campaign {
 
           const logisticsLevel = Campaign.getCompletedBuildingCount(completed, Campaign.LOGISTICS_BUILDING_TYPES);
           const legendaryBonuses = legendaryBonusesByFief.get(fief.id) || {};
-          const modifiedProduction = Campaign.applyLegendaryBonuses(
-            Campaign.applyCombinedModifiers(baseProduction, seasonEffects, logisticsLevel, fief.locationModifiers),
-            legendaryBonuses
+          const unrestPenaltyPct = Campaign.getUnrestProductionPenaltyPct(fief.unrest);
+          const modifiedProduction = Campaign.applyUnrestPenalty(
+            Campaign.applyLegendaryBonuses(
+              Campaign.applyCombinedModifiers(baseProduction, seasonEffects, logisticsLevel, fief.locationModifiers),
+              legendaryBonuses
+            ),
+            unrestPenaltyPct
           );
           const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity);
           fief.storedResources = capacityApplied.stored;
@@ -1355,14 +1528,96 @@ class Campaign {
             fief.consecutiveStarvationDays = 0;
           }
 
+          // Tier 4+ gold upkeep: 1 gold per 10 population, 1 gold per Militia in
+          // reserve, 2 gold per any other reserve unit type. Functions the same
+          // way food does — a sustained shortfall drives population away, except
+          // people emigrate instead of starving to death.
+          const dailyGoldNeeded = Campaign.getDailyGoldConsumption(fief.population, fief.unitReserves, fief.tier);
+          const currentGold = Math.max(0, Number(fief.storedResources.gold || 0));
+          const consumedGold = Math.min(currentGold, dailyGoldNeeded);
+          fief.storedResources.gold = currentGold - consumedGold;
+          const goldDeficit = Math.max(0, dailyGoldNeeded - consumedGold);
+
+          let goldEmigrants = 0;
+          // Only trigger emigration once the gold reserve is fully depleted (same threshold as starvation).
+          if (goldDeficit > 0 && currentGold === 0 && fief.population > 0) {
+            fief.consecutiveGoldShortageDays += 1;
+            const baseLeaveChance = 0.05;
+            const daysMultiplier = Math.min(5, 1 + (fief.consecutiveGoldShortageDays - 1) * 0.3);
+            const deficitMultiplier = Math.min(3, 1 + (goldDeficit / Math.max(1, dailyGoldNeeded)));
+            const leaveChancePerVillager = Math.min(1, baseLeaveChance * daysMultiplier * deficitMultiplier);
+            const populationBeforeEmigration = Math.max(0, Math.floor(Number(fief.population || 0)));
+            for (let i = 0; i < populationBeforeEmigration; i++) {
+              if (Math.random() < leaveChancePerVillager) {
+                goldEmigrants += 1;
+              }
+            }
+            if (goldEmigrants > 0) {
+              fief.population = Math.max(0, populationBeforeEmigration - goldEmigrants);
+              fief.populationMaturationSchedule = Campaign.trimMaturationScheduleToPopulation(
+                fief.populationMaturationSchedule,
+                fief.population
+              );
+              populationGained[fief.id] = (Number(populationGained[fief.id]) || 0) - goldEmigrants;
+            }
+          } else if (currentGold > 0 || goldDeficit <= 0) {
+            // Reset consecutive shortage counter once gold upkeep is covered again
+            fief.consecutiveGoldShortageDays = 0;
+          }
+
+          // Tier 5+ revolts: once unrest is high enough there's a daily chance the
+          // fief boils over. Garrisoned reserve units die trying to put it down;
+          // civilians die as rebels in the streets — worse still if no one was
+          // defending the fief at all.
+          let revoltPopulationLost = 0;
+          const revoltChance = Campaign.getUnrestRevoltChance(fief.unrest);
+          if (revoltChance > 0 && fief.population > 0 && Math.random() < revoltChance) {
+            const unrestBeforeRevolt = fief.unrest;
+            const severity = Math.min(1, (unrestBeforeRevolt - Campaign.UNREST_REVOLT_FLOOR) / (100 - Campaign.UNREST_REVOLT_FLOOR));
+            const reservesTotal = Object.values(fief.unitReserves || {}).reduce((sum, c) => sum + Math.max(0, Number(c) || 0), 0);
+
+            const soldierLossFraction = 0.10 + (severity * 0.20);
+            const { reserves: nextReserves, removed: soldiersLost } = reservesTotal > 0
+              ? Campaign.reduceUnitReservesByFraction(fief.unitReserves, soldierLossFraction)
+              : { reserves: fief.unitReserves, removed: 0 };
+            fief.unitReserves = nextReserves;
+
+            // Without defenders, the mob burns more of the fief before it burns out.
+            let populationLossFraction = 0.02 + (severity * 0.06);
+            if (reservesTotal <= 0) populationLossFraction = Math.min(0.16, populationLossFraction * 2);
+
+            const populationBeforeRevolt = Math.max(0, Math.floor(Number(fief.population || 0)));
+            revoltPopulationLost = Math.min(populationBeforeRevolt, Math.round(populationBeforeRevolt * populationLossFraction));
+            if (revoltPopulationLost > 0) {
+              fief.population = Math.max(0, populationBeforeRevolt - revoltPopulationLost);
+              fief.populationMaturationSchedule = Campaign.trimMaturationScheduleToPopulation(
+                fief.populationMaturationSchedule,
+                fief.population
+              );
+              populationGained[fief.id] = (Number(populationGained[fief.id]) || 0) - revoltPopulationLost;
+            }
+
+            // The revolt is quelled — unrest drops sharply but distrust lingers.
+            fief.unrest = Math.max(0, fief.unrest - 45);
+
+            revolts.push({
+              fiefId: fief.id,
+              fiefName: fief.name,
+              unrestBeforeRevolt: Math.round(unrestBeforeRevolt * 10) / 10,
+              soldiersLost,
+              populationLost: revoltPopulationLost,
+              hadDefenders: reservesTotal > 0,
+            });
+          }
+
           const assignableAdults = getAssignablePopulation(
             fief.population,
             fief.populationMaturationSchedule,
             fief.sickInjuredPopulation
           );
 
-          // Trim worker assignments if starvation killed workers
-          if (starvationDeaths > 0) {
+          // Trim worker assignments if starvation, a gold shortage, or a revolt drove people away
+          if (starvationDeaths > 0 || goldEmigrants > 0 || revoltPopulationLost > 0) {
             fief.workerAssignments = Campaign.trimWorkerAssignmentsToAssignable(fief.workerAssignments, assignableAdults);
           }
           const foodProducedToday = Math.max(0, Number(capacityApplied.applied.food || 0));
@@ -1510,6 +1765,32 @@ class Campaign {
             }
           }
 
+          if (fief.tierUpgradeDaysRemaining4 > 0) {
+            fief.tierUpgradeDaysRemaining4 = Math.max(0, fief.tierUpgradeDaysRemaining4 - 1);
+            if (fief.tierUpgradeDaysRemaining4 === 0 && fief.tier < 4) {
+              fief.tier = 4;
+              Campaign.applyTierUpgradeCompletionEffects(fief);
+              completedTierUpgrades.push({
+                fiefId: fief.id,
+                fiefName: fief.name,
+                newTier: fief.tier,
+              });
+            }
+          }
+
+          if (fief.tierUpgradeDaysRemaining5 > 0) {
+            fief.tierUpgradeDaysRemaining5 = Math.max(0, fief.tierUpgradeDaysRemaining5 - 1);
+            if (fief.tierUpgradeDaysRemaining5 === 0 && fief.tier < 5) {
+              fief.tier = 5;
+              Campaign.applyTierUpgradeCompletionEffects(fief);
+              completedTierUpgrades.push({
+                fiefId: fief.id,
+                fiefName: fief.name,
+                newTier: fief.tier,
+              });
+            }
+          }
+
           if (canSimulateResearch) {
             const queue = researchByFief.get(fief.id) || [];
             const researchWorkers = Math.max(0, Number(fief.workerAssignments.research || 0));
@@ -1618,6 +1899,18 @@ class Campaign {
             paramIndex += 1;
           }
 
+          if (hasTierUpgradeDaysRemaining4Column) {
+            updateSetClauses.push(`tier_upgrade_days_remaining_4 = $${paramIndex}`);
+            updateValues.push(fief.tierUpgradeDaysRemaining4);
+            paramIndex += 1;
+          }
+
+          if (hasTierUpgradeDaysRemaining5Column) {
+            updateSetClauses.push(`tier_upgrade_days_remaining_5 = $${paramIndex}`);
+            updateValues.push(fief.tierUpgradeDaysRemaining5);
+            paramIndex += 1;
+          }
+
           updateSetClauses.push(`unlocked_resources = $${paramIndex}::jsonb`);
           updateValues.push(JSON.stringify(fief.unlockedResources || {}));
           paramIndex += 1;
@@ -1659,6 +1952,24 @@ class Campaign {
           if (hasConsecutiveStarvationDaysColumn) {
             updateSetClauses.push(`consecutive_starvation_days = $${paramIndex}`);
             updateValues.push(Math.max(0, Number(fief.consecutiveStarvationDays || 0)));
+            paramIndex += 1;
+          }
+
+          if (hasConsecutiveGoldShortageDaysColumn) {
+            updateSetClauses.push(`consecutive_gold_shortage_days = $${paramIndex}`);
+            updateValues.push(Math.max(0, Number(fief.consecutiveGoldShortageDays || 0)));
+            paramIndex += 1;
+          }
+
+          if (hasUnrestColumn) {
+            updateSetClauses.push(`unrest = $${paramIndex}`);
+            updateValues.push(Math.max(0, Math.min(100, Number(fief.unrest || 0))));
+            paramIndex += 1;
+          }
+
+          if (hasUnitReservesColumn) {
+            updateSetClauses.push(`unit_reserves = $${paramIndex}::jsonb`);
+            updateValues.push(JSON.stringify(fief.unitReserves || {}));
             paramIndex += 1;
           }
 
@@ -1758,6 +2069,7 @@ class Campaign {
         completedBuildings,
         completedResearch,
         completedTierUpgrades,
+        revolts,
         resourcesGained,
         populationGained,
       };

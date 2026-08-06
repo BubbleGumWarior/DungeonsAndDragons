@@ -100,6 +100,88 @@ const getTierWorkerYieldMultiplier = (tier?: number) => {
 
 const getFoodConsumptionRateForTier = (tier?: number) => (Number(tier || 1) <= 1 ? 0.7 : 1);
 
+// Tier 4+ fiefs owe gold upkeep: 1 gold per 10 population, 1 gold per Militia
+// in reserve, 2 gold per any other reserve unit type. Mirrors the backend's
+// Campaign.getDailyGoldConsumption exactly.
+const getDailyGoldConsumption = (population: number, unitReserves: Record<string, number> | undefined, tier?: number) => {
+  const numericTier = Math.max(1, Math.floor(Number(tier || 1)));
+  if (numericTier < 4) return 0;
+  const pop = Math.max(0, Number(population || 0));
+  const reserves = (unitReserves && typeof unitReserves === 'object') ? unitReserves : {};
+  let militiaCount = 0;
+  let otherSoldierCount = 0;
+  for (const [unitType, countRaw] of Object.entries(reserves)) {
+    const count = Math.max(0, Number(countRaw) || 0);
+    if (count <= 0) continue;
+    if (unitType === 'Militia') militiaCount += count;
+    else otherSoldierCount += count;
+  }
+  return (pop / 10) + (militiaCount * 1) + (otherSoldierCount * 2);
+};
+
+// ── Tier 5+ civic stability (unrest) ────────────────────────────────────────
+// Mirrors the backend's Campaign.STABILITY_CAPACITY_BY_TYPE / getUnrestTarget /
+// getUnrestProductionPenaltyPct / getUnrestRevoltChance exactly.
+const STABILITY_CAPACITY_BY_TYPE: Record<string, number> = {
+  guard_post: 20,
+  guard_barracks: 40,
+  shield_hall: 70,
+  faith_temple: 15,
+  great_temple: 25,
+  sanctified_basilica: 35,
+  pilgrim_cathedral: 45,
+  divine_sanctuary: 55,
+  celestial_cathedral: 65,
+  high_sacred_citadel: 75,
+  eternal_shrine_complex: 85,
+  pantheon_spire: 95,
+  council_hall: 35,
+  diplomatic_office: 60,
+};
+const UNREST_BASELINE_POPULATION_PER_TIER = 40;
+const UNREST_STABILITY_POPULATION_PER_CAPACITY_POINT = 2;
+const UNREST_PENALTY_FLOOR = 30;
+const UNREST_MAX_PRODUCTION_PENALTY_PCT = 50;
+const UNREST_REVOLT_FLOOR = 70;
+const UNREST_MAX_REVOLT_CHANCE = 0.25;
+
+const getStabilityCapacity = (completedBuildings: any[]) => {
+  let capacity = 0;
+  for (const b of (completedBuildings || [])) {
+    capacity += STABILITY_CAPACITY_BY_TYPE[String(b?.building_type || '')] || 0;
+  }
+  return capacity;
+};
+
+const getUnrestSupportedPopulation = (stabilityCapacity: number, tier?: number) => {
+  const numericTier = Math.max(1, Math.floor(Number(tier || 1)));
+  return (numericTier * UNREST_BASELINE_POPULATION_PER_TIER) + (Math.max(0, stabilityCapacity) * UNREST_STABILITY_POPULATION_PER_CAPACITY_POINT);
+};
+
+const getUnrestTarget = (population: number, stabilityCapacity: number, tier?: number) => {
+  const numericTier = Math.max(1, Math.floor(Number(tier || 1)));
+  if (numericTier < 5) return 0;
+  const pop = Math.max(0, Number(population || 0));
+  const supported = getUnrestSupportedPopulation(stabilityCapacity, numericTier);
+  if (pop <= supported) return 0;
+  const overRatio = (pop - supported) / Math.max(1, supported);
+  return Math.min(100, overRatio * 100);
+};
+
+const getUnrestProductionPenaltyPct = (unrest: number) => {
+  const u = Math.max(0, Math.min(100, Number(unrest || 0)));
+  if (u <= UNREST_PENALTY_FLOOR) return 0;
+  const span = 100 - UNREST_PENALTY_FLOOR;
+  return Math.min(UNREST_MAX_PRODUCTION_PENALTY_PCT, ((u - UNREST_PENALTY_FLOOR) / span) * UNREST_MAX_PRODUCTION_PENALTY_PCT);
+};
+
+const getUnrestRevoltChance = (unrest: number) => {
+  const u = Math.max(0, Math.min(100, Number(unrest || 0)));
+  if (u < UNREST_REVOLT_FLOOR) return 0;
+  const span = 100 - UNREST_REVOLT_FLOOR;
+  return Math.min(UNREST_MAX_REVOLT_CHANCE, ((u - UNREST_REVOLT_FLOOR) / span) * UNREST_MAX_REVOLT_CHANCE);
+};
+
 const getResearchWorkerYieldMultiplier = (completedResearch: string[] | undefined, lane: 'meat' | 'vegetables') => {
   const done = new Set((completedResearch || []).map((r) => String(r)));
   if (lane === 'meat') {
@@ -370,6 +452,9 @@ const KingdomTab: React.FC<Props> = ({
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [showChildrenModal, setShowChildrenModal] = useState(false);
   const [showBuildModal, setShowBuildModal] = useState(false);
+  const [showBuildQueueModal, setShowBuildQueueModal] = useState(false);
+  const [buildQueueOrder, setBuildQueueOrder] = useState<number[]>([]);
+  const [draggedQueueBuildingId, setDraggedQueueBuildingId] = useState<number | null>(null);
   const [showResearchModal, setShowResearchModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showConversionModal, setShowConversionModal] = useState(false);
@@ -579,6 +664,21 @@ const KingdomTab: React.FC<Props> = ({
       setManagementMode('fief');
     }
   }, [canUseKingdomManagement, managementMode]);
+
+  // Keep the build-queue drag order in sync with the server's queue_position ordering
+  // whenever fief data refreshes (skipped mid-drag so a reorder isn't stomped).
+  useEffect(() => {
+    if (draggedQueueBuildingId != null) return;
+    const inProgress = (fiefDetails?.buildings || [])
+      .filter((b: any) => !b.is_complete)
+      .sort((a: any, b: any) => {
+        const ap = a.queue_position == null ? Number.MAX_SAFE_INTEGER : Number(a.queue_position);
+        const bp = b.queue_position == null ? Number.MAX_SAFE_INTEGER : Number(b.queue_position);
+        return ap === bp ? Number(a.id) - Number(b.id) : ap - bp;
+      })
+      .map((b: any) => Number(b.id));
+    setBuildQueueOrder(inProgress);
+  }, [fiefDetails?.buildings, draggedQueueBuildingId]);
 
   useEffect(() => {
     if (!selectedKingdom) return;
@@ -921,6 +1021,28 @@ const KingdomTab: React.FC<Props> = ({
   const dailyFoodConsumption = Math.max(0, baseDailyFoodConsumption * directFoodConsumptionMultiplier);
   const foodDaysLeftIfNoProduction = dailyFoodConsumption > 0 ? (storedFood / dailyFoodConsumption) : Number.POSITIVE_INFINITY;
   const unassignedAdults = Math.max(0, assignablePopulation - totalAssigned);
+
+  // ── Tier 4+ gold upkeep ─────────────────────────────────────────────────
+  const unitReserves = (fiefDetails?.unit_reserves || {}) as Record<string, number>;
+  const militiaReserveCount = Math.max(0, Math.floor(Number(unitReserves.Militia || 0)));
+  const otherSoldierReserveCount = Object.entries(unitReserves).reduce((sum, [unitType, count]) => {
+    if (unitType === 'Militia') return sum;
+    return sum + Math.max(0, Math.floor(Number(count || 0)));
+  }, 0);
+  const storedGold = Math.max(0, Number(storedResources.gold || 0));
+  const dailyGoldConsumption = getDailyGoldConsumption(totalPopulation, unitReserves, Number(fiefDetails?.tier || 1));
+  const goldDaysLeftIfNoProduction = dailyGoldConsumption > 0 ? (storedGold / dailyGoldConsumption) : Number.POSITIVE_INFINITY;
+
+  // ── Tier 5+ civic stability (unrest) ────────────────────────────────────
+  const currentUnrest = Math.max(0, Math.min(100, Number(fiefDetails?.unrest || 0)));
+  const stabilityCapacity = useMemo(
+    () => getStabilityCapacity((fiefDetails?.buildings || []).filter((b: any) => Boolean(b?.is_complete))),
+    [fiefDetails?.buildings]
+  );
+  const unrestSupportedPopulation = getUnrestSupportedPopulation(stabilityCapacity, Number(fiefDetails?.tier || 1));
+  const unrestTarget = getUnrestTarget(totalPopulation, stabilityCapacity, Number(fiefDetails?.tier || 1));
+  const unrestProductionPenaltyPct = getUnrestProductionPenaltyPct(currentUnrest);
+  const unrestRevoltChancePct = getUnrestRevoltChance(currentUnrest) * 100;
 
   const housingCapacity = useMemo(() => {
     if (fiefDetails?.housing_capacity != null) return Math.max(0, Number(fiefDetails.housing_capacity));
@@ -1601,6 +1723,35 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const cancelQueuedBuilding = async (buildingId: number, isUpgrade: boolean) => {
+    if (!fiefDetails) return;
+    const confirmMsg = isUpgrade
+      ? 'Cancel this upgrade? It will revert to its pre-upgrade form. Resources already spent are not refunded.'
+      : 'Cancel this build? The building will be destroyed. Resources already spent are not refunded.';
+    if (!window.confirm(confirmMsg)) return;
+    setBusy(`cancel-building-${buildingId}`);
+    try {
+      await kingdomAPI.cancelBuilding(Number(fiefDetails.id), buildingId);
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to cancel build');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const commitBuildQueueReorder = async (order: number[]) => {
+    if (!fiefDetails) return;
+    setBuildQueueOrder(order);
+    try {
+      await kingdomAPI.reorderBuildQueue(Number(fiefDetails.id), order);
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to reorder build queue');
+      await fetchFief(Number(fiefDetails.id));
+    }
+  };
+
   const getStoredAmountForCostResource = (resource: string) => {
     const stored = (fiefDetails?.stored_resources || {}) as Record<string, number>;
     const key = resource === 'iron' ? 'minerals' : resource;
@@ -1641,6 +1792,32 @@ const KingdomTab: React.FC<Props> = ({
       await fetchFief(Number(fiefDetails.id));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to start tier 3 upgrade');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const startTier4Upgrade = async () => {
+    if (!fiefDetails) return;
+    setBusy('upgrade-tier4');
+    try {
+      await kingdomAPI.startTier4Upgrade(Number(fiefDetails.id));
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to start tier 4 upgrade');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const startTier5Upgrade = async () => {
+    if (!fiefDetails) return;
+    setBusy('upgrade-tier5');
+    try {
+      await kingdomAPI.startTier5Upgrade(Number(fiefDetails.id));
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to start tier 5 upgrade');
     } finally {
       setBusy(null);
     }
@@ -2785,6 +2962,72 @@ const KingdomTab: React.FC<Props> = ({
                     {dailyFoodConsumption > 0 && ` · ${foodDaysLeftIfNoProduction === Number.POSITIVE_INFINITY ? '∞' : foodDaysLeftIfNoProduction.toFixed(0)}d reserve`}
                   </span>
                 </div>
+
+                {/* ── Gold upkeep summary (Tier 4+) ── */}
+                {Number(fiefDetails?.tier || 1) >= 4 && (() => {
+                  const goldNet = productionByLane.output.gold - dailyGoldConsumption;
+                  return (
+                    <div style={{ paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem' }}>
+                      <span style={{ color: goldNet >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: '0.9rem' }}>
+                        🪙 Gold: {goldNet >= 0 ? '+' : ''}{goldNet.toFixed(1)} /day
+                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                        🏦 {storedGold.toFixed(1)} stored
+                        {dailyGoldConsumption > 0 && ` · ${goldDaysLeftIfNoProduction === Number.POSITIVE_INFINITY ? '∞' : goldDaysLeftIfNoProduction.toFixed(0)}d reserve`}
+                      </span>
+                      <span style={{ color: '#64748b', fontSize: '0.74rem' }}>
+                        Upkeep: {dailyGoldConsumption.toFixed(1)}/day
+                        {' '}({(totalPopulation / 10).toFixed(1)} population
+                        {militiaReserveCount > 0 && ` · ${militiaReserveCount} Militia`}
+                        {otherSoldierReserveCount > 0 && ` · ${otherSoldierReserveCount} soldier(s) ×2`})
+                      </span>
+                      {storedGold <= 0 && dailyGoldConsumption > 0 && (
+                        <span style={{ color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
+                          ⚠️ Unpaid gold upkeep — population will emigrate
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── Unrest (Tier 5+ civic stability) ── */}
+                {Number(fiefDetails?.tier || 1) >= 5 && (() => {
+                  const barColor = currentUnrest >= UNREST_REVOLT_FLOOR ? '#ef4444' : currentUnrest > UNREST_PENALTY_FLOOR ? '#fbbf24' : '#22c55e';
+                  return (
+                    <div style={{ paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚖️ Unrest</span>
+                        <span style={{ color: barColor, fontWeight: 700, fontSize: '0.85rem' }}>{currentUnrest.toFixed(0)} / 100</span>
+                      </div>
+                      <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${currentUnrest}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>
+                          Civic capacity supports {unrestSupportedPopulation.toFixed(0)} population
+                          {totalPopulation > unrestSupportedPopulation && (
+                            <span style={{ color: '#fbbf24' }}> — {(totalPopulation - unrestSupportedPopulation).toFixed(0)} over</span>
+                          )}
+                        </span>
+                        {unrestProductionPenaltyPct > 0 && (
+                          <span style={{ color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
+                            −{unrestProductionPenaltyPct.toFixed(0)}% production
+                          </span>
+                        )}
+                        {unrestRevoltChancePct > 0 && (
+                          <span style={{ color: '#ef4444', fontSize: '0.78rem', fontWeight: 700 }}>
+                            🔥 {unrestRevoltChancePct.toFixed(0)}% revolt risk/day — soldiers and citizens will die if it breaks out
+                          </span>
+                        )}
+                      </div>
+                      {unrestTarget > currentUnrest && (
+                        <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: '0.2rem', fontStyle: 'italic' }}>
+                          Rising toward {unrestTarget.toFixed(0)} — build Guard Post→Barracks→Shield Hall, the Faith Temple chain, or Council Hall/Diplomatic Office to raise civic capacity.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               </>
               )}
@@ -3048,6 +3291,20 @@ const KingdomTab: React.FC<Props> = ({
                       }}
                     >
                       Build
+                    </button>
+                    <button
+                      onClick={() => setShowBuildQueueModal(true)}
+                      style={{
+                        padding: '0.38rem 0.7rem',
+                        borderRadius: '0.45rem',
+                        border: '1px solid rgba(148,163,184,0.45)',
+                        background: 'rgba(30,41,59,0.5)',
+                        color: '#cbd5e1',
+                        cursor: 'pointer',
+                        fontWeight: 700,
+                      }}
+                    >
+                      📋 Build Queue{buildQueueOrder.length > 0 ? ` (${buildQueueOrder.length})` : ''}
                     </button>
                     {hasCompletedResearchLab && (
                       <button
@@ -3559,10 +3816,174 @@ const KingdomTab: React.FC<Props> = ({
                   <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '1rem' }}>Tier {fiefDetails.tier}</div>
                 </div>
 
-                {fiefDetails.tier >= 3 ? (
+                {fiefDetails.tier >= 5 ? (
                   <div style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>
                     ✓ Maximum tier reached for this phase
                   </div>
+                ) : fiefDetails.tier >= 4 ? (
+                  <>
+                    {Number(fiefDetails.tier_upgrade_days_remaining_5 || 0) > 0 ? (
+                      <div style={{ marginBottom: '0.6rem' }}>
+                        <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                          ⏳ Tier 5 Upgrade in Progress
+                        </div>
+                        <div style={{ color: '#e2e8f0', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
+                          {Number(fiefDetails.tier_upgrade_days_remaining_5 || 0)} day(s) remaining
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: '0.6rem' }}>
+                          <div style={{ color: '#93c5fd', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Will unlock:</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
+                            {['Tier 5 Buildings', 'Tier 5 Research', '+1 Legendary Slot', 'Civic Unrest'].map((res) => (
+                              <div key={res} style={{ color: '#e2e8f0', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(148,163,184,0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
+                                🔓 {res}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ marginBottom: '0.6rem', padding: '0.4rem 0.55rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.35rem' }}>
+                          <span style={{ color: '#fca5a5', fontSize: '0.76rem' }}>
+                            ⚠️ Tier 5 introduces Unrest: population growth beyond your civic capacity (Guard chain, Faith chain, Council Hall/Diplomatic Office) saps production, and can erupt into a revolt that costs soldiers and citizens.
+                          </span>
+                        </div>
+
+                        <div style={{ marginBottom: '0.6rem' }}>
+                          <div style={{ color: '#86efac', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Requirements:</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>⏱️ Time:</span>
+                              <span style={{ fontWeight: 600 }}>35 days</span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 19500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>🌳 Wood:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.wood || 0) >= 19500 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.wood || 0) >= 19500 ? '✓' : '✗'} {Number(storedResources.wood || 0).toFixed(1)}/19500
+                              </span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 9000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>🪨 Stone:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.stone || 0) >= 9000 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.stone || 0) >= 9000 ? '✓' : '✗'} {Number(storedResources.stone || 0).toFixed(1)}/9000
+                              </span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 4500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>⛓️ Iron:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.minerals || 0) >= 4500 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.minerals || 0) >= 4500 ? '✓' : '✗'} {Number(storedResources.minerals || 0).toFixed(1)}/4500
+                              </span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.gold || 0) >= 6000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>🪙 Gold:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.gold || 0) >= 6000 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.gold || 0) >= 6000 ? '✓' : '✗'} {Number(storedResources.gold || 0).toFixed(1)}/6000
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={startTier5Upgrade}
+                          disabled={busy === 'upgrade-tier5' || (storedResources.wood || 0) < 19500 || (storedResources.stone || 0) < 9000 || (storedResources.minerals || 0) < 4500 || (storedResources.gold || 0) < 6000}
+                          style={{
+                            width: '100%',
+                            padding: '0.55rem 0.8rem',
+                            borderRadius: '0.45rem',
+                            border: '1px solid rgba(var(--theme-accent-rgb),0.5)',
+                            background: 'rgba(120,53,15,0.5)',
+                            color: 'var(--text-gold)',
+                            cursor: busy === 'upgrade-tier5' ? 'not-allowed' : 'pointer',
+                            fontWeight: 700,
+                            fontSize: '0.95rem',
+                            opacity: (busy === 'upgrade-tier5' || (storedResources.wood || 0) < 19500 || (storedResources.stone || 0) < 9000 || (storedResources.minerals || 0) < 4500 || (storedResources.gold || 0) < 6000) ? 0.6 : 1,
+                          }}
+                        >
+                          {busy === 'upgrade-tier5' ? 'Starting...' : 'Start Tier 5 Upgrade'}
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : fiefDetails.tier >= 3 ? (
+                  <>
+                    {Number(fiefDetails.tier_upgrade_days_remaining_4 || 0) > 0 ? (
+                      <div style={{ marginBottom: '0.6rem' }}>
+                        <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                          ⏳ Tier 4 Upgrade in Progress
+                        </div>
+                        <div style={{ color: '#e2e8f0', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
+                          {Number(fiefDetails.tier_upgrade_days_remaining_4 || 0)} day(s) remaining
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: '0.6rem' }}>
+                          <div style={{ color: '#93c5fd', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Will unlock:</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
+                            {['Tier 4 Buildings', 'Tier 4 Research', 'Advanced Military', '+1 Legendary Slot'].map((res) => (
+                              <div key={res} style={{ color: '#e2e8f0', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(148,163,184,0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
+                                🔓 {res}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ marginBottom: '0.6rem' }}>
+                          <div style={{ color: '#86efac', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Requirements:</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>⏱️ Time:</span>
+                              <span style={{ fontWeight: 600 }}>28 days</span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 4500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>🌳 Wood:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.wood || 0) >= 4500 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.wood || 0) >= 4500 ? '✓' : '✗'} {Number(storedResources.wood || 0).toFixed(1)}/4500
+                              </span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 2000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>🪨 Stone:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.stone || 0) >= 2000 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.stone || 0) >= 2000 ? '✓' : '✗'} {Number(storedResources.stone || 0).toFixed(1)}/2000
+                              </span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 1000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>⛓️ Iron:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.minerals || 0) >= 1000 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.minerals || 0) >= 1000 ? '✓' : '✗'} {Number(storedResources.minerals || 0).toFixed(1)}/1000
+                              </span>
+                            </div>
+                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.gold || 0) >= 1000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>🪙 Gold:</span>
+                              <span style={{ fontWeight: 600, color: (storedResources.gold || 0) >= 1000 ? '#86efac' : '#ef4444' }}>
+                                {(storedResources.gold || 0) >= 1000 ? '✓' : '✗'} {Number(storedResources.gold || 0).toFixed(1)}/1000
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={startTier4Upgrade}
+                          disabled={busy === 'upgrade-tier4' || (storedResources.wood || 0) < 4500 || (storedResources.stone || 0) < 2000 || (storedResources.minerals || 0) < 1000 || (storedResources.gold || 0) < 1000}
+                          style={{
+                            width: '100%',
+                            padding: '0.55rem 0.8rem',
+                            borderRadius: '0.45rem',
+                            border: '1px solid rgba(var(--theme-accent-rgb),0.5)',
+                            background: 'rgba(120,53,15,0.5)',
+                            color: 'var(--text-gold)',
+                            cursor: busy === 'upgrade-tier4' ? 'not-allowed' : 'pointer',
+                            fontWeight: 700,
+                            fontSize: '0.95rem',
+                            opacity: (busy === 'upgrade-tier4' || (storedResources.wood || 0) < 4500 || (storedResources.stone || 0) < 2000 || (storedResources.minerals || 0) < 1000 || (storedResources.gold || 0) < 1000) ? 0.6 : 1,
+                          }}
+                        >
+                          {busy === 'upgrade-tier4' ? 'Starting...' : 'Start Tier 4 Upgrade'}
+                        </button>
+                      </>
+                    )}
+                  </>
                 ) : fiefDetails.tier >= 2 ? (
                   <>
                     {Number(fiefDetails.tier_upgrade_days_remaining_3 || 0) > 0 ? (
@@ -4337,6 +4758,167 @@ const KingdomTab: React.FC<Props> = ({
             </div>
           </div>
         </div>,
+        document.body
+      )}
+
+      {showBuildQueueModal && fiefDetails && ReactDOM.createPortal(
+        (() => {
+          const buildingsById = new Map(
+            (fiefDetails.buildings || []).map((b: any) => [Number(b.id), b])
+          );
+          const orderedQueue = buildQueueOrder
+            .map((id) => buildingsById.get(id))
+            .filter(Boolean) as any[];
+
+          const handleDragStart = (id: number) => setDraggedQueueBuildingId(id);
+          const handleDragOver = (e: React.DragEvent, overId: number) => {
+            e.preventDefault();
+            if (draggedQueueBuildingId == null || draggedQueueBuildingId === overId) return;
+            setBuildQueueOrder((prev) => {
+              const from = prev.indexOf(draggedQueueBuildingId);
+              const to = prev.indexOf(overId);
+              if (from === -1 || to === -1 || from === to) return prev;
+              const next = [...prev];
+              next.splice(from, 1);
+              next.splice(to, 0, draggedQueueBuildingId);
+              return next;
+            });
+          };
+          const handleDragEnd = () => {
+            if (draggedQueueBuildingId != null) {
+              commitBuildQueueReorder(buildQueueOrder);
+            }
+            setDraggedQueueBuildingId(null);
+          };
+
+          return (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.72)',
+                zIndex: 10010,
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                padding: '2rem 1rem',
+                overflowY: 'auto',
+              }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowBuildQueueModal(false);
+              }}
+            >
+              <div
+                style={{
+                  background: 'rgba(18, 18, 18, 0.96)',
+                  border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
+                  borderRadius: '12px',
+                  boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+                  width: '100%',
+                  maxWidth: '520px',
+                  maxHeight: '90vh',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-header">
+                  <h3 className="modal-title">Build Queue</h3>
+                  <button className="modal-close" onClick={() => setShowBuildQueueModal(false)} aria-label="Close">×</button>
+                </div>
+                <div style={{ padding: '0.7rem 1rem 0', flexShrink: 0 }}>
+                  <div style={{ color: '#93c5fd', fontSize: '0.78rem', marginBottom: '0.4rem' }}>
+                    ↕️ Drag and drop items to change their build priority. The item at the top is worked on first.
+                  </div>
+                  <div style={{ color: '#fca5a5', fontSize: '0.78rem', marginBottom: '0.5rem' }}>
+                    ⚠️ Cancelling a build or upgrade does not refund any resources already spent. A cancelled tier 1 building is destroyed; a cancelled upgrade reverts to its pre-upgrade form.
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: '0 1rem 1rem',
+                    overflowY: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.45rem',
+                  }}
+                >
+                  {orderedQueue.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '0.84rem', padding: '0.5rem 0' }}>
+                      Nothing is currently queued or under construction.
+                    </div>
+                  ) : (
+                    orderedQueue.map((b: any, idx: number) => {
+                      const isUpgrade = Boolean(b.previous_building_type);
+                      const isBeingCancelled = busy === `cancel-building-${Number(b.id)}`;
+                      const isDragging = draggedQueueBuildingId === Number(b.id);
+                      return (
+                        <div
+                          key={b.id}
+                          draggable
+                          onDragStart={() => handleDragStart(Number(b.id))}
+                          onDragOver={(e) => handleDragOver(e, Number(b.id))}
+                          onDragEnd={handleDragEnd}
+                          onDrop={(e) => e.preventDefault()}
+                          style={{
+                            borderRadius: '0.5rem',
+                            border: '1px solid rgba(148,163,184,0.3)',
+                            background: isDragging ? 'rgba(120,53,15,0.35)' : 'rgba(15,23,42,0.5)',
+                            padding: '0.5rem 0.6rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.6rem',
+                            cursor: 'grab',
+                            opacity: isDragging ? 0.6 : 1,
+                          }}
+                        >
+                          <span style={{ color: '#64748b', fontWeight: 700, fontSize: '0.8rem', minWidth: '1.2rem' }}>
+                            {idx + 1}
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '0.9rem' }} title="Drag to reorder">⠿</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.85rem' }}>{b.name}</span>
+                              {isUpgrade && (
+                                <span style={{ color: '#93c5fd', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                  Upgrade
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>
+                              {Number(b.days_remaining || 0)} day(s) remaining
+                              {idx > 0 ? ' • waiting' : ' • in progress'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => cancelQueuedBuilding(Number(b.id), isUpgrade)}
+                            disabled={isBeingCancelled}
+                            title={isUpgrade ? 'Cancel upgrade (reverts to previous form)' : 'Cancel build (destroys the building)'}
+                            style={{
+                              width: '1.7rem',
+                              height: '1.7rem',
+                              borderRadius: '999px',
+                              border: '1px solid rgba(239,68,68,0.55)',
+                              background: isBeingCancelled ? 'rgba(71,85,105,0.35)' : 'rgba(127,29,29,0.34)',
+                              color: isBeingCancelled ? '#94a3b8' : '#fca5a5',
+                              cursor: isBeingCancelled ? 'not-allowed' : 'pointer',
+                              fontWeight: 800,
+                              flexShrink: 0,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {isBeingCancelled ? '…' : '✕'}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })(),
         document.body
       )}
 
