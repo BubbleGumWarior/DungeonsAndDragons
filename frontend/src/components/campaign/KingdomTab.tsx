@@ -1234,6 +1234,7 @@ const KingdomTab: React.FC<Props> = ({
     const slaveStone = Math.max(0, Number(slaveAssignments.stone || 0));
     const slaveIron = Math.max(0, Number(slaveAssignments.iron || 0));
     const slaveGold = Math.max(0, Number(slaveAssignments.gold || 0));
+    const slaveBuilding = Math.max(0, Number(slaveAssignments.building || 0));
 
     // Use server-tracked vegetable phase state to show accurate cycle behavior.
     const harvestState = (fiefDetails?.vegetable_harvest_state || {
@@ -1286,7 +1287,7 @@ const KingdomTab: React.FC<Props> = ({
     output.research += workersResearch;
     output.faith += (workersFaith * 0.5) * tierWorkerYieldMultiplier;
     const buildersHutCount = completedBuildings.filter((b: any) => String(b?.building_type || '') === 'builders_hut').length;
-    output.building += Math.max(0, Number(assignments.building || 0)) + (buildersHutCount * 3);
+    output.building += Math.max(0, Number(assignments.building || 0)) + slaveBuilding + (buildersHutCount * 3);
 
     for (const building of completedBuildings) {
       const buildingOutput = (building?.resource_output && typeof building.resource_output === 'object')
