@@ -5341,8 +5341,8 @@ router.post('/fiefs/:id/research/start', authenticateToken, async (req, res) => 
     }
 
     const hasResearchLab = await pool.query(
-      `SELECT 1 FROM fief_buildings WHERE fief_id = $1 AND is_complete = true AND building_type = 'research_lab' LIMIT 1`,
-      [fiefId]
+      `SELECT 1 FROM fief_buildings WHERE fief_id = $1 AND is_complete = true AND building_type = ANY($2::text[]) LIMIT 1`,
+      [fiefId, WORKER_CAP_BUILDING_MAP.research]
     );
     if (hasResearchLab.rows.length === 0) {
       return res.status(400).json({ error: 'Research Lab is required before starting research' });
