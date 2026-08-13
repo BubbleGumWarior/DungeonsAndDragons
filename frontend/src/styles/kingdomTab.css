@@ -25,17 +25,15 @@
   filter: brightness(0.94);
 }
 
-/* ── Two-panel dashboards (Legendary Inventory / Fief Assignments, etc.) ── */
+/* ── Two-panel dashboards (Legendary Inventory / Fief Assignments, etc.) ──
+   auto-fit + minmax so this collapses to one column based on the width its
+   own container actually has to give it, not the viewport width — it now
+   lives inside a responsive dashboard grid, so a viewport-width media query
+   would never fire even when the rendered column is narrow. ── */
 .kt-grid-2 {
   display: grid;
-  grid-template-columns: minmax(var(--kt-row-min), 1.2fr) minmax(200px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.8rem;
-}
-
-@media (max-width: 760px) {
-  .kt-grid-2 {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ── Unit training row: Unit Type / Amount / speed note / Queue button ── */
@@ -129,4 +127,226 @@
     font-size: 1.45rem;
     min-width: 80px;
   }
+}
+
+/* ── Section headings — ties the tab into the app's own fantasy type system.
+   theme.css pins h1/h2 to Cinzel; these inner panel titles never picked it up
+   and read as a generic admin panel instead of part of this app. ── */
+.kt-heading {
+  font-family: var(--font-fantasy);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Section panels — promotes the flat tinted boxes to the same layered-glass
+   depth the rest of the app uses (soft offset shadow + a top edge highlight),
+   instead of a single flat 1px border sitting on a flat fill. ── */
+.kt-section {
+  position: relative;
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.kt-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  right: 1rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  pointer-events: none;
+}
+
+/* ── Repeatable item cards — a felt sense of interactivity instead of a static list ── */
+.kt-card {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.kt-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+}
+
+/* ── Progress fills — gradient + glow driven by the semantic color already set
+   inline via `color`, instead of a single flat rectangle. ── */
+.kt-bar-track {
+  position: relative;
+  overflow: hidden;
+}
+
+.kt-bar-fill {
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* ── Empty / loading states — a composed moment instead of one line of gray text ── */
+.kt-empty {
+  text-align: center;
+  padding: 2.75rem 1.5rem;
+}
+
+.kt-empty-icon {
+  font-size: 2.25rem;
+  line-height: 1;
+  margin-bottom: 0.65rem;
+  opacity: 0.85;
+}
+
+.kt-empty-title {
+  font-family: var(--font-fantasy);
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.3rem;
+}
+
+.kt-empty-sub {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STRUCTURAL REDESIGN — new shape and composition language for the tab.
+   One radius scale (lg=banners/panels, md=cards, pill=nav/actions), panels
+   get a left-aligned medallion + banner strip instead of a centered title
+   floating in a flat tint, and the three kingdom-level systems sit in a
+   real multi-column dashboard instead of one long vertical stack.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.kingdom-tab {
+  --kt-radius-lg: 1.15rem;
+  --kt-radius-md: 0.85rem;
+  --kt-radius-pill: 999px;
+}
+
+/* ── Kingdom identity banner (replaces the small bordered name box) ── */
+.kt-kingdom-banner {
+  position: relative;
+  border-radius: var(--kt-radius-lg);
+  padding: 1.1rem 1.3rem;
+  background: rgba(10, 9, 7, 0.7);
+  border: 1px solid rgba(var(--theme-accent-rgb), 0.3);
+  border-top: 2px solid rgba(var(--theme-accent-rgb), 0.6);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+}
+
+.kt-kingdom-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.kt-crest {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  background: rgba(var(--theme-accent-rgb), 0.14);
+  border: 1px solid rgba(var(--theme-accent-rgb), 0.5);
+}
+
+.kt-kingdom-name {
+  font-family: var(--font-fantasy);
+  font-size: 1.3rem;
+  color: var(--text-gold);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  line-height: 1.2;
+}
+
+.kt-fief-dock {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.95rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(var(--theme-accent-rgb), 0.14);
+}
+
+/* Fief tabs and dock actions: full pill, matches the app's own nav idiom */
+.kt-pill {
+  border-radius: var(--kt-radius-pill) !important;
+}
+
+/* ── Multi-column dashboard: kingdom-level systems sit side by side instead
+   of stacking full-width down the page. ── */
+.kt-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1.1rem;
+  align-items: start;
+}
+
+/* ── Panel: medallion + title block + banner strip, replaces the centered
+   plain-text title sitting in a flat tinted rectangle. ── */
+.kt-panel {
+  --kt-tone-rgb: var(--theme-accent-rgb);
+  position: relative;
+  border-radius: var(--kt-radius-lg);
+  padding: 1.1rem 1.2rem;
+  background: rgba(9, 9, 9, 0.55);
+  border: 1px solid rgba(var(--kt-tone-rgb), 0.32);
+  border-top: 2px solid rgba(var(--kt-tone-rgb), 0.7);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.36);
+}
+
+.kt-panel[data-tone='blue'] { --kt-tone-rgb: 96, 165, 250; }
+.kt-panel[data-tone='purple'] { --kt-tone-rgb: 167, 139, 250; }
+.kt-panel[data-tone='green'] { --kt-tone-rgb: 16, 185, 129; }
+.kt-panel[data-tone='gold'] { --kt-tone-rgb: var(--theme-accent-rgb); }
+
+.kt-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.kt-panel-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  background: rgba(var(--kt-tone-rgb), 0.16);
+  border: 1px solid rgba(var(--kt-tone-rgb), 0.45);
+}
+
+.kt-panel-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: left;
+  min-width: 0;
+}
+
+.kt-panel-title {
+  font-family: var(--font-fantasy);
+  font-size: 1.08rem;
+  letter-spacing: 0.02em;
+  color: rgb(var(--kt-tone-rgb));
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.kt-panel-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* Cards inside panels: a distinct clipped-corner silhouette (a soft heraldic
+   plaque shape) instead of the same uniform rounded rectangle as everything
+   else, plus a slightly larger radius scale than the old ad hoc 0.5rem. */
+.kt-card {
+  border-radius: var(--kt-radius-md) var(--kt-radius-md) var(--kt-radius-md) 0.3rem !important;
 }

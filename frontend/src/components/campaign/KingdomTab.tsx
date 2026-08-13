@@ -2119,8 +2119,9 @@ const KingdomTab: React.FC<Props> = ({
 
   if (loading) {
     return (
-      <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-        Loading kingdom data...
+      <div className="glass-panel kt-empty">
+        <div className="spinner" style={{ margin: '0 auto 0.75rem' }} />
+        <div className="kt-empty-title">Loading kingdom data…</div>
       </div>
     );
   }
@@ -2128,17 +2129,18 @@ const KingdomTab: React.FC<Props> = ({
   return (
     <div className="glass-panel kingdom-tab" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', minHeight: 'calc(100vh - 220px)', overflow: 'visible' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>👑 Kingdom</h5>
+        <h5 className="kt-heading" style={{ color: 'var(--text-gold)', margin: 0 }}>👑 Kingdom</h5>
         {isDungeonMaster && (
           <button
             onClick={() => setShowGrantModal(true)}
             style={{
-              padding: '0.55rem 1rem',
-              borderRadius: '0.5rem',
-              border: '1px solid rgba(var(--theme-accent-rgb), 0.45)',
-              background: 'rgba(245, 158, 11, 0.2)',
+              padding: '0.5rem 1.1rem',
+              borderRadius: '1.4rem',
+              border: '1px solid rgba(var(--theme-accent-rgb), 0.5)',
+              background: 'rgba(var(--theme-accent-rgb), 0.14)',
               color: 'var(--text-gold)',
-              fontWeight: 'bold',
+              fontWeight: 700,
+              fontSize: '0.8rem',
               cursor: 'pointer',
             }}
           >
@@ -2225,7 +2227,13 @@ const KingdomTab: React.FC<Props> = ({
       )}
 
       {!visibleKingdoms.length ? (
-        <div style={{ color: 'var(--text-muted)', padding: '1rem 0.2rem' }}>No kingdom assigned yet.</div>
+        <div className="glass-panel kt-empty">
+          <div className="kt-empty-icon">👑</div>
+          <div className="kt-empty-title">No kingdom assigned yet</div>
+          <div className="kt-empty-sub">
+            {isDungeonMaster ? 'Grant one to a player to get started.' : 'Ask your Dungeon Master to grant you one.'}
+          </div>
+        </div>
       ) : (
         <>
           {visibleKingdoms.map((k) => {
@@ -2240,12 +2248,14 @@ const KingdomTab: React.FC<Props> = ({
             const canToggleManagement = highestTierInKingdom >= 3;
             const isSelectedKingdom = Number(selectedKingdom?.id) === Number(k.id);
             return (
-              <div key={k.id} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)', overflow: 'hidden', marginBottom: '0.5rem' }}>
+              <div key={k.id} className="kt-kingdom-banner" style={{ marginBottom: '0.85rem' }}>
                 {/* Kingdom header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', borderBottom: '1px solid rgba(var(--theme-accent-rgb),0.15)', background: 'rgba(0,0,0,0.25)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>
-                      👑 {k.name || `Unnamed Kingdom #${k.id}`}
+                <div className="kt-kingdom-row" style={{ justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', minWidth: 0 }}>
+                    <div className="kt-crest">👑</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
+                    <span className="kt-kingdom-name">
+                      {k.name || `Unnamed Kingdom #${k.id}`}
                     </span>
                     {/* Primary owner row */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -2318,19 +2328,20 @@ const KingdomTab: React.FC<Props> = ({
                         </button>
                       </div>
                     )}
+                    </div>
                   </div>
                   {isDungeonMaster && (
                     <button
                       onClick={() => handleDeleteKingdom(Number(k.id), k.name)}
                       disabled={busy === `delete-${Number(k.id)}`}
-                      style={{ padding: '0.28rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.8rem' }}
+                      style={{ padding: '0.28rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0 }}
                     >
                       {busy === `delete-${Number(k.id)}` ? 'Deleting...' : 'Delete'}
                     </button>
                   )}
                 </div>
                 {/* Fief tabs */}
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', padding: '0.5rem 0.6rem' }}>
+                <div className="kt-fief-dock">
                   {(k.fiefs || []).map((f) => {
                     const inTransit = Number(f.travel_days_remaining || 0) > 0;
                     const isSelected = Number(selectedFiefId) === Number(f.id);
@@ -2343,7 +2354,7 @@ const KingdomTab: React.FC<Props> = ({
                         }}
                         style={{
                           padding: '0.4rem 0.75rem',
-                          borderRadius: '0.45rem',
+                          borderRadius: '1.4rem',
                           border: isSelected
                             ? '1px solid rgba(var(--theme-accent-rgb), 0.65)'
                             : '1px solid rgba(var(--theme-accent-rgb),0.3)',
@@ -2381,7 +2392,7 @@ const KingdomTab: React.FC<Props> = ({
                       }}
                       style={{
                         padding: '0.4rem 0.75rem',
-                        borderRadius: '0.45rem',
+                        borderRadius: '1.4rem',
                         border: '1px solid rgba(34,197,94,0.4)',
                         background: 'rgba(20,83,45,0.25)',
                         color: '#86efac',
@@ -2398,7 +2409,7 @@ const KingdomTab: React.FC<Props> = ({
                       style={{
                         marginLeft: 'auto',
                         padding: '0.4rem 0.75rem',
-                        borderRadius: '0.45rem',
+                        borderRadius: '1.4rem',
                         border: '1px solid rgba(96,165,250,0.45)',
                         background: managementMode === 'kingdom' ? 'rgba(30,58,138,0.35)' : 'rgba(15,15,15,0.4)',
                         color: managementMode === 'kingdom' ? '#93c5fd' : 'var(--text-secondary)',
@@ -2417,13 +2428,16 @@ const KingdomTab: React.FC<Props> = ({
           })}
 
           {managementMode === 'kingdom' && selectedKingdom && canUseKingdomManagement && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-              <div style={{ padding: '1rem', border: '1px solid rgba(96,165,250,0.35)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(15,15,15,0.8), rgba(8,8,8,0.8))' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.55rem', marginBottom: '0.8rem' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ color: '#bfdbfe', fontWeight: 800, fontSize: '1rem' }}>Legendary Command</div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Inventory and active assignments across all fiefs</div>
+            <div className="kt-dashboard-grid">
+              <div className="kt-panel" data-tone="blue">
+                <div className="kt-panel-header">
+                  <div className="kt-panel-icon">⭐</div>
+                  <div className="kt-panel-titles">
+                    <div className="kt-panel-title">Legendary Command</div>
+                    <div className="kt-panel-sub">Inventory and assignments across all fiefs</div>
                   </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.55rem', marginBottom: '0.8rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Slot cap per fief: {legendarySlotsPerFief}</span>
                     {isDungeonMaster && (
@@ -2467,7 +2481,7 @@ const KingdomTab: React.FC<Props> = ({
                               || (!selectedIsCurrent && selectedRemainingSlots <= 0);
 
                             return (
-                              <div key={legendary.id} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.55rem', background: 'rgba(12,12,12,0.65)', padding: '0.55rem' }}>
+                              <div key={legendary.id} className="kt-card" style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.55rem', background: 'rgba(12,12,12,0.65)', padding: '0.55rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
                                   <div style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{legendary.name}</div>
                                   <div style={{ color: assignedFief ? '#93c5fd' : 'var(--text-muted)', fontSize: '0.72rem' }}>
@@ -2545,7 +2559,7 @@ const KingdomTab: React.FC<Props> = ({
                           const assignedList = legendaryByFief[Number(fief.id)] || [];
                           const remaining = Math.max(0, legendarySlotsPerFief - assignedList.length);
                           return (
-                            <div key={fief.id} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', background: 'rgba(12,12,12,0.65)', padding: '0.5rem' }}>
+                            <div key={fief.id} className="kt-card" style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', background: 'rgba(12,12,12,0.65)', padding: '0.5rem' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
                                 <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.86rem' }}>{fief.name}</div>
                                 <div style={{ color: remaining === 0 ? '#fca5a5' : '#93c5fd', fontSize: '0.72rem' }}>{assignedList.length}/{legendarySlotsPerFief} used</div>
@@ -2568,12 +2582,15 @@ const KingdomTab: React.FC<Props> = ({
                 )}
               </div>
 
-              <div style={{ padding: '1rem', border: '1px solid rgba(196,181,253,0.35)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(46,16,101,0.34), rgba(30,27,75,0.28))' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ color: '#ddd6fe', fontWeight: 800, fontSize: '1rem' }}>Prayer Chamber</div>
-                    <div style={{ color: '#c4b5fd', fontSize: '0.78rem' }}>Effects are shown as exact gains at your current kingdom tier</div>
+              <div className="kt-panel" data-tone="purple">
+                <div className="kt-panel-header">
+                  <div className="kt-panel-icon">✨</div>
+                  <div className="kt-panel-titles">
+                    <div className="kt-panel-title">Prayer Chamber</div>
+                    <div className="kt-panel-sub">Effects shown as exact gains at your current tier</div>
                   </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', textAlign: 'center' }}>
                     Pooled faith: <span style={{ color: '#fde68a', fontWeight: 800 }}>{pooledFaith.toFixed(1)}</span>
                   </div>
@@ -2596,7 +2613,7 @@ const KingdomTab: React.FC<Props> = ({
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.55rem' }}>
                     {prayers.map((prayer) => (
-                      <div key={prayer.key} style={{ border: '1px solid rgba(167,139,250,0.35)', borderRadius: '0.55rem', background: 'rgba(15,15,15,0.5)', padding: '0.55rem' }}>
+                      <div key={prayer.key} className="kt-card" style={{ border: '1px solid rgba(167,139,250,0.35)', borderRadius: '0.55rem', background: 'rgba(15,15,15,0.5)', padding: '0.55rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.45rem', alignItems: 'center' }}>
                           <div style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{prayer.name}</div>
                           <div style={{ color: '#fde68a', fontSize: '0.74rem', fontWeight: 700 }}>{prayer.faithCost.toFixed(0)} faith</div>
@@ -2626,12 +2643,15 @@ const KingdomTab: React.FC<Props> = ({
                 )}
               </div>
 
-              <div style={{ padding: '1rem', border: '1px solid rgba(16,185,129,0.38)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(6,78,59,0.4), rgba(6,95,70,0.25))' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.55rem', marginBottom: '0.7rem' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ color: '#a7f3d0', fontWeight: 800, fontSize: '1rem' }}>Trading Depot</div>
-                    <div style={{ color: '#99f6e4', fontSize: '0.78rem' }}>Centralized logistics and transfer control</div>
+              <div className="kt-panel" data-tone="green">
+                <div className="kt-panel-header">
+                  <div className="kt-panel-icon">⚖️</div>
+                  <div className="kt-panel-titles">
+                    <div className="kt-panel-title">Trading Depot</div>
+                    <div className="kt-panel-sub">Centralized logistics and transfer control</div>
                   </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.55rem', marginBottom: '0.7rem' }}>
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                     <div style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(2,44,34,0.5)', color: '#d1fae5', fontSize: '0.75rem' }}>
                       Capacity Used: {Number(tradeDepot?.capacity_used || 0).toFixed(1)}
@@ -2709,20 +2729,26 @@ const KingdomTab: React.FC<Props> = ({
           )}
 
           {managementMode === 'fief' && fiefDetails && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.25rem' }}>
               {Number(fiefDetails.travel_days_remaining || 0) > 0 ? (
-                <div style={{ padding: '1.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.55)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚶</div>
-                  <div style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.25rem' }}>
+                <div className="kt-section kt-empty" style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.55)' }}>
+                  <div className="kt-empty-icon">🚶</div>
+                  <div className="kt-empty-title">
                     In Transit
                   </div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  <div className="kt-empty-sub">
                     {fiefDetails.travel_days_remaining} day{fiefDetails.travel_days_remaining !== 1 ? 's' : ''} remaining before this fief becomes available
                   </div>
                 </div>
               ) : (
               <>
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)' }}>
+              <div className="kt-panel" data-tone="gold">
+                <div className="kt-panel-header">
+                  <div className="kt-panel-icon">📦</div>
+                  <div className="kt-panel-titles">
+                    <div className="kt-panel-title">Storehouse</div>
+                  </div>
+                </div>
                 {(() => {
                   const storageEntries = Object.entries((fiefDetails.stored_resources || {}) as Record<string, number>)
                     .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research');
@@ -2760,8 +2786,8 @@ const KingdomTab: React.FC<Props> = ({
                         </div>
                       </div>
                       <div style={{ marginTop: '0.45rem', marginBottom: '0.5rem' }}>
-                        <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                        <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)' }}>
+                          <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
                         </div>
                         {willLose && (
                           <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
@@ -2821,10 +2847,15 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div style={{ padding: '0.9rem 1rem', border: '1px solid rgba(var(--theme-accent-rgb),0.22)', borderRadius: '0.7rem', background: 'rgba(8,8,8,0.38)' }}>
+              <div className="kt-panel" data-tone="gold">
                 {/* ── Header row ── */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.65rem' }}>
-                  <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>👥 Population</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.9rem' }}>
+                  <div className="kt-panel-header" style={{ marginBottom: 0 }}>
+                    <div className="kt-panel-icon">👥</div>
+                    <div className="kt-panel-titles">
+                      <div className="kt-panel-title">Population</div>
+                    </div>
+                  </div>
                   <span style={{
                     fontWeight: 700,
                     fontSize: '1.08rem',
@@ -2851,8 +2882,8 @@ const KingdomTab: React.FC<Props> = ({
                   const barColor = pct >= 1 ? '#ef4444' : pct >= 0.9 ? '#fbbf24' : '#22c55e';
                   return (
                     <div style={{ marginBottom: '0.65rem' }}>
-                      <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)' }}>
+                        <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
                       </div>
                       {pct >= 1 && (
                         <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
@@ -2928,8 +2959,8 @@ const KingdomTab: React.FC<Props> = ({
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🔒 Prisoner Capacity</span>
                       </div>
-                      <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)' }}>
+                        <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
                       </div>
                       {pct >= 1 && (
                         <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
@@ -3001,8 +3032,8 @@ const KingdomTab: React.FC<Props> = ({
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚖️ Unrest</span>
                         <span style={{ color: barColor, fontWeight: 700, fontSize: '0.85rem' }}>{currentUnrest.toFixed(0)} / 100</span>
                       </div>
-                      <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${currentUnrest}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)' }}>
+                        <div className="kt-bar-fill" style={{ height: '100%', width: `${currentUnrest}%`, color: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
                       </div>
                       <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
@@ -3275,9 +3306,14 @@ const KingdomTab: React.FC<Props> = ({
                 );
               })()}
 
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Construction</div>
+              <div className="kt-panel" data-tone="gold">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.9rem', flexWrap: 'wrap' }}>
+                  <div className="kt-panel-header" style={{ marginBottom: 0 }}>
+                    <div className="kt-panel-icon">🏗️</div>
+                    <div className="kt-panel-titles">
+                      <div className="kt-panel-title">Construction</div>
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => {
@@ -3369,6 +3405,7 @@ const KingdomTab: React.FC<Props> = ({
                             return (
                               <div
                                 key={ids.join(',')}
+                                className={b.is_complete ? 'kt-card' : undefined}
                                 onMouseEnter={b.is_complete ? (e) => {
                                   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                                   setHoveredBuilding({ building: b, x: rect.left, y: rect.bottom + 6 });
@@ -3464,9 +3501,14 @@ const KingdomTab: React.FC<Props> = ({
                 })}
               </div>
               {hasMilitiaBuilding && (
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Militia & Unit Training</div>
+              <div className="kt-panel" data-tone="gold">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', marginBottom: '0.9rem', flexWrap: 'wrap' }}>
+                  <div className="kt-panel-header" style={{ marginBottom: 0 }}>
+                    <div className="kt-panel-icon">⚔️</div>
+                    <div className="kt-panel-titles">
+                      <div className="kt-panel-title">Militia & Unit Training</div>
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
                     <button
@@ -3687,13 +3729,13 @@ const KingdomTab: React.FC<Props> = ({
                         const assignedEntries = Object.entries(g.assigned_by_type || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
                         const remainingCapacity = Math.max(0, g.capacity - g.assigned_total);
                         return (
-                          <div key={g.building_type} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', background: 'rgba(15,15,15,0.45)', padding: '0.55rem' }}>
+                          <div key={g.building_type} className="kt-card" style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', background: 'rgba(15,15,15,0.45)', padding: '0.55rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
                               <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 700 }}>{g.building_name}</span>
                               <span style={{ color: barColor, fontSize: '0.75rem', fontWeight: 700 }}>{g.assigned_total} / {g.capacity} guards</span>
                             </div>
-                            <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: '0.55rem' }}>
-                              <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                            <div className="kt-bar-track" style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', marginBottom: '0.55rem' }}>
+                              <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color: barColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
                             </div>
 
                             <div className="kt-guard-grid">
