@@ -1,0 +1,132 @@
+/* ── Kingdom Tab — responsive layout & interaction layer ─────────────────────
+   Extends theme.css. Fixes layouts that were only ever tuned for ultrawide
+   viewports: multi-column panels now collapse to a single column, and the
+   citizen/slave worker table gets a horizontal-scroll safety net instead of
+   crushing its step buttons into an unreadable stack of wrapped rows.
+   Colors stay on the app's existing --text- and --theme-accent-rgb tokens so
+   the tab reads as part of the same app instead of a bolted-on admin panel. */
+
+.kingdom-tab {
+  --kt-row-min: 220px;
+}
+
+/* Give every non-disabled button in this tab a felt sense of touch,
+   without having to touch each of the hundreds of inline style objects. */
+.kingdom-tab button:not(:disabled) {
+  transition: transform var(--transition-fast), filter var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.kingdom-tab button:not(:disabled):hover {
+  filter: brightness(1.14);
+}
+
+.kingdom-tab button:not(:disabled):active {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+/* ── Two-panel dashboards (Legendary Inventory / Fief Assignments, etc.) ── */
+.kt-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(var(--kt-row-min), 1.2fr) minmax(200px, 1fr);
+  gap: 0.8rem;
+}
+
+@media (max-width: 760px) {
+  .kt-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Unit training row: Unit Type / Amount / speed note / Queue button ── */
+.kt-train-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 0.45rem;
+  align-items: end;
+}
+
+@media (max-width: 640px) {
+  .kt-train-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .kt-train-grid > * {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 400px) {
+  .kt-train-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Defensive guards: unassigned reserves | assigned here ── */
+.kt-guard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+@media (max-width: 520px) {
+  .kt-guard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Citizen / slave worker allocation table ──────────────────────────────
+   A CSS-grid "table" with a fixed label column and a fixed total-output
+   column reads cleanly only when the worker lanes are wide. Rather than let
+   it crush eleven step buttons into a stack of wrapped rows on anything
+   narrower than a very large screen, the table scrolls horizontally past a
+   sane minimum width, same as any dense data table would. */
+.kt-worker-table-scroll {
+  overflow-x: auto;
+  border-radius: 0.6rem;
+}
+
+.kt-worker-table {
+  min-width: 560px;
+}
+
+.kt-worker-table.has-slaves {
+  min-width: 760px;
+}
+
+.kt-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.35rem 0.4rem;
+}
+
+.kt-stepper-group {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.kt-stepper-btn {
+  padding: 0.14rem 0.3rem;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.kt-stepper-value {
+  min-width: 68px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0 0.3rem;
+}
+
+@media (min-width: 1100px) {
+  .kt-stepper-value {
+    font-size: 1.45rem;
+    min-width: 80px;
+  }
+}

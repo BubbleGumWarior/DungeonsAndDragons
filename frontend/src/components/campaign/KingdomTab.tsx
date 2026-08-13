@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
+import '../../styles/kingdomTab.css';
 import {
   campaignAPI,
   kingdomAPI,
@@ -198,7 +199,7 @@ const getResearchWorkerYieldMultiplier = (completedResearch: string[] | undefine
 
 const RESOURCE_COLORS: Record<string, { text: string; border: string; background: string }> = {
   wood: { text: '#d6bc9a', border: 'rgba(180,136,90,0.45)', background: 'rgba(92,58,34,0.35)' },
-  stone: { text: '#cbd5e1', border: 'rgba(148,163,184,0.45)', background: 'rgba(51,65,85,0.35)' },
+  stone: { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(51,65,85,0.35)' },
   minerals: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.25)' },
   iron: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)', background: 'rgba(127,29,29,0.25)' },
   vegetables: { text: '#86efac', border: 'rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.3)' },
@@ -316,15 +317,15 @@ const BUILD_TAB_LABELS: Record<BuildTabId, string> = {
 };
 
 const BUILD_TAB_COLORS: Record<BuildTabId, { text: string; border: string; background: string }> = {
-  all:      { text: '#e2e8f0', border: 'rgba(148,163,184,0.4)',   background: 'rgba(30,41,59,0.35)' },
+  all:      { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.4)',   background: 'rgba(26,26,26,0.35)' },
   food:     { text: '#86efac', border: 'rgba(34,197,94,0.45)',    background: 'rgba(20,83,45,0.3)' },
   wood:     { text: '#d6bc9a', border: 'rgba(180,136,90,0.45)',   background: 'rgba(92,58,34,0.35)' },
-  stone:    { text: '#cbd5e1', border: 'rgba(148,163,184,0.45)',  background: 'rgba(51,65,85,0.35)' },
+  stone:    { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.45)',  background: 'rgba(51,65,85,0.35)' },
   research: { text: '#93c5fd', border: 'rgba(59,130,246,0.45)',   background: 'rgba(30,58,138,0.28)' },
   faith:    { text: '#c4b5fd', border: 'rgba(139,92,246,0.45)',   background: 'rgba(76,29,149,0.25)' },
   storage:  { text: '#fde68a', border: 'rgba(234,179,8,0.45)',    background: 'rgba(113,63,18,0.28)' },
   military: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)',    background: 'rgba(127,29,29,0.28)' },
-  defense:  { text: '#94a3b8', border: 'rgba(100,116,139,0.45)',  background: 'rgba(30,41,59,0.35)' },
+  defense:  { text: 'var(--text-muted)', border: 'rgba(100,116,139,0.45)',  background: 'rgba(26,26,26,0.35)' },
   trade:    { text: '#6ee7b7', border: 'rgba(16,185,129,0.45)',   background: 'rgba(6,78,59,0.28)' },
   civic:    { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
 };
@@ -378,7 +379,7 @@ const RESEARCH_TAB_LABELS: Record<ResearchTabId, string> = {
 };
 
 const RESEARCH_TAB_COLORS: Record<ResearchTabId, { text: string; border: string; background: string }> = {
-  all:      { text: '#e2e8f0', border: 'rgba(148,163,184,0.4)',   background: 'rgba(30,41,59,0.35)' },
+  all:      { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.4)',   background: 'rgba(26,26,26,0.35)' },
   economy:  { text: '#86efac', border: 'rgba(34,197,94,0.45)',    background: 'rgba(20,83,45,0.3)' },
   military: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)',    background: 'rgba(127,29,29,0.3)' },
   civic:    { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
@@ -2125,7 +2126,7 @@ const KingdomTab: React.FC<Props> = ({
   }
 
   return (
-    <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', minHeight: 'calc(100vh - 220px)', overflow: 'visible' }}>
+    <div className="glass-panel kingdom-tab" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', minHeight: 'calc(100vh - 220px)', overflow: 'visible' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>👑 Kingdom</h5>
         {isDungeonMaster && (
@@ -2181,8 +2182,8 @@ const KingdomTab: React.FC<Props> = ({
                 left,
                 width: tooltipWidth,
                 zIndex: 10000,
-                background: 'rgba(2,6,23,0.97)',
-                border: '1px solid rgba(148,163,184,0.35)',
+                background: 'rgba(8,8,8,0.97)',
+                border: '1px solid rgba(var(--theme-accent-rgb),0.35)',
                 borderRadius: '0.55rem',
                 padding: '0.7rem 0.85rem',
                 boxShadow: '0 8px 28px rgba(0,0,0,0.6)',
@@ -2192,19 +2193,19 @@ const KingdomTab: React.FC<Props> = ({
                 gap: '0.4rem',
               }}
             >
-              <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
-              <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '-0.2rem' }}>{b.building_type}</div>
+              <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '-0.2rem' }}>{b.building_type}</div>
               {b.description && (
-                <div style={{ color: '#cbd5e1', fontSize: '0.8rem', lineHeight: '1.45', borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.4rem' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: '1.45', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.4rem' }}>
                   {b.description}
                 </div>
               )}
               {outputEntries.length > 0 && (
-                <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.4rem' }}>
+                <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.4rem' }}>
                   <div style={{ color: '#86efac', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Output</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem' }}>
                     {outputEntries.map(([resource, amount]) => (
-                      <div key={resource} style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0', fontSize: '0.8rem' }}>
+                      <div key={resource} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
                         <span style={{ textTransform: 'capitalize' }}>{RESOURCE_ICONS[resource] ? `${RESOURCE_ICONS[resource]} ` : ''}{resource}</span>
                         <span style={{ color: '#86efac', fontWeight: 700 }}>+{Number(amount).toFixed(1)} /day</span>
                       </div>
@@ -2213,7 +2214,7 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
               )}
               {b.level > 1 && (
-                <div style={{ color: '#fde68a', fontSize: '0.75rem', borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.4rem' }}>
+                <div style={{ color: '#fde68a', fontSize: '0.75rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.4rem' }}>
                   Level {b.level}
                 </div>
               )}
@@ -2239,16 +2240,16 @@ const KingdomTab: React.FC<Props> = ({
             const canToggleManagement = highestTierInKingdom >= 3;
             const isSelectedKingdom = Number(selectedKingdom?.id) === Number(k.id);
             return (
-              <div key={k.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)', overflow: 'hidden', marginBottom: '0.5rem' }}>
+              <div key={k.id} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)', overflow: 'hidden', marginBottom: '0.5rem' }}>
                 {/* Kingdom header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', borderBottom: '1px solid rgba(148,163,184,0.15)', background: 'rgba(0,0,0,0.25)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', borderBottom: '1px solid rgba(var(--theme-accent-rgb),0.15)', background: 'rgba(0,0,0,0.25)' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>
                       👑 {k.name || `Unnamed Kingdom #${k.id}`}
                     </span>
                     {/* Primary owner row */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                         Player: {k.player_username || `#${k.player_id}`} • {k.is_active ? 'Active' : 'Pending Name'}
                       </span>
                       {isDungeonMaster && (
@@ -2280,7 +2281,7 @@ const KingdomTab: React.FC<Props> = ({
                                 title={`Remove ${co.player_username} from kingdom`}
                                 disabled={busy === `co-owner-remove-${Number(k.id)}-${co.player_id}`}
                                 onClick={() => handleRemoveCoOwner(Number(k.id), co.player_id)}
-                                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 0.1rem', fontSize: '0.75rem', lineHeight: 1 }}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 0.1rem', fontSize: '0.75rem', lineHeight: 1 }}
                               >
                                 ×
                               </button>
@@ -2295,7 +2296,7 @@ const KingdomTab: React.FC<Props> = ({
                         <select
                           value={coOwnerSelectedPlayerId}
                           onChange={(e) => setCoOwnerSelectedPlayerId(e.target.value === '' ? '' : Number(e.target.value))}
-                          style={{ padding: '0.2rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(15,23,42,0.8)', color: '#e2e8f0', fontSize: '0.8rem' }}
+                          style={{ padding: '0.2rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(15,15,15,0.8)', color: 'var(--text-secondary)', fontSize: '0.8rem' }}
                         >
                           <option value="">Select player…</option>
                           {eligibleCoOwnerPlayers.map((p) => (
@@ -2311,7 +2312,7 @@ const KingdomTab: React.FC<Props> = ({
                         </button>
                         <button
                           onClick={() => { setCoOwnerTargetKingdomId(null); setCoOwnerSelectedPlayerId(''); }}
-                          style={{ padding: '0.2rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(148,163,184,0.3)', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}
+                          style={{ padding: '0.2rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}
                         >
                           Cancel
                         </button>
@@ -2345,13 +2346,13 @@ const KingdomTab: React.FC<Props> = ({
                           borderRadius: '0.45rem',
                           border: isSelected
                             ? '1px solid rgba(var(--theme-accent-rgb), 0.65)'
-                            : '1px solid rgba(148,163,184,0.3)',
+                            : '1px solid rgba(var(--theme-accent-rgb),0.3)',
                           background: isSelected
                             ? 'rgba(245,158,11,0.18)'
                             : inTransit
-                              ? 'rgba(15,23,42,0.25)'
-                              : 'rgba(15,23,42,0.4)',
-                          color: inTransit ? '#64748b' : isSelected ? 'var(--text-gold)' : '#cbd5e1',
+                              ? 'rgba(15,15,15,0.25)'
+                              : 'rgba(15,15,15,0.4)',
+                          color: inTransit ? 'var(--text-muted)' : isSelected ? 'var(--text-gold)' : 'var(--text-secondary)',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
@@ -2362,7 +2363,7 @@ const KingdomTab: React.FC<Props> = ({
                       >
                         {f.name}
                         {inTransit && (
-                          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                             🚶 {f.travel_days_remaining}d
                           </span>
                         )}
@@ -2399,8 +2400,8 @@ const KingdomTab: React.FC<Props> = ({
                         padding: '0.4rem 0.75rem',
                         borderRadius: '0.45rem',
                         border: '1px solid rgba(96,165,250,0.45)',
-                        background: managementMode === 'kingdom' ? 'rgba(30,58,138,0.35)' : 'rgba(15,23,42,0.4)',
-                        color: managementMode === 'kingdom' ? '#93c5fd' : '#cbd5e1',
+                        background: managementMode === 'kingdom' ? 'rgba(30,58,138,0.35)' : 'rgba(15,15,15,0.4)',
+                        color: managementMode === 'kingdom' ? '#93c5fd' : 'var(--text-secondary)',
                         cursor: 'pointer',
                         fontSize: '0.88rem',
                         fontWeight: 700,
@@ -2417,14 +2418,14 @@ const KingdomTab: React.FC<Props> = ({
 
           {managementMode === 'kingdom' && selectedKingdom && canUseKingdomManagement && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-              <div style={{ padding: '1rem', border: '1px solid rgba(96,165,250,0.35)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(2,6,23,0.8))' }}>
+              <div style={{ padding: '1rem', border: '1px solid rgba(96,165,250,0.35)', borderRadius: '0.8rem', background: 'linear-gradient(135deg, rgba(15,15,15,0.8), rgba(8,8,8,0.8))' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.55rem', marginBottom: '0.8rem' }}>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ color: '#bfdbfe', fontWeight: 800, fontSize: '1rem' }}>Legendary Command</div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Inventory and active assignments across all fiefs</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Inventory and active assignments across all fiefs</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>Slot cap per fief: {legendarySlotsPerFief}</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Slot cap per fief: {legendarySlotsPerFief}</span>
                     {isDungeonMaster && (
                       <button
                         onClick={() => setShowLegendaryCreateModal(true)}
@@ -2437,13 +2438,13 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
 
                 {kingdomManagementLoading ? (
-                  <div style={{ color: '#64748b' }}>Loading legendary management...</div>
+                  <div style={{ color: 'var(--text-muted)' }}>Loading legendary management...</div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 1.2fr) minmax(320px, 1fr)', gap: '0.8rem' }}>
-                    <div style={{ border: '1px solid rgba(148,163,184,0.22)', borderRadius: '0.65rem', background: 'rgba(2,6,23,0.55)', padding: '0.65rem' }}>
-                      <div style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: '0.55rem', textAlign: 'center' }}>Legendary Inventory</div>
+                  <div className="kt-grid-2">
+                    <div style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.22)', borderRadius: '0.65rem', background: 'rgba(8,8,8,0.55)', padding: '0.65rem' }}>
+                      <div style={{ color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '0.55rem', textAlign: 'center' }}>Legendary Inventory</div>
                       {legendaryCharacters.length === 0 ? (
-                        <div style={{ color: '#64748b', fontSize: '0.82rem' }}>No legendary characters available.</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No legendary characters available.</div>
                       ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.5rem', maxHeight: '430px', overflowY: 'auto', paddingRight: '0.25rem' }}>
                           {legendaryCharacters.map((legendary) => {
@@ -2466,14 +2467,14 @@ const KingdomTab: React.FC<Props> = ({
                               || (!selectedIsCurrent && selectedRemainingSlots <= 0);
 
                             return (
-                              <div key={legendary.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.55rem', background: 'rgba(8,15,35,0.65)', padding: '0.55rem' }}>
+                              <div key={legendary.id} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.55rem', background: 'rgba(12,12,12,0.65)', padding: '0.55rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
-                                  <div style={{ color: '#f1f5f9', fontWeight: 700 }}>{legendary.name}</div>
-                                  <div style={{ color: assignedFief ? '#93c5fd' : '#94a3b8', fontSize: '0.72rem' }}>
+                                  <div style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{legendary.name}</div>
+                                  <div style={{ color: assignedFief ? '#93c5fd' : 'var(--text-muted)', fontSize: '0.72rem' }}>
                                     {assignedFief ? `Assigned: ${assignedFief.name}` : 'Unassigned'}
                                   </div>
                                 </div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.76rem', marginTop: '0.15rem' }}>{legendary.description || 'No description'}</div>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.76rem', marginTop: '0.15rem' }}>{legendary.description || 'No description'}</div>
                                 {legendary.bonuses && Object.keys(legendary.bonuses).length > 0 && (
                                   <div style={{ marginTop: '0.35rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
                                     {Object.entries(legendary.bonuses)
@@ -2493,7 +2494,7 @@ const KingdomTab: React.FC<Props> = ({
                                       const next = Number(e.target.value || 0);
                                       setLegendaryAssignFief((prev) => ({ ...prev, [legendary.id]: next }));
                                     }}
-                                    style={{ padding: '0.25rem 0.38rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0', fontSize: '0.78rem' }}
+                                    style={{ padding: '0.25rem 0.38rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)', fontSize: '0.78rem' }}
                                   >
                                     <option value="">Select fief</option>
                                     {(selectedKingdom.fiefs || []).map((f) => {
@@ -2526,7 +2527,7 @@ const KingdomTab: React.FC<Props> = ({
                                   ) : <span />}
                                 </div>
                                 {selectedTargetFiefId > 0 && (
-                                  <div style={{ marginTop: '0.22rem', color: selectedRemainingSlots <= 0 && !selectedIsCurrent ? '#fca5a5' : '#94a3b8', fontSize: '0.72rem' }}>
+                                  <div style={{ marginTop: '0.22rem', color: selectedRemainingSlots <= 0 && !selectedIsCurrent ? '#fca5a5' : 'var(--text-muted)', fontSize: '0.72rem' }}>
                                     Remaining slots in target: {selectedRemainingSlots}
                                   </div>
                                 )}
@@ -2537,21 +2538,21 @@ const KingdomTab: React.FC<Props> = ({
                       )}
                     </div>
 
-                    <div style={{ border: '1px solid rgba(148,163,184,0.22)', borderRadius: '0.65rem', background: 'rgba(2,6,23,0.55)', padding: '0.65rem' }}>
-                      <div style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: '0.55rem', textAlign: 'center' }}>Fief Assignments</div>
+                    <div style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.22)', borderRadius: '0.65rem', background: 'rgba(8,8,8,0.55)', padding: '0.65rem' }}>
+                      <div style={{ color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '0.55rem', textAlign: 'center' }}>Fief Assignments</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.45rem', maxHeight: '430px', overflowY: 'auto', paddingRight: '0.25rem' }}>
                         {(selectedKingdom.fiefs || []).map((fief) => {
                           const assignedList = legendaryByFief[Number(fief.id)] || [];
                           const remaining = Math.max(0, legendarySlotsPerFief - assignedList.length);
                           return (
-                            <div key={fief.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.5rem', background: 'rgba(8,15,35,0.65)', padding: '0.5rem' }}>
+                            <div key={fief.id} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', background: 'rgba(12,12,12,0.65)', padding: '0.5rem' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                                <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.86rem' }}>{fief.name}</div>
+                                <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.86rem' }}>{fief.name}</div>
                                 <div style={{ color: remaining === 0 ? '#fca5a5' : '#93c5fd', fontSize: '0.72rem' }}>{assignedList.length}/{legendarySlotsPerFief} used</div>
                               </div>
                               <div style={{ marginTop: '0.35rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                                 {assignedList.length === 0 ? (
-                                  <span style={{ color: '#64748b', fontSize: '0.74rem' }}>No legendary assigned</span>
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>No legendary assigned</span>
                                 ) : assignedList.map((legendary) => (
                                   <span key={legendary.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '0.35rem', padding: '0.09rem 0.35rem', background: 'rgba(30,58,138,0.22)', color: '#bfdbfe', fontSize: '0.72rem' }}>
                                     {legendary.name}
@@ -2573,7 +2574,7 @@ const KingdomTab: React.FC<Props> = ({
                     <div style={{ color: '#ddd6fe', fontWeight: 800, fontSize: '1rem' }}>Prayer Chamber</div>
                     <div style={{ color: '#c4b5fd', fontSize: '0.78rem' }}>Effects are shown as exact gains at your current kingdom tier</div>
                   </div>
-                  <div style={{ color: '#e2e8f0', fontSize: '0.82rem', textAlign: 'center' }}>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', textAlign: 'center' }}>
                     Pooled faith: <span style={{ color: '#fde68a', fontWeight: 800 }}>{pooledFaith.toFixed(1)}</span>
                   </div>
                 </div>
@@ -2582,7 +2583,7 @@ const KingdomTab: React.FC<Props> = ({
                   <select
                     value={prayerTargetFiefId || ''}
                     onChange={(e) => setPrayerTargetFiefId(Number(e.target.value || 0) || null)}
-                    style={{ width: '100%', padding: '0.33rem 0.45rem', borderRadius: '0.4rem', border: '1px solid rgba(167,139,250,0.5)', background: 'rgba(15,23,42,0.72)', color: '#e2e8f0', fontSize: '0.82rem' }}
+                    style={{ width: '100%', padding: '0.33rem 0.45rem', borderRadius: '0.4rem', border: '1px solid rgba(167,139,250,0.5)', background: 'rgba(15,15,15,0.72)', color: 'var(--text-secondary)', fontSize: '0.82rem' }}
                   >
                     {(selectedKingdom.fiefs || []).map((f) => (
                       <option key={f.id} value={f.id}>{f.name}</option>
@@ -2595,9 +2596,9 @@ const KingdomTab: React.FC<Props> = ({
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.55rem' }}>
                     {prayers.map((prayer) => (
-                      <div key={prayer.key} style={{ border: '1px solid rgba(167,139,250,0.35)', borderRadius: '0.55rem', background: 'rgba(15,23,42,0.5)', padding: '0.55rem' }}>
+                      <div key={prayer.key} style={{ border: '1px solid rgba(167,139,250,0.35)', borderRadius: '0.55rem', background: 'rgba(15,15,15,0.5)', padding: '0.55rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.45rem', alignItems: 'center' }}>
-                          <div style={{ color: '#f8fafc', fontWeight: 700 }}>{prayer.name}</div>
+                          <div style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{prayer.name}</div>
                           <div style={{ color: '#fde68a', fontSize: '0.74rem', fontWeight: 700 }}>{prayer.faithCost.toFixed(0)} faith</div>
                         </div>
                         <div style={{ color: '#c4b5fd', fontSize: '0.74rem', marginTop: '0.15rem' }}>{prayer.description}</div>
@@ -2649,22 +2650,22 @@ const KingdomTab: React.FC<Props> = ({
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.45rem', marginBottom: '0.75rem' }}>
                   {tradeResourceEntries.length > 0 ? tradeResourceEntries.map(([k, v]) => (
-                    <div key={k} style={{ border: '1px solid rgba(148,163,184,0.25)', borderRadius: '0.45rem', background: 'rgba(2,6,23,0.45)', padding: '0.35rem 0.45rem' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{formatResourceLabel(k)}</div>
-                      <div style={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700 }}>{Number(v || 0).toFixed(1)}</div>
+                    <div key={k} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.45rem', background: 'rgba(8,8,8,0.45)', padding: '0.35rem 0.45rem' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{formatResourceLabel(k)}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', fontWeight: 700 }}>{Number(v || 0).toFixed(1)}</div>
                     </div>
                   )) : (
-                    <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>No stored resources in the depot yet.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No stored resources in the depot yet.</div>
                   )}
                 </div>
 
-                <div style={{ border: '1px solid rgba(148,163,184,0.24)', borderRadius: '0.55rem', background: 'rgba(2,6,23,0.48)', padding: '0.55rem', marginBottom: '0.65rem' }}>
-                  <div style={{ color: '#e2e8f0', fontSize: '0.79rem', fontWeight: 700, marginBottom: '0.38rem' }}>Transfer Console</div>
+                <div style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.24)', borderRadius: '0.55rem', background: 'rgba(8,8,8,0.48)', padding: '0.55rem', marginBottom: '0.65rem' }}>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.79rem', fontWeight: 700, marginBottom: '0.38rem' }}>Transfer Console</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.35rem', alignItems: 'center' }}>
                     <select
                       value={tradeSourceFiefId || ''}
                       onChange={(e) => setTradeSourceFiefId(Number(e.target.value || 0) || null)}
-                      style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0', fontSize: '0.78rem' }}
+                      style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)', fontSize: '0.78rem' }}
                     >
                       {(selectedKingdom.fiefs || []).map((f) => (
                         <option key={f.id} value={f.id}>{f.name}</option>
@@ -2673,15 +2674,15 @@ const KingdomTab: React.FC<Props> = ({
                     <select
                       value={tradeResourceKey}
                       onChange={(e) => setTradeResourceKey(e.target.value)}
-                      style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0', fontSize: '0.78rem' }}
+                      style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)', fontSize: '0.78rem' }}
                     >
                       {['wood', 'stone', 'minerals', 'food', 'gold', 'faith', 'research', 'meat', 'vegetables'].map((k) => (
                         <option key={k} value={k}>{formatResourceLabel(k)}</option>
                       ))}
                     </select>
-                    <input value={tradeResourceAmount} onChange={(e) => setTradeResourceAmount(e.target.value)} type="number" min="0" step="1" placeholder="Resource" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }} />
-                    <input value={tradePopulationAmount} onChange={(e) => setTradePopulationAmount(e.target.value)} type="number" min="0" step="1" placeholder="Pop" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }} />
-                    <input value={tradeSlavesAmount} onChange={(e) => setTradeSlavesAmount(e.target.value)} type="number" min="0" step="1" placeholder="Slaves" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }} />
+                    <input value={tradeResourceAmount} onChange={(e) => setTradeResourceAmount(e.target.value)} type="number" min="0" step="1" placeholder="Resource" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)' }} />
+                    <input value={tradePopulationAmount} onChange={(e) => setTradePopulationAmount(e.target.value)} type="number" min="0" step="1" placeholder="Pop" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)' }} />
+                    <input value={tradeSlavesAmount} onChange={(e) => setTradeSlavesAmount(e.target.value)} type="number" min="0" step="1" placeholder="Slaves" style={{ padding: '0.28rem 0.4rem', borderRadius: '0.34rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)' }} />
                     <button onClick={() => submitTradeMovement('deposit')} disabled={busy === 'trade-deposit'} style={{ padding: '0.28rem 0.56rem', borderRadius: '0.34rem', border: '1px solid rgba(34,197,94,0.45)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>Deposit</button>
                     <button onClick={() => submitTradeMovement('withdraw')} disabled={busy === 'trade-withdraw'} style={{ padding: '0.28rem 0.56rem', borderRadius: '0.34rem', border: '1px solid rgba(59,130,246,0.45)', background: 'rgba(30,58,138,0.35)', color: '#93c5fd', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>Withdraw</button>
                   </div>
@@ -2692,7 +2693,7 @@ const KingdomTab: React.FC<Props> = ({
                     value={tradeDesiredText}
                     onChange={(e) => setTradeDesiredText(e.target.value)}
                     placeholder="Desired resource / request text"
-                    style={{ width: '100%', padding: '0.33rem 0.45rem', borderRadius: '0.38rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.75)', color: '#e2e8f0' }}
+                    style={{ width: '100%', padding: '0.33rem 0.45rem', borderRadius: '0.38rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)' }}
                   />
                   <button onClick={saveDesiredTradeText} disabled={busy === 'trade-desired'} style={{ padding: '0.32rem 0.62rem', borderRadius: '0.34rem', border: '1px solid rgba(16,185,129,0.45)', background: 'rgba(6,78,59,0.4)', color: '#6ee7b7', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}>Save</button>
                 </div>
@@ -2710,18 +2711,18 @@ const KingdomTab: React.FC<Props> = ({
           {managementMode === 'fief' && fiefDetails && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
               {Number(fiefDetails.travel_days_remaining || 0) > 0 ? (
-                <div style={{ padding: '1.5rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.55)', textAlign: 'center' }}>
+                <div style={{ padding: '1.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.55)', textAlign: 'center' }}>
                   <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚶</div>
-                  <div style={{ color: '#94a3b8', fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.25rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.25rem' }}>
                     In Transit
                   </div>
-                  <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                     {fiefDetails.travel_days_remaining} day{fiefDetails.travel_days_remaining !== 1 ? 's' : ''} remaining before this fief becomes available
                   </div>
                 </div>
               ) : (
               <>
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
+              <div style={{ padding: '0.8rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)' }}>
                 {(() => {
                   const storageEntries = Object.entries((fiefDetails.stored_resources || {}) as Record<string, number>)
                     .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research');
@@ -2753,8 +2754,8 @@ const KingdomTab: React.FC<Props> = ({
                   return (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                        <div style={{ color: '#e2e8f0' }}>Tier {fiefDetails.tier} {fiefDetails.is_capital ? '• Capital' : ''}</div>
-                        <div style={{ color: willLose ? '#ef4444' : '#94a3b8' }}>
+                        <div style={{ color: 'var(--text-secondary)' }}>Tier {fiefDetails.tier} {fiefDetails.is_capital ? '• Capital' : ''}</div>
+                        <div style={{ color: willLose ? '#ef4444' : 'var(--text-muted)' }}>
                           Storage: {totalStored.toFixed(1)} / {cap}
                         </div>
                       </div>
@@ -2780,8 +2781,8 @@ const KingdomTab: React.FC<Props> = ({
                       key={k}
                       style={{
                         borderRadius: '0.55rem',
-                        border: `1px solid ${RESOURCE_COLORS[k]?.border || 'rgba(148,163,184,0.25)'}`,
-                        background: RESOURCE_COLORS[k]?.background || 'rgba(15,23,42,0.25)',
+                        border: `1px solid ${RESOURCE_COLORS[k]?.border || 'rgba(var(--theme-accent-rgb),0.25)'}`,
+                        background: RESOURCE_COLORS[k]?.background || 'rgba(15,15,15,0.25)',
                         padding: '0.45rem 0.55rem',
                         display: 'flex',
                         flexDirection: 'column',
@@ -2791,7 +2792,7 @@ const KingdomTab: React.FC<Props> = ({
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           {RESOURCE_ICONS[k] ? `${RESOURCE_ICONS[k]} ` : ''}{k}
                         </span>
                         {isDungeonMaster && (
@@ -2814,13 +2815,13 @@ const KingdomTab: React.FC<Props> = ({
                           </button>
                         )}
                       </div>
-                      <span style={{ color: RESOURCE_COLORS[k]?.text || '#e2e8f0', fontSize: '0.94rem', fontWeight: 700 }}>{Number(v || 0).toFixed(1)}</span>
+                      <span style={{ color: RESOURCE_COLORS[k]?.text || 'var(--text-secondary)', fontSize: '0.94rem', fontWeight: 700 }}>{Number(v || 0).toFixed(1)}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div style={{ padding: '0.9rem 1rem', border: '1px solid rgba(148,163,184,0.22)', borderRadius: '0.7rem', background: 'rgba(2,6,23,0.38)' }}>
+              <div style={{ padding: '0.9rem 1rem', border: '1px solid rgba(var(--theme-accent-rgb),0.22)', borderRadius: '0.7rem', background: 'rgba(8,8,8,0.38)' }}>
                 {/* ── Header row ── */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.65rem' }}>
                   <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>👥 Population</span>
@@ -2829,7 +2830,7 @@ const KingdomTab: React.FC<Props> = ({
                     fontSize: '1.08rem',
                     color: housingCapacity > 0 && (totalPopulation + slaves) >= housingCapacity ? '#ef4444'
                       : housingCapacity > 0 && (totalPopulation + slaves) >= housingCapacity * 0.9 ? '#fbbf24'
-                      : '#e2e8f0',
+                      : 'var(--text-secondary)',
                   }}>
                     {totalPopulation + slaves}{housingCapacity > 0 ? ` / ${housingCapacity}` : ''}
                     {isDungeonMaster && (
@@ -2867,13 +2868,13 @@ const KingdomTab: React.FC<Props> = ({
                 <div style={{ display: 'grid', gridTemplateColumns: (hasPrisonInfrastructure || slaves > 0) ? '1fr 1fr 1fr' : '1fr 1fr', gap: '0.75rem', alignItems: 'start', textAlign: 'center', marginBottom: (sickInjuredPopulation > 0 || soldiers > 0) ? '0.5rem' : '0.6rem' }}>
                   {/* Adults */}
                   <div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Adults</div>
-                    <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1rem', marginBottom: '0.1rem' }}>{assignablePopulation}</div>
-                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{unassignedAdults} unassigned</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Adults</div>
+                    <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '1rem', marginBottom: '0.1rem' }}>{assignablePopulation}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{unassignedAdults} unassigned</div>
                   </div>
                   {/* Children */}
                   <div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Children</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Children</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                       <button onClick={() => setShowChildrenModal(true)} style={{ display: 'inline-block', width: 'fit-content', padding: '0.18rem 0.55rem', borderRadius: '0.32rem', border: '1px solid rgba(125,211,252,0.4)', background: 'rgba(12,74,110,0.32)', color: '#7dd3fc', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', marginBottom: '0.1rem' }}>
                         {underagePopulation}
@@ -2884,14 +2885,14 @@ const KingdomTab: React.FC<Props> = ({
                         </button>
                       )}
                     </div>
-                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                       {nextMaturityDays == null ? 'None maturing' : `Next matures in ${nextMaturityDays}d`}
                     </div>
                   </div>
                   {/* Slaves */}
                   {(hasPrisonInfrastructure || slaves > 0) && (
                     <div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Slaves</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Slaves</div>
                       <div style={{ color: '#fde68a', fontWeight: 700, fontSize: '1rem', marginBottom: '0.1rem' }}>{slaves}</div>
                       <button onClick={() => setShowConversionModal(true)}
                         style={{ display: 'inline-block', width: 'fit-content', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', border: '1px solid rgba(234,179,8,0.4)', background: 'rgba(146,64,14,0.3)', color: '#fde68a', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
@@ -2905,13 +2906,13 @@ const KingdomTab: React.FC<Props> = ({
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem 1.5rem', marginBottom: '0.6rem' }}>
                     {sickInjuredPopulation > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sick / Injured</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sick / Injured</span>
                         <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '1rem' }}>{sickInjuredPopulation}</span>
                       </div>
                     )}
                     {soldiers > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Soldiers</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Soldiers</span>
                         <span style={{ color: '#93c5fd', fontWeight: 700, fontSize: '1rem' }}>{soldiers}</span>
                       </div>
                     )}
@@ -2925,7 +2926,7 @@ const KingdomTab: React.FC<Props> = ({
                   return (
                     <div style={{ marginBottom: '0.65rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🔒 Prisoner Capacity</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🔒 Prisoner Capacity</span>
                       </div>
                       <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
@@ -2937,9 +2938,9 @@ const KingdomTab: React.FC<Props> = ({
                       )}
                       {/* Prisoner count below bar */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.45rem' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Prisoners</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Prisoners</span>
                         <span style={{ color: barColor, fontWeight: 700, fontSize: '1rem' }}>{prisoners}</span>
-                        <span style={{ color: '#64748b', fontSize: '0.8rem' }}>/ {prisonerCapacity}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>/ {prisonerCapacity}</span>
                         {isDungeonMaster && (
                           <>
                             <button onClick={() => dmAdjustPrisoners(-1)} disabled={busy === 'dm-adjust' || prisoners <= 0}
@@ -2958,7 +2959,7 @@ const KingdomTab: React.FC<Props> = ({
                   <span style={{ color: productionByLane.foodBreakdown.net >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: '0.9rem' }}>
                     Food: {productionByLane.foodBreakdown.net >= 0 ? '+' : ''}{productionByLane.foodBreakdown.net.toFixed(1)} /day
                   </span>
-                  <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                     🏦 {storedFood.toFixed(1)} stored
                     {dailyFoodConsumption > 0 && ` · ${foodDaysLeftIfNoProduction === Number.POSITIVE_INFINITY ? '∞' : foodDaysLeftIfNoProduction.toFixed(0)}d reserve`}
                   </span>
@@ -2972,11 +2973,11 @@ const KingdomTab: React.FC<Props> = ({
                       <span style={{ color: goldNet >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: '0.9rem' }}>
                         🪙 Gold: {goldNet >= 0 ? '+' : ''}{goldNet.toFixed(1)} /day
                       </span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                         🏦 {storedGold.toFixed(1)} stored
                         {dailyGoldConsumption > 0 && ` · ${goldDaysLeftIfNoProduction === Number.POSITIVE_INFINITY ? '∞' : goldDaysLeftIfNoProduction.toFixed(0)}d reserve`}
                       </span>
-                      <span style={{ color: '#64748b', fontSize: '0.74rem' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>
                         Upkeep: {dailyGoldConsumption.toFixed(1)}/day
                         {' '}({(totalPopulation / 10).toFixed(1)} population
                         {militiaReserveCount > 0 && ` · ${militiaReserveCount} Militia`}
@@ -2997,14 +2998,14 @@ const KingdomTab: React.FC<Props> = ({
                   return (
                     <div style={{ paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚖️ Unrest</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚖️ Unrest</span>
                         <span style={{ color: barColor, fontWeight: 700, fontSize: '0.85rem' }}>{currentUnrest.toFixed(0)} / 100</span>
                       </div>
                       <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${currentUnrest}%`, background: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
                       </div>
                       <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                           Civic capacity supports {unrestSupportedPopulation.toFixed(0)} population
                           {totalPopulation > unrestSupportedPopulation && (
                             <span style={{ color: '#fbbf24' }}> — {(totalPopulation - unrestSupportedPopulation).toFixed(0)} over</span>
@@ -3022,7 +3023,7 @@ const KingdomTab: React.FC<Props> = ({
                         )}
                       </div>
                       {unrestTarget > currentUnrest && (
-                        <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: '0.2rem', fontStyle: 'italic' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '0.2rem', fontStyle: 'italic' }}>
                           Rising toward {unrestTarget.toFixed(0)} — build Guard Post→Barracks→Shield Hall, the Faith Temple chain, or Council Hall/Diplomatic Office to raise civic capacity.
                         </div>
                       )}
@@ -3116,20 +3117,20 @@ const KingdomTab: React.FC<Props> = ({
                 };
 
                 const citizenControls = (row: { key: string; assigned: number; max: number }) => (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', flexWrap: 'wrap', padding: '0.4rem 0.5rem' }}>
-                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                  <div className="kt-stepper">
+                    <div className="kt-stepper-group">
                       {WORKER_STEP_OPTIONS.slice().reverse().map((step) => (
-                        <button key={`minus-${row.key}-${step}`} onClick={() => adjustWorkers(row.key, -step)} disabled={busy === 'workers'}
-                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.78rem' }}>
+                        <button key={`minus-${row.key}-${step}`} onClick={() => adjustWorkers(row.key, -step)} disabled={busy === 'workers'} className="kt-stepper-btn"
+                          style={{ border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5' }}>
                           -{step}
                         </button>
                       ))}
                     </div>
-                    <span style={{ minWidth: '80px', textAlign: 'center', color: '#f8fafc', fontWeight: 700, fontSize: '1.45rem', lineHeight: 1 }}>{row.assigned}/{row.max}</span>
-                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                    <span className="kt-stepper-value" style={{ color: 'var(--text-primary)' }}>{row.assigned}/{row.max}</span>
+                    <div className="kt-stepper-group">
                       {WORKER_STEP_OPTIONS.map((step) => (
-                        <button key={`plus-${row.key}-${step}`} onClick={() => adjustWorkers(row.key, step)} disabled={busy === 'workers'}
-                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontSize: '0.78rem' }}>
+                        <button key={`plus-${row.key}-${step}`} onClick={() => adjustWorkers(row.key, step)} disabled={busy === 'workers'} className="kt-stepper-btn"
+                          style={{ border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac' }}>
                           +{step}
                         </button>
                       ))}
@@ -3138,20 +3139,20 @@ const KingdomTab: React.FC<Props> = ({
                 );
 
                 const slaveControls = (row: { key: string; assigned: number; max: number }) => (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', flexWrap: 'wrap', padding: '0.4rem 0.5rem' }}>
-                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                  <div className="kt-stepper">
+                    <div className="kt-stepper-group">
                       {WORKER_STEP_OPTIONS.slice().reverse().map((step) => (
-                        <button key={`slave-minus-${row.key}-${step}`} onClick={() => adjustSlaveWorkers(row.key, -step)} disabled={busy === 'slave-workers'}
-                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.78rem' }}>
+                        <button key={`slave-minus-${row.key}-${step}`} onClick={() => adjustSlaveWorkers(row.key, -step)} disabled={busy === 'slave-workers'} className="kt-stepper-btn"
+                          style={{ border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.3)', color: '#fca5a5' }}>
                           -{step}
                         </button>
                       ))}
                     </div>
-                    <span style={{ minWidth: '80px', textAlign: 'center', color: '#f8fafc', fontWeight: 700, fontSize: '1.45rem', lineHeight: 1 }}>{row.assigned}/{row.max}</span>
-                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                    <span className="kt-stepper-value" style={{ color: 'var(--text-primary)' }}>{row.assigned}/{row.max}</span>
+                    <div className="kt-stepper-group">
                       {WORKER_STEP_OPTIONS.map((step) => (
-                        <button key={`slave-plus-${row.key}-${step}`} onClick={() => adjustSlaveWorkers(row.key, step)} disabled={busy === 'slave-workers'}
-                          style={{ padding: '0.15rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac', cursor: 'pointer', fontSize: '0.78rem' }}>
+                        <button key={`slave-plus-${row.key}-${step}`} onClick={() => adjustSlaveWorkers(row.key, step)} disabled={busy === 'slave-workers'} className="kt-stepper-btn"
+                          style={{ border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(20,83,45,0.35)', color: '#86efac' }}>
                           +{step}
                         </button>
                       ))}
@@ -3161,29 +3162,30 @@ const KingdomTab: React.FC<Props> = ({
 
                 const totalCell = (key: string) => {
                   const output = Number(productionByLane.output[key] || 0);
-                  const outputColor = output > 0 ? '#22c55e' : output < 0 ? '#ef4444' : '#94a3b8';
+                  const outputColor = output > 0 ? '#22c55e' : output < 0 ? '#ef4444' : 'var(--text-muted)';
                   const suffix = key === 'building' ? 'build/day' : key === 'vegetables' ? 'food/cycle' : '/day';
                   const modifier = renderModifier(key);
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.1rem', padding: '0.4rem 0.6rem', height: '100%' }}>
                       <span style={{ color: outputColor, fontWeight: 700, fontSize: '1.05rem' }}>{formatSigned(output)}</span>
-                      <span style={{ color: '#475569', fontSize: '0.7rem' }}>{suffix}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{suffix}</span>
                       <div style={{ minHeight: '1.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>{modifier}</div>
                     </div>
                   );
                 };
 
-                const headerCols = showSlaves ? '80px 1px 1fr 1px 1fr 1px 140px' : '80px 1px 1fr 1px 140px';
-                const laneCols   = showSlaves ? '80px 1px 1fr 1px 1fr 1px 140px' : '80px 1px 1fr 1px 140px';
+                const headerCols = showSlaves ? '72px 1px 1fr 1px 1fr 1px 120px' : '72px 1px 1fr 1px 120px';
+                const laneCols   = showSlaves ? '72px 1px 1fr 1px 1fr 1px 120px' : '72px 1px 1fr 1px 120px';
 
                 return (
-                  <div style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)', overflow: 'hidden' }}>
+                  <div className="kt-worker-table-scroll">
+                  <div className={`kt-worker-table${showSlaves ? ' has-slaves' : ''}`} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)', overflow: 'hidden' }}>
                     {/* Column headers */}
                     <div style={{ display: 'grid', gridTemplateColumns: headerCols }}>
                       <div style={{ padding: '0.7rem 0.4rem 0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Resource</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Resource</span>
                       </div>
-                      <div style={{ background: 'rgba(148,163,184,0.15)' }} />
+                      <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)' }} />
                       <div style={{ padding: '0.7rem 0.8rem 0.5rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.95rem' }}>⚒ Workers — Citizens</div>
@@ -3205,9 +3207,9 @@ const KingdomTab: React.FC<Props> = ({
                             Unassign All
                           </button>
                         </div>
-                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalAssigned} / {assignablePopulation} assignable adults</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalAssigned} / {assignablePopulation} assignable adults</div>
                       </div>
-                      {showSlaves && <div style={{ background: 'rgba(148,163,184,0.15)' }} />}
+                      {showSlaves && <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)' }} />}
                       {showSlaves && (
                         <div style={{ padding: '0.7rem 0.8rem 0.5rem', background: 'rgba(120,53,15,0.18)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -3230,17 +3232,17 @@ const KingdomTab: React.FC<Props> = ({
                               Unassign All
                             </button>
                           </div>
-                          <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalSlaveAssigned} / {slaves} slaves</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>Assigned: {totalSlaveAssigned} / {slaves} slaves</div>
                         </div>
                       )}
-                      <div style={{ background: 'rgba(148,163,184,0.15)' }} />
-                      <div style={{ padding: '0.7rem 0.6rem 0.5rem', background: 'rgba(15,23,42,0.5)', textAlign: 'center' }}>
-                        <div style={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.85rem' }}>Total Output</div>
+                      <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)' }} />
+                      <div style={{ padding: '0.7rem 0.6rem 0.5rem', background: 'rgba(15,15,15,0.5)', textAlign: 'center' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem' }}>Total Output</div>
                       </div>
                     </div>
 
                     {/* Divider under headers */}
-                    <div style={{ height: '1px', background: 'rgba(148,163,184,0.15)' }} />
+                    <div style={{ height: '1px', background: 'rgba(var(--theme-accent-rgb),0.15)' }} />
 
                     {/* Lane rows */}
                     {resourceRows.map((citizenRow, idx) => {
@@ -3248,34 +3250,35 @@ const KingdomTab: React.FC<Props> = ({
                       const isEven = idx % 2 === 0;
                       const rowBg = isEven ? 'rgba(255,255,255,0.02)' : 'transparent';
                       return (
-                        <div key={citizenRow.key} style={{ display: 'grid', gridTemplateColumns: laneCols, background: rowBg, borderTop: idx > 0 ? '1px solid rgba(148,163,184,0.08)' : undefined, alignItems: 'center' }}>
+                        <div key={citizenRow.key} style={{ display: 'grid', gridTemplateColumns: laneCols, background: rowBg, borderTop: idx > 0 ? '1px solid rgba(var(--theme-accent-rgb),0.08)' : undefined, alignItems: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.3rem 0.2rem' }}>
-                            <span style={{ color: '#cbd5e1', textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>{citizenRow.key}</span>
+                            <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>{citizenRow.key}</span>
                           </div>
-                          <div style={{ background: 'rgba(148,163,184,0.15)', alignSelf: 'stretch' }} />
+                          <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)', alignSelf: 'stretch' }} />
                           <div>{citizenControls(citizenRow)}</div>
-                          {showSlaves && <div style={{ background: 'rgba(148,163,184,0.15)', alignSelf: 'stretch' }} />}
+                          {showSlaves && <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)', alignSelf: 'stretch' }} />}
                           {showSlaves && (
                             <div style={{ background: 'rgba(120,53,15,0.10)' }}>
                               {slaveRow
                                 ? slaveControls(slaveRow)
-                                : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.4rem', color: '#94a3b8', opacity: 0.35 }}>—</div>
+                                : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.4rem', color: 'var(--text-muted)', opacity: 0.35 }}>—</div>
                               }
                             </div>
                           )}
-                          <div style={{ background: 'rgba(148,163,184,0.15)', alignSelf: 'stretch' }} />
-                          <div style={{ background: 'rgba(15,23,42,0.4)', alignSelf: 'stretch' }}>{totalCell(citizenRow.key)}</div>
+                          <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)', alignSelf: 'stretch' }} />
+                          <div style={{ background: 'rgba(15,15,15,0.4)', alignSelf: 'stretch' }}>{totalCell(citizenRow.key)}</div>
                         </div>
                       );
                     })}
                   </div>
+                  </div>
                 );
               })()}
 
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
+              <div style={{ padding: '0.8rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Construction</div>
-                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => {
                         setBuildTab('all');
@@ -3298,9 +3301,9 @@ const KingdomTab: React.FC<Props> = ({
                       style={{
                         padding: '0.38rem 0.7rem',
                         borderRadius: '0.45rem',
-                        border: '1px solid rgba(148,163,184,0.45)',
-                        background: 'rgba(30,41,59,0.5)',
-                        color: '#cbd5e1',
+                        border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
+                        background: 'rgba(26,26,26,0.5)',
+                        color: 'var(--text-secondary)',
                         cursor: 'pointer',
                         fontWeight: 700,
                       }}
@@ -3328,7 +3331,7 @@ const KingdomTab: React.FC<Props> = ({
                     )}
                   </div>
                 </div>
-                <div style={{ color: '#94a3b8', fontSize: '0.76rem', marginBottom: '0.6rem' }}>Built and in-progress structures</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.76rem', marginBottom: '0.6rem' }}>Built and in-progress structures</div>
                 {BUILD_TABS.map((category) => {
                   if (category === 'all') return null;
                   const buildingsInCategory = (fiefDetails.buildings || []).filter((b: any) => getBuildingCategory(b) === category);
@@ -3406,7 +3409,7 @@ const KingdomTab: React.FC<Props> = ({
                                   </span>
                                 )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                                  <span style={{ color: '#e2e8f0', fontSize: '0.9rem', fontWeight: 700 }}>{b.name}</span>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 700 }}>{b.name}</span>
                                   {upgrade && (
                                     <button
                                       onClick={() => {
@@ -3418,7 +3421,7 @@ const KingdomTab: React.FC<Props> = ({
                                         padding: '0.14rem 0.4rem',
                                         borderRadius: '0.34rem',
                                         border: busy === `upgrade-building-${Number(b.id)}`
-                                          ? '1px solid rgba(148,163,184,0.45)'
+                                          ? '1px solid rgba(var(--theme-accent-rgb),0.45)'
                                           : upgrade.canUpgrade
                                             ? '1px solid rgba(34,197,94,0.6)'
                                             : '1px solid rgba(239,68,68,0.55)',
@@ -3428,7 +3431,7 @@ const KingdomTab: React.FC<Props> = ({
                                             ? 'rgba(20,83,45,0.38)'
                                             : 'rgba(127,29,29,0.34)',
                                         color: busy === `upgrade-building-${Number(b.id)}`
-                                          ? '#94a3b8'
+                                          ? 'var(--text-muted)'
                                           : upgrade.canUpgrade
                                             ? '#86efac'
                                             : '#fca5a5',
@@ -3442,12 +3445,12 @@ const KingdomTab: React.FC<Props> = ({
                                     </button>
                                   )}
                                 </div>
-                                <span style={{ color: '#94a3b8', fontSize: '0.74rem', textTransform: 'uppercase' }}>{b.building_type}</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', textTransform: 'uppercase' }}>{b.building_type}</span>
                                 <span style={{ fontSize: '0.8rem', color: b.is_complete ? '#86efac' : 'var(--text-gold)' }}>
                                   {b.is_complete ? 'Completed' : `${Number(b.days_remaining || 0)} day(s) remaining`}
                                 </span>
                                 {count > 1 && upgrade && (
-                                  <span style={{ color: '#64748b', fontSize: '0.68rem', fontStyle: 'italic' }}>
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', fontStyle: 'italic' }}>
                                     Upgrades 1 of {count} — cost applies once
                                   </span>
                                 )}
@@ -3461,11 +3464,11 @@ const KingdomTab: React.FC<Props> = ({
                 })}
               </div>
               {hasMilitiaBuilding && (
-              <div style={{ padding: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.6rem', background: 'rgba(2,6,23,0.35)' }}>
+              <div style={{ padding: '0.8rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.35)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>Militia & Unit Training</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Unassigned adults: {unassignedAdults}</div>
                     <button
                       onClick={() => setShowProgressionModal(true)}
                       style={{ padding: '0.25rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.45)', background: 'rgba(120,53,15,0.35)', color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
@@ -3475,13 +3478,13 @@ const KingdomTab: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.45rem', alignItems: 'end' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
+                <div className="kt-train-grid" style={{ marginTop: '0.7rem' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
                     Unit Type
                     <select
                       value={selectedTrainUnitType}
                       onChange={(e) => setSelectedTrainUnitType(String(e.target.value || 'Militia'))}
-                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
                     >
                       {(fiefDetails?.trainable_unit_types || []).length === 0 ? (
                         <option value="">No units unlocked yet</option>
@@ -3492,14 +3495,14 @@ const KingdomTab: React.FC<Props> = ({
                       )}
                     </select>
                   </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: '#cbd5e1', fontSize: '0.75rem' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
                     Amount
                     <input
                       type="number"
                       min={1}
                       value={trainUnitsAmount}
                       onChange={(e) => setTrainUnitsAmount(e.target.value)}
-                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                      style={{ padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
                     />
                   </label>
                   <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem' }}>
@@ -3538,10 +3541,10 @@ const KingdomTab: React.FC<Props> = ({
                   </button>
                 </div>
 
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.18)', paddingTop: '0.55rem' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training (Per Unit Timers)</div>
                   {(fiefDetails?.training_queue || []).length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No units currently in training.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No units currently in training.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       {(fiefDetails?.training_queue || []).map((row) => {
@@ -3556,13 +3559,13 @@ const KingdomTab: React.FC<Props> = ({
                               alignItems: 'center',
                               padding: '0.3rem 0.4rem',
                               borderRadius: '0.35rem',
-                              background: isReady ? 'rgba(20,83,45,0.35)' : 'rgba(15,23,42,0.45)',
-                              border: isReady ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(148,163,184,0.18)',
+                              background: isReady ? 'rgba(20,83,45,0.35)' : 'rgba(15,15,15,0.45)',
+                              border: isReady ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(var(--theme-accent-rgb),0.18)',
                               boxShadow: isReady ? 'inset 0 0 0 1px rgba(34,197,94,0.25)' : undefined,
                             }}
                           >
-                            <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600 }}>{row.unit_type}</span>
-                            <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>#{row.id}</span>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>{row.unit_type}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>#{row.id}</span>
                             <span style={{ color: isReady ? '#86efac' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
                               {isReady ? 'Ready to collect' : row.status}
                             </span>
@@ -3576,12 +3579,12 @@ const KingdomTab: React.FC<Props> = ({
                   )}
                 </div>
 
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.18)', paddingTop: '0.55rem' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Reserve Units</div>
                   {(() => {
                     const entries = Object.entries(fiefDetails?.unit_reserves || {}).filter(([, amount]) => Math.max(0, Number(amount || 0)) > 0);
                     if (entries.length === 0) {
-                      return <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units available yet.</div>;
+                      return <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No reserve units available yet.</div>;
                     }
                     const grouped = new Map<string, Array<[string, number]>>();
                     for (const [unit, amount] of entries) {
@@ -3592,12 +3595,12 @@ const KingdomTab: React.FC<Props> = ({
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                         {Array.from(grouped.entries()).map(([lineKey, unitEntries]) => (
-                          <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
-                            <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{lineKey}</div>
+                          <div key={lineKey} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.4rem', background: 'rgba(15,15,15,0.35)', padding: '0.4rem' }}>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{lineKey}</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                               {unitEntries.map(([unit, amount]) => (
                                 <span key={unit} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.28rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', borderRadius: '0.35rem', padding: '0.15rem 0.45rem', background: 'rgba(120,53,15,0.2)', color: 'var(--text-gold)', fontSize: '0.76rem' }}>
-                                  <strong style={{ color: '#e2e8f0' }}>{unit}</strong>
+                                  <strong style={{ color: 'var(--text-secondary)' }}>{unit}</strong>
                                   <span>{amount}</span>
                                 </span>
                               ))}
@@ -3609,10 +3612,10 @@ const KingdomTab: React.FC<Props> = ({
                   })()}
                 </div>
 
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.18)', paddingTop: '0.55rem' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Upgrade Units</div>
                   {(fiefDetails?.upgradable_units || []).length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No reserve units are eligible for an upgrade yet.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No reserve units are eligible for an upgrade yet.</div>
                   ) : (
                     (() => {
                       const grouped = new Map<string, Array<NonNullable<typeof fiefDetails.upgradable_units>[number]>>();
@@ -3627,17 +3630,17 @@ const KingdomTab: React.FC<Props> = ({
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           {Array.from(grouped.entries()).map(([lineKey, units]) => (
-                            <div key={lineKey} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.35)', padding: '0.4rem' }}>
-                              <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{lineKey}</div>
+                            <div key={lineKey} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.4rem', background: 'rgba(15,15,15,0.35)', padding: '0.4rem' }}>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{lineKey}</div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                                 {units.map((u) => {
                                   const amountKey = `${u.unit_type}->${u.next_unit_type}`;
                                   const amount = upgradeAmountByUnit[amountKey] || '1';
                                   const busyKey = `upgrade-units-${u.unit_type}-${u.next_unit_type}`;
                                   return (
-                                    <div key={amountKey} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.4rem', background: 'rgba(15,23,42,0.45)', padding: '0.45rem' }}>
+                                    <div key={amountKey} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.4rem', background: 'rgba(15,15,15,0.45)', padding: '0.45rem' }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                                        <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 700 }}>{u.unit_type} → {u.next_unit_type}</span>
                                         <span style={{ color: u.unlocked ? '#86efac' : '#fca5a5', fontSize: '0.72rem' }}>
                                           {u.unlocked ? `${u.next_base_days}d training` : `Requires ${u.required_building_type || 'higher tier building'}`}
                                         </span>
@@ -3649,7 +3652,7 @@ const KingdomTab: React.FC<Props> = ({
                                           max={u.available}
                                           value={amount}
                                           onChange={(e) => setUpgradeAmountByUnit((prev) => ({ ...prev, [amountKey]: e.target.value }))}
-                                          style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                                          style={{ padding: '0.28rem 0.35rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
                                         />
                                         <button
                                           onClick={() => upgradeMilitiaUnits(u.unit_type, Math.max(0, Math.floor(Number(amount) || 0)), u.next_unit_type)}
@@ -3671,10 +3674,10 @@ const KingdomTab: React.FC<Props> = ({
                   )}
                 </div>
 
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.18)', paddingTop: '0.55rem' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>Defensive Guards</div>
                   {(fiefDetails?.guard_assignments || []).length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No eligible defensive buildings with guard capacity.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No eligible defensive buildings with guard capacity.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {(fiefDetails?.guard_assignments || []).map((g) => {
@@ -3684,26 +3687,26 @@ const KingdomTab: React.FC<Props> = ({
                         const assignedEntries = Object.entries(g.assigned_by_type || {}).filter(([, c]) => Math.max(0, Number(c || 0)) > 0);
                         const remainingCapacity = Math.max(0, g.capacity - g.assigned_total);
                         return (
-                          <div key={g.building_type} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.5rem', background: 'rgba(15,23,42,0.45)', padding: '0.55rem' }}>
+                          <div key={g.building_type} style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', background: 'rgba(15,15,15,0.45)', padding: '0.55rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                              <span style={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>{g.building_name}</span>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 700 }}>{g.building_name}</span>
                               <span style={{ color: barColor, fontSize: '0.75rem', fontWeight: 700 }}>{g.assigned_total} / {g.capacity} guards</span>
                             </div>
                             <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: '0.55rem' }}>
                               <div style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, background: barColor, borderRadius: '3px', transition: 'width 0.3s ease' }} />
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                            <div className="kt-guard-grid">
                               {/* Left: unassigned reserves available to post here */}
-                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
-                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Unassigned Reserves</div>
+                              <div style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.4rem', background: 'rgba(8,8,8,0.35)', padding: '0.4rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Unassigned Reserves</div>
                                 {reserveEntries.length === 0 ? (
-                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No reserve units available.</div>
+                                  <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>No reserve units available.</div>
                                 ) : (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                                     {reserveEntries.map(([unit, count]) => (
                                       <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                        <span style={{ color: '#cbd5e1', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem' }}>{unit} <span style={{ color: 'var(--text-muted)' }}>x{Math.max(0, Number(count || 0))}</span></span>
                                         <button
                                           onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, 1)}
                                           disabled={busy === `guards-${g.building_type}` || remainingCapacity <= 0}
@@ -3719,15 +3722,15 @@ const KingdomTab: React.FC<Props> = ({
                               </div>
 
                               {/* Right: units currently posted here */}
-                              <div style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.4rem', background: 'rgba(2,6,23,0.35)', padding: '0.4rem' }}>
-                                <div style={{ color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Assigned Here</div>
+                              <div style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.4rem', background: 'rgba(8,8,8,0.35)', padding: '0.4rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Assigned Here</div>
                                 {assignedEntries.length === 0 ? (
-                                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>No units posted yet.</div>
+                                  <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>No units posted yet.</div>
                                 ) : (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                                     {assignedEntries.map(([unit, count]) => (
                                       <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                        <span style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>{unit} <span style={{ color: '#64748b' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                        <span style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>{unit} <span style={{ color: 'var(--text-muted)' }}>x{Math.max(0, Number(count || 0))}</span></span>
                                         <button
                                           onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, -1)}
                                           disabled={busy === `guards-${g.building_type}`}
@@ -3750,9 +3753,9 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
 
                 {isDungeonMaster && (
-                  <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(148,163,184,0.18)', paddingTop: '0.55rem' }}>
+                  <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.18)', paddingTop: '0.55rem' }}>
                     <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>DM Unit Controls (Population Unchanged)</div>
-                    <div style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: '0.5rem' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.5rem' }}>
                       Enter an amount next to any unit(s), then click Add or Remove once to apply them all.
                     </div>
                     <div style={{ display: 'block', width: '100%' }}>
@@ -3765,9 +3768,9 @@ const KingdomTab: React.FC<Props> = ({
                             boxSizing: 'border-box',
                             marginBottom: '0.5rem',
                             padding: '0.5rem',
-                            border: '1px solid rgba(148,163,184,0.18)',
+                            border: '1px solid rgba(var(--theme-accent-rgb),0.18)',
                             borderRadius: '0.4rem',
-                            background: 'rgba(15,23,42,0.35)',
+                            background: 'rgba(15,15,15,0.35)',
                           }}
                         >
                           <div style={{ color: 'var(--text-gold)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem', textAlign: 'left' }}>{line.line_key}</div>
@@ -3775,7 +3778,7 @@ const KingdomTab: React.FC<Props> = ({
                             {line.tiers.map((tier) => (
                               <label
                                 key={tier.unit_type}
-                                style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', color: '#cbd5e1', fontSize: '0.7rem', flex: '0 1 140px', textAlign: 'left' }}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', color: 'var(--text-secondary)', fontSize: '0.7rem', flex: '0 1 140px', textAlign: 'left' }}
                               >
                                 {tier.unit_type}
                                 <input
@@ -3783,7 +3786,7 @@ const KingdomTab: React.FC<Props> = ({
                                   value={dmUnitAdjustAmounts[tier.unit_type] || ''}
                                   onChange={(e) => setDmUnitAdjustAmounts((prev) => ({ ...prev, [tier.unit_type]: e.target.value }))}
                                   placeholder="0"
-                                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.24rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0' }}
+                                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.24rem 0.32rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
                                 />
                               </label>
                             ))}
@@ -3814,11 +3817,11 @@ const KingdomTab: React.FC<Props> = ({
               <div style={{ padding: '0.8rem', border: '1px solid rgba(218,165,32,0.3)', borderRadius: '0.6rem', background: 'rgba(113,63,18,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1.05rem' }}>⬆️ Fief Tier Upgrade</div>
-                  <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '1rem' }}>Tier {fiefDetails.tier}</div>
+                  <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '1rem' }}>Tier {fiefDetails.tier}</div>
                 </div>
 
                 {fiefDetails.tier >= 5 ? (
-                  <div style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>
                     ✓ Maximum tier reached for this phase
                   </div>
                 ) : fiefDetails.tier >= 4 ? (
@@ -3828,7 +3831,7 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                           ⏳ Tier 5 Upgrade in Progress
                         </div>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
                           {Number(fiefDetails.tier_upgrade_days_remaining_5 || 0)} day(s) remaining
                         </div>
                       </div>
@@ -3838,7 +3841,7 @@ const KingdomTab: React.FC<Props> = ({
                           <div style={{ color: '#93c5fd', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Will unlock:</div>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
                             {['Tier 5 Buildings', 'Tier 5 Research', '+1 Legendary Slot', 'Civic Unrest'].map((res) => (
-                              <div key={res} style={{ color: '#e2e8f0', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(148,163,184,0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
+                              <div key={res} style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(var(--theme-accent-rgb),0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
                                 🔓 {res}
                               </div>
                             ))}
@@ -3854,29 +3857,29 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ marginBottom: '0.6rem' }}>
                           <div style={{ color: '#86efac', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Requirements:</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>⏱️ Time:</span>
                               <span style={{ fontWeight: 600 }}>35 days</span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 19500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 19500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🌳 Wood:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.wood || 0) >= 19500 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.wood || 0) >= 19500 ? '✓' : '✗'} {Number(storedResources.wood || 0).toFixed(1)}/19500
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 9000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 9000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🪨 Stone:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.stone || 0) >= 9000 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.stone || 0) >= 9000 ? '✓' : '✗'} {Number(storedResources.stone || 0).toFixed(1)}/9000
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 4500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 4500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>⛓️ Iron:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.minerals || 0) >= 4500 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.minerals || 0) >= 4500 ? '✓' : '✗'} {Number(storedResources.minerals || 0).toFixed(1)}/4500
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.gold || 0) >= 6000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.gold || 0) >= 6000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🪙 Gold:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.gold || 0) >= 6000 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.gold || 0) >= 6000 ? '✓' : '✗'} {Number(storedResources.gold || 0).toFixed(1)}/6000
@@ -3913,7 +3916,7 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                           ⏳ Tier 4 Upgrade in Progress
                         </div>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
                           {Number(fiefDetails.tier_upgrade_days_remaining_4 || 0)} day(s) remaining
                         </div>
                       </div>
@@ -3923,7 +3926,7 @@ const KingdomTab: React.FC<Props> = ({
                           <div style={{ color: '#93c5fd', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Will unlock:</div>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
                             {['Tier 4 Buildings', 'Tier 4 Research', 'Advanced Military', '+1 Legendary Slot'].map((res) => (
-                              <div key={res} style={{ color: '#e2e8f0', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(148,163,184,0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
+                              <div key={res} style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(var(--theme-accent-rgb),0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
                                 🔓 {res}
                               </div>
                             ))}
@@ -3933,29 +3936,29 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ marginBottom: '0.6rem' }}>
                           <div style={{ color: '#86efac', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Requirements:</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>⏱️ Time:</span>
                               <span style={{ fontWeight: 600 }}>28 days</span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 4500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 4500 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🌳 Wood:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.wood || 0) >= 4500 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.wood || 0) >= 4500 ? '✓' : '✗'} {Number(storedResources.wood || 0).toFixed(1)}/4500
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 2000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 2000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🪨 Stone:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.stone || 0) >= 2000 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.stone || 0) >= 2000 ? '✓' : '✗'} {Number(storedResources.stone || 0).toFixed(1)}/2000
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 1000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 1000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>⛓️ Iron:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.minerals || 0) >= 1000 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.minerals || 0) >= 1000 ? '✓' : '✗'} {Number(storedResources.minerals || 0).toFixed(1)}/1000
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.gold || 0) >= 1000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.gold || 0) >= 1000 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🪙 Gold:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.gold || 0) >= 1000 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.gold || 0) >= 1000 ? '✓' : '✗'} {Number(storedResources.gold || 0).toFixed(1)}/1000
@@ -3992,7 +3995,7 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                           ⏳ Tier 3 Upgrade in Progress
                         </div>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
                           {Number(fiefDetails.tier_upgrade_days_remaining_3 || 0)} day(s) remaining
                         </div>
                       </div>
@@ -4002,7 +4005,7 @@ const KingdomTab: React.FC<Props> = ({
                           <div style={{ color: '#93c5fd', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Will unlock:</div>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
                             {['Builders Hut', 'Advanced Buildings', 'Tier 3 Research', 'Higher Throughput'].map((res) => (
-                              <div key={res} style={{ color: '#e2e8f0', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(148,163,184,0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
+                              <div key={res} style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(var(--theme-accent-rgb),0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
                                 🔓 {res}
                               </div>
                             ))}
@@ -4012,23 +4015,23 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ marginBottom: '0.6rem' }}>
                           <div style={{ color: '#86efac', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Requirements:</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>⏱️ Time:</span>
                               <span style={{ fontWeight: 600 }}>20 days</span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 300 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 300 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🌳 Wood:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.wood || 0) >= 300 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.wood || 0) >= 300 ? '✓' : '✗'} {Number(storedResources.wood || 0).toFixed(1)}/300
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 100 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.stone || 0) >= 100 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🪨 Stone:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.stone || 0) >= 100 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.stone || 0) >= 100 ? '✓' : '✗'} {Number(storedResources.stone || 0).toFixed(1)}/100
                               </span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 50 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.minerals || 0) >= 50 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>⛓️ Iron:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.minerals || 0) >= 50 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.minerals || 0) >= 50 ? '✓' : '✗'} {Number(storedResources.minerals || 0).toFixed(1)}/50
@@ -4065,7 +4068,7 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                           ⏳ Upgrade in Progress
                         </div>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', textAlign: 'center', padding: '0.5rem', background: 'rgba(34,197,94,0.15)', borderRadius: '0.4rem' }}>
                           {fiefDetails.tier_upgrade_days_remaining} day(s) remaining
                         </div>
                       </div>
@@ -4075,7 +4078,7 @@ const KingdomTab: React.FC<Props> = ({
                           <div style={{ color: '#93c5fd', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Will unlock:</div>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
                             {['Quarry', 'Mine', 'Research Lab', 'Faith Temple'].map((res) => (
-                              <div key={res} style={{ color: '#e2e8f0', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(148,163,184,0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
+                              <div key={res} style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '0.3rem 0.5rem', background: 'rgba(var(--theme-accent-rgb),0.1)', borderRadius: '0.3rem', textAlign: 'center' }}>
                                 🔓 {res}
                               </div>
                             ))}
@@ -4085,11 +4088,11 @@ const KingdomTab: React.FC<Props> = ({
                         <div style={{ marginBottom: '0.6rem' }}>
                           <div style={{ color: '#86efac', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 600 }}>Requirements:</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: 'rgba(217,119,6,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>⏱️ Time:</span>
                               <span style={{ fontWeight: 600 }}>14 days</span>
                             </div>
-                            <div style={{ color: '#f8fafc', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 200 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', padding: '0.35rem 0.5rem', background: (storedResources.wood || 0) >= 200 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                               <span>🌳 Wood:</span>
                               <span style={{ fontWeight: 600, color: (storedResources.wood || 0) >= 200 ? '#86efac' : '#ef4444' }}>
                                 {(storedResources.wood || 0) >= 200 ? '✓' : '✗'} {Number(storedResources.wood || 0).toFixed(1)}/200
@@ -4166,33 +4169,33 @@ const KingdomTab: React.FC<Props> = ({
                 <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                   {/* Name */}
                   <div>
-                    <label style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Fief Name</label>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Fief Name</label>
                     <input
                       type="text"
                       value={newFiefName}
                       onChange={(e) => setNewFiefName(e.target.value)}
                       placeholder="Enter fief name…"
                       maxLength={60}
-                      style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.3)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)', boxSizing: 'border-box' }}
                     />
                   </div>
                   {/* Population */}
                   <div>
-                    <label style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                      Population to Send <span style={{ color: '#64748b', fontWeight: 400 }}>(capital has {capitalAdults}, keeps ≥ 10)</span>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                      Population to Send <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(capital has {capitalAdults}, keeps ≥ 10)</span>
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <button onClick={() => setNewFiefPop((p) => Math.max(10, p - 1))} style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer' }}>−</button>
-                      <span style={{ color: '#e2e8f0', fontWeight: 700, minWidth: '2rem', textAlign: 'center' }}>{newFiefPop}</span>
-                      <button onClick={() => setNewFiefPop((p) => Math.min(maxPop, p + 1))} style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer' }}>+</button>
-                      <span style={{ color: '#64748b', fontSize: '0.78rem' }}>max {maxPop}</span>
+                      <button onClick={() => setNewFiefPop((p) => Math.max(10, p - 1))} style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', background: 'rgba(15,15,15,0.5)', color: 'var(--text-secondary)', cursor: 'pointer' }}>−</button>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 700, minWidth: '2rem', textAlign: 'center' }}>{newFiefPop}</span>
+                      <button onClick={() => setNewFiefPop((p) => Math.min(maxPop, p + 1))} style={{ padding: '0.3rem 0.6rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', background: 'rgba(15,15,15,0.5)', color: 'var(--text-secondary)', cursor: 'pointer' }}>+</button>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>max {maxPop}</span>
                     </div>
                   </div>
                   {/* Resources */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                      <label style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}>Resources to Send</label>
-                      <span style={{ color: overBudget ? '#ef4444' : '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600 }}>Resources to Send</label>
+                      <span style={{ color: overBudget ? '#ef4444' : 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600 }}>
                         Total: {totalSent} / 100 {overBudget && '⚠️'}
                       </span>
                     </div>
@@ -4208,18 +4211,18 @@ const KingdomTab: React.FC<Props> = ({
                         const overCap = val > cap;
                         return (
                           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ color: '#94a3b8', fontSize: '0.82rem', minWidth: '90px' }}>{label}</span>
-                            <button onClick={() => adjRes(key, -1, min, cap)} style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(148,163,184,0.2)', background: 'rgba(15,23,42,0.5)', color: '#94a3b8', cursor: 'pointer' }}>−</button>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem', minWidth: '90px' }}>{label}</span>
+                            <button onClick={() => adjRes(key, -1, min, cap)} style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', background: 'rgba(15,15,15,0.5)', color: 'var(--text-muted)', cursor: 'pointer' }}>−</button>
                             <input
                               type="number"
                               value={val}
                               min={min}
                               max={cap}
                               onChange={(e) => setNewFiefResources((prev) => ({ ...prev, [key]: Math.max(min, Math.min(cap, Math.floor(Number(e.target.value) || 0))) }))}
-                              style={{ width: '62px', padding: '0.25rem 0.4rem', borderRadius: '0.3rem', border: `1px solid ${belowMin || overCap ? 'rgba(239,68,68,0.5)' : 'rgba(148,163,184,0.25)'}`, background: 'rgba(15,23,42,0.5)', color: belowMin || overCap ? '#ef4444' : '#e2e8f0', textAlign: 'center' }}
+                              style={{ width: '62px', padding: '0.25rem 0.4rem', borderRadius: '0.3rem', border: `1px solid ${belowMin || overCap ? 'rgba(239,68,68,0.5)' : 'rgba(var(--theme-accent-rgb),0.25)'}`, background: 'rgba(15,15,15,0.5)', color: belowMin || overCap ? '#ef4444' : 'var(--text-secondary)', textAlign: 'center' }}
                             />
-                            <button onClick={() => adjRes(key, 1, min, cap)} style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(148,163,184,0.2)', background: 'rgba(15,23,42,0.5)', color: '#94a3b8', cursor: 'pointer' }}>+</button>
-                            <span style={{ color: '#64748b', fontSize: '0.72rem' }}>
+                            <button onClick={() => adjRes(key, 1, min, cap)} style={{ padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', background: 'rgba(15,15,15,0.5)', color: 'var(--text-muted)', cursor: 'pointer' }}>+</button>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
                               cap has {cap}{hint ? ` • ${hint}` : ''}
                             </span>
                           </div>
@@ -4286,10 +4289,10 @@ const KingdomTab: React.FC<Props> = ({
                       {LOCATION_LANES.map(({ key, label, icon }) => {
                         const mod = Number(pendingFiefModifiers[key] || 0);
                         const pct = Math.round(mod * 100);
-                        const color = mod > 0 ? '#f59e0b' : mod < 0 ? '#f87171' : '#64748b';
+                        const color = mod > 0 ? '#f59e0b' : mod < 0 ? '#f87171' : 'var(--text-muted)';
                         return (
-                          <div key={key} style={{ background: 'rgba(2,6,23,0.5)', border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.45rem', padding: '0.35rem 0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600 }}>{icon} {label}</div>
+                          <div key={key} style={{ background: 'rgba(8,8,8,0.5)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.45rem', padding: '0.35rem 0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>{icon} {label}</div>
                             <div style={{ color, fontWeight: 700, fontSize: '0.95rem', textAlign: 'center' }}>{pct >= 0 ? '+' : ''}{pct}%</div>
                             <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
                               {[-25, -5].map((d) => (
@@ -4311,22 +4314,22 @@ const KingdomTab: React.FC<Props> = ({
                     </div>
                   </div>
                   {/* Travel days */}
-                  <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.85rem' }}>
-                    <div style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.4rem' }}>🚶 Travel Days</div>
-                    <div style={{ color: '#64748b', fontSize: '0.78rem', marginBottom: '0.5rem' }}>
+                  <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.85rem' }}>
+                    <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.4rem' }}>🚶 Travel Days</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0.5rem' }}>
                       The fief is locked (no production, no workers) until travel is complete. Set 0 for immediate availability.
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <button onClick={() => setPendingTravelDays((d) => Math.max(0, d - 1))} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>−</button>
+                      <button onClick={() => setPendingTravelDays((d) => Math.max(0, d - 1))} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', background: 'rgba(15,15,15,0.5)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem' }}>−</button>
                       <input
                         type="number"
                         value={pendingTravelDays}
                         min={0}
                         onChange={(e) => setPendingTravelDays(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-                        style={{ width: '72px', padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.6)', color: '#e2e8f0', textAlign: 'center' }}
+                        style={{ width: '72px', padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)', textAlign: 'center' }}
                       />
-                      <button onClick={() => setPendingTravelDays((d) => d + 1)} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(15,23,42,0.5)', color: '#e2e8f0', cursor: 'pointer', fontSize: '1rem' }}>+</button>
-                      <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                      <button onClick={() => setPendingTravelDays((d) => d + 1)} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', background: 'rgba(15,15,15,0.5)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem' }}>+</button>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                         {pendingTravelDays === 0 ? 'Available immediately' : `Available after ${pendingTravelDays} day${pendingTravelDays !== 1 ? 's' : ''}`}
                       </span>
                     </div>
@@ -4360,14 +4363,14 @@ const KingdomTab: React.FC<Props> = ({
                 value={legendaryForm.name}
                 onChange={(e) => setLegendaryForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Legendary character name"
-                style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.65)', color: '#e2e8f0' }}
+                style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.65)', color: 'var(--text-secondary)' }}
               />
               <textarea
                 value={legendaryForm.description}
                 onChange={(e) => setLegendaryForm((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="Description"
                 rows={3}
-                style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.65)', color: '#e2e8f0', resize: 'vertical' }}
+                style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.65)', color: 'var(--text-secondary)', resize: 'vertical' }}
               />
 
               <div style={{ color: '#93c5fd', fontSize: '0.8rem', fontWeight: 700 }}>Fixed Bonuses</div>
@@ -4386,14 +4389,14 @@ const KingdomTab: React.FC<Props> = ({
                   ['food_consumption_reduction_pct', 'Food Use Reduction %'],
                   ['unit_training_speed_reduction_pct', 'Unit Training Speed Reduction %'],
                 ].map(([key, label]) => (
-                  <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', color: '#cbd5e1', fontSize: '0.76rem' }}>
+                  <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', color: 'var(--text-secondary)', fontSize: '0.76rem' }}>
                     {label}
                     <input
                       type="number"
                       step="0.01"
                       value={Number((legendaryForm as any)[key] || 0)}
                       onChange={(e) => setLegendaryForm((prev) => ({ ...prev, [key]: Number(e.target.value || 0) } as any))}
-                      style={{ padding: '0.32rem 0.42rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.7)', color: '#e2e8f0' }}
+                      style={{ padding: '0.32rem 0.42rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.7)', color: 'var(--text-secondary)' }}
                     />
                   </label>
                 ))}
@@ -4454,7 +4457,7 @@ const KingdomTab: React.FC<Props> = ({
                     const checked = row.playerId != null && selectedGrantPlayerIds.includes(Number(row.playerId));
                     const secondary = row.characterName.toLowerCase() !== row.username.toLowerCase() ? `@${row.username}` : '';
                     return (
-                      <label key={`${row.playerId}-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: '#e2e8f0' }}>
+                      <label key={`${row.playerId}-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: 'var(--text-secondary)' }}>
                         <input
                           type="checkbox"
                           checked={checked}
@@ -4469,9 +4472,9 @@ const KingdomTab: React.FC<Props> = ({
                           }}
                         />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                          <span style={{ color: '#e2e8f0' }}>{row.characterName}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{row.characterName}</span>
                           {secondary && (
-                            <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{secondary}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{secondary}</span>
                           )}
                           {!row.canGrant && row.reason && (
                             <span style={{ color: '#fca5a5', fontSize: '0.72rem' }}>{row.reason}</span>
@@ -4505,16 +4508,16 @@ const KingdomTab: React.FC<Props> = ({
                   });
                 };
                 return (
-                  <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: '0.75rem' }}>
-                    <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>📍 Location Bonuses <span style={{ color: '#64748b', fontWeight: 400, fontSize: '0.78rem' }}>(permanent, based on where the kingdom is built)</span></div>
+                  <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.75rem' }}>
+                    <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>📍 Location Bonuses <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.78rem' }}>(permanent, based on where the kingdom is built)</span></div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
                       {LOCATION_LANES.map(({ key, label, icon }) => {
                         const mod = Number(grantLocationModifiers[key] || 0);
                         const pct = Math.round(mod * 100);
-                        const color = mod > 0 ? '#f59e0b' : mod < 0 ? '#f87171' : '#64748b';
+                        const color = mod > 0 ? '#f59e0b' : mod < 0 ? '#f87171' : 'var(--text-muted)';
                         return (
-                          <div key={key} style={{ background: 'rgba(2,6,23,0.5)', border: '1px solid rgba(148,163,184,0.15)', borderRadius: '0.45rem', padding: '0.35rem 0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600 }}>{icon} {label}</div>
+                          <div key={key} style={{ background: 'rgba(8,8,8,0.5)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.45rem', padding: '0.35rem 0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>{icon} {label}</div>
                             <div style={{ color, fontWeight: 700, fontSize: '0.95rem', textAlign: 'center' }}>{pct >= 0 ? '+' : ''}{pct}%</div>
                             <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
                               {[-25, -5].map((d) => (
@@ -4584,10 +4587,10 @@ const KingdomTab: React.FC<Props> = ({
             </div>
 
             <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: 'calc(90vh - 90px)', overflowY: 'auto' }}>
-              <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                 Children are unassignable until age 15.
               </div>
-              <div style={{ color: '#e2e8f0', fontSize: '0.88rem' }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
                 Total children: {underagePopulation}
               </div>
               <div style={{ color: '#93c5fd', fontSize: '0.84rem' }}>
@@ -4599,13 +4602,13 @@ const KingdomTab: React.FC<Props> = ({
               {!currentCampaignDay ? (
                 <div style={{ color: '#fca5a5', fontSize: '0.82rem' }}>Could not determine current campaign day, so age grouping is unavailable.</div>
               ) : childrenByAgeYears.length === 0 ? (
-                <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No children cohorts found.</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No children cohorts found.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                   {childrenByAgeYears.map((group) => (
-                    <div key={`age-${group.ageYears}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.45rem', padding: '0.4rem 0.55rem' }}>
-                      <span style={{ color: '#cbd5e1' }}>Age {group.ageYears}</span>
-                      <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{group.count}</span>
+                    <div key={`age-${group.ageYears}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.45rem', padding: '0.4rem 0.55rem' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Age {group.ageYears}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{group.count}</span>
                     </div>
                   ))}
                 </div>
@@ -4655,7 +4658,7 @@ const KingdomTab: React.FC<Props> = ({
               <button className="modal-close" onClick={() => setShowBuildModal(false)} aria-label="Close">×</button>
             </div>
             <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem', maxHeight: 'calc(90vh - 90px)', overflowY: 'auto' }}>
-              <div style={{ color: '#94a3b8', fontSize: '0.78rem' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                 Buildings are filtered by your current fief tier and prerequisite completion.
               </div>
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -4670,7 +4673,7 @@ const KingdomTab: React.FC<Props> = ({
                         padding: '0.33rem 0.62rem',
                         borderRadius: '999px',
                         border: `1px solid ${style.border}`,
-                        background: active ? style.background : 'rgba(15,23,42,0.28)',
+                        background: active ? style.background : 'rgba(15,15,15,0.28)',
                         color: style.text,
                         cursor: 'pointer',
                         fontWeight: active ? 700 : 500,
@@ -4683,7 +4686,7 @@ const KingdomTab: React.FC<Props> = ({
               </div>
 
               {filteredBuildOptions.length === 0 ? (
-                <div style={{ color: '#94a3b8', fontSize: '0.84rem' }}>No buildings available in this category.</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>No buildings available in this category.</div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.6rem' }}>
                   {filteredBuildOptions.map((b: any) => {
@@ -4705,19 +4708,19 @@ const KingdomTab: React.FC<Props> = ({
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{b.name}</span>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{b.name}</span>
                           <span style={{ color: c.text, fontSize: '0.75rem', textTransform: 'uppercase' }}>{BUILD_TAB_LABELS[category]}</span>
                         </div>
-                        <div style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
                           Tier {Number(b.tierRequired || 1)} • {Number(b.days || 0)} day(s)
                         </div>
                         {b.description && (
-                          <div style={{ color: '#94a3b8', fontSize: '0.78rem', lineHeight: '1.4' }}>{b.description}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: '1.4' }}>{b.description}</div>
                         )}
-                        <div style={{ color: '#94a3b8', fontSize: '0.74rem' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>
                           Cost:{' '}
                           {Object.entries((b.cost || {}) as Record<string, number>).length === 0 ? (
-                            <span style={{ color: '#94a3b8' }}>None</span>
+                            <span style={{ color: 'var(--text-muted)' }}>None</span>
                           ) : (
                             Object.entries((b.cost || {}) as Record<string, number>).map(([k, v], idx, arr) => {
                               const needed = Math.max(0, Number(v || 0));
@@ -4743,8 +4746,8 @@ const KingdomTab: React.FC<Props> = ({
                             padding: '0.34rem 0.62rem',
                             borderRadius: '0.4rem',
                             border: `1px solid ${c.border}`,
-                            background: (locked || busy === `build-${String(b.key)}`) ? 'rgba(71,85,105,0.35)' : 'rgba(2,6,23,0.55)',
-                            color: (locked || busy === `build-${String(b.key)}`) ? '#94a3b8' : c.text,
+                            background: (locked || busy === `build-${String(b.key)}`) ? 'rgba(71,85,105,0.35)' : 'rgba(8,8,8,0.55)',
+                            color: (locked || busy === `build-${String(b.key)}`) ? 'var(--text-muted)' : c.text,
                             cursor: (locked || busy === `build-${String(b.key)}`) ? 'not-allowed' : 'pointer',
                             alignSelf: 'flex-start',
                           }}
@@ -4846,7 +4849,7 @@ const KingdomTab: React.FC<Props> = ({
                   }}
                 >
                   {orderedQueue.length === 0 ? (
-                    <div style={{ color: '#94a3b8', fontSize: '0.84rem', padding: '0.5rem 0' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem', padding: '0.5rem 0' }}>
                       Nothing is currently queued or under construction.
                     </div>
                   ) : (
@@ -4864,8 +4867,8 @@ const KingdomTab: React.FC<Props> = ({
                           onDrop={(e) => e.preventDefault()}
                           style={{
                             borderRadius: '0.5rem',
-                            border: '1px solid rgba(148,163,184,0.3)',
-                            background: isDragging ? 'rgba(120,53,15,0.35)' : 'rgba(15,23,42,0.5)',
+                            border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
+                            background: isDragging ? 'rgba(120,53,15,0.35)' : 'rgba(15,15,15,0.5)',
                             padding: '0.5rem 0.6rem',
                             display: 'flex',
                             alignItems: 'center',
@@ -4874,13 +4877,13 @@ const KingdomTab: React.FC<Props> = ({
                             opacity: isDragging ? 0.6 : 1,
                           }}
                         >
-                          <span style={{ color: '#64748b', fontWeight: 700, fontSize: '0.8rem', minWidth: '1.2rem' }}>
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.8rem', minWidth: '1.2rem' }}>
                             {idx + 1}
                           </span>
-                          <span style={{ color: '#64748b', fontSize: '0.9rem' }} title="Drag to reorder">⠿</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }} title="Drag to reorder">⠿</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              <span style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.85rem' }}>{b.name}</span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem' }}>{b.name}</span>
                               {isUpgrade && (
                                 <span style={{ color: '#93c5fd', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>
                                   Upgrade
@@ -4902,7 +4905,7 @@ const KingdomTab: React.FC<Props> = ({
                               borderRadius: '999px',
                               border: '1px solid rgba(239,68,68,0.55)',
                               background: isBeingCancelled ? 'rgba(71,85,105,0.35)' : 'rgba(127,29,29,0.34)',
-                              color: isBeingCancelled ? '#94a3b8' : '#fca5a5',
+                              color: isBeingCancelled ? 'var(--text-muted)' : '#fca5a5',
                               cursor: isBeingCancelled ? 'not-allowed' : 'pointer',
                               fontWeight: 800,
                               flexShrink: 0,
@@ -4961,7 +4964,7 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
                 <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem', maxHeight: 'calc(90vh - 90px)', overflowY: 'auto' }}>
                   {allResearch.length === 0 ? (
-                    <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>Research unlocks after reaching Tier 2 and building a Research Lab.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Research unlocks after reaching Tier 2 and building a Research Lab.</div>
                   ) : (
                     <>
                       {/* Active */}
@@ -4977,13 +4980,13 @@ const KingdomTab: React.FC<Props> = ({
                             return (
                               <div key={entry.id}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-                                  <span style={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 600 }}>{research?.name || formatResearchLabel(entry.research_id)}</span>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', fontWeight: 600 }}>{research?.name || formatResearchLabel(entry.research_id)}</span>
                                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                     <span style={{ color: '#fde68a', fontSize: '0.72rem', fontWeight: 600 }}>{eta}</span>
                                     <span style={{ color: '#bfdbfe', fontSize: '0.74rem' }}>{Math.floor(progress)}/{required} pts</span>
                                   </div>
                                 </div>
-                                <div style={{ height: '0.32rem', background: 'rgba(30,41,59,0.5)', borderRadius: '0.2rem', overflow: 'hidden' }}>
+                                <div style={{ height: '0.32rem', background: 'rgba(26,26,26,0.5)', borderRadius: '0.2rem', overflow: 'hidden' }}>
                                   <div style={{ height: '100%', background: 'rgba(217,119,6,0.7)', width: `${progressPercent}%`, transition: 'width 0.3s ease' }} />
                                 </div>
                               </div>
@@ -4994,13 +4997,13 @@ const KingdomTab: React.FC<Props> = ({
 
                       {/* Queued */}
                       {researchQueue.filter((r: any) => r.status === 'queued').length > 0 && (
-                        <div style={{ padding: '0.6rem', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '0.45rem', background: 'rgba(30,41,59,0.25)' }}>
-                          <div style={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>⋯ Queued</div>
+                        <div style={{ padding: '0.6rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.45rem', background: 'rgba(26,26,26,0.25)' }}>
+                          <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>⋯ Queued</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                             {researchQueue.filter((r: any) => r.status === 'queued').map((entry: any, idx: number) => {
                               const research = allResearch.find((r: any) => String(r.id) === String(entry.research_id));
                               return (
-                                <div key={entry.id} style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                                <div key={entry.id} style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
                                   {idx + 1}. {research?.name || formatResearchLabel(entry.research_id)}
                                 </div>
                               );
@@ -5052,7 +5055,7 @@ const KingdomTab: React.FC<Props> = ({
                                 style={{
                                   padding: '0.24rem 0.52rem', borderRadius: '999px',
                                   border: `1px solid ${s.border}`,
-                                  background: active ? s.background : 'rgba(15,23,42,0.28)',
+                                  background: active ? s.background : 'rgba(15,15,15,0.28)',
                                   color: s.text, cursor: 'pointer',
                                   fontWeight: active ? 700 : 500, fontSize: '0.74rem',
                                 }}>
@@ -5062,7 +5065,7 @@ const KingdomTab: React.FC<Props> = ({
                           })}
                         </div>
                         {filteredQueueable.length === 0 ? (
-                          <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                             {queueableResearch.length === 0
                               ? `No research available at Tier ${fiefTier}. Increase your fief tier to unlock more.`
                               : 'No research in this category.'}
@@ -5074,14 +5077,14 @@ const KingdomTab: React.FC<Props> = ({
                               const c = RESEARCH_TAB_COLORS[cat];
                               return (
                                 <div key={research.id}
-                                  style={{ border: `1px solid ${c.border}`, borderRadius: '0.45rem', padding: '0.5rem 0.6rem', background: 'rgba(30,41,59,0.4)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  style={{ border: `1px solid ${c.border}`, borderRadius: '0.45rem', padding: '0.5rem 0.6rem', background: 'rgba(26,26,26,0.4)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.4rem' }}>
                                     <div style={{ color: '#dbeafe', fontWeight: 700, fontSize: '0.88rem' }}>{research.name}</div>
                                     <span style={{ color: c.text, fontSize: '0.68rem', textTransform: 'uppercase', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                       {RESEARCH_TAB_LABELS[cat]}
                                     </span>
                                   </div>
-                                  <div style={{ color: '#cbd5e1', fontSize: '0.75rem', lineHeight: '1.3' }}>{research.description}</div>
+                                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', lineHeight: '1.3' }}>{research.description}</div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem' }}>
                                     <span style={{ color: '#93c5fd', fontSize: '0.74rem', fontWeight: 600 }}>
                                       Tier {research.tierRequired} • {research.pointsRequired} pts
@@ -5096,7 +5099,7 @@ const KingdomTab: React.FC<Props> = ({
                                         padding: '0.24rem 0.5rem', borderRadius: '0.3rem',
                                         border: `1px solid ${c.border}`,
                                         background: busy === `research-${research.id}` ? 'rgba(71,85,105,0.35)' : 'rgba(30,58,138,0.45)',
-                                        color: busy === `research-${research.id}` ? '#94a3b8' : c.text,
+                                        color: busy === `research-${research.id}` ? 'var(--text-muted)' : c.text,
                                         cursor: busy === `research-${research.id}` ? 'not-allowed' : 'pointer',
                                         fontSize: '0.72rem', fontWeight: 600,
                                       }}>
@@ -5124,33 +5127,33 @@ const KingdomTab: React.FC<Props> = ({
           onClick={(e) => { if (e.target === e.currentTarget) setShowConversionModal(false); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 10020, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
         >
-          <div style={{ background: '#0f172a', border: '1px solid rgba(234,179,8,0.35)', borderRadius: '0.75rem', padding: '1.4rem', width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+          <div style={{ background: 'var(--primary-black)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: '0.75rem', padding: '1.4rem', width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ color: '#fde68a', fontWeight: 700, fontSize: '1.05rem' }}>⛓ Prisoner & Slave Management</div>
-              <button onClick={() => setShowConversionModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>✕</button>
+              <button onClick={() => setShowConversionModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
               <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.5rem', padding: '0.7rem', textAlign: 'center' }}>
                 <div style={{ color: '#fca5a5', fontSize: '0.78rem', marginBottom: '0.25rem' }}>Prisoners</div>
-                <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.5rem' }}>{prisoners}</div>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '1.5rem' }}>{prisoners}</div>
               </div>
               <div style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '0.5rem', padding: '0.7rem', textAlign: 'center' }}>
                 <div style={{ color: '#fde68a', fontSize: '0.78rem', marginBottom: '0.25rem' }}>Slaves</div>
-                <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.5rem' }}>{slaves}</div>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '1.5rem' }}>{slaves}</div>
               </div>
             </div>
 
             {/* Prisoners → Slaves */}
             <div style={{ background: 'rgba(146,64,14,0.2)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '0.55rem', padding: '1rem' }}>
               <div style={{ color: '#fde68a', fontWeight: 700, marginBottom: '0.5rem' }}>Convert Prisoners → Slaves</div>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Prisoners are put to work as slave labor. This is irreversible unless you release them below.</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Prisoners are put to work as slave labor. This is irreversible unless you release them below.</div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <input
                   type="number" min="1" max={prisoners} value={conversionInput}
                   onChange={(e) => setConversionInput(e.target.value)}
-                  style={{ width: '70px', padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,0,0,0.4)', color: '#f8fafc', textAlign: 'center' }}
+                  style={{ width: '70px', padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,0,0,0.4)', color: 'var(--text-primary)', textAlign: 'center' }}
                 />
-                <span style={{ color: '#64748b', fontSize: '0.82rem' }}>of {prisoners} prisoners</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>of {prisoners} prisoners</span>
                 <button
                   onClick={executeConversion}
                   disabled={busy === 'convert-prisoners' || prisoners <= 0 || Number(conversionInput) <= 0}
@@ -5162,20 +5165,20 @@ const KingdomTab: React.FC<Props> = ({
             </div>
 
             {/* Slaves → Prisoners */}
-            <div style={{ background: 'rgba(30,41,59,0.5)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: '0.55rem', padding: '1rem' }}>
-              <div style={{ color: '#cbd5e1', fontWeight: 700, marginBottom: '0.5rem' }}>Release Slaves → Prisoners</div>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Released slaves return to the prisoner pool. Any excess worker assignments are automatically reduced.</div>
+            <div style={{ background: 'rgba(26,26,26,0.5)', border: '1px solid rgba(var(--theme-accent-rgb),0.18)', borderRadius: '0.55rem', padding: '1rem' }}>
+              <div style={{ color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '0.5rem' }}>Release Slaves → Prisoners</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>Released slaves return to the prisoner pool. Any excess worker assignments are automatically reduced.</div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <input
                   type="number" min="1" max={slaves} value={releaseInput}
                   onChange={(e) => setReleaseInput(e.target.value)}
-                  style={{ width: '70px', padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(0,0,0,0.4)', color: '#f8fafc', textAlign: 'center' }}
+                  style={{ width: '70px', padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', background: 'rgba(0,0,0,0.4)', color: 'var(--text-primary)', textAlign: 'center' }}
                 />
-                <span style={{ color: '#64748b', fontSize: '0.82rem' }}>of {slaves} slaves</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>of {slaves} slaves</span>
                 <button
                   onClick={executeRelease}
                   disabled={busy === 'release-slaves' || slaves <= 0 || Number(releaseInput) <= 0}
-                  style={{ marginLeft: 'auto', padding: '0.35rem 0.75rem', borderRadius: '0.35rem', border: '1px solid rgba(148,163,184,0.3)', background: 'rgba(30,41,59,0.6)', color: '#e2e8f0', fontWeight: 700, cursor: 'pointer', opacity: (busy === 'release-slaves' || slaves <= 0) ? 0.5 : 1 }}
+                  style={{ marginLeft: 'auto', padding: '0.35rem 0.75rem', borderRadius: '0.35rem', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', background: 'rgba(26,26,26,0.6)', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', opacity: (busy === 'release-slaves' || slaves <= 0) ? 0.5 : 1 }}
                 >
                   {busy === 'release-slaves' ? 'Releasing…' : 'Release'}
                 </button>
@@ -5221,13 +5224,13 @@ const KingdomTab: React.FC<Props> = ({
                 <h2 style={{ color: 'var(--text-gold)', margin: 0, marginBottom: '0.25rem', fontSize: '1.3rem', fontWeight: 700 }}>
                   Troop Progression
                 </h2>
-                <p style={{ color: '#94a3b8', margin: 0, fontSize: '0.82rem' }}>
+                <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.82rem' }}>
                   Train civilians into Militia, then upgrade reserve units up their line's tiers as the matching building is completed. Some tiers require more than one building to unlock.
                 </p>
               </div>
               <button
                 onClick={() => setShowProgressionModal(false)}
-                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer', padding: 0 }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.5rem', cursor: 'pointer', padding: 0 }}
               >
                 ×
               </button>
@@ -5235,27 +5238,27 @@ const KingdomTab: React.FC<Props> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {progressionRenderModel.primaryLines.map((line) => (
-                <div key={line.line_key} style={{ padding: '0.75rem', background: 'rgba(30,41,59,0.35)', borderRadius: '0.5rem', border: '1px solid rgba(148,163,184,0.2)' }}>
+                <div key={line.line_key} style={{ padding: '0.75rem', background: 'rgba(26,26,26,0.35)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{line.line_key}</div>
                   <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.4rem', flexWrap: 'wrap' }}>
                     {line.tiers.map((tier, idx) => (
                       <React.Fragment key={tier.unit_type}>
                         {idx > 0 && (
-                          <div style={{ display: 'flex', alignItems: 'center', color: '#64748b', fontSize: '1rem' }}>→</div>
+                          <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', fontSize: '1rem' }}>→</div>
                         )}
                         <div
                           style={{
                             minWidth: '150px',
                             padding: '0.5rem',
                             borderRadius: '0.4rem',
-                            border: `1px solid ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.25)'}`,
-                            background: tier.unlocked ? 'rgba(20,83,45,0.25)' : 'rgba(15,23,42,0.4)',
+                            border: `1px solid ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(var(--theme-accent-rgb),0.25)'}`,
+                            background: tier.unlocked ? 'rgba(20,83,45,0.25)' : 'rgba(15,15,15,0.4)',
                           }}
                         >
-                          <div style={{ color: tier.unlocked ? '#86efac' : '#94a3b8', fontWeight: 700, fontSize: '0.82rem' }}>
+                          <div style={{ color: tier.unlocked ? '#86efac' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem' }}>
                             {tier.unlocked ? '✅' : '🔒'} {tier.unit_type}
                           </div>
-                          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
                           <div style={{ marginTop: '0.3rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                             {tier.required_buildings.map((rb) => (
                               <div key={rb.building_type} style={{ color: rb.completed ? '#86efac' : '#f87171', fontSize: '0.68rem' }}>
@@ -5277,8 +5280,8 @@ const KingdomTab: React.FC<Props> = ({
                     const offset = Math.max(0, progressionRenderModel.maxPrimaryTierCount - branch.tiers.length);
                     const totalSlots = offset + branch.tiers.length;
                     return (
-                      <div key={branch.line_key} style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(148,163,184,0.2)' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontStyle: 'italic', marginBottom: '0.35rem' }}>
+                      <div key={branch.line_key} style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(var(--theme-accent-rgb),0.2)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic', marginBottom: '0.35rem' }}>
                           ⤷ {branch.line_key}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -5288,7 +5291,7 @@ const KingdomTab: React.FC<Props> = ({
                             return (
                               <React.Fragment key={i}>
                                 {i > 0 && (
-                                  <div style={{ display: 'flex', alignItems: 'center', color: '#64748b', fontSize: '1rem', visibility: i > offset ? 'visible' : 'hidden' }}>→</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', fontSize: '1rem', visibility: i > offset ? 'visible' : 'hidden' }}>→</div>
                                 )}
                                 {isSpacer || !tier ? (
                                   <div style={{ minWidth: '150px', visibility: 'hidden' }} />
@@ -5298,14 +5301,14 @@ const KingdomTab: React.FC<Props> = ({
                                       minWidth: '150px',
                                       padding: '0.5rem',
                                       borderRadius: '0.4rem',
-                                      border: `1px dashed ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
-                                      background: tier.unlocked ? 'rgba(20,83,45,0.18)' : 'rgba(15,23,42,0.3)',
+                                      border: `1px dashed ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(var(--theme-accent-rgb),0.3)'}`,
+                                      background: tier.unlocked ? 'rgba(20,83,45,0.18)' : 'rgba(15,15,15,0.3)',
                                     }}
                                   >
-                                    <div style={{ color: tier.unlocked ? '#86efac' : '#94a3b8', fontWeight: 700, fontSize: '0.82rem' }}>
+                                    <div style={{ color: tier.unlocked ? '#86efac' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem' }}>
                                       {tier.unlocked ? '✅' : '🔒'} {tier.unit_type}
                                     </div>
-                                    <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
                                     <div style={{ marginTop: '0.3rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                                       {tier.required_buildings.map((rb) => (
                                         <div key={rb.building_type} style={{ color: rb.completed ? '#86efac' : '#f87171', fontSize: '0.68rem' }}>
@@ -5325,14 +5328,14 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
               ))}
               {(fiefDetails?.unit_progression || []).length === 0 && (
-                <div style={{ color: '#64748b', fontSize: '0.85rem' }}>No unit progression data available for this fief yet.</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No unit progression data available for this fief yet.</div>
               )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
               <button
                 onClick={() => setShowProgressionModal(false)}
-                style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid rgba(148,163,184,0.3)', background: 'rgba(30,41,59,0.35)', color: '#cbd5e1', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+                style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', background: 'rgba(26,26,26,0.35)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
               >
                 Close
               </button>
@@ -5379,7 +5382,7 @@ const KingdomTab: React.FC<Props> = ({
                   <h2 style={{ color: '#93c5fd', margin: 0, marginBottom: '0.25rem', fontSize: '1.3rem', fontWeight: 700 }}>
                     Upgrade Building
                   </h2>
-                  <p style={{ color: '#cbd5e1', margin: 0, fontSize: '0.9rem' }}>
+                  <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem' }}>
                     {upgrade?.currentName} → {upgrade?.targetName}
                   </p>
                 </div>
@@ -5388,7 +5391,7 @@ const KingdomTab: React.FC<Props> = ({
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#94a3b8',
+                    color: 'var(--text-muted)',
                     fontSize: '1.5rem',
                     cursor: 'pointer',
                     padding: 0,
@@ -5402,7 +5405,7 @@ const KingdomTab: React.FC<Props> = ({
                 {/* Research Required */}
                 <div style={{ padding: '0.75rem', background: 'rgba(59,130,246,0.1)', borderRadius: '0.5rem', border: '1px solid rgba(59,130,246,0.25)' }}>
                   <div style={{ color: '#93c5fd', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem' }}>📖 Research Required</div>
-                  <div style={{ color: upgrade?.researchRequired ? '#e2e8f0' : '#94a3b8', fontSize: '0.95rem' }}>
+                  <div style={{ color: upgrade?.researchRequired ? 'var(--text-secondary)' : 'var(--text-muted)', fontSize: '0.95rem' }}>
                     {upgrade?.researchRequired ? formatResearchLabel(upgrade.researchRequired) : 'None'}
                   </div>
                 </div>
@@ -5410,7 +5413,7 @@ const KingdomTab: React.FC<Props> = ({
                 {/* Time Required */}
                 <div style={{ padding: '0.75rem', background: 'rgba(217,119,6,0.1)', borderRadius: '0.5rem', border: '1px solid rgba(217,119,6,0.25)' }}>
                   <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem' }}>⏱️ Time Required</div>
-                  <div style={{ color: '#e2e8f0', fontSize: '0.95rem' }}>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
                     {Number(upgrade?.days || 0)} day(s)
                   </div>
                 </div>
@@ -5429,7 +5432,7 @@ const KingdomTab: React.FC<Props> = ({
                             ? '#facc15'
                             : '#22c55e';
                         return (
-                          <div key={resource} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#cbd5e1', fontSize: '0.85rem' }}>
+                          <div key={resource} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                             <span>{String(resource).charAt(0).toUpperCase() + String(resource).slice(1)}</span>
                             <span style={{ fontWeight: 700, color: requirementColor }}>{needed}</span>
                           </div>
@@ -5440,8 +5443,8 @@ const KingdomTab: React.FC<Props> = ({
                 )}
 
                 {/* Note */}
-                <div style={{ padding: '0.75rem', background: 'rgba(148,163,184,0.1)', borderRadius: '0.5rem', border: '1px solid rgba(148,163,184,0.25)' }}>
-                  <div style={{ color: '#94a3b8', fontSize: '0.8rem', lineHeight: '1.5' }}>
+                <div style={{ padding: '0.75rem', background: 'rgba(var(--theme-accent-rgb),0.1)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.25)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', lineHeight: '1.5' }}>
                     <strong>ℹ️ Note:</strong> Upgraded buildings still consume building-lane work while upgrading.
                   </div>
                 </div>
@@ -5460,9 +5463,9 @@ const KingdomTab: React.FC<Props> = ({
                   style={{
                     padding: '0.5rem 1rem',
                     borderRadius: '0.5rem',
-                    border: '1px solid rgba(148,163,184,0.3)',
-                    background: 'rgba(30,41,59,0.35)',
-                    color: '#cbd5e1',
+                    border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
+                    background: 'rgba(26,26,26,0.35)',
+                    color: 'var(--text-secondary)',
                     cursor: 'pointer',
                     fontWeight: 600,
                     fontSize: '0.9rem',
@@ -5481,7 +5484,7 @@ const KingdomTab: React.FC<Props> = ({
                     borderRadius: '0.5rem',
                     border: '1px solid rgba(125,211,252,0.5)',
                     background: (!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`) ? 'rgba(71,85,105,0.35)' : 'rgba(12,74,110,0.45)',
-                    color: (!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`) ? '#94a3b8' : '#93c5fd',
+                    color: (!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`) ? 'var(--text-muted)' : '#93c5fd',
                     cursor: (!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`) ? 'not-allowed' : 'pointer',
                     fontWeight: 700,
                     fontSize: '0.9rem',
