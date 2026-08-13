@@ -223,6 +223,21 @@ const RESOURCE_ICONS: Record<string, string> = {
   building: '🏗️',
 };
 
+// Terrain / location modifier lanes — shared by the "Set Location" modal (used
+// right after a fief is created) and the DM Terrain Editor panel (used to
+// revisit any existing fief's terrain bonuses later).
+const LOCATION_LANES: Array<{ key: string; label: string; icon: string }> = [
+  { key: 'wood', label: 'Wood', icon: '🌳' },
+  { key: 'stone', label: 'Stone', icon: '🪨' },
+  { key: 'iron', label: 'Iron', icon: '⛓️' },
+  { key: 'meat', label: 'Meat', icon: '🥩' },
+  { key: 'vegetables', label: 'Vegetables', icon: '🥕' },
+  { key: 'gold', label: 'Gold', icon: '🪙' },
+  { key: 'research', label: 'Research', icon: '📘' },
+  { key: 'faith', label: 'Faith', icon: '✨' },
+  { key: 'building', label: 'Building', icon: '🏗️' },
+];
+
 const LEGENDARY_BONUS_LABELS: Record<string, string> = {
   wood_bonus_pct: 'Wood',
   stone_bonus_pct: 'Stone',
@@ -2730,6 +2745,95 @@ const KingdomTab: React.FC<Props> = ({
 
           {managementMode === 'fief' && fiefDetails && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.25rem' }}>
+              {isDungeonMaster && selectedKingdom && (
+                <div className="kt-panel" data-tone="gold">
+                  <div className="kt-panel-header">
+                    <div className="kt-panel-icon">🗺️</div>
+                    <div className="kt-panel-titles">
+                      <div className="kt-panel-title">Terrain Editor</div>
+                      <div className="kt-panel-sub">DM only — location bonuses for every fief in this kingdom</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {(selectedKingdom.fiefs || []).length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>This kingdom has no fiefs yet.</div>
+                    ) : (
+                      selectedKingdom.fiefs.map((f) => {
+                        const mods = (f.location_modifiers && typeof f.location_modifiers === 'object')
+                          ? f.location_modifiers as Record<string, number>
+                          : {};
+                        const activeMods = LOCATION_LANES.filter(({ key }) => Number(mods[key] || 0) !== 0);
+                        const inTransit = Number(f.travel_days_remaining || 0) > 0;
+                        return (
+                          <div
+                            key={f.id}
+                            className="kt-card"
+                            style={{
+                              border: '1px solid rgba(var(--theme-accent-rgb),0.2)',
+                              background: 'rgba(15,15,15,0.4)',
+                              padding: '0.55rem 0.7rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.6rem',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: 0 }}>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.9rem' }}>
+                                {f.name}
+                                {inTransit && (
+                                  <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.75rem' }}>
+                                    {' '}· 🚶 {f.travel_days_remaining}d
+                                  </span>
+                                )}
+                              </span>
+                              {activeMods.length === 0 ? (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>No terrain bonuses set</span>
+                              ) : (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                  {activeMods.map(({ key, label, icon }) => {
+                                    const mod = Number(mods[key] || 0);
+                                    const pct = Math.round(mod * 100);
+                                    const color = mod > 0 ? '#f59e0b' : '#f87171';
+                                    return (
+                                      <span key={key} style={{ color, fontSize: '0.72rem', fontWeight: 600 }}>
+                                        {icon} {label} {pct > 0 ? '+' : ''}{pct}%
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setPendingFiefModifierId(Number(f.id));
+                                setPendingFiefModifiers({ ...mods });
+                                setPendingTravelDays(Number(f.travel_days_remaining || 0));
+                                setShowFiefModifiersModal(true);
+                              }}
+                              style={{
+                                padding: '0.32rem 0.7rem',
+                                borderRadius: '1.4rem',
+                                border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
+                                background: 'rgba(var(--theme-accent-rgb),0.14)',
+                                color: 'var(--text-gold)',
+                                fontWeight: 700,
+                                fontSize: '0.78rem',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                            >
+                              Edit Terrain
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
               {Number(fiefDetails.travel_days_remaining || 0) > 0 ? (
                 <div className="kt-section kt-empty" style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.6rem', background: 'rgba(8,8,8,0.55)' }}>
                   <div className="kt-empty-icon">🚶</div>
@@ -4289,17 +4393,6 @@ const KingdomTab: React.FC<Props> = ({
       {/* ── DM: Set Fief Location Modifiers + Travel Days Modal ─────────────── */}
       {showFiefModifiersModal && isDungeonMaster && ReactDOM.createPortal(
         (() => {
-          const LOCATION_LANES: Array<{ key: string; label: string; icon: string }> = [
-            { key: 'wood', label: 'Wood', icon: '🌳' },
-            { key: 'stone', label: 'Stone', icon: '🪨' },
-            { key: 'iron', label: 'Iron', icon: '⛓️' },
-            { key: 'meat', label: 'Meat', icon: '🥩' },
-            { key: 'vegetables', label: 'Vegetables', icon: '🥕' },
-            { key: 'gold', label: 'Gold', icon: '🪙' },
-            { key: 'research', label: 'Research', icon: '📘' },
-            { key: 'faith', label: 'Faith', icon: '✨' },
-            { key: 'building', label: 'Building', icon: '🏗️' },
-          ];
           const adjustMod = (key: string, delta: number) => {
             setPendingFiefModifiers((prev) => {
               const current = Number(prev[key] || 0);
@@ -4530,17 +4623,6 @@ const KingdomTab: React.FC<Props> = ({
 
               {/* Location Bonuses */}
               {(() => {
-                const LOCATION_LANES: Array<{ key: string; label: string; icon: string }> = [
-                  { key: 'wood', label: 'Wood', icon: '🌳' },
-                  { key: 'stone', label: 'Stone', icon: '🪨' },
-                  { key: 'iron', label: 'Iron', icon: '⛓️' },
-                  { key: 'meat', label: 'Meat', icon: '🥩' },
-                  { key: 'vegetables', label: 'Vegetables', icon: '🥕' },
-                  { key: 'gold', label: 'Gold', icon: '🪙' },
-                  { key: 'research', label: 'Research', icon: '📘' },
-                  { key: 'faith', label: 'Faith', icon: '✨' },
-                  { key: 'building', label: 'Building', icon: '🏗️' },
-                ];
                 const adjustMod = (key: string, delta: number) => {
                   setGrantLocationModifiers((prev) => {
                     const current = Number(prev[key] || 0);
