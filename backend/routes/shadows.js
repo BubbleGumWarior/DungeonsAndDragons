@@ -2,25 +2,15 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { pool } = require('../models/database');
 const { authenticateToken } = require('../middleware/auth');
 
 // ── Image upload config ────────────────────────────────────────────────────
-const shadowStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/shadows');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const suffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, 'shadow-' + suffix + path.extname(file.originalname));
-  },
-});
-
+// Images are kept in memory just long enough to be written into the database
+// (character_shadows.image_data). Railway's filesystem is ephemeral and wipes
+// on every rebuild, so nothing is ever written to disk here.
 const shadowUpload = multer({
-  storage: shadowStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ok = /jpeg|jpg|png|gif|webp|avif/.test(path.extname(file.originalname).toLowerCase());
@@ -28,10 +18,23 @@ const shadowUpload = multer({
   },
 });
 
-const parseShadow = (s) => ({
-  ...s,
-  abilities: typeof s.abilities === 'string' ? JSON.parse(s.abilities) : s.abilities,
-});
+const parseShadow = (s) => {
+  const parsed = {
+    ...s,
+    abilities: typeof s.abilities === 'string' ? JSON.parse(s.abilities) : s.abilities,
+  };
+  if (parsed.image_data) {
+    const base64 = parsed.image_data.toString('base64');
+    parsed.image_url = `data:${parsed.image_mime_type};base64,${base64}`;
+  } else if (parsed.image_url && parsed.image_url.startsWith('/uploads/')) {
+    // Stale filesystem path from before images were stored in the database -
+    // the file is gone after a redeploy, so don't send a link that 404s.
+    parsed.image_url = null;
+  }
+  delete parsed.image_data;
+  delete parsed.image_mime_type;
+  return parsed;
+};
 
 // Fetch all shadows for a character and emit to campaign room
 const emitShadowsUpdated = async (req, characterId) => {
@@ -229,12 +232,6 @@ router.delete('/:characterId/:shadowId', authenticateToken, async (req, res) => 
   try {
     if (req.user.role !== 'Dungeon Master') return res.status(403).json({ error: 'DM only' });
     const { shadowId } = req.params;
-    // Clean up image file if present
-    const existing = await pool.query('SELECT image_url FROM character_shadows WHERE id = $1', [shadowId]);
-    if (existing.rows.length > 0 && existing.rows[0].image_url) {
-      const filePath = path.join(__dirname, '../uploads/shadows', path.basename(existing.rows[0].image_url));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
     await pool.query('DELETE FROM character_shadows WHERE id = $1', [shadowId]);
     await emitShadowsUpdated(req, req.params.characterId);
     res.json({ message: 'Shadow deleted' });
@@ -251,19 +248,16 @@ router.post('/:shadowId/image', authenticateToken, shadowUpload.single('image'),
     const { shadowId } = req.params;
     if (!req.file) return res.status(400).json({ error: 'No image file provided' });
 
-    const existing = await pool.query('SELECT image_url, character_id FROM character_shadows WHERE id = $1', [shadowId]);
+    const existing = await pool.query('SELECT character_id FROM character_shadows WHERE id = $1', [shadowId]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Shadow not found' });
 
-    // Remove old image file if present
-    if (existing.rows[0].image_url) {
-      const oldFile = path.join(__dirname, '../uploads/shadows', path.basename(existing.rows[0].image_url));
-      if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
-    }
-
-    const imageUrl = `/uploads/shadows/${req.file.filename}`;
+    // Store the image bytes in the database (survives Railway rebuilds, unlike disk storage)
     const updated = await pool.query(
-      'UPDATE character_shadows SET image_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-      [imageUrl, shadowId]
+      `UPDATE character_shadows
+          SET image_data = $1, image_mime_type = $2, image_url = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+        RETURNING *`,
+      [req.file.buffer, req.file.mimetype, shadowId]
     );
     await emitShadowsUpdated(req, existing.rows[0].character_id);
     res.json({ message: 'Shadow image uploaded', shadow: parseShadow(updated.rows[0]) });

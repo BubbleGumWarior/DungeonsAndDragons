@@ -13886,7 +13886,6 @@ const CampaignView: React.FC = () => {
                 {/* Shadows Tab */}
                 {activeTab === 'shadows' && canViewAllTabs(selectedCharacterData.id) && shouldShowShadowsTab(selectedCharacterData) && (() => {
                   const isDM = user?.role === 'Dungeon Master';
-                  const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
                   const shadows = characterShadows[selectedCharacterData.id] ?? [];
                   const conMod = Math.max(0, Math.floor(((selectedCharacterData.abilities?.con ?? 10) - 10) / 2));
                   const maxActive = conMod;
@@ -13959,7 +13958,7 @@ const CampaignView: React.FC = () => {
                                 {/* Shadow portrait */}
                                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
                                   <img
-                                    src={shadow.image_url ? `${API_BASE}${shadow.image_url}` : '/images/ShadowBase.jpg'}
+                                    src={getImageUrl(shadow.image_url ?? undefined) || '/images/ShadowBase.jpg'}
                                     alt={shadow.shadow_name}
                                     style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${shadow.is_active ? 'rgba(239,68,68,0.5)' : 'rgba(139,92,246,0.4)'}` }}
                                     onError={(e) => { (e.target as HTMLImageElement).src = '/images/ShadowBase.jpg'; }}

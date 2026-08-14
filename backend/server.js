@@ -355,6 +355,7 @@ const startServer = async () => {
         { name: 'addCampaignNpcs', fn: require('./migrations/add_campaign_npcs') },
         { name: 'addShadowCombatColumns', fn: require('./migrations/add_shadow_combat_columns') },
         { name: 'addShadowImageUrl', fn: require('./migrations/add_shadow_image_url') },
+        { name: 'addShadowImageData', fn: require('./migrations/add_shadow_image_data') },
         { name: 'addAllyCombatant', fn: require('./migrations/add_ally_combatant') },
         { name: 'addCharacterNotes', fn: require('./migrations/add_character_notes') },
         { name: 'addCampaignGoals', fn: require('./migrations/add_campaign_goals') },
