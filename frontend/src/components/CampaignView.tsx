@@ -5686,7 +5686,7 @@ const CampaignView: React.FC = () => {
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                               {item.category} {item.subcategory && `• ${item.subcategory}`}
                             </div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
                               {item.description}
                             </div>
                           </div>
@@ -5966,10 +5966,11 @@ const CampaignView: React.FC = () => {
 
                     {/* Item Description */}
                     {itemDetails?.description ? (
-                      <div style={{ 
-                        fontSize: '0.8rem', 
-                        color: 'var(--text-secondary)', 
-                        lineHeight: '1.4'
+                      <div style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary)',
+                        lineHeight: '1.4',
+                        whiteSpace: 'pre-wrap'
                       }}>
                         {itemDetails.description}
                       </div>
@@ -15887,7 +15888,7 @@ const CampaignView: React.FC = () => {
 
                       {/* Description */}
                       {addItemSelectedItem.description && (
-                        <div style={{ padding: '0.875rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: '1.55' }}>
+                        <div style={{ padding: '0.875rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
                           {addItemSelectedItem.description}
                         </div>
                       )}
