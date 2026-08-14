@@ -367,14 +367,15 @@ class Battle {
         );
       }
 
-      await pool.query(
+      const appliedResult = await pool.query(
         `UPDATE battle_goals
          SET status = 'applied', updated_at = CURRENT_TIMESTAMP
-         WHERE battle_id = $1 AND round_number = $2 AND status = 'resolved'`,
+         WHERE battle_id = $1 AND round_number = $2 AND status = 'resolved'
+         RETURNING *`,
         [battleId, roundNumber]
       );
 
-      return goals;
+      return appliedResult.rows;
     } catch (error) {
       throw error;
     }

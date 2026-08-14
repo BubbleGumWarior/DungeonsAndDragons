@@ -1361,6 +1361,11 @@ router.post('/battles/:id/goals/apply', authenticateToken, async (req, res) => {
         participants: updatedBattle.participants,
         timestamp: new Date().toISOString()
       });
+      io.to(`campaign_${battle.campaign_id}`).emit('goalsPhaseCompleted', {
+        battleId: battle.id,
+        round: battle.current_round,
+        timestamp: new Date().toISOString()
+      });
     }
 
     res.json({ goals: appliedGoals, battle: updatedBattle });

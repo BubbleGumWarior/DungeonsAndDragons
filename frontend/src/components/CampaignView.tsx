@@ -4738,6 +4738,26 @@ const CampaignView: React.FC = () => {
         }
       });
 
+      // Listen for when the DM applies resolved goal results (updates troops/scores + goal statuses for everyone)
+      newSocket.on('battleGoalsApplied', (data: { battleId: number; goals: any[]; participants: BattleParticipant[]; timestamp: string }) => {
+        const currentBattle = activeBattleRef.current;
+        if (currentBattle && currentBattle.id === data.battleId) {
+          setBattleGoals(prev => {
+            const updated = [...prev];
+            (data.goals || []).forEach(goal => {
+              const idx = updated.findIndex(g => g.id === goal.id);
+              if (idx >= 0) {
+                updated[idx] = goal;
+              }
+            });
+            return updated;
+          });
+          setActiveBattle(prev => prev && prev.id === data.battleId
+            ? { ...prev, participants: data.participants }
+            : prev);
+        }
+      });
+
       // Listen for goals phase completed (all goals resolved, moving to next phase or round)
       newSocket.on('goalsPhaseCompleted', (data: { battleId: number; round: number; timestamp: string }) => {
         const currentBattle = activeBattleRef.current;
