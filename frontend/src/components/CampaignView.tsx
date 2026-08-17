@@ -10,6 +10,7 @@ import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
 import { classInfo } from '../data/classInfo';
+import { getChoiceOptions } from '../data/choiceOptions';
 import FigureImage from '../assets/images/Board/Figure.png';
 import Figure4ArmsImage from '../assets/images/Board/Figure-4Arms.png';
 import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
@@ -1814,6 +1815,10 @@ const CampaignView: React.FC = () => {
     beastSelection: null,
     abilityIncreases: {}
   });
+  // Per-feature dropdown selections for the "choices" step (keyed by feature id, one slot
+  // per choice_count). Kept separate from levelUpData.featureChoices so each dropdown can
+  // be re-rendered with its own current value.
+  const [featureChoiceSelections, setFeatureChoiceSelections] = useState<Record<number, string[]>>({});
 
   // Function to split backstory into pages with intelligent paragraph boundary detection
   const paginateBackstory = useCallback((text: string, wordsPerPage: number = 500): string[] => {
@@ -3092,6 +3097,7 @@ const CampaignView: React.FC = () => {
         beastSelection: null,
         abilityIncreases: {}
       });
+      setFeatureChoiceSelections({});
       setLevelUpStep('hp');
       setShowLevelUpModal(true);
     } catch (error) {
@@ -3128,7 +3134,8 @@ const CampaignView: React.FC = () => {
       // Campaign reload is handled by the 'characterLeveledUp' socket event for all users
       setShowLevelUpModal(false);
       setLevelUpInfo(null);
-      
+      setFeatureChoiceSelections({});
+
       if (result.beastCreated) {
         setToastMessage(`${result.message} Beast companion ${result.beastCreated.beast_name} joined!`);
         // Load the new beast companion
@@ -22580,39 +22587,65 @@ const CampaignView: React.FC = () => {
                       )}
 
 
-                      {feature.choice_type && feature.choice_type !== 'asi_or_feat' && feature.choice_type !== 'subclass' && (
-                        <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
-                          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                            Enter your choice for: {feature.choice_type.replace(/_/g, ' ')}
-                          </p>
-                          <input
-                            type="text"
-                            placeholder={`Enter your ${feature.choice_type.replace(/_/g, ' ')} choice`}
-                            style={{
-                              width: '100%',
-                              padding: '0.75rem',
-                              background: 'rgba(0, 0, 0, 0.3)',
-                              border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
-                              borderRadius: '0.5rem',
-                              color: 'var(--text-gold)'
-                            }}
-                            onChange={(e) => {
-                              const choice = {
-                                featureId: feature.id,
-                                choiceName: e.target.value,
-                                choiceDescription: feature.description
-                              };
-                              setLevelUpData(prev => ({
-                                ...prev,
-                                featureChoices: [
-                                  ...prev.featureChoices.filter(c => c.featureId !== feature.id),
-                                  choice
-                                ]
-                              }));
-                            }}
-                          />
-                        </div>
-                      )}
+                      {feature.choice_type && feature.choice_type !== 'asi_or_feat' && feature.choice_type !== 'subclass' && (() => {
+                        const slotCount = Math.max(1, feature.choice_count || 1);
+                        const options = getChoiceOptions(feature.choice_type, feature.description || '');
+                        const selections = featureChoiceSelections[feature.id] || new Array(slotCount).fill('');
+
+                        const applySelection = (slotIndex: number, value: string) => {
+                          const updated = [...selections];
+                          while (updated.length < slotCount) updated.push('');
+                          updated[slotIndex] = value;
+                          setFeatureChoiceSelections(prev => ({ ...prev, [feature.id]: updated }));
+                          setLevelUpData(prev => ({
+                            ...prev,
+                            featureChoices: [
+                              ...prev.featureChoices.filter(c => c.featureId !== feature.id),
+                              ...updated
+                                .filter(v => v)
+                                .map(v => ({ featureId: feature.id, choiceName: v, choiceDescription: feature.description }))
+                            ]
+                          }));
+                        };
+
+                        return (
+                          <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
+                            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                              Choose your {feature.choice_type.replace(/_/g, ' ')}{slotCount > 1 ? ` (${slotCount})` : ''}
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                              {Array.from({ length: slotCount }).map((_, slotIndex) => {
+                                const currentValue = selections[slotIndex] || '';
+                                // Don't let the same option be picked twice across slots for this feature
+                                const takenElsewhere = selections.filter((v, i) => i !== slotIndex && v);
+                                const availableOptions = options.filter(o => o === currentValue || !takenElsewhere.includes(o));
+                                return (
+                                  <select
+                                    key={slotIndex}
+                                    value={currentValue}
+                                    onChange={(e) => applySelection(slotIndex, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '0.75rem',
+                                      background: 'rgba(0, 0, 0, 0.3)',
+                                      border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
+                                      borderRadius: '0.5rem',
+                                      color: 'var(--text-gold)'
+                                    }}
+                                  >
+                                    <option value="">
+                                      {slotCount > 1 ? `-- Select choice ${slotIndex + 1} --` : '-- Select --'}
+                                    </option>
+                                    {availableOptions.map(option => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
