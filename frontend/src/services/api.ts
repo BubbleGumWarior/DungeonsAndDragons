@@ -300,6 +300,7 @@ export interface LevelUpInfo {
   skillGained: Skill | null;
   needsSubclass: boolean;
   eldritchBlastUpgrade?: Skill | null;
+  pactBoonUpdate?: Skill | null;
   pastChoicesByType?: Record<string, string[]>;
 }
 

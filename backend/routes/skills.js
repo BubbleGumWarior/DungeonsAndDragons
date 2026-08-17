@@ -65,6 +65,42 @@ async function computeEldritchBlastUpdate(characterId, level) {
   return targetResult.rows[0];
 }
 
+// Same idea for Pact Boon: the character starts with the generic "Pact Boon" flavor
+// skill (explains Chain/Blade/Tome) granted at 3rd level, and once they actually pick
+// one via the Pact Boon Choice dropdown, their skill card should become that specific
+// boon instead of the generic explainer. See add_pact_boon_variants.js for the rows.
+async function computePactBoonUpdate(characterId) {
+  const currentResult = await pool.query(`
+    SELECT s.id, s.name
+    FROM character_skills cs
+    JOIN skills s ON cs.skill_id = s.id
+    WHERE cs.character_id = $1
+      AND s.name IN ('Pact Boon', 'Pact of the Chain', 'Pact of the Blade', 'Pact of the Tome')
+    LIMIT 1
+  `, [characterId]);
+
+  if (currentResult.rows.length === 0) return null; // hasn't reached Pact Boon yet
+  const currentName = currentResult.rows[0].name;
+
+  const choiceResult = await pool.query(`
+    SELECT choice_name FROM character_feature_choices
+    WHERE character_id = $1
+      AND choice_name IN ('Pact of the Chain', 'Pact of the Blade', 'Pact of the Tome')
+    ORDER BY id DESC
+    LIMIT 1
+  `, [characterId]);
+
+  if (choiceResult.rows.length === 0) return null; // no boon chosen yet — keep the generic explainer
+  const targetName = choiceResult.rows[0].choice_name;
+
+  if (targetName === currentName) return null; // already correct
+
+  const targetResult = await pool.query(`SELECT * FROM skills WHERE name = $1`, [targetName]);
+  if (targetResult.rows.length === 0) return null;
+
+  return targetResult.rows[0];
+}
+
 // Get all available skills
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -541,8 +577,10 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
     // being picked in this same level-up session — that's only known once they submit —
     // but the post-commit response covers that case.
     let eldritchBlastUpgrade = null;
+    let pactBoonUpdate = null;
     if (character.class === 'Warlock') {
       eldritchBlastUpgrade = await computeEldritchBlastUpdate(characterId, newLevel);
+      pactBoonUpdate = await computePactBoonUpdate(characterId);
     }
 
     res.json({
@@ -560,6 +598,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       needsBeastSelection,
       availableBeastTypes,
       eldritchBlastUpgrade,
+      pactBoonUpdate,
       pastChoicesByType
     });
   } catch (error) {
@@ -824,6 +863,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     // Repelling Blast invocation already recorded (including one picked this level-up,
     // since featureChoices were saved above already). See computeEldritchBlastUpdate.
     let eldritchBlastUpgrade = null;
+    let pactBoonUpdate = null;
     if (character.class === 'Warlock') {
       eldritchBlastUpgrade = await computeEldritchBlastUpdate(characterId, newLevel);
       if (eldritchBlastUpgrade) {
@@ -838,6 +878,24 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
           VALUES ($1, $2)
           ON CONFLICT (character_id, skill_id) DO NOTHING
         `, [characterId, eldritchBlastUpgrade.id]);
+      }
+
+      // Pact Boon — once a specific boon has been recorded (this level-up or a past one),
+      // replace the generic "Pact Boon" explainer skill with the boon actually chosen.
+      pactBoonUpdate = await computePactBoonUpdate(characterId);
+      if (pactBoonUpdate) {
+        await pool.query(`
+          DELETE FROM character_skills
+          WHERE character_id = $1
+            AND skill_id IN (
+              SELECT id FROM skills WHERE name IN ('Pact Boon', 'Pact of the Chain', 'Pact of the Blade', 'Pact of the Tome')
+            )
+        `, [characterId]);
+        await pool.query(`
+          INSERT INTO character_skills (character_id, skill_id)
+          VALUES ($1, $2)
+          ON CONFLICT (character_id, skill_id) DO NOTHING
+        `, [characterId, pactBoonUpdate.id]);
       }
     }
 
@@ -947,6 +1005,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         skillGained,
         beastCreated,
         eldritchBlastUpgrade,
+        pactBoonUpdate,
         timestamp: new Date().toISOString()
       });
       // Sync HP bars — includes updated limb health so combat health state stays accurate
@@ -969,7 +1028,8 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       updatedAbilities: currentAbilities,
       skillGained,
       beastCreated,
-      eldritchBlastUpgrade
+      eldritchBlastUpgrade,
+      pactBoonUpdate
     });
   } catch (error) {
     console.error('Error leveling up character:', error);

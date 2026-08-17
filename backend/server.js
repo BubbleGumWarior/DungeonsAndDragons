@@ -381,6 +381,7 @@ const startServer = async () => {
         { name: 'addEldritchBlastScaling', fn: require('./migrations/add_eldritch_blast_scaling') },
         { name: 'addWarlockFullProgression', fn: require('./migrations/add_warlock_full_progression') },
         { name: 'addEldritchBlastInvocationVariants', fn: require('./migrations/add_eldritch_blast_invocation_variants') },
+        { name: 'addPactBoonVariants', fn: require('./migrations/add_pact_boon_variants') },
       ];
       
       const failedMigrations = [];

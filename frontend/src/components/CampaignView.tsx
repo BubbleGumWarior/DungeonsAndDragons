@@ -3142,12 +3142,12 @@ const CampaignView: React.FC = () => {
         if (selectedCharacter) {
           loadBeastCompanion(selectedCharacter);
         }
-      } else if (result.eldritchBlastUpgrade) {
-        setToastMessage(`${result.message} ${result.eldritchBlastUpgrade.name} unlocked!`);
-      } else if (result.skillGained) {
-        setToastMessage(`${result.message} Learned: ${result.skillGained.name}`);
       } else {
-        setToastMessage(result.message);
+        const extras: string[] = [];
+        if (result.eldritchBlastUpgrade) extras.push(`${result.eldritchBlastUpgrade.name} unlocked!`);
+        if (result.pactBoonUpdate) extras.push(`${result.pactBoonUpdate.name} unlocked!`);
+        if (extras.length === 0 && result.skillGained) extras.push(`Learned: ${result.skillGained.name}`);
+        setToastMessage(extras.length > 0 ? `${result.message} ${extras.join(' ')}` : result.message);
       }
       setTimeout(() => setToastMessage(null), 5000);
       
@@ -22783,6 +22783,16 @@ const CampaignView: React.FC = () => {
                       <div style={{ fontWeight: 'bold', color: '#38bdf8', marginBottom: '0.5rem' }}>🔮 Eldritch Blast Upgraded</div>
                       <div style={{ color: 'var(--text-secondary)' }}>
                         {levelUpInfo.eldritchBlastUpgrade.name} ({levelUpInfo.eldritchBlastUpgrade.damage_dice} force)
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pact Boon resolved to the specific boon chosen (Warlock) */}
+                  {levelUpInfo.pactBoonUpdate && (
+                    <div style={{ padding: '1rem', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(168, 85, 247, 0.3)' }}>
+                      <div style={{ fontWeight: 'bold', color: '#c084fc', marginBottom: '0.5rem' }}>📖 Pact Boon</div>
+                      <div style={{ color: 'var(--text-secondary)' }}>
+                        {levelUpInfo.pactBoonUpdate.name}
                       </div>
                     </div>
                   )}
