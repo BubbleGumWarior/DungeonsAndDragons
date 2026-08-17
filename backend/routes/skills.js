@@ -363,14 +363,32 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
     const choiceFeaturesResult = await pool.query(`
       SELECT DISTINCT ON (name, choice_type) *
       FROM class_features
-      WHERE class = $1 
-        AND level = $2 
+      WHERE class = $1
+        AND level = $2
         AND is_choice = true
         AND choice_type != 'subclass'
         AND (subclass_id IS NULL OR subclass_id = $3)
       ORDER BY name, choice_type, id
     `, [character.class, newLevel, character.subclass_id]);
-    
+
+    // Every choice already recorded in a past level-up, grouped by choice_type, so the
+    // wizard can grey out options the character already has (e.g. don't re-offer an
+    // invocation they already know). Choice types that are only ever used once (like a
+    // Barbarian's Totem Spirit) simply won't have a prior entry here, so nothing is
+    // excluded for them.
+    const pastChoicesResult = await pool.query(`
+      SELECT cf.choice_type, cfc.choice_name
+      FROM character_feature_choices cfc
+      JOIN class_features cf ON cf.id = cfc.feature_id
+      WHERE cfc.character_id = $1
+    `, [characterId]);
+    const pastChoicesByType = {};
+    for (const row of pastChoicesResult.rows) {
+      if (!row.choice_type) continue;
+      if (!pastChoicesByType[row.choice_type]) pastChoicesByType[row.choice_type] = [];
+      pastChoicesByType[row.choice_type].push(row.choice_name);
+    }
+
     // Check separately for subclass choice at this level
     let availableSubclasses = [];
     const subclassChoiceResult = await pool.query(`
@@ -541,7 +559,8 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       needsSubclass: !!subclassChoice && !character.subclass_id,
       needsBeastSelection,
       availableBeastTypes,
-      eldritchBlastUpgrade
+      eldritchBlastUpgrade,
+      pastChoicesByType
     });
   } catch (error) {
     console.error('Error getting level-up info:', error);

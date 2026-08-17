@@ -300,6 +300,7 @@ export interface LevelUpInfo {
   skillGained: Skill | null;
   needsSubclass: boolean;
   eldritchBlastUpgrade?: Skill | null;
+  pastChoicesByType?: Record<string, string[]>;
 }
 
 export interface FeatureChoice {

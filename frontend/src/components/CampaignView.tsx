@@ -22589,7 +22589,11 @@ const CampaignView: React.FC = () => {
 
                       {feature.choice_type && feature.choice_type !== 'asi_or_feat' && feature.choice_type !== 'subclass' && (() => {
                         const slotCount = Math.max(1, feature.choice_count || 1);
-                        const options = getChoiceOptions(feature.choice_type, feature.description || '');
+                        const allOptions = getChoiceOptions(feature.choice_type, feature.description || '');
+                        // Options already learned in a past level-up of the same choice_type
+                        // (e.g. an invocation already known) shouldn't be offered again.
+                        const alreadyKnown: string[] = (levelUpInfo.pastChoicesByType && levelUpInfo.pastChoicesByType[feature.choice_type]) || [];
+                        const options = allOptions.filter(o => !alreadyKnown.includes(o));
                         const selections = featureChoiceSelections[feature.id] || new Array(slotCount).fill('');
 
                         const applySelection = (slotIndex: number, value: string) => {
@@ -22610,10 +22614,15 @@ const CampaignView: React.FC = () => {
 
                         return (
                           <div style={{ padding: '1rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '0.5rem' }}>
-                            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                            <p style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                               Choose your {feature.choice_type.replace(/_/g, ' ')}{slotCount > 1 ? ` (${slotCount})` : ''}
                             </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            {alreadyKnown.length > 0 && (
+                              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem', fontStyle: 'italic' }}>
+                                Already known: {alreadyKnown.join(', ')}
+                              </p>
+                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: alreadyKnown.length > 0 ? 0 : '0.5rem' }}>
                               {Array.from({ length: slotCount }).map((_, slotIndex) => {
                                 const currentValue = selections[slotIndex] || '';
                                 // Don't let the same option be picked twice across slots for this feature
