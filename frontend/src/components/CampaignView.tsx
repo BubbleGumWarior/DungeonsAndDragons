@@ -3088,16 +3088,34 @@ const CampaignView: React.FC = () => {
     try {
       const info = await skillAPI.getLevelUpInfo(characterId);
       setLevelUpInfo(info);
+
+      // Pre-fill any choice the character already made for this exact level's feature —
+      // happens when a level-up is being redone (e.g. after a Level Down) rather than
+      // done for the first time. Without this the dropdown would just start blank even
+      // though the answer already exists in the DB.
+      const prefillSelections: Record<number, string[]> = {};
+      const prefillFeatureChoices: any[] = [];
+      const currentChoicesByFeatureId: Record<number, string[]> = info.currentChoicesByFeatureId || {};
+      for (const feature of (info.choiceFeatures || [])) {
+        const known = currentChoicesByFeatureId[feature.id];
+        if (known && known.length > 0) {
+          prefillSelections[feature.id] = known;
+          for (const choiceName of known) {
+            prefillFeatureChoices.push({ featureId: feature.id, choiceName, choiceDescription: feature.description });
+          }
+        }
+      }
+
       setLevelUpData({
         hpIncrease: 0,
         hpRolled: null,
         hpChoiceLocked: false,
         subclassId: null,
-        featureChoices: [],
+        featureChoices: prefillFeatureChoices,
         beastSelection: null,
         abilityIncreases: {}
       });
-      setFeatureChoiceSelections({});
+      setFeatureChoiceSelections(prefillSelections);
       setLevelUpStep('hp');
       setShowLevelUpModal(true);
     } catch (error) {

@@ -302,6 +302,7 @@ export interface LevelUpInfo {
   eldritchBlastUpgrade?: Skill | null;
   pactBoonUpdate?: Skill | null;
   pastChoicesByType?: Record<string, string[]>;
+  currentChoicesByFeatureId?: Record<number, string[]>;
 }
 
 export interface FeatureChoice {

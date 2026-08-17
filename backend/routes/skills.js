@@ -410,16 +410,30 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
     // Every choice already recorded in a past level-up, grouped by choice_type, so the
     // wizard can grey out options the character already has (e.g. don't re-offer an
     // invocation they already know). Choice types that are only ever used once (like a
-    // Barbarian's Totem Spirit) simply won't have a prior entry here, so nothing is
-    // excluded for them.
+    // Barbarian's Totem Spirit or a Warlock's Pact Boon) simply won't have a prior entry
+    // here in the normal case, so nothing is excluded for them.
+    //
+    // Important exception: if a past answer belongs to the SAME feature being shown right
+    // now (e.g. the player leveled down and back up, revisiting the exact Pact Boon Choice
+    // or a specific level's Invocation Choice a second time), that's not "a different past
+    // pick" to exclude — it's their current answer to this same question, and must stay
+    // selectable. Those are pulled out into currentChoicesByFeatureId instead, so the
+    // wizard can pre-fill the dropdown with it rather than block it.
+    const currentFeatureIds = new Set(choiceFeaturesResult.rows.map(f => f.id));
     const pastChoicesResult = await pool.query(`
-      SELECT cf.choice_type, cfc.choice_name
+      SELECT cf.id AS feature_id, cf.choice_type, cfc.choice_name
       FROM character_feature_choices cfc
       JOIN class_features cf ON cf.id = cfc.feature_id
       WHERE cfc.character_id = $1
     `, [characterId]);
     const pastChoicesByType = {};
+    const currentChoicesByFeatureId = {};
     for (const row of pastChoicesResult.rows) {
+      if (currentFeatureIds.has(row.feature_id)) {
+        if (!currentChoicesByFeatureId[row.feature_id]) currentChoicesByFeatureId[row.feature_id] = [];
+        currentChoicesByFeatureId[row.feature_id].push(row.choice_name);
+        continue;
+      }
       if (!row.choice_type) continue;
       if (!pastChoicesByType[row.choice_type]) pastChoicesByType[row.choice_type] = [];
       pastChoicesByType[row.choice_type].push(row.choice_name);
@@ -599,7 +613,8 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       availableBeastTypes,
       eldritchBlastUpgrade,
       pactBoonUpdate,
-      pastChoicesByType
+      pastChoicesByType,
+      currentChoicesByFeatureId
     });
   } catch (error) {
     console.error('Error getting level-up info:', error);
