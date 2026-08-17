@@ -65,6 +65,16 @@ const VEG_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
   { type: 'farm',           rate: 2.0,  capacity: 20 },
   { type: 'granary',        rate: 2.0,  capacity: 20 },
 ];
+// Must stay in sync with Campaign.TAVERN_BUILDING_CHAIN on the backend.
+const TAVERN_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
+  { type: 'legendary_tavern', rate: 3.2, capacity: 20 },
+  { type: 'royal_tavern',     rate: 3.0, capacity: 20 },
+  { type: 'golden_cup_hall',  rate: 2.8, capacity: 20 },
+  { type: 'merchants_rest',   rate: 2.6, capacity: 20 },
+  { type: 'grand_tavern',     rate: 2.4, capacity: 20 },
+  { type: 'roadside_inn',     rate: 2.2, capacity: 20 },
+  { type: 'tavern',           rate: 2.0, capacity: 20 },
+];
 // Distribute workers into highest-tier building slots first.
 // For meat chains, returns total meat/day from workers.
 // For veg chains, returns effective worker-days (multiplied by tier rate).
@@ -138,6 +148,13 @@ const STABILITY_CAPACITY_BY_TYPE: Record<string, number> = {
   pantheon_spire: 95,
   council_hall: 35,
   diplomatic_office: 60,
+  tavern: 10,
+  roadside_inn: 15,
+  grand_tavern: 20,
+  merchants_rest: 25,
+  golden_cup_hall: 30,
+  royal_tavern: 35,
+  legendary_tavern: 40,
 };
 const UNREST_BASELINE_POPULATION_PER_TIER = 40;
 const UNREST_STABILITY_POPULATION_PER_CAPACITY_POINT = 2;
@@ -304,8 +321,8 @@ const RESEARCH_BUILDING_CHAIN = ['research_lab', 'research_lab_advanced', 'appli
 const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'civic'] as const;
 type BuildTabId = typeof BUILD_TABS[number];
 
-const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'research', 'faith'];
-const SLAVE_RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone'];
+const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'tavern', 'research', 'faith'];
+const SLAVE_RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables'];
 
 const sortByCanonicalOrder = (keys: string[], order: string[]) =>
   [...keys].sort((a, b) => {
@@ -985,7 +1002,7 @@ const KingdomTab: React.FC<Props> = ({
 
     // Resources that require an explicit unlock (building must be built before the lane is visible).
     // These start as undefined in older fiefs, so we can't rely on !== false — require === true.
-    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold']);
+    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold', 'tavern']);
     return keys
       .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
       .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] || 10)) }));
@@ -1001,7 +1018,7 @@ const KingdomTab: React.FC<Props> = ({
       : SLAVE_RESOURCE_CANONICAL_ORDER;
     const keys = sortByCanonicalOrder(rawKeys, SLAVE_RESOURCE_CANONICAL_ORDER);
 
-    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold']);
+    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold', 'tavern']);
     return keys
       .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
       .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] || 10)) }));
@@ -1182,6 +1199,7 @@ const KingdomTab: React.FC<Props> = ({
       research: 0,
       faith: 0,
       building: 0,
+      tavern: 0,
     };
     if (!fiefDetails) {
       return {
@@ -1244,6 +1262,8 @@ const KingdomTab: React.FC<Props> = ({
     const workersGold = Math.max(0, Number(assignments.gold || 0));
     const workersResearch = Math.max(0, Number(assignments.research || 0));
     const workersFaith = Math.max(0, Number(assignments.faith || 0));
+    // Tavern lane is citizen-only — no slave counterpart is read here by design.
+    const workersTavern = Math.max(0, Number(assignments.tavern || 0));
 
     const slaveMeat = Math.max(0, Number(slaveAssignments.meat || 0));
     const slaveWood = Math.max(0, Number(slaveAssignments.wood || 0));
@@ -1251,6 +1271,7 @@ const KingdomTab: React.FC<Props> = ({
     const slaveIron = Math.max(0, Number(slaveAssignments.iron || 0));
     const slaveGold = Math.max(0, Number(slaveAssignments.gold || 0));
     const slaveBuilding = Math.max(0, Number(slaveAssignments.building || 0));
+    const slaveVegetables = Math.max(0, Number(slaveAssignments.vegetables || 0));
 
     // Use server-tracked vegetable phase state to show accurate cycle behavior.
     const harvestState = (fiefDetails?.vegetable_harvest_state || {
@@ -1283,7 +1304,7 @@ const KingdomTab: React.FC<Props> = ({
       ? (vegetablesFromWorkers * Math.max(0, VEGETABLE_HARVEST_DAYS - vegetableDayInPhase))
       : (
           computeTieredWorkerOutput(
-            vegetablePhase === 'assigning' ? workersVegetables : lockedVegetableWorkers,
+            vegetablePhase === 'assigning' ? (workersVegetables + slaveVegetables) : lockedVegetableWorkers,
             completedBuildings,
             VEG_BUILDING_CHAIN
           )
@@ -1296,10 +1317,12 @@ const KingdomTab: React.FC<Props> = ({
 
     let vegetables = vegetablesFromWorkers;
     let meat = computeTieredWorkerOutput(workersMeat + slaveMeat, completedBuildings, MEAT_BUILDING_CHAIN) * tierWorkerYieldMultiplier * hunterResearchMultiplier;
+    // Tavern lane: citizen-only, tiered per-worker gold rate (see TAVERN_BUILDING_CHAIN).
+    const tavernGold = computeTieredWorkerOutput(workersTavern, completedBuildings, TAVERN_BUILDING_CHAIN) * tierWorkerYieldMultiplier;
     output.wood += (workersWood + slaveWood) * tierWorkerYieldMultiplier;
     output.stone += (workersStone + slaveStone) * tierWorkerYieldMultiplier;
     output.iron += (workersIron + slaveIron + (workersMinerals * 0.5)) * tierWorkerYieldMultiplier;
-    output.gold += (workersGold + slaveGold) * tierWorkerYieldMultiplier;
+    output.gold += (workersGold + slaveGold) * tierWorkerYieldMultiplier + tavernGold;
     output.research += workersResearch;
     output.faith += (workersFaith * 0.5) * tierWorkerYieldMultiplier;
     const buildersHutCount = completedBuildings.filter((b: any) => String(b?.building_type || '') === 'builders_hut').length;
@@ -1331,6 +1354,8 @@ const KingdomTab: React.FC<Props> = ({
     output.stone = applyLegendaryBonus('stone', applyAllModifiers('stone', output.stone));
     output.iron = applyLegendaryBonus('iron', applyAllModifiers('iron', output.iron));
     output.gold = applyLegendaryBonus('gold', applyAllModifiers('gold', output.gold));
+    // Tavern's own gold, shown separately in its worker-table row (already folded into output.gold above).
+    output.tavern = applyLegendaryBonus('gold', applyAllModifiers('gold', tavernGold));
     output.faith = applyLegendaryBonus('faith', applyAllModifiers('faith', output.faith));
     output.research = applyLegendaryBonus('research', applyAllModifiers('research', output.research));
     output.building = applyLegendaryBonus('building', applyAllModifiers('building', output.building));
@@ -3159,7 +3184,7 @@ const KingdomTab: React.FC<Props> = ({
                       </div>
                       {unrestTarget > currentUnrest && (
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '0.2rem', fontStyle: 'italic' }}>
-                          Rising toward {unrestTarget.toFixed(0)} — build Guard Post→Barracks→Shield Hall, the Faith Temple chain, or Council Hall/Diplomatic Office to raise civic capacity.
+                          Rising toward {unrestTarget.toFixed(0)} — build Guard Post→Barracks→Shield Hall, the Faith Temple chain, Council Hall/Diplomatic Office, or a Tavern to raise civic capacity.
                         </div>
                       )}
                     </div>
@@ -3176,14 +3201,16 @@ const KingdomTab: React.FC<Props> = ({
               {(() => {
                 const showSlaves = hasPrisonInfrastructure || slaves > 0 || totalSlaveAssigned > 0;
                 const renderModifier = (key: string) => {
-                  const RESOURCE_KEYS = ['vegetables', 'meat', 'wood', 'stone', 'iron', 'minerals', 'faith', 'research', 'gold'];
+                  const RESOURCE_KEYS = ['vegetables', 'meat', 'wood', 'stone', 'iron', 'minerals', 'faith', 'research', 'gold', 'tavern'];
                   const badges: React.ReactNode[] = [];
+                  // Tavern gold rides on the same terrain/season/legendary gold modifiers.
+                  const modifierKey = key === 'tavern' ? 'gold' : key;
 
                   // Location modifier badge (amber) — all keys
                   const locationMods = (fiefDetails?.location_modifiers && typeof fiefDetails.location_modifiers === 'object')
                     ? fiefDetails.location_modifiers as Record<string, number>
                     : {};
-                  const locationMod = Number(locationMods[key] || 0);
+                  const locationMod = Number(locationMods[modifierKey] || 0);
                   if (locationMod !== 0) {
                     const locPct = Math.round(Math.abs(locationMod) * 100);
                     const locColor = locationMod > 0 ? '#f59e0b' : '#f87171';
@@ -3207,7 +3234,7 @@ const KingdomTab: React.FC<Props> = ({
                     // Seasonal badge (green/red) — resource keys only
                     const season = currentSeason || getSeasonForDay(currentCampaignDay);
                     const effects = (currentSeasonEffects && typeof currentSeasonEffects === 'object') ? currentSeasonEffects : getSeasonEffects(season);
-                    const displayKey = key === 'iron' ? 'minerals' : key;
+                    const displayKey = modifierKey === 'iron' ? 'minerals' : modifierKey;
                     const resourceModifier = effects[displayKey] || 0;
                     if (resourceModifier !== 0) {
                       const isBonus = resourceModifier > 0;
@@ -3232,7 +3259,7 @@ const KingdomTab: React.FC<Props> = ({
                     faith: 'faith_bonus_pct',
                     building: 'building_bonus_pct',
                   };
-                  const legendaryBonusKey = legendaryBonusByResource[key];
+                  const legendaryBonusKey = legendaryBonusByResource[modifierKey];
                   const legendaryPct = legendaryBonusKey ? Number(fiefLegendaryBonuses[legendaryBonusKey] || 0) : 0;
                   if (legendaryPct !== 0) {
                     badges.push(

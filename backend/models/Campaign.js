@@ -12,6 +12,8 @@ class Campaign {
     gold: ['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum'],
     research: ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'],
     faith: ['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'],
+    // Tavern lane is citizen-only — never merged with slaveWorkerAssignments in advanceDays.
+    tavern: ['tavern', 'roadside_inn', 'grand_tavern', 'merchants_rest', 'golden_cup_hall', 'royal_tavern', 'legendary_tavern'],
   };
 
   static LOGISTICS_BUILDING_TYPES = [
@@ -44,7 +46,36 @@ class Campaign {
     // Governance chain — administration and civic order
     council_hall: 35,
     diplomatic_office: 60,
+    // Tavern chain — public morale keeps the peace
+    tavern: 10,
+    roadside_inn: 15,
+    grand_tavern: 20,
+    merchants_rest: 25,
+    golden_cup_hall: 30,
+    royal_tavern: 35,
+    legendary_tavern: 40,
   };
+
+  // Tavern chain also lifts daily population growth (birth chance), on top of
+  // any legendary population_growth_bonus_pct. Stacks additively per building.
+  static TAVERN_POPULATION_GROWTH_BONUS_PCT_BY_TYPE = {
+    tavern: 3,
+    roadside_inn: 4,
+    grand_tavern: 5,
+    merchants_rest: 6,
+    golden_cup_hall: 7,
+    royal_tavern: 8,
+    legendary_tavern: 10,
+  };
+
+  static getPopulationGrowthBonusPct(completedBuildings) {
+    let pct = 0;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      pct += Campaign.TAVERN_POPULATION_GROWTH_BONUS_PCT_BY_TYPE[type] || 0;
+    }
+    return pct;
+  }
 
   // Baseline population a fief's own tier of authority can keep orderly
   // before civic buildings are needed at all.
@@ -171,6 +202,19 @@ class Campaign {
     { type: 'nutrient_reserve_hall',   rate: 1.0,  capacity: 20 },
     { type: 'strategic_food_vault',    rate: 1.0,  capacity: 20 },
     { type: 'eternal_harvest_vault',   rate: 1.0,  capacity: 20 },
+  ];
+
+  // Tiered per-worker gold rates for the Tavern chain. Unlike the Trade Post
+  // chain (flat 1 gold/worker forever), each tavern tier raises gold/worker —
+  // this chain is the whole point of the building.
+  static TAVERN_BUILDING_CHAIN = [
+    { type: 'legendary_tavern', rate: 3.2, capacity: 20 },
+    { type: 'royal_tavern',     rate: 3.0, capacity: 20 },
+    { type: 'golden_cup_hall',  rate: 2.8, capacity: 20 },
+    { type: 'merchants_rest',   rate: 2.6, capacity: 20 },
+    { type: 'grand_tavern',     rate: 2.4, capacity: 20 },
+    { type: 'roadside_inn',     rate: 2.2, capacity: 20 },
+    { type: 'tavern',           rate: 2.0, capacity: 20 },
   ];
 
   static getProductionConfig() {
@@ -798,6 +842,9 @@ class Campaign {
     output.stone += Number(workers.stone || 0) * tierWorkerYieldMultiplier;
     output.minerals += (Number(workers.iron || 0) + (Number(workers.minerals || 0) * 0.5)) * tierWorkerYieldMultiplier;
     output.gold += Number(workers.gold || 0) * tierWorkerYieldMultiplier;
+    // Tavern lane: citizen-only, tiered per-worker gold rate (see TAVERN_BUILDING_CHAIN).
+    const tavernWorkers = Number(workers.tavern || 0);
+    output.gold += Campaign.computeTieredWorkerOutput(tavernWorkers, completedBuildings, Campaign.TAVERN_BUILDING_CHAIN) * tierWorkerYieldMultiplier;
     output.faith += (Number(workers.faith || 0) * 0.5) * tierWorkerYieldMultiplier;
     output.research += Number(workers.research || 0) * tierWorkerYieldMultiplier;
 
@@ -1400,7 +1447,8 @@ class Campaign {
           const vegetableResearchMultiplier = Campaign.getResearchWorkerYieldMultiplier(fief.completedResearch, 'vegetables');
           if (hasVegetableHarvestStateColumn) {
             const state = Campaign.normalizeVegetableHarvestState(fief.vegetableHarvestState);
-            const currentAssignedVegetableWorkers = Math.max(0, Math.floor(Number((fief.workerAssignments || {}).vegetables || 0)));
+            const currentAssignedVegetableWorkers = Math.max(0, Math.floor(Number((fief.workerAssignments || {}).vegetables || 0)))
+              + Math.max(0, Math.floor(Number((fief.slaveWorkerAssignments || {}).vegetables || 0)));
 
             // Keep farming idle until a fief actually has vegetable workers assigned.
             // Also recover from stale locked phases that have no locked workers.
@@ -1623,7 +1671,8 @@ class Campaign {
           const foodProducedToday = Math.max(0, Number(capacityApplied.applied.food || 0));
           const season = Campaign.getSeasonForDay(dayNumber);
           // Negative values are intentional debuffs and reduce birth chance instead of boosting it.
-          const populationGrowthBonusPct = Number(legendaryBonuses.population_growth_bonus_pct || 0);
+          const populationGrowthBonusPct = Number(legendaryBonuses.population_growth_bonus_pct || 0)
+            + Campaign.getPopulationGrowthBonusPct(completed);
           const birthChanceMultiplier = Math.max(0, Campaign.getBirthChanceMultiplier(foodProducedToday, adjustedDailyFoodNeeded, starvationDeaths, season)
             * (1 + (populationGrowthBonusPct / 100)));
           const birthsToday = Campaign.sampleBirths(assignableAdults, populationConfig.dailyBirthChance * birthChanceMultiplier);

@@ -1693,6 +1693,55 @@ Object.assign(BUILDING_CATALOG, {
     prerequisites: [{ type: 'transcendent_research_complex', minCount: 1 }],
   },
 
+  // ── Tavern tiers 4-10 (new) ──────────────────────────────────────────────
+  // Unlocks the tavern worker lane (+20 cap per building). Tavern workers are
+  // citizens only — this lane is deliberately excluded from slave labor.
+  // Each tier raises gold/worker above what the Trade Post chain ever reaches
+  // (flat 1 gold/worker), and completed tavern buildings both lower a fief's
+  // unrest target (civic stability) and raise its daily population growth.
+  tavern: {
+    key: 'tavern', name: 'Tavern',
+    description: 'Unlocks the tavern worker lane (+20 cap). Tavern keepers generate +2.0 gold/worker/day — well above a Trade Post\'s flat rate — and the crowd raises morale: -10 to the unrest target and +3% population growth. Citizens only; slaves cannot be assigned here. Passively produces +2 gold/day.',
+    tierRequired: 4, cost: { wood: 30, stone: 20, iron: 10 }, days: 5, resourceOutput: { gold: 2 },
+    prerequisites: [{ type: 'housing', minCount: 4 }, { type: 'storage', minCount: 2 }],
+  },
+  roadside_inn: {
+    key: 'roadside_inn', name: 'Roadside Inn',
+    description: 'Raises the tavern worker cap by +20. Tavern keepers here generate +2.2 gold/worker/day. -15 to the unrest target and +4% population growth. Passively produces +2 gold/day.',
+    tierRequired: 5, cost: { wood: 38, stone: 28, iron: 14 }, days: 6, resourceOutput: { gold: 2 },
+    prerequisites: [{ type: 'tavern', minCount: 1 }],
+  },
+  grand_tavern: {
+    key: 'grand_tavern', name: 'Grand Tavern',
+    description: 'Raises the tavern worker cap by +20. Tavern keepers here generate +2.4 gold/worker/day. -20 to the unrest target and +5% population growth. Passively produces +3 gold/day.',
+    tierRequired: 6, cost: { wood: 46, stone: 36, iron: 18 }, days: 7, resourceOutput: { gold: 3 },
+    prerequisites: [{ type: 'roadside_inn', minCount: 1 }],
+  },
+  merchants_rest: {
+    key: 'merchants_rest', name: "Merchant's Rest",
+    description: 'Raises the tavern worker cap by +20. Tavern keepers here generate +2.6 gold/worker/day. -25 to the unrest target and +6% population growth. Passively produces +3 gold/day.',
+    tierRequired: 7, cost: { wood: 54, stone: 44, iron: 22 }, days: 8, resourceOutput: { gold: 3 },
+    prerequisites: [{ type: 'grand_tavern', minCount: 1 }],
+  },
+  golden_cup_hall: {
+    key: 'golden_cup_hall', name: 'Golden Cup Hall',
+    description: 'Raises the tavern worker cap by +20. Tavern keepers here generate +2.8 gold/worker/day. -30 to the unrest target and +7% population growth. Passively produces +4 gold/day.',
+    tierRequired: 8, cost: { wood: 62, stone: 52, iron: 26 }, days: 9, resourceOutput: { gold: 4 },
+    prerequisites: [{ type: 'merchants_rest', minCount: 1 }],
+  },
+  royal_tavern: {
+    key: 'royal_tavern', name: 'Royal Tavern',
+    description: 'Raises the tavern worker cap by +20. Tavern keepers here generate +3.0 gold/worker/day. -35 to the unrest target and +8% population growth. Passively produces +4 gold/day.',
+    tierRequired: 9, cost: { wood: 70, stone: 60, iron: 32 }, days: 10, resourceOutput: { gold: 4 },
+    prerequisites: [{ type: 'golden_cup_hall', minCount: 1 }],
+  },
+  legendary_tavern: {
+    key: 'legendary_tavern', name: 'Legendary Tavern',
+    description: 'Raises the tavern worker cap by +20. Tavern keepers here generate +3.2 gold/worker/day — the best gold-per-worker throughput available. -40 to the unrest target and +10% population growth. Passively produces +5 gold/day.',
+    tierRequired: 10, cost: { wood: 80, stone: 68, iron: 38 }, days: 11, resourceOutput: { gold: 5 },
+    prerequisites: [{ type: 'royal_tavern', minCount: 1 }],
+  },
+
   // ── Granary tiers 3-10 (matches BUILDING_TIER_MATRIX.md) ───────────────────
   reinforced_granary: {
     key: 'reinforced_granary', name: 'Reinforced Granary',
@@ -2116,6 +2165,13 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   engineers_lodge: { researchRequired: null, upgradedBuilding: 'construction_guildhall', tier3: 'construction_guildhall' },
   construction_guildhall: { researchRequired: null, upgradedBuilding: 'master_builder_hall', tier3: 'master_builder_hall' },
   master_builder_hall: { researchRequired: null, upgradedBuilding: 'grand_architect_hall', tier3: 'grand_architect_hall' },
+
+  tavern: { researchRequired: null, upgradedBuilding: 'roadside_inn', tier3: 'roadside_inn' },
+  roadside_inn: { researchRequired: null, upgradedBuilding: 'grand_tavern', tier3: 'grand_tavern' },
+  grand_tavern: { researchRequired: null, upgradedBuilding: 'merchants_rest', tier3: 'merchants_rest' },
+  merchants_rest: { researchRequired: null, upgradedBuilding: 'golden_cup_hall', tier3: 'golden_cup_hall' },
+  golden_cup_hall: { researchRequired: null, upgradedBuilding: 'royal_tavern', tier3: 'royal_tavern' },
+  royal_tavern: { researchRequired: null, upgradedBuilding: 'legendary_tavern', tier3: 'legendary_tavern' },
 });
 
 const UPGRADE_ONLY_BUILDING_TYPES = new Set([
@@ -2160,6 +2216,7 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'training_grounds', 'elite_drill_grounds', 'veteran_training_grounds', 'war_college',
   'war_room', 'strategic_command', 'advanced_command_center', 'high_command_citadel',
   'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall',
+  'roadside_inn', 'grand_tavern', 'merchants_rest', 'golden_cup_hall', 'royal_tavern', 'legendary_tavern',
 ].forEach((type) => UPGRADE_ONLY_BUILDING_TYPES.add(type));
 
 // All building types that are the destination of any upgrade path.
@@ -2208,6 +2265,8 @@ const normalizeWorkerAssignments = (value) => {
     research: Math.max(0, getNumber(source.research)),
     faith: Math.max(0, getNumber(source.faith)),
     building: Math.max(0, getNumber(source.building)),
+    // Tavern lane is citizen-only — never added to normalizeSlaveWorkerAssignments.
+    tavern: Math.max(0, getNumber(source.tavern)),
   };
 
   const legacyFood = Math.max(0, getNumber(source.food));
@@ -2223,6 +2282,7 @@ const normalizeSlaveWorkerAssignments = (value) => {
     wood: Math.max(0, getNumber(source.wood)),
     stone: Math.max(0, getNumber(source.stone)),
     iron: Math.max(0, getNumber(source.iron)),
+    vegetables: Math.max(0, getNumber(source.vegetables)),
     building: Math.max(0, getNumber(source.building)),
   };
 };
@@ -2251,6 +2311,8 @@ const WORKER_CAP_BUILDING_MAP = {
   gold: ['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum'],
   research: ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'],
   faith: ['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'],
+  // Tavern lane is citizen-only — deliberately absent from normalizeSlaveWorkerAssignments.
+  tavern: ['tavern', 'roadside_inn', 'grand_tavern', 'merchants_rest', 'golden_cup_hall', 'royal_tavern', 'legendary_tavern'],
 };
 
 const applyBuildingBasedWorkerCaps = (unlockedResources, maxWorkersPerResource, completedBuildings) => {
@@ -3943,9 +4005,26 @@ router.patch('/fiefs/:id/slave-workers', authenticateToken, async (req, res) => 
       ? owned.max_workers_per_resource
       : {};
 
+    const normalizedSlaveInput = normalizeSlaveWorkerAssignments(assignments);
+    const rawVegetableState = (owned.vegetable_harvest_state && typeof owned.vegetable_harvest_state === 'object')
+      ? owned.vegetable_harvest_state
+      : { phase: 'assigning', day_in_phase: 0, locked_workers: 0, day_in_cycle: 0, accumulated_worker_days: 0 };
+    const vegetablePhase = String(rawVegetableState.phase || '').toLowerCase();
+    const currentSlaveVegetableWorkers = Math.max(0, Math.floor(Number((owned.slave_worker_assignments || {}).vegetables || 0)));
+    const lockedVegetableWorkers = Math.max(0, Math.floor(Number(rawVegetableState.locked_workers || 0)));
+    const effectiveVegetablePhase = (vegetablePhase && vegetablePhase !== 'assigning' && lockedVegetableWorkers <= 0)
+      ? 'assigning'
+      : (vegetablePhase || 'assigning');
+    if (effectiveVegetablePhase !== 'assigning') {
+      const requestedSlaveVegetableWorkers = Math.max(0, Math.floor(Number(normalizedSlaveInput.vegetables || 0)));
+      if (requestedSlaveVegetableWorkers !== currentSlaveVegetableWorkers) {
+        return res.status(400).json({ error: 'Vegetable workers are locked for the current farming phase and cannot be changed yet' });
+      }
+    }
+
     const normalized = {};
     let totalAssigned = 0;
-    for (const [resource, value] of Object.entries(normalizeSlaveWorkerAssignments(assignments))) {
+    for (const [resource, value] of Object.entries(normalizedSlaveInput)) {
       const num = Math.max(0, Math.floor(Number(value) || 0));
       const maxForLane = Number(maxByResource[resource]);
       normalized[resource] = Number.isFinite(maxForLane) ? Math.min(num, Math.max(0, maxForLane)) : num;
