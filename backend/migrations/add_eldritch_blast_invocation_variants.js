@@ -33,9 +33,11 @@ const addEldritchBlastInvocationVariants = async () => {
       return desc;
     };
 
+    // skills.damage_dice is VARCHAR(20) — keep this compact (the full "+ your Charisma
+    // modifier per beam" explanation lives in the description instead).
     const buildDamageDice = (beams, agonizing) => {
       const base = `${beams}d10`;
-      return agonizing ? `${base} + CHA mod per beam` : base;
+      return agonizing ? `${base}+CHA` : base;
     };
 
     let count = 0;
