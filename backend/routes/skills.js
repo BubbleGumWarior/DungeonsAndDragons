@@ -8,14 +8,62 @@ const addShadowSovereignSkills = require('../migrations/add_shadow_sovereign_ski
 const addCharlatanSkills = require('../migrations/add_charlatan_skills');
 const addOrderClericDomain = require('../migrations/add_order_cleric_domain');
 
-// Levels at which a Warlock's Eldritch Blast cantrip gains an additional beam (RAW 5e:
-// 2 beams at 5th, 3 at 11th, 4 at 17th). Used to swap the character's Eldritch Blast
-// skill for the correct beam-count tier as they level up — see add_eldritch_blast_scaling.js.
-const ELDRITCH_BLAST_TIERS = {
-  5: 'Eldritch Blast (2 Beams)',
-  11: 'Eldritch Blast (3 Beams)',
-  17: 'Eldritch Blast (4 Beams)'
-};
+// Warlock Eldritch Blast is a single cantrip whose skill card must reflect both its
+// beam count (grows automatically with level — RAW 5e: 2 beams at 5th, 3 at 11th, 4 at
+// 17th) and any invocations the player has taken that specifically rewrite it (Agonizing
+// Blast adds CHA mod to each beam, Repelling Blast lets hits push 10 ft). Rather than
+// granting those invocations as separate flavor skills, we compute the exact combined
+// variant and swap the character's Eldritch Blast skill for it — see
+// add_eldritch_blast_scaling.js and add_eldritch_blast_invocation_variants.js for the
+// underlying skill rows (one per beam-count × Agonizing × Repelling combination).
+function eldritchBlastBeamsForLevel(level) {
+  if (level >= 17) return 4;
+  if (level >= 11) return 3;
+  if (level >= 5) return 2;
+  return 1;
+}
+
+function eldritchBlastSkillName(beams, agonizing, repelling) {
+  const parts = [];
+  if (beams > 1) parts.push(`${beams} Beams`);
+  if (agonizing) parts.push('Agonizing');
+  if (repelling) parts.push('Repelling');
+  if (parts.length === 0) return 'Eldritch Blast';
+  return `Eldritch Blast (${parts.join(', ')})`;
+}
+
+// Figures out what the character's Eldritch Blast skill SHOULD be at `level`, based on
+// their persisted invocation picks (character_feature_choices). Returns null if they
+// don't currently have any Eldritch Blast variant (never took the cantrip) or if the
+// computed variant is unchanged from what they already have.
+async function computeEldritchBlastUpdate(characterId, level) {
+  const currentResult = await pool.query(`
+    SELECT s.id, s.name
+    FROM character_skills cs
+    JOIN skills s ON cs.skill_id = s.id
+    WHERE cs.character_id = $1 AND s.name LIKE 'Eldritch Blast%'
+    LIMIT 1
+  `, [characterId]);
+
+  if (currentResult.rows.length === 0) return null; // never took Eldritch Blast — don't invent it
+  const currentName = currentResult.rows[0].name;
+
+  const invocationResult = await pool.query(`
+    SELECT DISTINCT choice_name FROM character_feature_choices
+    WHERE character_id = $1 AND choice_name IN ('Agonizing Blast', 'Repelling Blast')
+  `, [characterId]);
+  const picked = new Set(invocationResult.rows.map(r => r.choice_name));
+
+  const beams = eldritchBlastBeamsForLevel(level);
+  const targetName = eldritchBlastSkillName(beams, picked.has('Agonizing Blast'), picked.has('Repelling Blast'));
+
+  if (targetName === currentName) return null; // already correct, nothing to do
+
+  const targetResult = await pool.query(`SELECT * FROM skills WHERE name = $1`, [targetName]);
+  if (targetResult.rows.length === 0) return null; // data gap — fail quiet rather than break level-up
+
+  return targetResult.rows[0];
+}
 
 // Get all available skills
 router.get('/', authenticateToken, async (req, res) => {
@@ -470,15 +518,13 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       }
     }
     
-    // Preview an Eldritch Blast beam upgrade (Warlock only, levels 5/11/17)
+    // Preview an Eldritch Blast change (Warlock only) based on beam count at this level
+    // and invocations already picked in previous level-ups. Won't reflect an invocation
+    // being picked in this same level-up session — that's only known once they submit —
+    // but the post-commit response covers that case.
     let eldritchBlastUpgrade = null;
-    if (character.class === 'Warlock' && ELDRITCH_BLAST_TIERS[newLevel]) {
-      const tierResult = await pool.query(`
-        SELECT * FROM skills WHERE name = $1
-      `, [ELDRITCH_BLAST_TIERS[newLevel]]);
-      if (tierResult.rows.length > 0) {
-        eldritchBlastUpgrade = tierResult.rows[0];
-      }
+    if (character.class === 'Warlock') {
+      eldritchBlastUpgrade = await computeEldritchBlastUpdate(characterId, newLevel);
     }
 
     res.json({
@@ -754,17 +800,15 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       }
     }
     
-    // Warlock Eldritch Blast beam upgrade — replaces the character's current Eldritch Blast
-    // skill entry with the correct beam-count tier at 5th/11th/17th level (see ELDRITCH_BLAST_TIERS).
+    // Warlock Eldritch Blast — replaces the character's current Eldritch Blast skill entry
+    // with the exact variant matching their new beam count AND any Agonizing Blast /
+    // Repelling Blast invocation already recorded (including one picked this level-up,
+    // since featureChoices were saved above already). See computeEldritchBlastUpdate.
     let eldritchBlastUpgrade = null;
-    if (character.class === 'Warlock' && ELDRITCH_BLAST_TIERS[newLevel]) {
-      const tierResult = await pool.query(`
-        SELECT * FROM skills WHERE name = $1
-      `, [ELDRITCH_BLAST_TIERS[newLevel]]);
-
-      if (tierResult.rows.length > 0) {
-        const newTier = tierResult.rows[0];
-        // Drop whichever Eldritch Blast tier the character currently has, then grant the new one
+    if (character.class === 'Warlock') {
+      eldritchBlastUpgrade = await computeEldritchBlastUpdate(characterId, newLevel);
+      if (eldritchBlastUpgrade) {
+        // Drop whichever Eldritch Blast variant the character currently has, then grant the new one
         await pool.query(`
           DELETE FROM character_skills
           WHERE character_id = $1
@@ -774,8 +818,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
           INSERT INTO character_skills (character_id, skill_id)
           VALUES ($1, $2)
           ON CONFLICT (character_id, skill_id) DO NOTHING
-        `, [characterId, newTier.id]);
-        eldritchBlastUpgrade = newTier;
+        `, [characterId, eldritchBlastUpgrade.id]);
       }
     }
 
