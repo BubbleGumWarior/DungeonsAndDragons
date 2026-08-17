@@ -299,6 +299,7 @@ export interface LevelUpInfo {
   availableSubclasses: Subclass[];
   skillGained: Skill | null;
   needsSubclass: boolean;
+  eldritchBlastUpgrade?: Skill | null;
 }
 
 export interface FeatureChoice {
@@ -1014,6 +1015,13 @@ export const skillAPI = {
     const response = await api.post(`/skills/grant-exp/${campaignId}`, {
       characterIds,
       expAmount
+    });
+    return response.data;
+  },
+
+  levelDown: async (campaignId: number, characterIds: number[]): Promise<any> => {
+    const response = await api.post(`/skills/level-down/${campaignId}`, {
+      characterIds
     });
     return response.data;
   },

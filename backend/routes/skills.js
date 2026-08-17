@@ -8,6 +8,15 @@ const addShadowSovereignSkills = require('../migrations/add_shadow_sovereign_ski
 const addCharlatanSkills = require('../migrations/add_charlatan_skills');
 const addOrderClericDomain = require('../migrations/add_order_cleric_domain');
 
+// Levels at which a Warlock's Eldritch Blast cantrip gains an additional beam (RAW 5e:
+// 2 beams at 5th, 3 at 11th, 4 at 17th). Used to swap the character's Eldritch Blast
+// skill for the correct beam-count tier as they level up — see add_eldritch_blast_scaling.js.
+const ELDRITCH_BLAST_TIERS = {
+  5: 'Eldritch Blast (2 Beams)',
+  11: 'Eldritch Blast (3 Beams)',
+  17: 'Eldritch Blast (4 Beams)'
+};
+
 // Get all available skills
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -192,6 +201,53 @@ router.post('/grant-exp/:campaignId', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error granting experience:', error);
     res.status(500).json({ error: 'Failed to grant experience' });
+  }
+});
+
+// Level down characters by 1 (DM only). Only touches level and experience_points —
+// HP, skills, subclasses, beasts, etc. are left untouched and must be fixed up manually.
+router.post('/level-down/:campaignId', authenticateToken, async (req, res) => {
+  try {
+    // Verify user is DM
+    if (req.user.role !== 'Dungeon Master') {
+      return res.status(403).json({ error: 'Only Dungeon Masters can level down characters' });
+    }
+
+    const { campaignId } = req.params;
+    const { characterIds } = req.body;
+
+    if (!Array.isArray(characterIds) || characterIds.length === 0) {
+      return res.status(400).json({ error: 'No characters selected' });
+    }
+
+    // Floor at level 1, reset EXP to 0 so the level bar starts clean at the lower level
+    const result = await pool.query(`
+      UPDATE characters
+      SET level = GREATEST(level - 1, 1),
+          experience_points = 0,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ANY($1) AND campaign_id = $2
+      RETURNING id, name, level, experience_points
+    `, [characterIds, campaignId]);
+
+    // Emit socket event for real-time updates
+    if (req.io) {
+      req.io.to(`campaign_${campaignId}`).emit('characterLeveledDown', {
+        campaignId: parseInt(campaignId),
+        characters: result.rows,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.warn('⚠️ Socket.io not available for level-down emission');
+    }
+
+    res.json({
+      message: `Leveled down ${result.rows.length} character(s)`,
+      characters: result.rows
+    });
+  } catch (error) {
+    console.error('Error leveling down characters:', error);
+    res.status(500).json({ error: 'Failed to level down characters' });
   }
 });
 
@@ -414,6 +470,17 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       }
     }
     
+    // Preview an Eldritch Blast beam upgrade (Warlock only, levels 5/11/17)
+    let eldritchBlastUpgrade = null;
+    if (character.class === 'Warlock' && ELDRITCH_BLAST_TIERS[newLevel]) {
+      const tierResult = await pool.query(`
+        SELECT * FROM skills WHERE name = $1
+      `, [ELDRITCH_BLAST_TIERS[newLevel]]);
+      if (tierResult.rows.length > 0) {
+        eldritchBlastUpgrade = tierResult.rows[0];
+      }
+    }
+
     res.json({
       currentLevel: character.level,
       newLevel,
@@ -427,7 +494,8 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
       skillGained: skillResult.rows[0] || null,
       needsSubclass: !!subclassChoice && !character.subclass_id,
       needsBeastSelection,
-      availableBeastTypes
+      availableBeastTypes,
+      eldritchBlastUpgrade
     });
   } catch (error) {
     console.error('Error getting level-up info:', error);
@@ -440,17 +508,25 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
   try {
     const { characterId } = req.params;
     const { hpIncrease, subclassId, featureChoices, beastSelection, abilityIncreases } = req.body;
-    
-    // Get character details
+
+    // Get character details, including any subclass already chosen in a previous level-up
     const charResult = await pool.query(`
-      SELECT * FROM characters WHERE id = $1
+      SELECT c.*, cs.subclass_id AS existing_subclass_id
+      FROM characters c
+      LEFT JOIN character_subclasses cs ON c.id = cs.character_id
+      WHERE c.id = $1
     `, [characterId]);
-    
+
     if (charResult.rows.length === 0) {
       return res.status(404).json({ error: 'Character not found' });
     }
-    
+
     const character = charResult.rows[0];
+    // Use the subclass being picked this level-up if present, otherwise fall back to the
+    // character's existing subclass — so subclass-flavored skills (e.g. a Warlock patron's
+    // features at 6th/10th/14th level) keep getting granted on every level, not just the
+    // level the subclass was originally chosen.
+    const effectiveSubclassId = subclassId || character.existing_subclass_id || null;
     
     // Verify this is the player's character or user is DM
     if (character.player_id !== req.user.id && req.user.role !== 'Dungeon Master') {
@@ -556,12 +632,12 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     // Get class-specific skill for this level (legacy system - skills table)
     // First, check if character has a subclass and look for subclass-specific skills
     let skillGained = null;
-    
-    if (subclassId) {
+
+    if (effectiveSubclassId) {
       // Get subclass name
       const subclassResult = await pool.query(`
         SELECT name, class FROM subclasses WHERE id = $1
-      `, [subclassId]);
+      `, [effectiveSubclassId]);
       
       if (subclassResult.rows.length > 0) {
         const subclassName = subclassResult.rows[0].name;
@@ -658,14 +734,14 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     }
     
     // Get subclass-specific class features for this level (if character has a subclass)
-    if (subclassId) {
+    if (effectiveSubclassId) {
       const subclassFeatures = await pool.query(`
         SELECT cf.*, s.name as subclass_name
         FROM class_features cf
         JOIN subclasses s ON cf.subclass_id = s.id
         WHERE cf.class = $1 AND cf.level = $2 AND cf.subclass_id = $3
           AND cf.is_choice = false
-      `, [character.class, newLevel, subclassId]);
+      `, [character.class, newLevel, effectiveSubclassId]);
       
       // Convert subclass features to skill format for display
       if (subclassFeatures.rows.length > 0) {
@@ -678,6 +754,31 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       }
     }
     
+    // Warlock Eldritch Blast beam upgrade — replaces the character's current Eldritch Blast
+    // skill entry with the correct beam-count tier at 5th/11th/17th level (see ELDRITCH_BLAST_TIERS).
+    let eldritchBlastUpgrade = null;
+    if (character.class === 'Warlock' && ELDRITCH_BLAST_TIERS[newLevel]) {
+      const tierResult = await pool.query(`
+        SELECT * FROM skills WHERE name = $1
+      `, [ELDRITCH_BLAST_TIERS[newLevel]]);
+
+      if (tierResult.rows.length > 0) {
+        const newTier = tierResult.rows[0];
+        // Drop whichever Eldritch Blast tier the character currently has, then grant the new one
+        await pool.query(`
+          DELETE FROM character_skills
+          WHERE character_id = $1
+            AND skill_id IN (SELECT id FROM skills WHERE name LIKE 'Eldritch Blast%')
+        `, [characterId]);
+        await pool.query(`
+          INSERT INTO character_skills (character_id, skill_id)
+          VALUES ($1, $2)
+          ON CONFLICT (character_id, skill_id) DO NOTHING
+        `, [characterId, newTier.id]);
+        eldritchBlastUpgrade = newTier;
+      }
+    }
+
     // Create beast companion if beast was selected during level-up
     let beastCreated = null;
     if (beastSelection && beastSelection.beastType) {
@@ -783,6 +884,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         experiencePoints: 0,
         skillGained,
         beastCreated,
+        eldritchBlastUpgrade,
         timestamp: new Date().toISOString()
       });
       // Sync HP bars — includes updated limb health so combat health state stays accurate
@@ -804,7 +906,8 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       newHP,
       updatedAbilities: currentAbilities,
       skillGained,
-      beastCreated
+      beastCreated,
+      eldritchBlastUpgrade
     });
   } catch (error) {
     console.error('Error leveling up character:', error);

@@ -514,12 +514,14 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({ isNew, initialTitle, 
 };
 
 // Subclass unlock levels per class — used to detect missing subclass selection
+// Shadow Sovereign is intentionally excluded — it's a single-path class with no subclasses
+// (see backend/migrations/add_shadow_sovereign_class.js and classInfo.ts's empty subclasses array).
 const SUBCLASS_UNLOCK_LEVELS: Record<string, number> = {
   'Cleric': 1, 'Sorcerer': 1, 'Warlock': 1,
   'Druid': 2, 'Wizard': 2,
   'Barbarian': 3, 'Bard': 3, 'Fighter': 3, 'Monk': 3, 'Oathknight': 3,
   'Paladin': 3, 'Ranger': 3, 'Reaver': 3, 'Rogue': 3,
-  'Primal Bond': 3, 'Shadow Sovereign': 3, 'Charlatan': 3,
+  'Primal Bond': 3, 'Charlatan': 3,
 };
 
 const CampaignView: React.FC = () => {
@@ -1778,7 +1780,7 @@ const CampaignView: React.FC = () => {
   const [showGrantExpModal, setShowGrantExpModal] = useState(false);
   const [selectedCharactersForExp, setSelectedCharactersForExp] = useState<number[]>([]);
   const [expAmount, setExpAmount] = useState<number>(100);
-  const [expMode, setExpMode] = useState<'grant' | 'reduce'>('grant');
+  const [expMode, setExpMode] = useState<'grant' | 'reduce' | 'leveldown'>('grant');
 
   // Manual health adjustment state
   const [showHealthModal, setShowHealthModal] = useState(false);
@@ -2979,22 +2981,30 @@ const CampaignView: React.FC = () => {
 
   // Experience Management Functions
   const handleGrantExperience = async () => {
-    if (!currentCampaign || selectedCharactersForExp.length === 0 || expAmount <= 0) {
-      toast('Please select at least one character and enter a valid EXP amount');
+    if (!currentCampaign || selectedCharactersForExp.length === 0) {
+      toast('Please select at least one character');
+      return;
+    }
+    if (expMode !== 'leveldown' && expAmount <= 0) {
+      toast('Please enter a valid EXP amount');
       return;
     }
 
     try {
-      const amount = expMode === 'reduce' ? -expAmount : expAmount;
-      await skillAPI.grantExperience(currentCampaign.campaign.id, selectedCharactersForExp, amount);
-      // Close modal — the socket 'experienceGranted' event will reload campaign data and show the toast for all users
+      if (expMode === 'leveldown') {
+        await skillAPI.levelDown(currentCampaign.campaign.id, selectedCharactersForExp);
+      } else {
+        const amount = expMode === 'reduce' ? -expAmount : expAmount;
+        await skillAPI.grantExperience(currentCampaign.campaign.id, selectedCharactersForExp, amount);
+      }
+      // Close modal — the socket event will reload campaign data and show the toast for all users
       setShowGrantExpModal(false);
       setSelectedCharactersForExp([]);
       setExpAmount(100);
       setExpMode('grant');
     } catch (error) {
-      console.error('Error granting experience:', error);
-      toast('Failed to grant experience');
+      console.error('Error updating experience/level:', error);
+      toast(expMode === 'leveldown' ? 'Failed to level down character(s)' : 'Failed to grant experience');
     }
   };
 
@@ -3125,6 +3135,8 @@ const CampaignView: React.FC = () => {
         if (selectedCharacter) {
           loadBeastCompanion(selectedCharacter);
         }
+      } else if (result.eldritchBlastUpgrade) {
+        setToastMessage(`${result.message} ${result.eldritchBlastUpgrade.name} unlocked!`);
       } else if (result.skillGained) {
         setToastMessage(`${result.message} Learned: ${result.skillGained.name}`);
       } else {
@@ -4633,7 +4645,37 @@ const CampaignView: React.FC = () => {
           }
         }
       });
-      
+
+      // Listen for character(s) leveled down (DM correction — level & EXP only, no HP/skill changes)
+      newSocket.on('characterLeveledDown', (data: { campaignId: number; characters: any[]; timestamp: string }) => {
+        console.log('Character(s) leveled down:', data);
+        if (currentCampaign && currentCampaign.campaign.id === data.campaignId) {
+          // Immediately update overrides for instant visual feedback
+          data.characters.forEach(charData => {
+            setCharacterDataOverrides(prev => ({
+              ...prev,
+              [charData.id]: {
+                ...prev[charData.id],
+                level: charData.level,
+                experience_points: charData.experience_points
+              }
+            }));
+          });
+
+          // Patch character level/EXP in-place so no loading screen is triggered
+          patchCampaignCharacters(data.characters.map(c => ({ id: c.id, level: c.level, experience_points: c.experience_points })));
+
+          // Show toast notification for all connected users
+          if (data.characters.length === 1) {
+            const charName = currentCampaign.characters.find(c => c.id === data.characters[0].id)?.name || 'Character';
+            setToastMessage(`${charName} leveled down to Level ${data.characters[0].level}`);
+          } else {
+            setToastMessage(`${data.characters.length} characters leveled down`);
+          }
+          setTimeout(() => setToastMessage(null), 3000);
+        }
+      });
+
       // Listen for journal entry created
       newSocket.on('journalEntryCreated', (data: { entry: JournalEntry; timestamp: string }) => {
         setJournalEntries(prev => [data.entry, ...prev]);
@@ -14059,13 +14101,8 @@ const CampaignView: React.FC = () => {
                         </div>
                       </div>
                       {selectedCharacterData && (() => {
-                        const subclassLevels: Record<string, number> = {
-                          'Oathknight': 3, 'Barbarian': 3, 'Bard': 3, 'Fighter': 3,
-                          'Monk': 3, 'Paladin': 3, 'Ranger': 3, 'Reaver': 3, 'Rogue': 3,
-                          'Druid': 2, 'Wizard': 2, 'Cleric': 1, 'Sorcerer': 1, 'Warlock': 1,
-                          'Primal Bond': 3, 'Shadow Sovereign': 3, 'Charlatan': 3
-                        };
-                        const subclassLevel = subclassLevels[selectedCharacterData.class];
+                        // Reuses the shared unlock map so this stays in sync with the roster/sheet indicators
+                        const subclassLevel = SUBCLASS_UNLOCK_LEVELS[selectedCharacterData.class];
                         if (!subclassLevel || selectedCharacterData.level < subclassLevel) return null;
                         const charSubclassSkills = (characterSkills[selectedCharacterData.id] || []);
                         const hasSubclassSkill = charSubclassSkills.some((s: any) =>
@@ -21257,7 +21294,35 @@ const CampaignView: React.FC = () => {
                   fontWeight: expMode === 'reduce' ? 'bold' : 'normal'
                 }}
               >✂️ Reduce EXP</button>
+              <button
+                onClick={() => setExpMode('leveldown')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  background: expMode === 'leveldown' ? 'rgba(249, 115, 22, 0.2)' : 'rgba(255,255,255,0.05)',
+                  border: expMode === 'leveldown' ? '2px solid rgba(249, 115, 22, 0.6)' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '0.5rem',
+                  color: expMode === 'leveldown' ? '#fb923c' : '#94a3b8',
+                  cursor: 'pointer',
+                  fontWeight: expMode === 'leveldown' ? 'bold' : 'normal'
+                }}
+              >⬇️ Level Down</button>
             </div>
+
+            {expMode === 'leveldown' && (
+              <div style={{
+                marginBottom: '1.5rem',
+                padding: '0.75rem 1rem',
+                background: 'rgba(249, 115, 22, 0.1)',
+                border: '1px solid rgba(249, 115, 22, 0.3)',
+                borderRadius: '0.5rem',
+                color: '#fdba74',
+                fontSize: '0.85rem'
+              }}>
+                ⚠️ Drops each selected character's level by 1 (minimum level 1) and resets their EXP to 0.
+                HP, skills, and subclass choices are <strong>not</strong> touched — adjust those manually.
+              </div>
+            )}
             
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -21316,50 +21381,64 @@ const CampaignView: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
-                Experience Amount
-              </label>
-              <input
-                type="number"
-                value={expAmount}
-                onChange={(e) => setExpAmount(parseInt(e.target.value) || 0)}
-                min="0"
-                step="50"
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
-                  borderRadius: '0.5rem',
-                  color: 'var(--text-gold)',
-                  fontSize: '1.2rem',
-                  fontWeight: 'bold',
-                  textAlign: 'center'
-                }}
-              />
-            </div>
+            {expMode !== 'leveldown' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                  Experience Amount
+                </label>
+                <input
+                  type="number"
+                  value={expAmount}
+                  onChange={(e) => setExpAmount(parseInt(e.target.value) || 0)}
+                  min="0"
+                  step="50"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '2px solid rgba(var(--theme-accent-rgb), 0.3)',
+                    borderRadius: '0.5rem',
+                    color: 'var(--text-gold)',
+                    fontSize: '1.2rem',
+                    fontWeight: 'bold',
+                    textAlign: 'center'
+                  }}
+                />
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button
                 onClick={handleGrantExperience}
-                disabled={selectedCharactersForExp.length === 0 || expAmount <= 0}
+                disabled={selectedCharactersForExp.length === 0 || (expMode !== 'leveldown' && expAmount <= 0)}
                 className="btn btn-primary"
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  background: selectedCharactersForExp.length === 0 || expAmount <= 0
+                  background: (selectedCharactersForExp.length === 0 || (expMode !== 'leveldown' && expAmount <= 0))
                     ? 'rgba(100, 116, 139, 0.3)'
                     : expMode === 'reduce'
                       ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(185, 28, 28, 0.3))'
-                      : 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
-                  border: expMode === 'reduce' ? '2px solid rgba(239, 68, 68, 0.5)' : '2px solid rgba(168, 85, 247, 0.5)',
-                  color: selectedCharactersForExp.length === 0 || expAmount <= 0 ? '#64748b' : expMode === 'reduce' ? '#f87171' : '#c084fc',
-                  cursor: selectedCharactersForExp.length === 0 || expAmount <= 0 ? 'not-allowed' : 'pointer',
-                  opacity: selectedCharactersForExp.length === 0 || expAmount <= 0 ? 0.5 : 1
+                      : expMode === 'leveldown'
+                        ? 'linear-gradient(135deg, rgba(249, 115, 22, 0.25), rgba(194, 65, 12, 0.3))'
+                        : 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.3))',
+                  border: expMode === 'reduce'
+                    ? '2px solid rgba(239, 68, 68, 0.5)'
+                    : expMode === 'leveldown'
+                      ? '2px solid rgba(249, 115, 22, 0.5)'
+                      : '2px solid rgba(168, 85, 247, 0.5)',
+                  color: (selectedCharactersForExp.length === 0 || (expMode !== 'leveldown' && expAmount <= 0))
+                    ? '#64748b'
+                    : expMode === 'reduce' ? '#f87171' : expMode === 'leveldown' ? '#fb923c' : '#c084fc',
+                  cursor: (selectedCharactersForExp.length === 0 || (expMode !== 'leveldown' && expAmount <= 0)) ? 'not-allowed' : 'pointer',
+                  opacity: (selectedCharactersForExp.length === 0 || (expMode !== 'leveldown' && expAmount <= 0)) ? 0.5 : 1
                 }}
               >
-                {expMode === 'reduce' ? `✂️ Reduce ${expAmount} EXP` : `⭐ Grant ${expAmount} EXP`}
+                {expMode === 'reduce'
+                  ? `✂️ Reduce ${expAmount} EXP`
+                  : expMode === 'leveldown'
+                    ? `⬇️ Level Down ${selectedCharactersForExp.length || ''} Character${selectedCharactersForExp.length === 1 ? '' : 's'}`
+                    : `⭐ Grant ${expAmount} EXP`}
               </button>
               <button
                 onClick={() => {
@@ -22652,6 +22731,16 @@ const CampaignView: React.FC = () => {
                       <div style={{ fontWeight: 'bold', color: '#a78bfa', marginBottom: '0.5rem' }}>⚔️ Skill Learned</div>
                       <div style={{ color: 'var(--text-secondary)' }}>
                         {levelUpInfo.skillGained.name}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Eldritch Blast Beam Upgrade (Warlock, levels 5/11/17) */}
+                  {levelUpInfo.eldritchBlastUpgrade && (
+                    <div style={{ padding: '1rem', background: 'rgba(56, 189, 248, 0.1)', borderRadius: '0.5rem', marginBottom: '1rem', border: '2px solid rgba(56, 189, 248, 0.3)' }}>
+                      <div style={{ fontWeight: 'bold', color: '#38bdf8', marginBottom: '0.5rem' }}>🔮 Eldritch Blast Upgraded</div>
+                      <div style={{ color: 'var(--text-secondary)' }}>
+                        {levelUpInfo.eldritchBlastUpgrade.name} ({levelUpInfo.eldritchBlastUpgrade.damage_dice} force)
                       </div>
                     </div>
                   )}
