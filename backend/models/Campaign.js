@@ -6,7 +6,9 @@ class Campaign {
   static WORKER_CAP_BUILDING_MAP = {
     wood: ['lumber_mill', 'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works'],
     meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'],
-    vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault'],
+    // Animal Stable/Farm chains also raise the farming worker cap by +20 each —
+    // more animal infrastructure means more hands are needed to tend the herds.
+    vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'animal_stable', 'grand_stable', 'royal_stud_farm', 'imperial_stud_farm', 'animal_farm', 'grand_pasture', 'livestock_ranch', 'grand_stockyards'],
     stone: ['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry'],
     iron: ['mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine'],
     gold: ['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum'],
@@ -25,6 +27,88 @@ class Campaign {
     'imperial_logistics_hub',
     'trade_route_office',
   ];
+
+  // ── Animal Management (mirrors backend/routes/kingdoms.js exactly) ────────
+  static ANIMAL_CATEGORY_BY_TYPE = {
+    riding_horse: 'horse', draft_horse: 'horse', plough_horse: 'horse', courser: 'horse', war_horse: 'horse', destrier: 'horse',
+    chicken: 'livestock', duck: 'livestock', goose: 'livestock', rabbit: 'livestock', sheep: 'livestock', goat: 'livestock', pig: 'livestock', ox: 'livestock', cow: 'livestock',
+  };
+  // Each tier doubles the previous tier's capacity: 20 -> 40 -> 80 -> 160.
+  static HORSE_CAPACITY_BY_TYPE = { animal_stable: 20, grand_stable: 40, royal_stud_farm: 80, imperial_stud_farm: 160 };
+  static LIVESTOCK_CAPACITY_BY_TYPE = { animal_farm: 20, grand_pasture: 40, livestock_ranch: 80, grand_stockyards: 160 };
+  // Each completed Breeding Pen holds 4 pairs; each completed Nursery holds 8
+  // "slots" worth of room. A juvenile occupies a fraction of a slot based on
+  // its species size — a calf and a rabbit kit don't need the same room, so a
+  // Nursery holds far more small animals than large ones (see ANIMAL_TYPES in
+  // routes/kingdoms.js, which is the source of truth this mirrors).
+  static BREEDING_PEN_PAIR_CAPACITY_BY_TYPE = { breeding_pen: 4 };
+  static NURSERY_CAPACITY_BY_TYPE = { nursery: 8 };
+  static ANIMAL_NURSERY_WEIGHT_BY_TYPE = {
+    riding_horse: 1, draft_horse: 1, plough_horse: 1, courser: 1, war_horse: 1, destrier: 1, cow: 1, ox: 1,
+    sheep: 0.5, goat: 0.5, pig: 0.5,
+    chicken: 0.125, duck: 0.125, goose: 0.125, rabbit: 0.125,
+  };
+
+  static getNurseryWeight(animalType) {
+    return Campaign.ANIMAL_NURSERY_WEIGHT_BY_TYPE[String(animalType || '')] ?? 1;
+  }
+  // An animal counts as adult (breedable) once it's this many campaign days old.
+  static ANIMAL_ADULT_AGE_DAYS = 365;
+  // A pregnancy takes this many campaign days to come to term.
+  static ANIMAL_PREGNANCY_DAYS = 30;
+  // A female that just gave birth can't be bred again (pen or natural) for half a year.
+  static ANIMAL_POSTPARTUM_COOLDOWN_DAYS = 183;
+
+  // Litter/clutch size range per species, loosely realistic: horses/cattle are
+  // near-always single births, sheep/goats commonly twin, pigs/rabbits/poultry
+  // come in real litters/clutches. Higher parent quality skews the roll toward
+  // the top of the range (see getAnimalLitterSize).
+  static ANIMAL_LITTER_RANGE_BY_TYPE = {
+    riding_horse: { min: 1, max: 1 },
+    draft_horse: { min: 1, max: 1 },
+    plough_horse: { min: 1, max: 1 },
+    courser: { min: 1, max: 1 },
+    war_horse: { min: 1, max: 1 },
+    destrier: { min: 1, max: 1 },
+    cow: { min: 1, max: 2 },
+    ox: { min: 1, max: 2 },
+    sheep: { min: 1, max: 3 },
+    goat: { min: 1, max: 3 },
+    pig: { min: 3, max: 9 },
+    rabbit: { min: 3, max: 8 },
+    chicken: { min: 3, max: 7 },
+    duck: { min: 3, max: 8 },
+    goose: { min: 2, max: 5 },
+  };
+
+  // Rolls how many offspring one birth produces. Quality biases the roll toward
+  // the top of the species' range via a power-curve — a well-known trick where
+  // Math.random() ** exponent skews low (exponent > 1) or high (exponent < 1).
+  static getAnimalLitterSize(animalType, avgQuality) {
+    const range = Campaign.ANIMAL_LITTER_RANGE_BY_TYPE[String(animalType || '')] || { min: 1, max: 1 };
+    if (range.max <= range.min) return range.min;
+    const qualityBias = Math.max(0, Math.min(1, Number(avgQuality || 0) / 100));
+    const exponent = Math.max(0.3, 1 - qualityBias * 0.7);
+    const roll = Math.pow(Math.random(), exponent);
+    return range.min + Math.round((range.max - range.min) * roll);
+  }
+
+  static getAnimalCapacity(completedBuildingTypes, category) {
+    const capacityMap = category === 'horse' ? Campaign.HORSE_CAPACITY_BY_TYPE : Campaign.LIVESTOCK_CAPACITY_BY_TYPE;
+    return (completedBuildingTypes || []).reduce((sum, type) => sum + (capacityMap[String(type || '')] || 0), 0);
+  }
+
+  static getBreedingPenPairCapacity(completedBuildingTypes) {
+    return (completedBuildingTypes || []).reduce((sum, type) => sum + (Campaign.BREEDING_PEN_PAIR_CAPACITY_BY_TYPE[String(type || '')] || 0), 0);
+  }
+
+  static getNurseryCapacity(completedBuildingTypes) {
+    return (completedBuildingTypes || []).reduce((sum, type) => sum + (Campaign.NURSERY_CAPACITY_BY_TYPE[String(type || '')] || 0), 0);
+  }
+
+  static getAnimalBreedingChance(avgQuality) {
+    return Math.max(0.05, Math.min(0.85, 0.30 + (avgQuality / 100) * 0.40));
+  }
 
   // Tier 5+ civic stability: guard presence, faith, and governance buildings
   // each raise how much population a fief can support before unrest builds.
@@ -1198,7 +1282,8 @@ class Campaign {
                to_regclass('public.fief_buildings') AS fief_buildings,
                to_regclass('public.fief_research_queue') AS fief_research_queue,
                to_regclass('public.fief_research_levels') AS fief_research_levels,
-               to_regclass('public.fief_animals') AS fief_animals
+               to_regclass('public.fief_animals') AS fief_animals,
+               to_regclass('public.fief_breeding_pairs') AS fief_breeding_pairs
       `);
       const canSimulateKingdoms = Boolean(
         tableCheck.rows[0]?.kingdoms &&
@@ -1210,6 +1295,7 @@ class Campaign {
         tableCheck.rows[0]?.fief_research_levels
       );
       const canSimulateAnimals = Boolean(tableCheck.rows[0]?.fief_animals);
+      const canSimulateBreedingPens = Boolean(tableCheck.rows[0]?.fief_breeding_pairs);
 
       let hasConsecutiveStarvationDaysColumn = false;
       let hasConsecutiveGoldShortageDaysColumn = false;
@@ -1274,7 +1360,9 @@ class Campaign {
       const researchByFief = new Map();
       const legendaryBonusesByFief = new Map();
       const animalsByFief = new Map();
+      const breedingPairsByFief = new Map();
       const animalsLost = {};
+      const animalsBorn = {};
 
       if (canSimulateKingdoms) {
         const fiefsResult = await client.query(
@@ -1383,7 +1471,8 @@ class Campaign {
 
           if (canSimulateAnimals) {
             const animalsResult = await client.query(
-              `SELECT id, fief_id, animal_type, quality
+              `SELECT id, fief_id, animal_type, sex, quality, born_on_day,
+                      pregnant_due_day, pregnancy_avg_quality, cooldown_until_day
                FROM fief_animals
                WHERE fief_id = ANY($1::int[])`,
               [fiefStates.map((f) => f.id)]
@@ -1391,7 +1480,34 @@ class Campaign {
             for (const row of animalsResult.rows) {
               const fiefId = Number(row.fief_id);
               if (!animalsByFief.has(fiefId)) animalsByFief.set(fiefId, []);
-              animalsByFief.get(fiefId).push({ id: Number(row.id), animalType: row.animal_type, quality: Number(row.quality) });
+              animalsByFief.get(fiefId).push({
+                id: Number(row.id),
+                animalType: row.animal_type,
+                sex: row.sex,
+                quality: Number(row.quality),
+                bornOnDay: row.born_on_day == null ? null : Number(row.born_on_day),
+                pregnantDueDay: row.pregnant_due_day == null ? null : Number(row.pregnant_due_day),
+                pregnancyAvgQuality: row.pregnancy_avg_quality == null ? null : Number(row.pregnancy_avg_quality),
+                cooldownUntilDay: row.cooldown_until_day == null ? null : Number(row.cooldown_until_day),
+              });
+            }
+          }
+
+          if (canSimulateBreedingPens) {
+            const pairsResult = await client.query(
+              `SELECT id, fief_id, male_animal_id, female_animal_id
+               FROM fief_breeding_pairs
+               WHERE fief_id = ANY($1::int[])`,
+              [fiefStates.map((f) => f.id)]
+            );
+            for (const row of pairsResult.rows) {
+              const fiefId = Number(row.fief_id);
+              if (!breedingPairsByFief.has(fiefId)) breedingPairsByFief.set(fiefId, []);
+              breedingPairsByFief.get(fiefId).push({
+                id: Number(row.id),
+                maleAnimalId: Number(row.male_animal_id),
+                femaleAnimalId: Number(row.female_animal_id),
+              });
             }
           }
 
@@ -1719,17 +1835,124 @@ class Campaign {
           // Animal Management: every 10 animals in this fief need 1 worker assigned to the
           // Farming lane (the vegetables key) or the herd starts dying/escaping. Understaffed
           // fiefs lose a small, escalating fraction of their animals each day.
-          const fiefAnimals = animalsByFief.get(fief.id) || [];
+          let fiefAnimals = animalsByFief.get(fief.id) || [];
           if (fiefAnimals.length > 0) {
             const requiredFarmingWorkers = Math.ceil(fiefAnimals.length / 10);
             const assignedFarmingWorkers = Math.max(0, Number((fief.workerAssignments || {}).vegetables || 0));
             if (assignedFarmingWorkers < requiredFarmingWorkers) {
               const shortfallRatio = (requiredFarmingWorkers - assignedFarmingWorkers) / requiredFarmingWorkers;
               const lossChancePerAnimal = Math.min(0.15, shortfallRatio * 0.10);
-              const lostIds = fiefAnimals.filter(() => Math.random() < lossChancePerAnimal).map((a) => a.id);
-              if (lostIds.length > 0) {
-                await client.query(`DELETE FROM fief_animals WHERE id = ANY($1::int[])`, [lostIds]);
-                animalsLost[fief.id] = (Number(animalsLost[fief.id]) || 0) + lostIds.length;
+              const lostIdSet = new Set(fiefAnimals.filter(() => Math.random() < lossChancePerAnimal).map((a) => a.id));
+              if (lostIdSet.size > 0) {
+                await client.query(`DELETE FROM fief_animals WHERE id = ANY($1::int[])`, [Array.from(lostIdSet)]);
+                animalsLost[fief.id] = (Number(animalsLost[fief.id]) || 0) + lostIdSet.size;
+                fiefAnimals = fiefAnimals.filter((a) => !lostIdSet.has(a.id));
+              }
+            }
+          }
+
+          // Animal Management — long-rest breeding cycle:
+          //  1) Pregnancies due today give birth if the Nursery has room (else stay
+          //     overdue and are retried next long rest).
+          //  2) Breeding Pen pairs (deliberate "gene" breeding) roll their chance.
+          //  3) Unpaired adults of the same type also breed naturally: one random
+          //     eligible male+female pair per type rolls at the same odds.
+          // Conception never produces an instant offspring — it starts a pregnancy
+          // that comes to term ANIMAL_PREGNANCY_DAYS later.
+          if (fiefAnimals.length > 0 || (breedingPairsByFief.get(fief.id) || []).length > 0) {
+            const completedTypesForAnimals = completed.map((b) => b.buildingType);
+            const nurseryCapacity = Campaign.getNurseryCapacity(completedTypesForAnimals);
+            const ageOf = (bornOnDay) => (bornOnDay == null ? Campaign.ANIMAL_ADULT_AGE_DAYS : Math.max(0, dayNumber - bornOnDay));
+            const animalById = new Map(fiefAnimals.map((a) => [a.id, a]));
+
+            // 1) Births — realistic litter/clutch sizes (see ANIMAL_LITTER_RANGE_BY_TYPE).
+            // Each offspring rolls its own quality independently around the parent
+            // average, so littermates end up with different qualities. A litter only
+            // comes to term once the Nursery has room for the WHOLE litter at once —
+            // room is tracked in weighted "slots" (see ANIMAL_NURSERY_WEIGHT_BY_TYPE),
+            // not raw headcount, so a calf costs far more room than a rabbit kit.
+            let currentJuvenileUnits = fiefAnimals
+              .filter((a) => ageOf(a.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS)
+              .reduce((sum, a) => sum + Campaign.getNurseryWeight(a.animalType), 0);
+            for (const mother of fiefAnimals) {
+              if (mother.sex !== 'female' || mother.pregnantDueDay == null || mother.pregnantDueDay > dayNumber) continue;
+              const avgQuality = Number.isFinite(mother.pregnancyAvgQuality) ? mother.pregnancyAvgQuality : mother.quality;
+              const litterSize = Campaign.getAnimalLitterSize(mother.animalType, avgQuality);
+              const litterUnits = litterSize * Campaign.getNurseryWeight(mother.animalType);
+              if (currentJuvenileUnits + litterUnits > nurseryCapacity) continue; // not enough room for the whole litter yet — stays overdue
+              for (let i = 0; i < litterSize; i += 1) {
+                const offspringQuality = Math.max(0, Math.min(100, Math.round(avgQuality + (Math.random() * 20 - 10))));
+                const offspringSex = Math.random() < 0.5 ? 'male' : 'female';
+                await client.query(
+                  `INSERT INTO fief_animals (fief_id, animal_type, sex, quality, born_on_day)
+                   VALUES ($1, $2, $3, $4, $5)`,
+                  [fief.id, mother.animalType, offspringSex, offspringQuality, dayNumber]
+                );
+              }
+              const cooldownUntilDay = dayNumber + Campaign.ANIMAL_POSTPARTUM_COOLDOWN_DAYS;
+              await client.query(
+                `UPDATE fief_animals
+                 SET pregnant_due_day = NULL, pregnancy_avg_quality = NULL, pregnant_by_animal_id = NULL, cooldown_until_day = $2
+                 WHERE id = $1`,
+                [mother.id, cooldownUntilDay]
+              );
+              mother.pregnantDueDay = null;
+              mother.pregnancyAvgQuality = null;
+              mother.cooldownUntilDay = cooldownUntilDay;
+              currentJuvenileUnits += litterUnits;
+              animalsBorn[fief.id] = (Number(animalsBorn[fief.id]) || 0) + litterSize;
+            }
+
+            // 2) Breeding Pen pairs
+            const fiefPairs = breedingPairsByFief.get(fief.id) || [];
+            const pairedIds = new Set();
+            for (const pair of fiefPairs) {
+              pairedIds.add(pair.maleAnimalId);
+              pairedIds.add(pair.femaleAnimalId);
+              const male = animalById.get(pair.maleAnimalId);
+              const female = animalById.get(pair.femaleAnimalId);
+              if (!male || !female || female.pregnantDueDay != null) continue;
+              if (female.cooldownUntilDay != null && female.cooldownUntilDay > dayNumber) continue;
+              if (ageOf(male.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS || ageOf(female.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS) continue;
+              const avgQuality = (male.quality + female.quality) / 2;
+              if (Math.random() < Campaign.getAnimalBreedingChance(avgQuality)) {
+                const dueDay = dayNumber + Campaign.ANIMAL_PREGNANCY_DAYS;
+                await client.query(
+                  `UPDATE fief_animals SET pregnant_due_day = $2, pregnancy_avg_quality = $3, pregnant_by_animal_id = $4 WHERE id = $1`,
+                  [female.id, dueDay, avgQuality, male.id]
+                );
+                female.pregnantDueDay = dueDay;
+                female.pregnancyAvgQuality = avgQuality;
+                // A successful pairing frees the pen slot immediately — both animals return
+                // to the general population (the female now visibly pregnant there) instead
+                // of sitting idle in the pen for the rest of the pregnancy.
+                await client.query(`DELETE FROM fief_breeding_pairs WHERE id = $1`, [pair.id]);
+              }
+            }
+
+            // 3) Natural breeding among unpaired adults — one random eligible pair per type.
+            const byType = new Map();
+            for (const a of fiefAnimals) {
+              if (pairedIds.has(a.id) || ageOf(a.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS) continue;
+              if (!byType.has(a.animalType)) byType.set(a.animalType, { males: [], females: [] });
+              const bucket = byType.get(a.animalType);
+              if (a.sex === 'male') bucket.males.push(a);
+              else if (a.sex === 'female') bucket.females.push(a);
+            }
+            for (const bucket of byType.values()) {
+              const eligibleFemales = bucket.females.filter((f) => f.pregnantDueDay == null && (f.cooldownUntilDay == null || f.cooldownUntilDay <= dayNumber));
+              if (bucket.males.length === 0 || eligibleFemales.length === 0) continue;
+              const male = bucket.males[Math.floor(Math.random() * bucket.males.length)];
+              const female = eligibleFemales[Math.floor(Math.random() * eligibleFemales.length)];
+              const avgQuality = (male.quality + female.quality) / 2;
+              if (Math.random() < Campaign.getAnimalBreedingChance(avgQuality)) {
+                const dueDay = dayNumber + Campaign.ANIMAL_PREGNANCY_DAYS;
+                await client.query(
+                  `UPDATE fief_animals SET pregnant_due_day = $2, pregnancy_avg_quality = $3, pregnant_by_animal_id = $4 WHERE id = $1`,
+                  [female.id, dueDay, avgQuality, male.id]
+                );
+                female.pregnantDueDay = dueDay;
+                female.pregnancyAvgQuality = avgQuality;
               }
             }
           }
@@ -2243,6 +2466,7 @@ class Campaign {
         resourcesGained,
         populationGained,
         animalsLost,
+        animalsBorn,
       };
     } catch (err) {
       await client.query('ROLLBACK');

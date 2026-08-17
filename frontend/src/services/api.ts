@@ -1455,6 +1455,7 @@ export interface AnimalTypeDefinition {
   category: AnimalCategory;
   purchaseCost: number;
   slaughterMeatBase: number;
+  nurseryWeight: number;
 }
 
 export interface FiefAnimal {
@@ -1463,6 +1464,23 @@ export interface FiefAnimal {
   sex: 'male' | 'female';
   quality: number;
   created_at: string;
+  age_days: number;
+  is_adult: boolean;
+  pregnant_due_day: number | null;
+  pregnancy_avg_quality: number | null;
+  pregnant_by_animal_id: number | null;
+  cooldown_until_day: number | null;
+  on_cooldown: boolean;
+}
+
+export interface FiefBreedingPair {
+  id: number;
+  animal_type: string;
+  male_animal_id: number;
+  female_animal_id: number;
+  male_quality: number;
+  female_quality: number;
+  chance: number;
 }
 
 export interface FiefAnimalsSummary {
@@ -1471,7 +1489,10 @@ export interface FiefAnimalsSummary {
   tier: number;
   horse_capacity: number;
   livestock_capacity: number;
+  nursery_capacity: number;
+  breeding_pen_capacity: number;
   animals: FiefAnimal[];
+  breeding_pairs: FiefBreedingPair[];
 }
 
 export interface LegendaryCharacter {
@@ -1745,7 +1766,16 @@ export const kingdomAPI = {
     return response.data;
   },
 
-  getKingdomAnimals: async (kingdomId: number): Promise<{ animalTypes: Record<string, AnimalTypeDefinition>; fiefs: FiefAnimalsSummary[] }> => {
+  getKingdomAnimals: async (
+    kingdomId: number
+  ): Promise<{
+    animalTypes: Record<string, AnimalTypeDefinition>;
+    adultAgeDays: number;
+    pregnancyDays: number;
+    postpartumCooldownDays: number;
+    currentDay: number;
+    fiefs: FiefAnimalsSummary[];
+  }> => {
     const response = await api.get(`/kingdoms/${kingdomId}/animals`);
     return response.data;
   },
@@ -1767,12 +1797,28 @@ export const kingdomAPI = {
     return response.data;
   },
 
-  breedAnimals: async (
+  assignBreedingPair: async (
     fiefId: number,
     maleId: number,
     femaleId: number
-  ): Promise<{ success: boolean; chance: number; offspring: FiefAnimal | null; goldSpent: number }> => {
-    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/breed`, { maleId, femaleId });
+  ): Promise<{ pair: { id: number; male_animal_id: number; female_animal_id: number; created_at: string } }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/breeding-pen/assign`, { maleId, femaleId });
+    return response.data;
+  },
+
+  unassignBreedingPair: async (fiefId: number, pairId: number): Promise<{ removed: boolean }> => {
+    const response = await api.delete(`/kingdoms/fiefs/${fiefId}/animals/breeding-pen/${pairId}`);
+    return response.data;
+  },
+
+  dmAddAnimals: async (
+    fiefId: number,
+    animalType: string,
+    count: number,
+    minQuality: number,
+    maxQuality: number
+  ): Promise<{ added: FiefAnimal[] }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/dm-add`, { animalType, count, minQuality, maxQuality });
     return response.data;
   },
 

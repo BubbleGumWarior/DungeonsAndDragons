@@ -276,11 +276,22 @@ const getResourceLabel = (key: string) => RESOURCE_LABEL_OVERRIDES[key] || key;
 
 // ── Animal Management ────────────────────────────────────────────────────
 const ANIMAL_ICONS: Record<string, string> = {
-  war_horse: '🐴',
+  // Horses
+  riding_horse: '🐴',
+  draft_horse: '🐎',
   plough_horse: '🐎',
+  courser: '🐴',
+  war_horse: '🐴',
+  destrier: '🐎',
+  // Livestock
+  chicken: '🐔',
+  duck: '🦆',
+  goose: '🪿',
+  rabbit: '🐇',
   sheep: '🐑',
   goat: '🐐',
   pig: '🐖',
+  ox: '🐂',
   cow: '🐄',
 };
 
@@ -296,6 +307,9 @@ const groupAnimalsByType = (animals: FiefAnimal[]) => {
   for (const animal of animals) {
     if (!byType.has(animal.animal_type)) byType.set(animal.animal_type, []);
     byType.get(animal.animal_type)!.push(animal);
+  }
+  for (const group of byType.values()) {
+    group.sort((a, b) => b.quality - a.quality);
   }
   return byType;
 };
@@ -378,7 +392,7 @@ const LOGISTICS_BUILDING_TYPES = new Set([
 
 const RESEARCH_BUILDING_CHAIN = ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'];
 
-const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'civic'] as const;
+const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'animals', 'civic'] as const;
 type BuildTabId = typeof BUILD_TABS[number];
 
 const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'tavern', 'research', 'faith'];
@@ -405,6 +419,7 @@ const BUILD_TAB_LABELS: Record<BuildTabId, string> = {
   military: 'Military',
   defense: 'Defense',
   trade: 'Trade & Logistics',
+  animals: 'Animals',
   civic: 'Civic',
 };
 
@@ -419,6 +434,7 @@ const BUILD_TAB_COLORS: Record<BuildTabId, { text: string; border: string; backg
   military: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)',    background: 'rgba(127,29,29,0.28)' },
   defense:  { text: 'var(--text-muted)', border: 'rgba(100,116,139,0.45)',  background: 'rgba(26,26,26,0.35)' },
   trade:    { text: '#6ee7b7', border: 'rgba(16,185,129,0.45)',   background: 'rgba(6,78,59,0.28)' },
+  animals:  { text: '#fbbf24', border: 'rgba(217,119,6,0.45)',    background: 'rgba(120,53,15,0.28)' },
   civic:    { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
 };
 
@@ -456,6 +472,11 @@ const getBuildingCategory = (building: any): BuildTabId => {
   if (['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum',
        'logistics_depot', 'supply_depot', 'roadworks', 'quartermaster_depot', 'supply_network', 'imperial_logistics_hub', 'trade_route_office',
   ].includes(key)) return 'trade';
+  // Animals — Animal Management panel capacity/breeding buildings
+  if (['animal_stable', 'grand_stable', 'royal_stud_farm', 'imperial_stud_farm',
+       'animal_farm', 'grand_pasture', 'livestock_ranch', 'grand_stockyards',
+       'breeding_pen', 'nursery',
+  ].includes(key)) return 'animals';
   // Civic (diplomacy, welfare)
   return 'civic';
 };
@@ -580,6 +601,10 @@ const KingdomTab: React.FC<Props> = ({
   const [currentSeasonEffects, setCurrentSeasonEffects] = useState<Record<string, number>>({});
   const [hoveredBuilding, setHoveredBuilding] = useState<{ building: any; x: number; y: number } | null>(null);
   const selectedFiefIdRef = React.useRef<number | null>(null);
+  // fetchAnimalsData is declared further down (after selectedKingdomId), but the
+  // socket effect below needs to call the latest version without depending on it
+  // directly (that would reference it before its declaration runs each render).
+  const fetchAnimalsDataRef = React.useRef<() => Promise<void>>(async () => {});
 
   const [managementMode, setManagementMode] = useState<ManagementMode>('fief');
   const [kingdomManagementLoading, setKingdomManagementLoading] = useState(false);
@@ -591,8 +616,23 @@ const KingdomTab: React.FC<Props> = ({
   const [animalsLoading, setAnimalsLoading] = useState(false);
   const [animalTypes, setAnimalTypes] = useState<Record<string, AnimalTypeDefinition>>({});
   const [animalFiefs, setAnimalFiefs] = useState<FiefAnimalsSummary[]>([]);
+  const [currentAnimalDay, setCurrentAnimalDay] = useState(0);
+  const [adultAgeDays, setAdultAgeDays] = useState(365);
+  const [pregnancyDays, setPregnancyDays] = useState(30);
+  const [postpartumCooldownDays, setPostpartumCooldownDays] = useState(183);
   const [animalPurchaseForm, setAnimalPurchaseForm] = useState<Record<number, { animalType: string; qty: number }>>({});
   const [animalBreedForm, setAnimalBreedForm] = useState<Record<number, { animalType: string; maleId: number | null; femaleId: number | null }>>({});
+  const [showDmAddAnimalModal, setShowDmAddAnimalModal] = useState(false);
+  const [dmAddAnimalFiefId, setDmAddAnimalFiefId] = useState<number | null>(null);
+  const [dmAddAnimalForm, setDmAddAnimalForm] = useState<{
+    animalType: string;
+    mode: 'exact' | 'range';
+    quality: number;
+    minQuality: number;
+    maxQuality: number;
+    count: number;
+  }>({ animalType: 'war_horse', mode: 'exact', quality: 50, minQuality: 20, maxQuality: 80, count: 1 });
+  const [slaughterConfirmTarget, setSlaughterConfirmTarget] = useState<{ fiefId: number; animal: FiefAnimal } | null>(null);
   const [showLegendaryCreateModal, setShowLegendaryCreateModal] = useState(false);
   const [legendaryForm, setLegendaryForm] = useState({
     name: '',
@@ -684,9 +724,12 @@ const KingdomTab: React.FC<Props> = ({
       fetchKingdoms();
       const currentFiefId = selectedFiefIdRef.current;
       if (currentFiefId) fetchFief(currentFiefId);
+      // Animal purchases/slaughters/breeding-pen changes also emit kingdomDataChanged
+      // (see the /animals routes) — keep the panel's due dates and headcounts live.
+      fetchAnimalsDataRef.current();
     };
 
-    const onDayAdvanced = (data: { campaignId: number | string }) => {
+    const onDayAdvanced = (data: { campaignId: number | string; animalsLost?: Record<string, number>; animalsBorn?: Record<string, number> }) => {
       if (Number(data?.campaignId) !== Number(campaignId)) return;
       fetchKingdoms();
       const currentFiefId = selectedFiefIdRef.current;
@@ -698,6 +741,42 @@ const KingdomTab: React.FC<Props> = ({
           setCurrentSeasonEffects((dayInfo?.season_effects && typeof dayInfo.season_effects === 'object') ? dayInfo.season_effects : {});
         })
         .catch(() => {});
+      // A long rest/time skip runs the animal tick server-side (pregnancies progressing,
+      // births, natural breeding, aging, understaffed losses) — refresh so due dates and
+      // the herd list reflect it immediately instead of only on next manual open.
+      fetchAnimalsDataRef.current();
+
+      // Explain animal population changes from this tick — losses especially are
+      // otherwise a silent mystery (herd size crept past what the Farming lane can support).
+      const findFiefName = (fiefId: number): string | null => {
+        for (const k of kingdoms) {
+          const canSee = isDungeonMaster
+            || Number(k.player_id) === Number(userId)
+            || (k.co_owners || []).some((co) => Number(co.player_id) === Number(userId));
+          if (!canSee) continue;
+          const fief = (k.fiefs || []).find((f) => Number(f.id) === fiefId);
+          if (fief) return fief.name;
+        }
+        return null;
+      };
+
+      for (const [fiefIdStr, countRaw] of Object.entries(data.animalsLost || {})) {
+        const count = Number(countRaw);
+        if (count <= 0) continue;
+        const fiefName = findFiefName(Number(fiefIdStr));
+        if (!fiefName) continue;
+        pushToast(
+          `🐑 ${count} animal${count === 1 ? '' : 's'} lost in ${fiefName} — the Farming lane is understaffed for the herd size (1 worker needed per 10 animals). Assign more workers there to stop the losses.`,
+          'error'
+        );
+      }
+      for (const [fiefIdStr, countRaw] of Object.entries(data.animalsBorn || {})) {
+        const count = Number(countRaw);
+        if (count <= 0) continue;
+        const fiefName = findFiefName(Number(fiefIdStr));
+        if (!fiefName) continue;
+        pushToast(`🐣 ${count} new animal${count === 1 ? '' : 's'} born in ${fiefName}`, 'success');
+      }
     };
 
     socket.on('kingdomDataChanged', onDataChanged);
@@ -830,12 +909,20 @@ const KingdomTab: React.FC<Props> = ({
       const res = await kingdomAPI.getKingdomAnimals(Number(selectedKingdomId));
       setAnimalTypes(res.animalTypes || {});
       setAnimalFiefs(res.fiefs || []);
+      setCurrentAnimalDay(Number(res.currentDay || 0));
+      setAdultAgeDays(Number(res.adultAgeDays || 365));
+      setPregnancyDays(Number(res.pregnancyDays || 30));
+      setPostpartumCooldownDays(Number(res.postpartumCooldownDays || 183));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to load animals');
     } finally {
       setAnimalsLoading(false);
     }
   }, [selectedKingdomId, pushToast]);
+
+  useEffect(() => {
+    fetchAnimalsDataRef.current = fetchAnimalsData;
+  }, [fetchAnimalsData]);
 
   useEffect(() => {
     if (managementMode !== 'animals') return;
@@ -1107,13 +1194,14 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const handleSlaughterAnimal = async (fiefId: number, animal: FiefAnimal) => {
-    const def = animalTypes[animal.animal_type];
-    if (!window.confirm(`Slaughter this ${def?.name || animal.animal_type} (${animal.quality}% quality) for meat? This cannot be undone.`)) return;
+  const confirmSlaughterAnimal = async () => {
+    if (!slaughterConfirmTarget) return;
+    const { fiefId, animal } = slaughterConfirmTarget;
     setBusy(`animal-slaughter-${animal.id}`);
     try {
       const result = await kingdomAPI.slaughterAnimal(fiefId, animal.id);
       pushToast(`Slaughtered for +${Math.round(result.meatGained)} food`, 'success');
+      setSlaughterConfirmTarget(null);
       await fetchAnimalsData();
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to slaughter animal');
@@ -1122,19 +1210,57 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const handleBreedAnimals = async (fiefId: number, maleId: number, femaleId: number) => {
-    setBusy(`animal-breed-${fiefId}`);
+  const handleAssignBreedingPair = async (fiefId: number, maleId: number, femaleId: number) => {
+    setBusy(`animal-pen-assign-${fiefId}`);
     try {
-      const result = await kingdomAPI.breedAnimals(fiefId, maleId, femaleId);
-      if (result.success && result.offspring) {
-        pushToast(`Breeding succeeded — new offspring at ${result.offspring.quality}% quality`, 'success');
-      } else {
-        pushToast(`Breeding failed (${result.chance}% chance) — the animals are unharmed`, 'info');
-      }
+      await kingdomAPI.assignBreedingPair(fiefId, maleId, femaleId);
+      pushToast('Pair moved to the Breeding Pen — it rolls its chance every long rest', 'success');
       setAnimalBreedFormFor(fiefId, { maleId: null, femaleId: null });
       await fetchAnimalsData();
     } catch (e: any) {
-      pushToast(e?.response?.data?.error || 'Failed to breed animals');
+      pushToast(e?.response?.data?.error || 'Failed to assign breeding pair');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleUnassignBreedingPair = async (fiefId: number, pairId: number) => {
+    setBusy(`animal-pen-unassign-${pairId}`);
+    try {
+      await kingdomAPI.unassignBreedingPair(fiefId, pairId);
+      pushToast('Pair removed from the Breeding Pen', 'success');
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to remove breeding pair');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const openDmAddAnimalModal = (fiefId: number) => {
+    setDmAddAnimalFiefId(fiefId);
+    setDmAddAnimalForm({ animalType: 'war_horse', mode: 'exact', quality: 50, minQuality: 20, maxQuality: 80, count: 1 });
+    setShowDmAddAnimalModal(true);
+  };
+
+  const handleDmAddAnimals = async () => {
+    if (!dmAddAnimalFiefId) return;
+    const { animalType, mode, quality, minQuality, maxQuality, count } = dmAddAnimalForm;
+    const [lo, hi] = mode === 'exact' ? [quality, quality] : [minQuality, maxQuality];
+    setBusy('dm-add-animal');
+    try {
+      const result = await kingdomAPI.dmAddAnimals(dmAddAnimalFiefId, animalType, count, lo, hi);
+      const label = animalTypes[animalType]?.name || animalType;
+      pushToast(
+        mode === 'exact'
+          ? `Added ${result.added.length} ${label} at ${quality}% quality`
+          : `Added ${result.added.length} ${label} between ${Math.min(lo, hi)}%–${Math.max(lo, hi)}% quality`,
+        'success'
+      );
+      setShowDmAddAnimalModal(false);
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to add animals');
     } finally {
       setBusy(null);
     }
@@ -2964,8 +3090,23 @@ const KingdomTab: React.FC<Props> = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {animalFiefs.map((fief) => {
                     const grouped = groupAnimalsByType(fief.animals);
-                    const horseUsed = fief.animals.filter((a) => animalTypes[a.animal_type]?.category === 'horse').length;
-                    const livestockUsed = fief.animals.filter((a) => animalTypes[a.animal_type]?.category === 'livestock').length;
+                    // Adults compete for Stable/Farm capacity; juveniles live in the Nursery instead.
+                    const horseUsed = fief.animals.filter((a) => a.is_adult && animalTypes[a.animal_type]?.category === 'horse').length;
+                    const livestockUsed = fief.animals.filter((a) => a.is_adult && animalTypes[a.animal_type]?.category === 'livestock').length;
+                    // Nursery room is weighted "slots", not raw headcount — a calf takes a full
+                    // slot, a rabbit kit takes 1/8th (see ANIMAL_TYPES[type].nurseryWeight).
+                    const juvenileUsedUnitsRaw = fief.animals
+                      .filter((a) => !a.is_adult)
+                      .reduce((sum, a) => sum + (animalTypes[a.animal_type]?.nurseryWeight ?? 1), 0);
+                    const juvenileUsed = Math.round(juvenileUsedUnitsRaw * 100) / 100;
+
+                    // Every 10 animals (any stage) need 1 worker on the Farming lane or the
+                    // herd starts dying/escaping each long rest (see Campaign.advanceDays).
+                    const rawFiefForFarmers = (selectedKingdom?.fiefs || []).find((f) => Number(f.id) === fief.fief_id);
+                    const assignedFarmers = Math.max(0, Number(rawFiefForFarmers?.worker_assignments?.vegetables || 0));
+                    const requiredFarmers = Math.ceil(fief.animals.length / 10);
+                    const farmerCoveragePct = requiredFarmers > 0 ? Math.min(1, assignedFarmers / requiredFarmers) : 1;
+                    const farmersUnderstaffed = requiredFarmers > 0 && assignedFarmers < requiredFarmers;
 
                     const purchaseForm = getAnimalPurchaseForm(fief.fief_id, 'sheep');
                     const purchaseDef = animalTypes[purchaseForm.animalType];
@@ -2974,16 +3115,27 @@ const KingdomTab: React.FC<Props> = ({
                     const purchaseRoom = Math.max(0, purchaseCapacity - purchaseUsed);
                     const purchaseCost = (purchaseDef?.purchaseCost || 0) * Math.max(1, purchaseForm.qty);
 
-                    const breedForm = getAnimalBreedForm(fief.fief_id, grouped.size > 0 ? Array.from(grouped.keys())[0] : 'sheep');
+                    // Breeding Pen: pick an adult, unpaired male + female of the same type to move in.
+                    const pairedIds = new Set(fief.breeding_pairs.flatMap((p) => [p.male_animal_id, p.female_animal_id]));
+                    // Animals moved into the pen are shown there instead of in the main herd list below.
+                    const groupedUnpaired = groupAnimalsByType(fief.animals.filter((a) => !pairedIds.has(a.id)));
+                    const breedableTypes = Array.from(grouped.entries()).filter(([, animals]) =>
+                      animals.some((a) => a.is_adult && a.sex === 'male' && !pairedIds.has(a.id)) &&
+                      animals.some((a) => a.is_adult && a.sex === 'female' && !pairedIds.has(a.id) && a.pregnant_due_day == null && !a.on_cooldown)
+                    );
+                    const breedForm = getAnimalBreedForm(fief.fief_id, breedableTypes.length > 0 ? breedableTypes[0][0] : (grouped.size > 0 ? Array.from(grouped.keys())[0] : 'sheep'));
                     const breedCandidates = grouped.get(breedForm.animalType) || [];
-                    const males = breedCandidates.filter((a) => a.sex === 'male');
-                    const females = breedCandidates.filter((a) => a.sex === 'female');
-                    const canBreed = Boolean(breedForm.maleId && breedForm.femaleId);
+                    const males = breedCandidates.filter((a) => a.is_adult && a.sex === 'male' && !pairedIds.has(a.id));
+                    // Already-pregnant or postpartum-cooldown females don't need to be paired
+                    // again — they won't roll until birth/cooldown clears (see the daily tick).
+                    const females = breedCandidates.filter((a) => a.is_adult && a.sex === 'female' && !pairedIds.has(a.id) && a.pregnant_due_day == null && !a.on_cooldown);
+                    const canAssignPair = Boolean(breedForm.maleId && breedForm.femaleId);
                     const selectedMale = males.find((a) => a.id === breedForm.maleId);
                     const selectedFemale = females.find((a) => a.id === breedForm.femaleId);
-                    const breedChance = selectedMale && selectedFemale
+                    const assignChance = selectedMale && selectedFemale
                       ? Math.round(Math.max(5, Math.min(85, 30 + ((selectedMale.quality + selectedFemale.quality) / 2 / 100) * 40)))
                       : null;
+                    const penRoom = Math.max(0, fief.breeding_pen_capacity - fief.breeding_pairs.length);
 
                     const inputStyle: React.CSSProperties = { padding: '0.3rem 0.45rem', borderRadius: '0.34rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)', fontSize: '0.78rem' };
 
@@ -2991,27 +3143,57 @@ const KingdomTab: React.FC<Props> = ({
                       <div key={fief.fief_id} className="kt-card" style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', background: 'rgba(15,15,15,0.4)', padding: '0.9rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', flexWrap: 'wrap' }}>
                           <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>{fief.fief_name}</span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>Tier {fief.tier}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>Tier {fief.tier}</span>
+                            {isDungeonMaster && (
+                              <button
+                                onClick={() => openDmAddAnimalModal(fief.fief_id)}
+                                title="DM: add animals directly, bypassing gold cost and capacity"
+                                style={{ padding: '0.24rem 0.55rem', borderRadius: '1.4rem', border: '1px solid rgba(167,139,250,0.45)', background: 'rgba(76,29,149,0.3)', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}
+                              >
+                                ➕ DM Add Animals
+                              </button>
+                            )}
+                          </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.55rem' }}>
+                        {requiredFarmers > 0 && (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                              <span>🌾 Farming Coverage</span>
+                              <span style={{ color: farmersUnderstaffed ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{assignedFarmers} / {requiredFarmers} farmers</span>
+                            </div>
+                            <div className="kt-bar-track" style={{ height: '9px', borderRadius: '5px', background: 'rgba(255,255,255,0.06)' }}>
+                              <div className="kt-bar-fill" style={{ height: '100%', width: `${farmerCoveragePct * 100}%`, color: farmersUnderstaffed ? '#ef4444' : '#22c55e', borderRadius: '5px', transition: 'width 0.3s ease' }} />
+                            </div>
+                            {farmersUnderstaffed && (
+                              <div style={{ fontSize: '0.72rem', color: '#fca5a5', fontStyle: 'italic', marginTop: '0.25rem' }}>
+                                ⚠️ Understaffed — animals will start dying or escaping each long rest until enough workers are assigned to the Farming lane.
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.55rem' }}>
                           {([
-                            { label: '🐴 Horses', used: horseUsed, cap: fief.horse_capacity, color: '#93c5fd' },
-                            { label: '🐑 Livestock', used: livestockUsed, cap: fief.livestock_capacity, color: '#86efac' },
+                            { label: '🐴 Horses', used: horseUsed, cap: fief.horse_capacity, color: '#93c5fd', requires: 'Animal Stable' },
+                            { label: '🐑 Livestock', used: livestockUsed, cap: fief.livestock_capacity, color: '#86efac', requires: 'Animal Farm' },
+                            { label: '🍼 Nursery', used: juvenileUsed, cap: fief.nursery_capacity, color: '#fbbf24', requires: 'Nursery', note: 'weighted by size — a calf takes far more room than a rabbit kit' },
                           ] as const).map((bar) => {
                             const pct = bar.cap > 0 ? Math.min(1, bar.used / bar.cap) : 0;
+                            const usedDisplay = Number.isInteger(bar.used) ? String(bar.used) : bar.used.toFixed(3).replace(/\.?0+$/, '');
                             return (
-                              <div key={bar.label}>
+                              <div key={bar.label} title={'note' in bar ? bar.note : undefined}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
                                   <span>{bar.label}</span>
-                                  <span style={{ color: bar.cap > 0 ? bar.color : 'var(--text-muted)', fontWeight: 700 }}>{bar.used} / {bar.cap}</span>
+                                  <span style={{ color: bar.cap > 0 ? bar.color : 'var(--text-muted)', fontWeight: 700 }}>{usedDisplay} / {bar.cap}</span>
                                 </div>
                                 <div className="kt-bar-track" style={{ height: '7px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>
                                   <div className="kt-bar-fill" style={{ height: '100%', width: `${pct * 100}%`, color: bar.color, borderRadius: '4px', transition: 'width 0.3s ease' }} />
                                 </div>
                                 {bar.cap <= 0 && (
                                   <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.15rem' }}>
-                                    Requires an {bar.label.includes('Horses') ? 'Animal Stable' : 'Animal Farm'}
+                                    Requires a{bar.requires === 'Animal Stable' ? 'n' : ''} {bar.requires}
                                   </div>
                                 )}
                               </div>
@@ -3019,46 +3201,96 @@ const KingdomTab: React.FC<Props> = ({
                           })}
                         </div>
 
-                        {grouped.size === 0 ? (
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No animals in this fief yet.</div>
+                        {groupedUnpaired.size === 0 ? (
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                            {grouped.size === 0 ? 'No animals in this fief yet.' : 'All animals are currently in the Breeding Pen — see below.'}
+                          </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                            {Array.from(grouped.entries()).map(([type, animals]) => {
+                            {Array.from(groupedUnpaired.entries()).map(([type, animals]) => {
                               const def = animalTypes[type];
                               const avgQuality = Math.round(animals.reduce((s, a) => s + a.quality, 0) / animals.length);
                               return (
-                                <div key={type} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem', padding: '0.5rem 0.6rem' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                                <div key={type} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem', padding: '0.6rem 0.7rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.55rem' }}>
+                                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
                                       {ANIMAL_ICONS[type] || '🐾'} {def?.name || type} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>× {animals.length}</span>
                                     </span>
-                                    <span style={{ fontSize: '0.72rem', color: getQualityColor(avgQuality), fontWeight: 700 }}>avg {avgQuality}% quality</span>
+                                    <span style={{ fontSize: '0.76rem', color: getQualityColor(avgQuality), fontWeight: 700 }}>avg {avgQuality}% quality</span>
                                   </div>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                                    {animals.map((a) => (
-                                      <div
-                                        key={a.id}
-                                        title={`${a.sex === 'male' ? 'Male' : 'Female'} · ${a.quality}% quality · click to slaughter for +${Math.round((def?.slaughterMeatBase || 0) * (a.quality / 100))} food`}
-                                        style={{
-                                          display: 'flex', alignItems: 'center', gap: '0.3rem',
-                                          padding: '0.2rem 0.4rem', borderRadius: '0.35rem',
-                                          border: `1px solid ${getQualityColor(a.quality)}55`,
-                                          background: `${getQualityColor(a.quality)}14`,
-                                          fontSize: '0.72rem',
-                                        }}
-                                      >
-                                        <span style={{ color: a.sex === 'male' ? '#93c5fd' : '#f9a8d4', fontWeight: 700 }}>{a.sex === 'male' ? '♂' : '♀'}</span>
-                                        <span style={{ color: getQualityColor(a.quality), fontWeight: 700 }}>{a.quality}%</span>
-                                        <button
-                                          onClick={() => handleSlaughterAnimal(fief.fief_id, a)}
-                                          disabled={busy === `animal-slaughter-${a.id}`}
-                                          title="Slaughter for meat"
-                                          style={{ border: 'none', background: 'transparent', color: '#fca5a5', cursor: 'pointer', fontSize: '0.72rem', padding: 0, opacity: busy === `animal-slaughter-${a.id}` ? 0.5 : 1 }}
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: '0.55rem' }}>
+                                    {animals.map((a) => {
+                                      const isPregnant = a.pregnant_due_day != null;
+                                      const dueInDays = isPregnant ? Math.max(0, a.pregnant_due_day! - currentAnimalDay) : null;
+                                      // Past due but still pregnant means the litter is waiting on Nursery
+                                      // room — it re-rolls and retries every long rest (see Campaign.advanceDays).
+                                      const isOverdue = isPregnant && a.pregnant_due_day! <= currentAnimalDay;
+                                      const cooldownDaysLeft = a.on_cooldown ? Math.max(0, a.cooldown_until_day! - currentAnimalDay) : null;
+                                      const qColor = getQualityColor(a.quality);
+                                      const meatYield = Math.round((def?.slaughterMeatBase || 0) * (a.quality / 100));
+                                      return (
+                                        <div
+                                          key={a.id}
+                                          className="kt-card"
+                                          style={{
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem',
+                                            padding: '0.7rem 0.6rem 0.6rem',
+                                            border: `1px solid ${qColor}55`,
+                                            background: `linear-gradient(180deg, ${qColor}1a, rgba(10,10,10,0.35))`,
+                                            opacity: a.is_adult ? 1 : 0.92,
+                                          }}
                                         >
-                                          🔪
-                                        </button>
-                                      </div>
-                                    ))}
+                                          <span style={{ fontSize: '2rem', lineHeight: 1 }}>{ANIMAL_ICONS[type] || '🐾'}</span>
+
+                                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', fontWeight: 700, color: a.sex === 'male' ? '#93c5fd' : '#f9a8d4' }}>
+                                            {a.sex === 'male' ? '♂ Male' : '♀ Female'}
+                                          </span>
+
+                                          <span style={{ fontSize: '1.35rem', fontWeight: 800, color: qColor, lineHeight: 1 }}>{a.quality}%</span>
+                                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '-0.3rem' }}>quality</span>
+
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.25rem', marginTop: '0.1rem' }}>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '1rem', color: a.is_adult ? '#86efac' : '#fbbf24', border: `1px solid ${a.is_adult ? 'rgba(34,197,94,0.4)' : 'rgba(217,119,6,0.45)'}`, background: a.is_adult ? 'rgba(20,83,45,0.25)' : 'rgba(120,53,15,0.25)' }}>
+                                              {a.is_adult ? 'Adult' : `🍼 Juvenile · ${Math.max(0, adultAgeDays - a.age_days)}d left`}
+                                            </span>
+                                            {isPregnant && (
+                                              <span
+                                                title={isOverdue ? 'Past due, waiting for a free Nursery slot — build/expand a Nursery so the whole litter has room. Re-rolls every long rest.' : `Due in ${dueInDays}d`}
+                                                style={{
+                                                  fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '1rem',
+                                                  color: isOverdue ? '#fbbf24' : '#f9a8d4',
+                                                  border: `1px solid ${isOverdue ? 'rgba(217,119,6,0.5)' : 'rgba(236,72,153,0.45)'}`,
+                                                  background: isOverdue ? 'rgba(120,53,15,0.3)' : 'rgba(131,24,67,0.3)',
+                                                }}
+                                              >
+                                                {isOverdue ? '⚠️ awaiting Nursery room' : `🤰 due ${dueInDays}d`}
+                                              </span>
+                                            )}
+                                            {!isPregnant && cooldownDaysLeft !== null && (
+                                              <span title={`Recovering from giving birth — available to breed again in ${cooldownDaysLeft}d`} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '1rem', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(30,58,138,0.25)' }}>
+                                                💤 resting {cooldownDaysLeft}d
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <button
+                                            onClick={() => a.is_adult && setSlaughterConfirmTarget({ fiefId: fief.fief_id, animal: a })}
+                                            disabled={!a.is_adult || busy === `animal-slaughter-${a.id}`}
+                                            title={a.is_adult ? `Slaughter for +${meatYield} food` : `Too young to slaughter — becomes an adult in ${Math.max(0, adultAgeDays - a.age_days)}d`}
+                                            style={{
+                                              marginTop: '0.3rem', width: '100%', padding: '0.3rem 0.4rem', borderRadius: '0.35rem',
+                                              border: `1px solid ${a.is_adult ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.12)'}`,
+                                              background: a.is_adult ? 'rgba(127,29,29,0.28)' : 'rgba(255,255,255,0.04)',
+                                              color: a.is_adult ? '#fca5a5' : 'var(--text-muted)',
+                                              cursor: (!a.is_adult || busy === `animal-slaughter-${a.id}`) ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 700,
+                                              opacity: (!a.is_adult || busy === `animal-slaughter-${a.id}`) ? 0.5 : 1,
+                                            }}
+                                          >
+                                            {a.is_adult ? `🔪 Slaughter · +${meatYield}` : 'Too young'}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
@@ -3088,7 +3320,7 @@ const KingdomTab: React.FC<Props> = ({
                             <input
                               type="number" min="1" step="1"
                               value={purchaseForm.qty}
-                              onChange={(e) => setAnimalPurchaseFormFor(fief.fief_id, { qty: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
+                              onChange={(e) => setAnimalPurchaseFormFor(fief.fief_id, { animalType: purchaseForm.animalType, qty: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
                               style={{ ...inputStyle, width: '58px' }}
                             />
                             <button
@@ -3110,9 +3342,49 @@ const KingdomTab: React.FC<Props> = ({
                         </div>
 
                         <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.55rem' }}>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>Breed</div>
-                          {grouped.size === 0 ? (
-                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Purchase animals first to breed them.</div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Breeding Pen</div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{fief.breeding_pairs.length}/{fief.breeding_pen_capacity} pairs</span>
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '0.5rem' }}>
+                            Paired animals roll their breeding chance every long rest — success starts a {pregnancyDays}-day pregnancy, not an instant birth. Unpaired adults of the same type still breed naturally at the same odds, chosen at random.
+                          </div>
+
+                          {fief.breeding_pairs.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.55rem' }}>
+                              {fief.breeding_pairs.map((pair) => {
+                                const pairDef = animalTypes[pair.animal_type];
+                                const female = fief.animals.find((a) => a.id === pair.female_animal_id);
+                                const isPregnant = female?.pregnant_due_day != null;
+                                const dueInDays = isPregnant ? Math.max(0, female!.pregnant_due_day! - currentAnimalDay) : null;
+                                return (
+                                  <div key={pair.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '0.4rem', padding: '0.35rem 0.55rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.78rem' }}>{ANIMAL_ICONS[pair.animal_type] || '🐾'} {pairDef?.name || pair.animal_type}</span>
+                                    <span style={{ fontSize: '0.72rem', color: '#93c5fd' }}>♂{pair.male_quality}%</span>
+                                    <span style={{ fontSize: '0.72rem', color: '#f9a8d4' }}>♀{pair.female_quality}%</span>
+                                    {isPregnant ? (
+                                      <span style={{ fontSize: '0.72rem', color: '#f9a8d4', fontWeight: 700 }}>🤰 due in {dueInDays}d</span>
+                                    ) : (
+                                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{pair.chance}% chance/long rest</span>
+                                    )}
+                                    <button
+                                      onClick={() => handleUnassignBreedingPair(fief.fief_id, pair.id)}
+                                      disabled={busy === `animal-pen-unassign-${pair.id}`}
+                                      title="Remove from pen (does not harm the animals)"
+                                      style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#fca5a5', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, opacity: busy === `animal-pen-unassign-${pair.id}` ? 0.5 : 1 }}
+                                    >
+                                      ✕ Remove
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {breedableTypes.length === 0 ? (
+                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              Needs an unpaired adult male and female of the same type (1 year old) to assign a pair.
+                            </div>
                           ) : (
                             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                               <select
@@ -3120,15 +3392,14 @@ const KingdomTab: React.FC<Props> = ({
                                 onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { animalType: e.target.value, maleId: null, femaleId: null })}
                                 style={inputStyle}
                               >
-                                {Array.from(grouped.keys()).map((type) => (
+                                {breedableTypes.map(([type]) => (
                                   <option key={type} value={type}>{ANIMAL_ICONS[type]} {animalTypes[type]?.name || type}</option>
                                 ))}
                               </select>
                               <select
                                 value={breedForm.maleId ?? ''}
-                                onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { maleId: Number(e.target.value) || null })}
+                                onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { animalType: breedForm.animalType, maleId: Number(e.target.value) || null })}
                                 style={inputStyle}
-                                disabled={males.length === 0}
                               >
                                 <option value="">♂ Sire…</option>
                                 {males.map((a) => (
@@ -3137,9 +3408,8 @@ const KingdomTab: React.FC<Props> = ({
                               </select>
                               <select
                                 value={breedForm.femaleId ?? ''}
-                                onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { femaleId: Number(e.target.value) || null })}
+                                onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { animalType: breedForm.animalType, femaleId: Number(e.target.value) || null })}
                                 style={inputStyle}
-                                disabled={females.length === 0}
                               >
                                 <option value="">♀ Dam…</option>
                                 {females.map((a) => (
@@ -3147,23 +3417,19 @@ const KingdomTab: React.FC<Props> = ({
                                 ))}
                               </select>
                               <button
-                                onClick={() => canBreed && handleBreedAnimals(fief.fief_id, breedForm.maleId as number, breedForm.femaleId as number)}
-                                disabled={!canBreed || busy === `animal-breed-${fief.fief_id}`}
+                                onClick={() => canAssignPair && handleAssignBreedingPair(fief.fief_id, breedForm.maleId as number, breedForm.femaleId as number)}
+                                disabled={!canAssignPair || penRoom <= 0 || busy === `animal-pen-assign-${fief.fief_id}`}
+                                title={penRoom <= 0 ? (fief.breeding_pen_capacity <= 0 ? 'Requires a Breeding Pen' : 'No free pen slots') : ''}
                                 style={{
                                   padding: '0.3rem 0.65rem', borderRadius: '0.34rem',
                                   border: '1px solid rgba(236,72,153,0.5)', background: 'rgba(131,24,67,0.35)', color: '#f9a8d4',
-                                  cursor: (!canBreed || busy === `animal-breed-${fief.fief_id}`) ? 'not-allowed' : 'pointer',
-                                  opacity: !canBreed ? 0.5 : 1,
+                                  cursor: (!canAssignPair || penRoom <= 0 || busy === `animal-pen-assign-${fief.fief_id}`) ? 'not-allowed' : 'pointer',
+                                  opacity: (!canAssignPair || penRoom <= 0) ? 0.5 : 1,
                                   fontWeight: 700, fontSize: '0.78rem',
                                 }}
                               >
-                                Breed (20g){breedChance !== null ? ` — ${breedChance}% chance` : ''}
+                                Move to Pen{assignChance !== null ? ` — ${assignChance}% chance/long rest` : ''}
                               </button>
-                              {(males.length === 0 || females.length === 0) && (
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                  Needs at least one male and one female of this type.
-                                </span>
-                              )}
                             </div>
                           )}
                         </div>
@@ -4825,6 +5091,190 @@ const KingdomTab: React.FC<Props> = ({
       )}
 
       {/* ── DM: Set Fief Location Modifiers + Travel Days Modal ─────────────── */}
+      {slaughterConfirmTarget && ReactDOM.createPortal(
+        (() => {
+          const { animal } = slaughterConfirmTarget;
+          const def = animalTypes[animal.animal_type];
+          const meatPreview = Math.round((def?.slaughterMeatBase || 0) * (animal.quality / 100));
+          const busyKey = `animal-slaughter-${animal.id}`;
+          return (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 10005, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+              onClick={(e) => { if (e.target === e.currentTarget && busy !== busyKey) setSlaughterConfirmTarget(null); }}
+            >
+              <div style={{ width: '100%', maxWidth: '420px', background: 'rgba(18,18,18,0.97)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '12px', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3 className="modal-title">🔪 Confirm Slaughter</h3>
+                  <button className="modal-close" onClick={() => setSlaughterConfirmTarget(null)} aria-label="Close" disabled={busy === busyKey}>×</button>
+                </div>
+                <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(0,0,0,0.25)', borderRadius: '0.5rem', padding: '0.6rem 0.7rem' }}>
+                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{ANIMAL_ICONS[animal.animal_type] || '🐾'}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.92rem' }}>{def?.name || animal.animal_type}</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <span style={{ color: animal.sex === 'male' ? '#93c5fd' : '#f9a8d4', fontWeight: 700 }}>{animal.sex === 'male' ? '♂ Male' : '♀ Female'}</span>
+                        {' · '}
+                        <span style={{ color: getQualityColor(animal.quality), fontWeight: 700 }}>{animal.quality}% quality</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    This will yield <span style={{ color: '#86efac', fontWeight: 700 }}>+{meatPreview} food</span> (capped by remaining storage), and cannot be undone.
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                    <button className="btn btn-secondary" onClick={() => setSlaughterConfirmTarget(null)} disabled={busy === busyKey}>Cancel</button>
+                    <button
+                      onClick={confirmSlaughterAnimal}
+                      disabled={busy === busyKey}
+                      style={{ padding: '0.45rem 0.9rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.55)', background: 'rgba(127,29,29,0.45)', color: '#fecaca', cursor: busy === busyKey ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem', opacity: busy === busyKey ? 0.6 : 1 }}
+                    >
+                      {busy === busyKey ? 'Slaughtering…' : `🔪 Slaughter for +${meatPreview} food`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
+      {showDmAddAnimalModal && isDungeonMaster && ReactDOM.createPortal(
+        (() => {
+          const fiefName = animalFiefs.find((f) => f.fief_id === dmAddAnimalFiefId)?.fief_name || `Fief #${dmAddAnimalFiefId}`;
+          const form = dmAddAnimalForm;
+          const selectedDef = animalTypes[form.animalType];
+          const selectStyle: React.CSSProperties = { padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', background: 'rgba(15,15,15,0.7)', color: 'var(--text-secondary)', fontSize: '0.85rem' };
+          const numberInputStyle: React.CSSProperties = { ...selectStyle, width: '80px', textAlign: 'center' };
+          return (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 10004, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+              onClick={(e) => { if (e.target === e.currentTarget) setShowDmAddAnimalModal(false); }}
+            >
+              <div style={{ width: '100%', maxWidth: '480px', background: 'rgba(18,18,18,0.97)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '12px', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3 className="modal-title">➕ DM: Add Animals to {fiefName}</h3>
+                  <button className="modal-close" onClick={() => setShowDmAddAnimalModal(false)} aria-label="Close">×</button>
+                </div>
+                <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                    Bypasses gold cost and Stable/Farm capacity — a narrative or setup tool, not a normal purchase.
+                  </div>
+
+                  <div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.3rem' }}>Animal type</div>
+                    <select
+                      value={form.animalType}
+                      onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, animalType: e.target.value }))}
+                      style={{ ...selectStyle, width: '100%' }}
+                    >
+                      <optgroup label="Horses">
+                        {Object.values(animalTypes).filter((t) => t.category === 'horse').map((t) => (
+                          <option key={t.key} value={t.key}>{ANIMAL_ICONS[t.key]} {t.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Livestock">
+                        {Object.values(animalTypes).filter((t) => t.category === 'livestock').map((t) => (
+                          <option key={t.key} value={t.key}>{ANIMAL_ICONS[t.key]} {t.name}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {(['exact', 'range'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setDmAddAnimalForm((prev) => ({ ...prev, mode: m }))}
+                        style={{
+                          flex: 1, padding: '0.4rem 0.6rem', borderRadius: '0.4rem',
+                          border: `1px solid ${form.mode === m ? 'rgba(167,139,250,0.6)' : 'rgba(var(--theme-accent-rgb),0.25)'}`,
+                          background: form.mode === m ? 'rgba(76,29,149,0.35)' : 'rgba(15,15,15,0.5)',
+                          color: form.mode === m ? '#c4b5fd' : 'var(--text-muted)',
+                          cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem',
+                        }}
+                      >
+                        {m === 'exact' ? 'Exact quality' : 'Quality range'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {form.mode === 'exact' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600 }}>Quality %</span>
+                        <input
+                          type="number" min={0} max={100} step={1}
+                          value={form.quality}
+                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, quality: Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) }))}
+                          style={numberInputStyle}
+                        />
+                      </label>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600 }}>Count</span>
+                        <input
+                          type="number" min={1} max={200} step={1}
+                          value={form.count}
+                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, count: Math.max(1, Math.min(200, Math.floor(Number(e.target.value) || 1))) }))}
+                          style={numberInputStyle}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600 }}>Min %</span>
+                        <input
+                          type="number" min={0} max={100} step={1}
+                          value={form.minQuality}
+                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, minQuality: Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) }))}
+                          style={numberInputStyle}
+                        />
+                      </label>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600 }}>Max %</span>
+                        <input
+                          type="number" min={0} max={100} step={1}
+                          value={form.maxQuality}
+                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, maxQuality: Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) }))}
+                          style={numberInputStyle}
+                        />
+                      </label>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600 }}>Count</span>
+                        <input
+                          type="number" min={1} max={200} step={1}
+                          value={form.count}
+                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, count: Math.max(1, Math.min(200, Math.floor(Number(e.target.value) || 1))) }))}
+                          style={numberInputStyle}
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontStyle: 'italic' }}>
+                    {form.mode === 'exact'
+                      ? `Will add ${form.count} ${selectedDef?.name || form.animalType} at exactly ${form.quality}% quality.`
+                      : `Will add ${form.count} ${selectedDef?.name || form.animalType}, each randomly rolled between ${Math.min(form.minQuality, form.maxQuality)}%–${Math.max(form.minQuality, form.maxQuality)}% quality.`}
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                    <button className="btn btn-secondary" onClick={() => setShowDmAddAnimalModal(false)}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleDmAddAnimals} disabled={busy === 'dm-add-animal'}>
+                      {busy === 'dm-add-animal' ? 'Adding…' : 'Add Animals'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
       {showFiefModifiersModal && isDungeonMaster && ReactDOM.createPortal(
         (() => {
           const adjustMod = (key: string, delta: number) => {

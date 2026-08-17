@@ -383,6 +383,8 @@ const startServer = async () => {
         { name: 'addEldritchBlastInvocationVariants', fn: require('./migrations/add_eldritch_blast_invocation_variants') },
         { name: 'addPactBoonVariants', fn: require('./migrations/add_pact_boon_variants') },
         { name: 'addFiefAnimals', fn: require('./migrations/add_fief_animals') },
+        { name: 'addFiefAnimalBreeding', fn: require('./migrations/add_fief_animal_breeding') },
+        { name: 'addFiefAnimalCooldown', fn: require('./migrations/add_fief_animal_cooldown') },
       ];
       
       const failedMigrations = [];

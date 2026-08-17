@@ -1696,62 +1696,93 @@ Object.assign(BUILDING_CATALOG, {
     prerequisites: [{ type: 'transcendent_research_complex', minCount: 1 }],
   },
 
-  // ── Animal Stable tiers 2-8 (new) ────────────────────────────────────────
+  // ── Animal Stable tiers 3-6 (new) ────────────────────────────────────────
   // Not a worker lane — a flat horse-capacity provider for the Animal
-  // Management system. Owning, breeding, and slaughtering War Horses and
-  // Plough Horses all require at least one completed Animal Stable.
+  // Management system. Owning, breeding, and slaughtering horses all require
+  // at least one completed Animal Stable. Capacity starts at 20 and doubles
+  // each upgrade: 20 -> 40 -> 80 -> 160.
   animal_stable: {
     key: 'animal_stable', name: 'Animal Stable',
-    description: 'Required to purchase, breed, or slaughter horses (War Horse, Plough Horse) in this fief. Raises horse capacity by +10. Managed from the Animal Management panel, not the worker table.',
-    tierRequired: 2, cost: { wood: 16, stone: 8 }, days: 3, resourceOutput: {},
+    description: 'Required to purchase, breed, or slaughter horses in this fief. Provides capacity for 20 horses, and raises the Farming worker cap by +20 (more hands to tend the herd). Managed from the Animal Management panel, not the worker table.',
+    tierRequired: 3, cost: { wood: 16, stone: 8 }, days: 3, resourceOutput: {},
     prerequisites: [{ type: 'housing', minCount: 2 }],
   },
   grand_stable: {
     key: 'grand_stable', name: 'Grand Stable',
-    description: 'Raises horse capacity by +10.',
+    description: 'Doubles horse capacity to 40. Raises the Farming worker cap by +20.',
     tierRequired: 4, cost: { wood: 24, stone: 16, iron: 6 }, days: 5, resourceOutput: {},
     prerequisites: [{ type: 'animal_stable', minCount: 1 }],
   },
   royal_stud_farm: {
     key: 'royal_stud_farm', name: 'Royal Stud Farm',
-    description: 'Raises horse capacity by +15.',
-    tierRequired: 6, cost: { wood: 34, stone: 26, iron: 12 }, days: 7, resourceOutput: {},
+    description: 'Doubles horse capacity to 80. Raises the Farming worker cap by +20.',
+    tierRequired: 5, cost: { wood: 34, stone: 26, iron: 12 }, days: 7, resourceOutput: {},
     prerequisites: [{ type: 'grand_stable', minCount: 1 }],
   },
   imperial_stud_farm: {
     key: 'imperial_stud_farm', name: 'Imperial Stud Farm',
-    description: 'Raises horse capacity by +15 — the best horse capacity available.',
-    tierRequired: 8, cost: { wood: 46, stone: 38, iron: 20 }, days: 9, resourceOutput: {},
+    description: 'Doubles horse capacity to 160 — the best horse capacity available. Raises the Farming worker cap by +20.',
+    tierRequired: 6, cost: { wood: 46, stone: 38, iron: 20 }, days: 9, resourceOutput: {},
     prerequisites: [{ type: 'royal_stud_farm', minCount: 1 }],
   },
 
-  // ── Animal Farm tiers 2-8 (new) ──────────────────────────────────────────
+  // ── Animal Farm tiers 3-6 (new) ──────────────────────────────────────────
   // Not a worker lane — a flat livestock-capacity provider for the Animal
-  // Management system. Owning, breeding, and slaughtering Sheep, Pigs, Goats,
-  // and Cows all require at least one completed Animal Farm.
+  // Management system. Owning, breeding, and slaughtering livestock all
+  // require at least one completed Animal Farm. Capacity starts at 20 and
+  // doubles each upgrade: 20 -> 40 -> 80 -> 160.
   animal_farm: {
     key: 'animal_farm', name: 'Animal Farm',
-    description: 'Required to purchase, breed, or slaughter livestock (Sheep, Pig, Goat, Cow) in this fief. Raises livestock capacity by +15. Managed from the Animal Management panel, not the worker table.',
-    tierRequired: 2, cost: { wood: 14, stone: 6 }, days: 3, resourceOutput: {},
+    description: 'Required to purchase, breed, or slaughter livestock in this fief. Provides capacity for 20 animals, and raises the Farming worker cap by +20 (more hands to tend the herd). Managed from the Animal Management panel, not the worker table.',
+    tierRequired: 3, cost: { wood: 14, stone: 6 }, days: 3, resourceOutput: {},
     prerequisites: [{ type: 'farm', minCount: 1 }, { type: 'housing', minCount: 2 }],
   },
   grand_pasture: {
     key: 'grand_pasture', name: 'Grand Pasture',
-    description: 'Raises livestock capacity by +15.',
+    description: 'Doubles livestock capacity to 40. Raises the Farming worker cap by +20.',
     tierRequired: 4, cost: { wood: 22, stone: 14, iron: 4 }, days: 5, resourceOutput: {},
     prerequisites: [{ type: 'animal_farm', minCount: 1 }],
   },
   livestock_ranch: {
     key: 'livestock_ranch', name: 'Livestock Ranch',
-    description: 'Raises livestock capacity by +20.',
-    tierRequired: 6, cost: { wood: 32, stone: 24, iron: 10 }, days: 7, resourceOutput: {},
+    description: 'Doubles livestock capacity to 80. Raises the Farming worker cap by +20.',
+    tierRequired: 5, cost: { wood: 32, stone: 24, iron: 10 }, days: 7, resourceOutput: {},
     prerequisites: [{ type: 'grand_pasture', minCount: 1 }],
   },
   grand_stockyards: {
     key: 'grand_stockyards', name: 'Grand Stockyards',
-    description: 'Raises livestock capacity by +20 — the best livestock capacity available.',
-    tierRequired: 8, cost: { wood: 44, stone: 36, iron: 18 }, days: 9, resourceOutput: {},
+    description: 'Doubles livestock capacity to 160 — the best livestock capacity available. Raises the Farming worker cap by +20.',
+    tierRequired: 6, cost: { wood: 44, stone: 36, iron: 18 }, days: 9, resourceOutput: {},
     prerequisites: [{ type: 'livestock_ranch', minCount: 1 }],
+  },
+
+  // ── Breeding Pen (new) ───────────────────────────────────────────────────
+  // Not a worker lane, not a tiered chain — a flat, stackable pair-capacity
+  // provider shared by horses and livestock alike. Build more than one for
+  // more pen space. Pairs assigned here are deliberate ("gene") breeding —
+  // each pair rolls its chance once per long rest; success starts a pregnancy
+  // rather than an instant offspring. Unpaired adults of the same type also
+  // breed naturally at the same odds, once per long rest, chosen at random.
+  breeding_pen: {
+    key: 'breeding_pen', name: 'Breeding Pen',
+    description: 'Holds 4 breeding pairs, horses or livestock alike. Move an adult male and an adult female of the same type in from the Animal Management panel to breed them deliberately — each pair rolls a chance to start a pregnancy every long rest, based on their quality. Unpaired adult animals of the same type still breed naturally at the same odds. Build more than one Breeding Pen for more pairs.',
+    tierRequired: 3, cost: { wood: 18, stone: 10 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'housing', minCount: 2 }],
+  },
+
+  // ── Nursery (new) ────────────────────────────────────────────────────────
+  // Not a worker lane, not a tiered chain — a flat, stackable capacity for
+  // juvenile animals. A pregnancy that comes to term needs enough free Nursery
+  // room for the whole litter; juveniles graduate to adults (freeing the room,
+  // now counted against the fief's normal Stable/Farm capacity) at age 1 year.
+  // Capacity is 8 "slots", but small animals take a fraction of a slot each
+  // (see ANIMAL_TYPES[type].nurseryWeight) — a calf and a rabbit kit don't
+  // need the same amount of room.
+  nursery: {
+    key: 'nursery', name: 'Nursery',
+    description: "Houses juvenile animals from birth until they turn a year old — 8 large animals (horses, cattle) worth of room, but small litters take a fraction of a slot each: 16 sheep/goats/pigs, or 64 rabbits/poultry. A pregnancy cannot come to term without enough free room for the whole litter. Build more than one Nursery for more room.",
+    tierRequired: 3, cost: { wood: 16, stone: 8 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'housing', minCount: 2 }],
   },
 
   // ── Tavern tiers 4-10 (new) ──────────────────────────────────────────────
@@ -2477,7 +2508,9 @@ const clampSlaveAssignmentsToPool = (assignments, newPool) => {
 const WORKER_CAP_BUILDING_MAP = {
   wood: ['lumber_mill', 'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works'],
   meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'],
-  vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault'],
+  // Animal Stable/Farm chains also raise the farming worker cap by +20 each —
+  // more animal infrastructure means more hands are needed to tend the herds.
+  vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'animal_stable', 'grand_stable', 'royal_stud_farm', 'imperial_stud_farm', 'animal_farm', 'grand_pasture', 'livestock_ranch', 'grand_stockyards'],
   stone: ['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry'],
   iron: ['mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine'],
   gold: ['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum'],
@@ -7361,26 +7394,43 @@ router.post('/:id/trade-depot/accept', authenticateToken, async (req, res) => {
 // everything else) to already be completed in that fief.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// nurseryWeight = how much of a Nursery's capacity one juvenile of this type
+// occupies. A calf and a kit obviously don't need the same amount of room —
+// 1.0 = a full slot (large animals), down to 0.125 (8 fit in one large-animal
+// slot) for the small, prolific species. See getNurseryUnitsUsed in Campaign.js.
 const ANIMAL_TYPES = {
-  war_horse: { key: 'war_horse', name: 'War Horse', category: 'horse', purchaseCost: 1200, slaughterMeatBase: 250 },
-  plough_horse: { key: 'plough_horse', name: 'Plough Horse', category: 'horse', purchaseCost: 600, slaughterMeatBase: 300 },
-  sheep: { key: 'sheep', name: 'Sheep', category: 'livestock', purchaseCost: 100, slaughterMeatBase: 80 },
-  goat: { key: 'goat', name: 'Goat', category: 'livestock', purchaseCost: 130, slaughterMeatBase: 100 },
-  pig: { key: 'pig', name: 'Pig', category: 'livestock', purchaseCost: 160, slaughterMeatBase: 150 },
-  cow: { key: 'cow', name: 'Cow', category: 'livestock', purchaseCost: 500, slaughterMeatBase: 1000 },
+  // ── Horses (require an Animal Stable) — light/utility to elite war mounts ──
+  riding_horse: { key: 'riding_horse', name: 'Riding Horse', category: 'horse', purchaseCost: 350, slaughterMeatBase: 150, nurseryWeight: 1 },
+  draft_horse: { key: 'draft_horse', name: 'Draft Horse', category: 'horse', purchaseCost: 550, slaughterMeatBase: 350, nurseryWeight: 1 },
+  plough_horse: { key: 'plough_horse', name: 'Plough Horse', category: 'horse', purchaseCost: 600, slaughterMeatBase: 300, nurseryWeight: 1 },
+  courser: { key: 'courser', name: 'Courser', category: 'horse', purchaseCost: 800, slaughterMeatBase: 200, nurseryWeight: 1 },
+  war_horse: { key: 'war_horse', name: 'War Horse', category: 'horse', purchaseCost: 1200, slaughterMeatBase: 250, nurseryWeight: 1 },
+  destrier: { key: 'destrier', name: 'Destrier', category: 'horse', purchaseCost: 2000, slaughterMeatBase: 400, nurseryWeight: 1 },
+
+  // ── Livestock (require an Animal Farm) — poultry through cattle ──
+  chicken: { key: 'chicken', name: 'Chicken', category: 'livestock', purchaseCost: 20, slaughterMeatBase: 15, nurseryWeight: 0.125 },
+  duck: { key: 'duck', name: 'Duck', category: 'livestock', purchaseCost: 30, slaughterMeatBase: 20, nurseryWeight: 0.125 },
+  goose: { key: 'goose', name: 'Goose', category: 'livestock', purchaseCost: 45, slaughterMeatBase: 30, nurseryWeight: 0.125 },
+  rabbit: { key: 'rabbit', name: 'Rabbit', category: 'livestock', purchaseCost: 35, slaughterMeatBase: 20, nurseryWeight: 0.125 },
+  sheep: { key: 'sheep', name: 'Sheep', category: 'livestock', purchaseCost: 100, slaughterMeatBase: 80, nurseryWeight: 0.5 },
+  goat: { key: 'goat', name: 'Goat', category: 'livestock', purchaseCost: 130, slaughterMeatBase: 100, nurseryWeight: 0.5 },
+  pig: { key: 'pig', name: 'Pig', category: 'livestock', purchaseCost: 160, slaughterMeatBase: 150, nurseryWeight: 0.5 },
+  ox: { key: 'ox', name: 'Ox', category: 'livestock', purchaseCost: 350, slaughterMeatBase: 400, nurseryWeight: 1 },
+  cow: { key: 'cow', name: 'Cow', category: 'livestock', purchaseCost: 500, slaughterMeatBase: 1000, nurseryWeight: 1 },
 };
 
+// Each tier doubles the previous tier's capacity: 20 -> 40 -> 80 -> 160.
 const HORSE_CAPACITY_BY_TYPE = {
-  animal_stable: 10,
-  grand_stable: 10,
-  royal_stud_farm: 15,
-  imperial_stud_farm: 15,
+  animal_stable: 20,
+  grand_stable: 40,
+  royal_stud_farm: 80,
+  imperial_stud_farm: 160,
 };
 const LIVESTOCK_CAPACITY_BY_TYPE = {
-  animal_farm: 15,
-  grand_pasture: 15,
-  livestock_ranch: 20,
-  grand_stockyards: 20,
+  animal_farm: 20,
+  grand_pasture: 40,
+  livestock_ranch: 80,
+  grand_stockyards: 160,
 };
 
 const getAnimalCapacity = (completedBuildingTypes, category) => {
@@ -7388,11 +7438,25 @@ const getAnimalCapacity = (completedBuildingTypes, category) => {
   return (completedBuildingTypes || []).reduce((sum, type) => sum + (capacityMap[String(type || '')] || 0), 0);
 };
 
+// Each completed Breeding Pen holds 4 pairs — horses and livestock share the same pens.
+const BREEDING_PEN_PAIR_CAPACITY_BY_TYPE = { breeding_pen: 4 };
+const getBreedingPenPairCapacity = (completedBuildingTypes) =>
+  (completedBuildingTypes || []).reduce((sum, type) => sum + (BREEDING_PEN_PAIR_CAPACITY_BY_TYPE[String(type || '')] || 0), 0);
+
+// Each completed Nursery holds 8 juveniles — horses and livestock share the same nurseries.
+const NURSERY_CAPACITY_BY_TYPE = { nursery: 8 };
+const getNurseryCapacity = (completedBuildingTypes) =>
+  (completedBuildingTypes || []).reduce((sum, type) => sum + (NURSERY_CAPACITY_BY_TYPE[String(type || '')] || 0), 0);
+
+// An animal counts as adult once it's been alive this many campaign days.
+const ANIMAL_ADULT_AGE_DAYS = 365;
+// A pregnancy takes this many campaign days to come to term.
+const ANIMAL_PREGNANCY_DAYS = 30;
+// A female that just gave birth can't be bred again (pen or natural) for half a year.
+const ANIMAL_POSTPARTUM_COOLDOWN_DAYS = 183;
+
 // Newly purchased/bred animals start at this quality; breeding is the only way to raise it.
 const ANIMAL_STARTING_QUALITY = 20;
-// Flat gold cost per breeding attempt (success or failure) — keeps breeding a
-// deliberate choice rather than a free, spammable action.
-const BREEDING_ATTEMPT_GOLD_COST = 20;
 
 const getFiefCompletedBuildingTypes = async (fiefId) => {
   const result = await pool.query(
@@ -7402,14 +7466,60 @@ const getFiefCompletedBuildingTypes = async (fiefId) => {
   return result.rows.map((r) => String(r.building_type || ''));
 };
 
-const getFiefAnimalCounts = async (fiefId) => {
+const getFiefBreedingPairs = async (fiefId) => {
   const result = await pool.query(
-    `SELECT animal_type, COUNT(*)::int AS count FROM fief_animals WHERE fief_id = $1 GROUP BY animal_type`,
+    `SELECT p.id, p.male_animal_id, p.female_animal_id,
+            m.animal_type, m.quality AS male_quality, f.quality AS female_quality
+     FROM fief_breeding_pairs p
+     JOIN fief_animals m ON m.id = p.male_animal_id
+     JOIN fief_animals f ON f.id = p.female_animal_id
+     WHERE p.fief_id = $1
+     ORDER BY p.id ASC`,
     [fiefId]
   );
-  const byType = {};
-  for (const row of result.rows) byType[row.animal_type] = Number(row.count) || 0;
-  return byType;
+  return result.rows.map((r) => {
+    const avgQuality = (Number(r.male_quality) + Number(r.female_quality)) / 2;
+    return {
+      id: Number(r.id),
+      animal_type: r.animal_type,
+      male_animal_id: Number(r.male_animal_id),
+      female_animal_id: Number(r.female_animal_id),
+      male_quality: Number(r.male_quality),
+      female_quality: Number(r.female_quality),
+      chance: Math.round(Math.max(5, Math.min(85, 30 + (avgQuality / 100) * 40))),
+    };
+  });
+};
+
+// Full animal rows plus computed age/adulthood/pregnancy fields for a fief.
+const getFiefAnimalsDetailed = async (fiefId, currentDay) => {
+  const result = await pool.query(
+    `SELECT id, animal_type, sex, quality, created_at, born_on_day,
+            pregnant_due_day, pregnancy_avg_quality, pregnant_by_animal_id, cooldown_until_day
+     FROM fief_animals
+     WHERE fief_id = $1
+     ORDER BY animal_type ASC, id ASC`,
+    [fiefId]
+  );
+  return result.rows.map((a) => {
+    const bornOnDay = a.born_on_day == null ? null : Number(a.born_on_day);
+    const ageDays = bornOnDay == null ? ANIMAL_ADULT_AGE_DAYS : Math.max(0, currentDay - bornOnDay);
+    const cooldownUntilDay = a.cooldown_until_day == null ? null : Number(a.cooldown_until_day);
+    return {
+      id: Number(a.id),
+      animal_type: a.animal_type,
+      sex: a.sex,
+      quality: Number(a.quality),
+      created_at: a.created_at,
+      age_days: ageDays,
+      is_adult: ageDays >= ANIMAL_ADULT_AGE_DAYS,
+      pregnant_due_day: a.pregnant_due_day == null ? null : Number(a.pregnant_due_day),
+      pregnancy_avg_quality: a.pregnancy_avg_quality == null ? null : Number(a.pregnancy_avg_quality),
+      pregnant_by_animal_id: a.pregnant_by_animal_id == null ? null : Number(a.pregnant_by_animal_id),
+      cooldown_until_day: cooldownUntilDay,
+      on_cooldown: cooldownUntilDay != null && cooldownUntilDay > currentDay,
+    };
+  });
 };
 
 // GET /api/kingdoms/:id/animals — every fief in the kingdom with its animals and capacity.
@@ -7422,6 +7532,8 @@ router.get('/:id/animals', authenticateToken, async (req, res) => {
     if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
     if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
 
+    const currentDay = await getCampaignCurrentDay(kingdom.campaign_id);
+
     const fiefsResult = await pool.query(
       `SELECT id, name, tier FROM fiefs WHERE kingdom_id = $1 ORDER BY is_capital DESC, id ASC`,
       [kingdomId]
@@ -7430,12 +7542,10 @@ router.get('/:id/animals', authenticateToken, async (req, res) => {
     const fiefs = [];
     for (const fief of fiefsResult.rows) {
       const fiefId = Number(fief.id);
-      const [completedTypes, animalsResult] = await Promise.all([
+      const [completedTypes, animals, breedingPairs] = await Promise.all([
         getFiefCompletedBuildingTypes(fiefId),
-        pool.query(
-          `SELECT id, animal_type, sex, quality, created_at FROM fief_animals WHERE fief_id = $1 ORDER BY animal_type ASC, id ASC`,
-          [fiefId]
-        ),
+        getFiefAnimalsDetailed(fiefId, currentDay),
+        getFiefBreedingPairs(fiefId),
       ]);
 
       fiefs.push({
@@ -7444,17 +7554,21 @@ router.get('/:id/animals', authenticateToken, async (req, res) => {
         tier: Number(fief.tier || 1),
         horse_capacity: getAnimalCapacity(completedTypes, 'horse'),
         livestock_capacity: getAnimalCapacity(completedTypes, 'livestock'),
-        animals: animalsResult.rows.map((a) => ({
-          id: Number(a.id),
-          animal_type: a.animal_type,
-          sex: a.sex,
-          quality: Number(a.quality),
-          created_at: a.created_at,
-        })),
+        nursery_capacity: getNurseryCapacity(completedTypes),
+        breeding_pen_capacity: getBreedingPenPairCapacity(completedTypes),
+        animals,
+        breeding_pairs: breedingPairs,
       });
     }
 
-    res.json({ animalTypes: ANIMAL_TYPES, fiefs });
+    res.json({
+      animalTypes: ANIMAL_TYPES,
+      adultAgeDays: ANIMAL_ADULT_AGE_DAYS,
+      pregnancyDays: ANIMAL_PREGNANCY_DAYS,
+      postpartumCooldownDays: ANIMAL_POSTPARTUM_COOLDOWN_DAYS,
+      currentDay,
+      fiefs,
+    });
   } catch (error) {
     console.error('Error loading animals:', error);
     res.status(500).json({ error: 'Failed to load animals' });
@@ -7484,9 +7598,11 @@ router.post('/fiefs/:id/animals/purchase', authenticateToken, async (req, res) =
       });
     }
 
-    const counts = await getFiefAnimalCounts(fiefId);
-    const categoryTypes = Object.values(ANIMAL_TYPES).filter((t) => t.category === animalDef.category).map((t) => t.key);
-    const currentCategoryTotal = categoryTypes.reduce((sum, t) => sum + (counts[t] || 0), 0);
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+    const animals = await getFiefAnimalsDetailed(fiefId, currentDay);
+    // Purchased animals are always adults, so only adults of this category compete for
+    // Stable/Farm capacity — juveniles live in the Nursery instead.
+    const currentCategoryTotal = animals.filter((a) => a.is_adult && ANIMAL_TYPES[a.animal_type]?.category === animalDef.category).length;
     if (currentCategoryTotal + count > capacity) {
       return res.status(400).json({ error: `Not enough capacity: ${currentCategoryTotal}/${capacity} used, cannot add ${count}` });
     }
@@ -7504,14 +7620,17 @@ router.post('/fiefs/:id/animals/purchase', authenticateToken, async (req, res) =
       resources.gold = gold - totalCost;
       await client.query(`UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(resources)]);
 
+      // Purchased/DM-added animals arrive as adults — backdate born_on_day so
+      // age_days already clears ANIMAL_ADULT_AGE_DAYS.
+      const bornOnDay = currentDay - ANIMAL_ADULT_AGE_DAYS;
       const inserted = [];
       for (let i = 0; i < count; i += 1) {
         const sex = Math.random() < 0.5 ? 'male' : 'female';
         const result = await client.query(
-          `INSERT INTO fief_animals (fief_id, animal_type, sex, quality)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO fief_animals (fief_id, animal_type, sex, quality, born_on_day)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING id, animal_type, sex, quality, created_at`,
-          [fiefId, animalType, sex, ANIMAL_STARTING_QUALITY]
+          [fiefId, animalType, sex, ANIMAL_STARTING_QUALITY, bornOnDay]
         );
         inserted.push(result.rows[0]);
       }
@@ -7547,11 +7666,17 @@ router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (
     if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
 
     const animalResult = await pool.query(
-      `SELECT id, animal_type, sex, quality FROM fief_animals WHERE id = $1 AND fief_id = $2`,
+      `SELECT id, animal_type, sex, quality, born_on_day FROM fief_animals WHERE id = $1 AND fief_id = $2`,
       [animalId, fiefId]
     );
     const animal = animalResult.rows[0];
     if (!animal) return res.status(404).json({ error: 'Animal not found in this fief' });
+
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+    const ageDays = animal.born_on_day == null ? ANIMAL_ADULT_AGE_DAYS : Math.max(0, currentDay - Number(animal.born_on_day));
+    if (ageDays < ANIMAL_ADULT_AGE_DAYS) {
+      return res.status(400).json({ error: `Too young to slaughter — this animal becomes an adult in ${ANIMAL_ADULT_AGE_DAYS - ageDays} more day(s)` });
+    }
 
     const animalDef = ANIMAL_TYPES[animal.animal_type];
     const quality = Math.max(0, Math.min(100, Number(animal.quality) || 0));
@@ -7591,7 +7716,12 @@ router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (
 });
 
 // POST /api/kingdoms/fiefs/:id/animals/breed — pick one male + one female of the same type.
-router.post('/fiefs/:id/animals/breed', authenticateToken, async (req, res) => {
+// POST /api/kingdoms/fiefs/:id/animals/breeding-pen/assign — move an adult male
+// + adult female of the same type into a Breeding Pen slot for deliberate
+// ("gene") breeding. No gold cost, no instant roll — the pair rolls its chance
+// once per long rest in the daily tick (see Campaign.advanceDays), and success
+// starts a pregnancy rather than an instant offspring.
+router.post('/fiefs/:id/animals/breeding-pen/assign', authenticateToken, async (req, res) => {
   try {
     const fiefId = Number(req.params.id);
     const maleId = Number(req.body?.maleId);
@@ -7605,8 +7735,10 @@ router.post('/fiefs/:id/animals/breed', authenticateToken, async (req, res) => {
     if (!owned) return res.status(404).json({ error: 'Fief not found' });
     if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
 
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+
     const parentsResult = await pool.query(
-      `SELECT id, animal_type, sex, quality FROM fief_animals WHERE fief_id = $1 AND id = ANY($2::int[])`,
+      `SELECT id, animal_type, sex, born_on_day, cooldown_until_day FROM fief_animals WHERE fief_id = $1 AND id = ANY($2::int[])`,
       [fiefId, [maleId, femaleId]]
     );
     const male = parentsResult.rows.find((r) => Number(r.id) === maleId);
@@ -7615,69 +7747,132 @@ router.post('/fiefs/:id/animals/breed', authenticateToken, async (req, res) => {
     if (male.sex !== 'male' || female.sex !== 'female') return res.status(400).json({ error: 'Breeding requires one male and one female' });
     if (male.animal_type !== female.animal_type) return res.status(400).json({ error: 'Both animals must be the same type' });
 
-    const animalType = male.animal_type;
-    const animalDef = ANIMAL_TYPES[animalType];
+    const ageOf = (bornOnDay) => (bornOnDay == null ? ANIMAL_ADULT_AGE_DAYS : Math.max(0, currentDay - Number(bornOnDay)));
+    if (ageOf(male.born_on_day) < ANIMAL_ADULT_AGE_DAYS || ageOf(female.born_on_day) < ANIMAL_ADULT_AGE_DAYS) {
+      return res.status(400).json({ error: 'Both animals must be adults (1 year old) to breed' });
+    }
+    if (female.cooldown_until_day != null && Number(female.cooldown_until_day) > currentDay) {
+      return res.status(400).json({ error: `This female is recovering from giving birth — available again in ${Number(female.cooldown_until_day) - currentDay} day(s)` });
+    }
+
+    const alreadyPairedResult = await pool.query(
+      `SELECT 1 FROM fief_breeding_pairs WHERE male_animal_id = ANY($1::int[]) OR female_animal_id = ANY($1::int[])`,
+      [[maleId, femaleId]]
+    );
+    if (alreadyPairedResult.rows.length > 0) {
+      return res.status(400).json({ error: 'One or both animals are already assigned to a breeding pen' });
+    }
 
     const completedTypes = await getFiefCompletedBuildingTypes(fiefId);
-    const capacity = getAnimalCapacity(completedTypes, animalDef.category);
-    const counts = await getFiefAnimalCounts(fiefId);
-    const categoryTypes = Object.values(ANIMAL_TYPES).filter((t) => t.category === animalDef.category).map((t) => t.key);
-    const currentCategoryTotal = categoryTypes.reduce((sum, t) => sum + (counts[t] || 0), 0);
-    if (currentCategoryTotal >= capacity) {
-      return res.status(400).json({ error: `No room to breed: ${currentCategoryTotal}/${capacity} capacity used` });
+    const penCapacity = getBreedingPenPairCapacity(completedTypes);
+    const currentPairsResult = await pool.query(`SELECT COUNT(*)::int AS c FROM fief_breeding_pairs WHERE fief_id = $1`, [fiefId]);
+    const currentPairs = Number(currentPairsResult.rows[0]?.c || 0);
+    if (currentPairs >= penCapacity) {
+      return res.status(400).json({ error: penCapacity <= 0 ? 'Requires a Breeding Pen' : `No free pen slots: ${currentPairs}/${penCapacity} used` });
     }
 
-    const resources = normalizeStoredResources(owned.stored_resources);
-    const gold = Math.max(0, Number(resources.gold || 0));
-    if (gold < BREEDING_ATTEMPT_GOLD_COST) {
-      return res.status(400).json({ error: `Not enough gold to attempt breeding. Need ${BREEDING_ATTEMPT_GOLD_COST}, have ${Math.floor(gold)}` });
+    const result = await pool.query(
+      `INSERT INTO fief_breeding_pairs (fief_id, male_animal_id, female_animal_id)
+       VALUES ($1, $2, $3)
+       RETURNING id, male_animal_id, female_animal_id, created_at`,
+      [fiefId, maleId, femaleId]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
     }
 
-    const avgQuality = (Number(male.quality) + Number(female.quality)) / 2;
-    const successChance = Math.max(0.05, Math.min(0.85, 0.30 + (avgQuality / 100) * 0.40));
-    const succeeded = Math.random() < successChance;
-
-    let offspring = null;
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      resources.gold = gold - BREEDING_ATTEMPT_GOLD_COST;
-      await client.query(`UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(resources)]);
-
-      if (succeeded) {
-        const qualityRoll = avgQuality + (Math.random() * 20 - 10); // ±10 around the parent average
-        const offspringQuality = Math.max(0, Math.min(100, Math.round(qualityRoll)));
-        const offspringSex = Math.random() < 0.5 ? 'male' : 'female';
-        const result = await client.query(
-          `INSERT INTO fief_animals (fief_id, animal_type, sex, quality)
-           VALUES ($1, $2, $3, $4)
-           RETURNING id, animal_type, sex, quality, created_at`,
-          [fiefId, animalType, offspringSex, offspringQuality]
-        );
-        offspring = result.rows[0];
-      }
-
-      await client.query('COMMIT');
-
-      if (req.io) {
-        req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
-      }
-
-      res.json({
-        success: succeeded,
-        chance: Math.round(successChance * 100),
-        offspring,
-        goldSpent: BREEDING_ATTEMPT_GOLD_COST,
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    res.json({ pair: result.rows[0] });
   } catch (error) {
-    console.error('Error breeding animals:', error);
-    res.status(500).json({ error: 'Failed to breed animals' });
+    console.error('Error assigning breeding pair:', error);
+    res.status(500).json({ error: 'Failed to assign breeding pair' });
+  }
+});
+
+// DELETE /api/kingdoms/fiefs/:id/animals/breeding-pen/:pairId — free a pen slot.
+// The animals themselves are untouched (and any pregnancy already in progress
+// continues), just no longer paired for deliberate gene breeding.
+router.delete('/fiefs/:id/animals/breeding-pen/:pairId', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    const pairId = Number(req.params.pairId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(pairId)) return res.status(400).json({ error: 'Invalid payload' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    const result = await pool.query(`DELETE FROM fief_breeding_pairs WHERE id = $1 AND fief_id = $2 RETURNING id`, [pairId, fiefId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Breeding pair not found' });
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    res.json({ removed: true });
+  } catch (error) {
+    console.error('Error unassigning breeding pair:', error);
+    res.status(500).json({ error: 'Failed to unassign breeding pair' });
+  }
+});
+
+// POST /api/kingdoms/fiefs/:id/animals/dm-add — DM authoring tool. Bypasses gold
+// cost and capacity (unlike purchase) so a DM can seed or narratively adjust a
+// fief's herd directly. Either a single exact quality or a random range per animal.
+router.post('/fiefs/:id/animals/dm-add', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    const animalType = String(req.body?.animalType || '');
+    const count = Math.max(1, Math.min(200, Math.floor(Number(req.body?.count) || 1)));
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const animalDef = ANIMAL_TYPES[animalType];
+    if (!animalDef) return res.status(400).json({ error: 'Unknown animal type' });
+
+    let minQuality = Math.round(Number(req.body?.minQuality));
+    let maxQuality = Math.round(Number(req.body?.maxQuality));
+    if (!Number.isFinite(minQuality) || !Number.isFinite(maxQuality)) {
+      return res.status(400).json({ error: 'Invalid quality range' });
+    }
+    minQuality = Math.max(0, Math.min(100, minQuality));
+    maxQuality = Math.max(0, Math.min(100, maxQuality));
+    if (minQuality > maxQuality) {
+      [minQuality, maxQuality] = [maxQuality, minQuality];
+    }
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    // DM-added animals arrive as adults, same as purchased ones.
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+    const bornOnDay = currentDay - ANIMAL_ADULT_AGE_DAYS;
+
+    const inserted = [];
+    for (let i = 0; i < count; i += 1) {
+      const quality = minQuality === maxQuality
+        ? minQuality
+        : Math.round(minQuality + Math.random() * (maxQuality - minQuality));
+      const sex = Math.random() < 0.5 ? 'male' : 'female';
+      const result = await pool.query(
+        `INSERT INTO fief_animals (fief_id, animal_type, sex, quality, born_on_day)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, animal_type, sex, quality, created_at`,
+        [fiefId, animalType, sex, quality, bornOnDay]
+      );
+      inserted.push(result.rows[0]);
+    }
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    res.json({ added: inserted });
+  } catch (error) {
+    console.error('Error DM-adding animals:', error);
+    res.status(500).json({ error: 'Failed to add animals' });
   }
 });
 
