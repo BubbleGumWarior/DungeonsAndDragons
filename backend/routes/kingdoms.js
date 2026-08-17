@@ -901,10 +901,13 @@ Object.assign(BUILDING_CATALOG, {
     prerequisites: [{ type: 'legion_garrison', minCount: 1 }],
   },
 
+  // Renamed from "Stables" — this chain trains Cavalry (and its Horse Archer/Shock
+  // Cavalry/Lancer combo lines) but no longer represents owning horses itself; actual
+  // horse livestock (war horses, plough horses) now lives in the Animal Stable system.
   stables: {
     key: 'stables',
-    name: 'Stables',
-    description: 'Mounted training and horse management for cavalry foundations.',
+    name: 'Riding School',
+    description: 'Mounted combat training grounds for cavalry foundations. Trains riders — the horses themselves come from an Animal Stable.',
     tierRequired: 3,
     cost: { wood: 20, stone: 10, iron: 4 },
     days: 4,
@@ -913,8 +916,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   war_stables: {
     key: 'war_stables',
-    name: 'War Stables',
-    description: 'Battle-ready cavalry training and heavier mount support.',
+    name: 'Cavalry Academy',
+    description: 'Battle-ready cavalry training and heavier-mount riding drills.',
     tierRequired: 4,
     cost: { wood: 26, stone: 16, iron: 8 },
     days: 5,
@@ -923,8 +926,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   royal_stables: {
     key: 'royal_stables',
-    name: 'Royal Stables',
-    description: 'Elite cavalry breeding and command rider training.',
+    name: 'Royal Cavalry Academy',
+    description: 'Elite cavalry drilling and command rider training.',
     tierRequired: 5,
     cost: { wood: 32, stone: 22, iron: 12 },
     days: 6,
@@ -933,8 +936,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   elite_stables: {
     key: 'elite_stables',
-    name: 'Elite Stables',
-    description: 'Higher-quality mounts and improved cavalry tactical readiness.',
+    name: 'Elite Cavalry Academy',
+    description: 'Higher-quality riders and improved cavalry tactical readiness.',
     tierRequired: 6,
     cost: { wood: 40, stone: 30, iron: 16 },
     days: 7,
@@ -943,8 +946,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   royal_cavalry_stables: {
     key: 'royal_cavalry_stables',
-    name: 'Royal Cavalry Stables',
-    description: 'Top-tier cavalry infrastructure for charge power and mobility.',
+    name: 'Grand Cavalry Citadel',
+    description: 'Top-tier cavalry training infrastructure for charge power and mobility.',
     tierRequired: 7,
     cost: { wood: 48, stone: 38, iron: 22 },
     days: 8,
@@ -1693,6 +1696,64 @@ Object.assign(BUILDING_CATALOG, {
     prerequisites: [{ type: 'transcendent_research_complex', minCount: 1 }],
   },
 
+  // ── Animal Stable tiers 2-8 (new) ────────────────────────────────────────
+  // Not a worker lane — a flat horse-capacity provider for the Animal
+  // Management system. Owning, breeding, and slaughtering War Horses and
+  // Plough Horses all require at least one completed Animal Stable.
+  animal_stable: {
+    key: 'animal_stable', name: 'Animal Stable',
+    description: 'Required to purchase, breed, or slaughter horses (War Horse, Plough Horse) in this fief. Raises horse capacity by +10. Managed from the Animal Management panel, not the worker table.',
+    tierRequired: 2, cost: { wood: 16, stone: 8 }, days: 3, resourceOutput: {},
+    prerequisites: [{ type: 'housing', minCount: 2 }],
+  },
+  grand_stable: {
+    key: 'grand_stable', name: 'Grand Stable',
+    description: 'Raises horse capacity by +10.',
+    tierRequired: 4, cost: { wood: 24, stone: 16, iron: 6 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'animal_stable', minCount: 1 }],
+  },
+  royal_stud_farm: {
+    key: 'royal_stud_farm', name: 'Royal Stud Farm',
+    description: 'Raises horse capacity by +15.',
+    tierRequired: 6, cost: { wood: 34, stone: 26, iron: 12 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'grand_stable', minCount: 1 }],
+  },
+  imperial_stud_farm: {
+    key: 'imperial_stud_farm', name: 'Imperial Stud Farm',
+    description: 'Raises horse capacity by +15 — the best horse capacity available.',
+    tierRequired: 8, cost: { wood: 46, stone: 38, iron: 20 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'royal_stud_farm', minCount: 1 }],
+  },
+
+  // ── Animal Farm tiers 2-8 (new) ──────────────────────────────────────────
+  // Not a worker lane — a flat livestock-capacity provider for the Animal
+  // Management system. Owning, breeding, and slaughtering Sheep, Pigs, Goats,
+  // and Cows all require at least one completed Animal Farm.
+  animal_farm: {
+    key: 'animal_farm', name: 'Animal Farm',
+    description: 'Required to purchase, breed, or slaughter livestock (Sheep, Pig, Goat, Cow) in this fief. Raises livestock capacity by +15. Managed from the Animal Management panel, not the worker table.',
+    tierRequired: 2, cost: { wood: 14, stone: 6 }, days: 3, resourceOutput: {},
+    prerequisites: [{ type: 'farm', minCount: 1 }, { type: 'housing', minCount: 2 }],
+  },
+  grand_pasture: {
+    key: 'grand_pasture', name: 'Grand Pasture',
+    description: 'Raises livestock capacity by +15.',
+    tierRequired: 4, cost: { wood: 22, stone: 14, iron: 4 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'animal_farm', minCount: 1 }],
+  },
+  livestock_ranch: {
+    key: 'livestock_ranch', name: 'Livestock Ranch',
+    description: 'Raises livestock capacity by +20.',
+    tierRequired: 6, cost: { wood: 32, stone: 24, iron: 10 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'grand_pasture', minCount: 1 }],
+  },
+  grand_stockyards: {
+    key: 'grand_stockyards', name: 'Grand Stockyards',
+    description: 'Raises livestock capacity by +20 — the best livestock capacity available.',
+    tierRequired: 8, cost: { wood: 44, stone: 36, iron: 18 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'livestock_ranch', minCount: 1 }],
+  },
+
   // ── Tavern tiers 4-10 (new) ──────────────────────────────────────────────
   // Unlocks the tavern worker lane (+20 cap per building). Tavern workers are
   // citizens only — this lane is deliberately excluded from slave labor.
@@ -1904,6 +1965,92 @@ Object.assign(BUILDING_CATALOG, {
     description: "Passively adds +18 to the construction lane each day — the best building speed bonus available.",
     tierRequired: 8, cost: { wood: 50, stone: 46, iron: 26 }, days: 8, resourceOutput: {},
     prerequisites: [{ type: 'master_builder_hall', minCount: 1 }],
+  },
+
+  // ── Overseer's Post tiers 3-6 (new) ─────────────────────────────────────
+  // Passive, no worker lane. Raises the unrest target (civic stability) and
+  // boosts the output of every slave assigned in this fief by a flat %.
+  overseers_post: {
+    key: 'overseers_post', name: "Overseer's Post",
+    description: "Passive civic building — no worker lane. Disciplined overseers keep slave labor productive and orderly: +10% output from every slave worker in this fief, and -10 to the unrest target.",
+    tierRequired: 3, cost: { wood: 18, stone: 14, iron: 6 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'prison', minCount: 1 }],
+  },
+  overseer_barracks: {
+    key: 'overseer_barracks', name: 'Overseer Barracks',
+    description: 'Passive civic building — no worker lane. +15% output from every slave worker in this fief, and -15 to the unrest target.',
+    tierRequired: 4, cost: { wood: 24, stone: 20, iron: 10 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'overseers_post', minCount: 1 }],
+  },
+  slave_marshal_hall: {
+    key: 'slave_marshal_hall', name: 'Slave Marshal Hall',
+    description: 'Passive civic building — no worker lane. +20% output from every slave worker in this fief, and -20 to the unrest target.',
+    tierRequired: 5, cost: { wood: 30, stone: 26, iron: 14 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'overseer_barracks', minCount: 1 }],
+  },
+  grand_overseer_citadel: {
+    key: 'grand_overseer_citadel', name: 'Grand Overseer Citadel',
+    description: 'Passive civic building — no worker lane. +25% output from every slave worker in this fief — the best slave-labor throughput available — and -25 to the unrest target.',
+    tierRequired: 6, cost: { wood: 36, stone: 32, iron: 18 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'slave_marshal_hall', minCount: 1 }],
+  },
+
+  // ── Amphitheater tiers 3-6 (new) ────────────────────────────────────────
+  // Passive, no worker lane. A second civic-stability chain alongside Guard
+  // Post/Faith Temple/Council Hall/Tavern that also raises population growth,
+  // without occupying a worker lane the way Tavern does.
+  amphitheater: {
+    key: 'amphitheater', name: 'Amphitheater',
+    description: 'Passive civic building — no worker lane. Public games and gatherings lift morale: -15 to the unrest target and +2% population growth.',
+    tierRequired: 3, cost: { wood: 22, stone: 16 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'housing', minCount: 3 }],
+  },
+  grand_amphitheater: {
+    key: 'grand_amphitheater', name: 'Grand Amphitheater',
+    description: 'Passive civic building — no worker lane. -25 to the unrest target and +3% population growth.',
+    tierRequired: 4, cost: { wood: 28, stone: 22, iron: 4 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'amphitheater', minCount: 1 }],
+  },
+  coliseum: {
+    key: 'coliseum', name: 'Coliseum',
+    description: 'Passive civic building — no worker lane. -35 to the unrest target and +4% population growth.',
+    tierRequired: 5, cost: { wood: 34, stone: 28, iron: 8 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'grand_amphitheater', minCount: 1 }],
+  },
+  imperial_coliseum: {
+    key: 'imperial_coliseum', name: 'Imperial Coliseum',
+    description: 'Passive civic building — no worker lane. -45 to the unrest target and +5% population growth — the best civic morale available.',
+    tierRequired: 6, cost: { wood: 40, stone: 34, iron: 12 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'coliseum', minCount: 1 }],
+  },
+
+  // ── Migrant Camp tiers 3-6 (new) ────────────────────────────────────────
+  // Passive, no worker lane. Each day, spends gold to pull in settlers
+  // directly — a population lever independent of the birth-chance system,
+  // capped by remaining housing room and available gold.
+  migrant_camp: {
+    key: 'migrant_camp', name: 'Migrant Camp',
+    description: 'Passive civic building — no worker lane. Attracts up to 2 settlers/day for 3 gold each, capped by housing room and gold on hand.',
+    tierRequired: 3, cost: { wood: 20, stone: 10, iron: 4 }, days: 4, resourceOutput: {},
+    prerequisites: [{ type: 'housing', minCount: 3 }, { type: 'trade_post', minCount: 1 }],
+  },
+  recruiters_hall: {
+    key: 'recruiters_hall', name: "Recruiter's Hall",
+    description: 'Passive civic building — no worker lane. Attracts up to 3 settlers/day for 3 gold each, capped by housing room and gold on hand.',
+    tierRequired: 4, cost: { wood: 26, stone: 16, iron: 8 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'migrant_camp', minCount: 1 }],
+  },
+  immigration_bureau: {
+    key: 'immigration_bureau', name: 'Immigration Bureau',
+    description: 'Passive civic building — no worker lane. Attracts up to 4 settlers/day for 2.5 gold each, capped by housing room and gold on hand.',
+    tierRequired: 5, cost: { wood: 32, stone: 22, iron: 12 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'recruiters_hall', minCount: 1 }],
+  },
+  grand_migration_hall: {
+    key: 'grand_migration_hall', name: 'Grand Migration Hall',
+    description: 'Passive civic building — no worker lane. Attracts up to 6 settlers/day for 2 gold each — the best immigration rate available — capped by housing room and gold on hand.',
+    tierRequired: 6, cost: { wood: 38, stone: 28, iron: 16 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'immigration_bureau', minCount: 1 }],
   },
 });
 
@@ -2172,6 +2319,26 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   merchants_rest: { researchRequired: null, upgradedBuilding: 'golden_cup_hall', tier3: 'golden_cup_hall' },
   golden_cup_hall: { researchRequired: null, upgradedBuilding: 'royal_tavern', tier3: 'royal_tavern' },
   royal_tavern: { researchRequired: null, upgradedBuilding: 'legendary_tavern', tier3: 'legendary_tavern' },
+
+  overseers_post: { researchRequired: null, upgradedBuilding: 'overseer_barracks', tier3: 'overseer_barracks' },
+  overseer_barracks: { researchRequired: null, upgradedBuilding: 'slave_marshal_hall', tier3: 'slave_marshal_hall' },
+  slave_marshal_hall: { researchRequired: null, upgradedBuilding: 'grand_overseer_citadel', tier3: 'grand_overseer_citadel' },
+
+  amphitheater: { researchRequired: null, upgradedBuilding: 'grand_amphitheater', tier3: 'grand_amphitheater' },
+  grand_amphitheater: { researchRequired: null, upgradedBuilding: 'coliseum', tier3: 'coliseum' },
+  coliseum: { researchRequired: null, upgradedBuilding: 'imperial_coliseum', tier3: 'imperial_coliseum' },
+
+  migrant_camp: { researchRequired: null, upgradedBuilding: 'recruiters_hall', tier3: 'recruiters_hall' },
+  recruiters_hall: { researchRequired: null, upgradedBuilding: 'immigration_bureau', tier3: 'immigration_bureau' },
+  immigration_bureau: { researchRequired: null, upgradedBuilding: 'grand_migration_hall', tier3: 'grand_migration_hall' },
+
+  animal_stable: { researchRequired: null, upgradedBuilding: 'grand_stable', tier3: 'grand_stable' },
+  grand_stable: { researchRequired: null, upgradedBuilding: 'royal_stud_farm', tier3: 'royal_stud_farm' },
+  royal_stud_farm: { researchRequired: null, upgradedBuilding: 'imperial_stud_farm', tier3: 'imperial_stud_farm' },
+
+  animal_farm: { researchRequired: null, upgradedBuilding: 'grand_pasture', tier3: 'grand_pasture' },
+  grand_pasture: { researchRequired: null, upgradedBuilding: 'livestock_ranch', tier3: 'livestock_ranch' },
+  livestock_ranch: { researchRequired: null, upgradedBuilding: 'grand_stockyards', tier3: 'grand_stockyards' },
 });
 
 const UPGRADE_ONLY_BUILDING_TYPES = new Set([
@@ -2217,6 +2384,11 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'war_room', 'strategic_command', 'advanced_command_center', 'high_command_citadel',
   'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall',
   'roadside_inn', 'grand_tavern', 'merchants_rest', 'golden_cup_hall', 'royal_tavern', 'legendary_tavern',
+  'overseer_barracks', 'slave_marshal_hall', 'grand_overseer_citadel',
+  'grand_amphitheater', 'coliseum', 'imperial_coliseum',
+  'recruiters_hall', 'immigration_bureau', 'grand_migration_hall',
+  'grand_stable', 'royal_stud_farm', 'imperial_stud_farm',
+  'grand_pasture', 'livestock_ranch', 'grand_stockyards',
 ].forEach((type) => UPGRADE_ONLY_BUILDING_TYPES.add(type));
 
 // All building types that are the destination of any upgrade path.
@@ -7178,6 +7350,334 @@ router.post('/:id/trade-depot/accept', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to accept trade' });
   } finally {
     client.release();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Animal Management — livestock/horse ownership, breeding, and slaughter.
+// Separate from the worker-lane system: animals live in the fief_animals
+// table, not worker_assignments. Purchasing/breeding/slaughtering all require
+// the relevant capacity building (Animal Stable for horses, Animal Farm for
+// everything else) to already be completed in that fief.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ANIMAL_TYPES = {
+  war_horse: { key: 'war_horse', name: 'War Horse', category: 'horse', purchaseCost: 1200, slaughterMeatBase: 250 },
+  plough_horse: { key: 'plough_horse', name: 'Plough Horse', category: 'horse', purchaseCost: 600, slaughterMeatBase: 300 },
+  sheep: { key: 'sheep', name: 'Sheep', category: 'livestock', purchaseCost: 100, slaughterMeatBase: 80 },
+  goat: { key: 'goat', name: 'Goat', category: 'livestock', purchaseCost: 130, slaughterMeatBase: 100 },
+  pig: { key: 'pig', name: 'Pig', category: 'livestock', purchaseCost: 160, slaughterMeatBase: 150 },
+  cow: { key: 'cow', name: 'Cow', category: 'livestock', purchaseCost: 500, slaughterMeatBase: 1000 },
+};
+
+const HORSE_CAPACITY_BY_TYPE = {
+  animal_stable: 10,
+  grand_stable: 10,
+  royal_stud_farm: 15,
+  imperial_stud_farm: 15,
+};
+const LIVESTOCK_CAPACITY_BY_TYPE = {
+  animal_farm: 15,
+  grand_pasture: 15,
+  livestock_ranch: 20,
+  grand_stockyards: 20,
+};
+
+const getAnimalCapacity = (completedBuildingTypes, category) => {
+  const capacityMap = category === 'horse' ? HORSE_CAPACITY_BY_TYPE : LIVESTOCK_CAPACITY_BY_TYPE;
+  return (completedBuildingTypes || []).reduce((sum, type) => sum + (capacityMap[String(type || '')] || 0), 0);
+};
+
+// Newly purchased/bred animals start at this quality; breeding is the only way to raise it.
+const ANIMAL_STARTING_QUALITY = 20;
+// Flat gold cost per breeding attempt (success or failure) — keeps breeding a
+// deliberate choice rather than a free, spammable action.
+const BREEDING_ATTEMPT_GOLD_COST = 20;
+
+const getFiefCompletedBuildingTypes = async (fiefId) => {
+  const result = await pool.query(
+    `SELECT building_type FROM fief_buildings WHERE fief_id = $1 AND is_complete = true`,
+    [fiefId]
+  );
+  return result.rows.map((r) => String(r.building_type || ''));
+};
+
+const getFiefAnimalCounts = async (fiefId) => {
+  const result = await pool.query(
+    `SELECT animal_type, COUNT(*)::int AS count FROM fief_animals WHERE fief_id = $1 GROUP BY animal_type`,
+    [fiefId]
+  );
+  const byType = {};
+  for (const row of result.rows) byType[row.animal_type] = Number(row.count) || 0;
+  return byType;
+};
+
+// GET /api/kingdoms/:id/animals — every fief in the kingdom with its animals and capacity.
+router.get('/:id/animals', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const fiefsResult = await pool.query(
+      `SELECT id, name, tier FROM fiefs WHERE kingdom_id = $1 ORDER BY is_capital DESC, id ASC`,
+      [kingdomId]
+    );
+
+    const fiefs = [];
+    for (const fief of fiefsResult.rows) {
+      const fiefId = Number(fief.id);
+      const [completedTypes, animalsResult] = await Promise.all([
+        getFiefCompletedBuildingTypes(fiefId),
+        pool.query(
+          `SELECT id, animal_type, sex, quality, created_at FROM fief_animals WHERE fief_id = $1 ORDER BY animal_type ASC, id ASC`,
+          [fiefId]
+        ),
+      ]);
+
+      fiefs.push({
+        fief_id: fiefId,
+        fief_name: fief.name,
+        tier: Number(fief.tier || 1),
+        horse_capacity: getAnimalCapacity(completedTypes, 'horse'),
+        livestock_capacity: getAnimalCapacity(completedTypes, 'livestock'),
+        animals: animalsResult.rows.map((a) => ({
+          id: Number(a.id),
+          animal_type: a.animal_type,
+          sex: a.sex,
+          quality: Number(a.quality),
+          created_at: a.created_at,
+        })),
+      });
+    }
+
+    res.json({ animalTypes: ANIMAL_TYPES, fiefs });
+  } catch (error) {
+    console.error('Error loading animals:', error);
+    res.status(500).json({ error: 'Failed to load animals' });
+  }
+});
+
+// POST /api/kingdoms/fiefs/:id/animals/purchase — buy `count` animals of one type.
+router.post('/fiefs/:id/animals/purchase', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    const animalType = String(req.body?.animalType || '');
+    const count = Math.max(1, Math.floor(Number(req.body?.count) || 1));
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const animalDef = ANIMAL_TYPES[animalType];
+    if (!animalDef) return res.status(400).json({ error: 'Unknown animal type' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    const completedTypes = await getFiefCompletedBuildingTypes(fiefId);
+    const capacity = getAnimalCapacity(completedTypes, animalDef.category);
+    if (capacity <= 0) {
+      return res.status(400).json({
+        error: animalDef.category === 'horse' ? 'Requires an Animal Stable' : 'Requires an Animal Farm',
+      });
+    }
+
+    const counts = await getFiefAnimalCounts(fiefId);
+    const categoryTypes = Object.values(ANIMAL_TYPES).filter((t) => t.category === animalDef.category).map((t) => t.key);
+    const currentCategoryTotal = categoryTypes.reduce((sum, t) => sum + (counts[t] || 0), 0);
+    if (currentCategoryTotal + count > capacity) {
+      return res.status(400).json({ error: `Not enough capacity: ${currentCategoryTotal}/${capacity} used, cannot add ${count}` });
+    }
+
+    const totalCost = animalDef.purchaseCost * count;
+    const resources = normalizeStoredResources(owned.stored_resources);
+    const gold = Math.max(0, Number(resources.gold || 0));
+    if (gold < totalCost) {
+      return res.status(400).json({ error: `Not enough gold. Need ${totalCost}, have ${Math.floor(gold)}` });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      resources.gold = gold - totalCost;
+      await client.query(`UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(resources)]);
+
+      const inserted = [];
+      for (let i = 0; i < count; i += 1) {
+        const sex = Math.random() < 0.5 ? 'male' : 'female';
+        const result = await client.query(
+          `INSERT INTO fief_animals (fief_id, animal_type, sex, quality)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, animal_type, sex, quality, created_at`,
+          [fiefId, animalType, sex, ANIMAL_STARTING_QUALITY]
+        );
+        inserted.push(result.rows[0]);
+      }
+
+      await client.query('COMMIT');
+
+      if (req.io) {
+        req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+      }
+
+      res.json({ purchased: inserted, goldSpent: totalCost, remainingGold: resources.gold });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error purchasing animal:', error);
+    res.status(500).json({ error: 'Failed to purchase animal' });
+  }
+});
+
+// POST /api/kingdoms/fiefs/:id/animals/:animalId/slaughter — lump-sum meat, quality-scaled.
+router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    const animalId = Number(req.params.animalId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(animalId)) return res.status(400).json({ error: 'Invalid payload' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    const animalResult = await pool.query(
+      `SELECT id, animal_type, sex, quality FROM fief_animals WHERE id = $1 AND fief_id = $2`,
+      [animalId, fiefId]
+    );
+    const animal = animalResult.rows[0];
+    if (!animal) return res.status(404).json({ error: 'Animal not found in this fief' });
+
+    const animalDef = ANIMAL_TYPES[animal.animal_type];
+    const quality = Math.max(0, Math.min(100, Number(animal.quality) || 0));
+    const meatYield = Math.round((animalDef?.slaughterMeatBase || 0) * (quality / 100));
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const storageResult = await client.query(`SELECT storage_capacity, stored_resources FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
+      const storageCapacity = Math.max(0, Number(storageResult.rows[0]?.storage_capacity || 0)) || Infinity;
+      const resources = normalizeStoredResources(storageResult.rows[0]?.stored_resources);
+      const currentFood = Math.max(0, Number(resources.food || 0));
+      resources.food = Number.isFinite(storageCapacity) ? Math.min(storageCapacity, currentFood + meatYield) : currentFood + meatYield;
+      const actualGained = resources.food - currentFood;
+
+      await client.query(`UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(resources)]);
+      await client.query(`DELETE FROM fief_animals WHERE id = $1`, [animalId]);
+
+      await client.query('COMMIT');
+
+      if (req.io) {
+        req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+      }
+
+      res.json({ slaughtered: animal, meatGained: actualGained, meatYieldBeforeStorageCap: meatYield });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error slaughtering animal:', error);
+    res.status(500).json({ error: 'Failed to slaughter animal' });
+  }
+});
+
+// POST /api/kingdoms/fiefs/:id/animals/breed — pick one male + one female of the same type.
+router.post('/fiefs/:id/animals/breed', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    const maleId = Number(req.body?.maleId);
+    const femaleId = Number(req.body?.femaleId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(maleId) || !Number.isFinite(femaleId)) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+    if (maleId === femaleId) return res.status(400).json({ error: 'Choose two different animals' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    const parentsResult = await pool.query(
+      `SELECT id, animal_type, sex, quality FROM fief_animals WHERE fief_id = $1 AND id = ANY($2::int[])`,
+      [fiefId, [maleId, femaleId]]
+    );
+    const male = parentsResult.rows.find((r) => Number(r.id) === maleId);
+    const female = parentsResult.rows.find((r) => Number(r.id) === femaleId);
+    if (!male || !female) return res.status(404).json({ error: 'One or both animals not found in this fief' });
+    if (male.sex !== 'male' || female.sex !== 'female') return res.status(400).json({ error: 'Breeding requires one male and one female' });
+    if (male.animal_type !== female.animal_type) return res.status(400).json({ error: 'Both animals must be the same type' });
+
+    const animalType = male.animal_type;
+    const animalDef = ANIMAL_TYPES[animalType];
+
+    const completedTypes = await getFiefCompletedBuildingTypes(fiefId);
+    const capacity = getAnimalCapacity(completedTypes, animalDef.category);
+    const counts = await getFiefAnimalCounts(fiefId);
+    const categoryTypes = Object.values(ANIMAL_TYPES).filter((t) => t.category === animalDef.category).map((t) => t.key);
+    const currentCategoryTotal = categoryTypes.reduce((sum, t) => sum + (counts[t] || 0), 0);
+    if (currentCategoryTotal >= capacity) {
+      return res.status(400).json({ error: `No room to breed: ${currentCategoryTotal}/${capacity} capacity used` });
+    }
+
+    const resources = normalizeStoredResources(owned.stored_resources);
+    const gold = Math.max(0, Number(resources.gold || 0));
+    if (gold < BREEDING_ATTEMPT_GOLD_COST) {
+      return res.status(400).json({ error: `Not enough gold to attempt breeding. Need ${BREEDING_ATTEMPT_GOLD_COST}, have ${Math.floor(gold)}` });
+    }
+
+    const avgQuality = (Number(male.quality) + Number(female.quality)) / 2;
+    const successChance = Math.max(0.05, Math.min(0.85, 0.30 + (avgQuality / 100) * 0.40));
+    const succeeded = Math.random() < successChance;
+
+    let offspring = null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      resources.gold = gold - BREEDING_ATTEMPT_GOLD_COST;
+      await client.query(`UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(resources)]);
+
+      if (succeeded) {
+        const qualityRoll = avgQuality + (Math.random() * 20 - 10); // ±10 around the parent average
+        const offspringQuality = Math.max(0, Math.min(100, Math.round(qualityRoll)));
+        const offspringSex = Math.random() < 0.5 ? 'male' : 'female';
+        const result = await client.query(
+          `INSERT INTO fief_animals (fief_id, animal_type, sex, quality)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, animal_type, sex, quality, created_at`,
+          [fiefId, animalType, offspringSex, offspringQuality]
+        );
+        offspring = result.rows[0];
+      }
+
+      await client.query('COMMIT');
+
+      if (req.io) {
+        req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+      }
+
+      res.json({
+        success: succeeded,
+        chance: Math.round(successChance * 100),
+        offspring,
+        goldSpent: BREEDING_ATTEMPT_GOLD_COST,
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error breeding animals:', error);
+    res.status(500).json({ error: 'Failed to breed animals' });
   }
 });
 

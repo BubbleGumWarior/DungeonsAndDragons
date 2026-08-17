@@ -54,11 +54,22 @@ class Campaign {
     golden_cup_hall: 30,
     royal_tavern: 35,
     legendary_tavern: 40,
+    // Overseer's Post chain — disciplined, orderly slave labor
+    overseers_post: 10,
+    overseer_barracks: 15,
+    slave_marshal_hall: 20,
+    grand_overseer_citadel: 25,
+    // Amphitheater chain — public games and civic morale
+    amphitheater: 15,
+    grand_amphitheater: 25,
+    coliseum: 35,
+    imperial_coliseum: 45,
   };
 
-  // Tavern chain also lifts daily population growth (birth chance), on top of
-  // any legendary population_growth_bonus_pct. Stacks additively per building.
-  static TAVERN_POPULATION_GROWTH_BONUS_PCT_BY_TYPE = {
+  // Civic buildings that lift daily population growth (birth chance), on top
+  // of any legendary population_growth_bonus_pct. Stacks additively per building.
+  static POPULATION_GROWTH_BONUS_PCT_BY_TYPE = {
+    // Tavern chain
     tavern: 3,
     roadside_inn: 4,
     grand_tavern: 5,
@@ -66,15 +77,62 @@ class Campaign {
     golden_cup_hall: 7,
     royal_tavern: 8,
     legendary_tavern: 10,
+    // Amphitheater chain
+    amphitheater: 2,
+    grand_amphitheater: 3,
+    coliseum: 4,
+    imperial_coliseum: 5,
   };
 
   static getPopulationGrowthBonusPct(completedBuildings) {
     let pct = 0;
     for (const building of (completedBuildings || [])) {
       const type = String(building?.buildingType || building?.building_type || '');
-      pct += Campaign.TAVERN_POPULATION_GROWTH_BONUS_PCT_BY_TYPE[type] || 0;
+      pct += Campaign.POPULATION_GROWTH_BONUS_PCT_BY_TYPE[type] || 0;
     }
     return pct;
+  }
+
+  // Overseer's Post chain: raises the output of every slave-assigned worker
+  // in the fief by a flat %. Applied as a multiplier on the slave headcount
+  // fed into production, not a separate output stream.
+  static SLAVE_OUTPUT_BONUS_PCT_BY_TYPE = {
+    overseers_post: 10,
+    overseer_barracks: 15,
+    slave_marshal_hall: 20,
+    grand_overseer_citadel: 25,
+  };
+
+  static getSlaveOutputBonusPct(completedBuildings) {
+    let pct = 0;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      pct += Campaign.SLAVE_OUTPUT_BONUS_PCT_BY_TYPE[type] || 0;
+    }
+    return pct;
+  }
+
+  // Migrant Camp chain: each completed building adds to the daily settler
+  // rate (summed across duplicates); the cheapest gold-per-migrant among
+  // completed types is used for the whole day's batch.
+  static MIGRANT_ATTRACTION_BY_TYPE = {
+    migrant_camp: { ratePerDay: 2, goldPerMigrant: 3 },
+    recruiters_hall: { ratePerDay: 3, goldPerMigrant: 3 },
+    immigration_bureau: { ratePerDay: 4, goldPerMigrant: 2.5 },
+    grand_migration_hall: { ratePerDay: 6, goldPerMigrant: 2 },
+  };
+
+  static getMigrantAttractionConfig(completedBuildings) {
+    let ratePerDay = 0;
+    let goldPerMigrant = Infinity;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      const config = Campaign.MIGRANT_ATTRACTION_BY_TYPE[type];
+      if (!config) continue;
+      ratePerDay += Math.max(0, Number(config.ratePerDay) || 0);
+      goldPerMigrant = Math.min(goldPerMigrant, Math.max(0, Number(config.goldPerMigrant) || 0));
+    }
+    return { ratePerDay, goldPerMigrant: Number.isFinite(goldPerMigrant) ? goldPerMigrant : 0 };
   }
 
   // Baseline population a fief's own tier of authority can keep orderly
@@ -1139,7 +1197,8 @@ class Campaign {
                to_regclass('public.fiefs') AS fiefs,
                to_regclass('public.fief_buildings') AS fief_buildings,
                to_regclass('public.fief_research_queue') AS fief_research_queue,
-               to_regclass('public.fief_research_levels') AS fief_research_levels
+               to_regclass('public.fief_research_levels') AS fief_research_levels,
+               to_regclass('public.fief_animals') AS fief_animals
       `);
       const canSimulateKingdoms = Boolean(
         tableCheck.rows[0]?.kingdoms &&
@@ -1150,6 +1209,7 @@ class Campaign {
         tableCheck.rows[0]?.fief_research_queue &&
         tableCheck.rows[0]?.fief_research_levels
       );
+      const canSimulateAnimals = Boolean(tableCheck.rows[0]?.fief_animals);
 
       let hasConsecutiveStarvationDaysColumn = false;
       let hasConsecutiveGoldShortageDaysColumn = false;
@@ -1213,6 +1273,8 @@ class Campaign {
       const buildingsByFief = new Map();
       const researchByFief = new Map();
       const legendaryBonusesByFief = new Map();
+      const animalsByFief = new Map();
+      const animalsLost = {};
 
       if (canSimulateKingdoms) {
         const fiefsResult = await client.query(
@@ -1319,6 +1381,20 @@ class Campaign {
             });
           }
 
+          if (canSimulateAnimals) {
+            const animalsResult = await client.query(
+              `SELECT id, fief_id, animal_type, quality
+               FROM fief_animals
+               WHERE fief_id = ANY($1::int[])`,
+              [fiefStates.map((f) => f.id)]
+            );
+            for (const row of animalsResult.rows) {
+              const fiefId = Number(row.fief_id);
+              if (!animalsByFief.has(fiefId)) animalsByFief.set(fiefId, []);
+              animalsByFief.get(fiefId).push({ id: Number(row.id), animalType: row.animal_type, quality: Number(row.quality) });
+            }
+          }
+
           const legendaryTables = await client.query(
             `SELECT to_regclass('public.kingdom_legendary_assignments') AS assignments,
                     to_regclass('public.kingdom_legendary_characters') AS characters`
@@ -1421,11 +1497,15 @@ class Campaign {
             fief.unrest = Math.max(unrestTarget, fief.unrest - Campaign.UNREST_DAILY_STEP);
           }
 
+          // Overseer's Post chain: every slave-assigned worker in this fief produces
+          // more, applied as a multiplier on the slave headcount fed into production.
+          const slaveOutputMultiplier = 1 + (Campaign.getSlaveOutputBonusPct(completed) / 100);
+
           const effectiveAssignments = { ...(fief.workerAssignments || {}) };
           for (const lane of ['meat', 'vegetables', 'wood', 'stone', 'iron', 'gold']) {
             effectiveAssignments[lane] =
               Math.max(0, Number(effectiveAssignments[lane] || 0))
-              + Math.max(0, Number((fief.slaveWorkerAssignments || {})[lane] || 0));
+              + (Math.max(0, Number((fief.slaveWorkerAssignments || {})[lane] || 0)) * slaveOutputMultiplier);
           }
 
           const baseProduction = Campaign.computeBaseProduction(effectiveAssignments, completed, {
@@ -1448,7 +1528,7 @@ class Campaign {
           if (hasVegetableHarvestStateColumn) {
             const state = Campaign.normalizeVegetableHarvestState(fief.vegetableHarvestState);
             const currentAssignedVegetableWorkers = Math.max(0, Math.floor(Number((fief.workerAssignments || {}).vegetables || 0)))
-              + Math.max(0, Math.floor(Number((fief.slaveWorkerAssignments || {}).vegetables || 0)));
+              + Math.max(0, Math.floor(Number((fief.slaveWorkerAssignments || {}).vegetables || 0) * slaveOutputMultiplier));
 
             // Keep farming idle until a fief actually has vegetable workers assigned.
             // Also recover from stale locked phases that have no locked workers.
@@ -1613,6 +1693,47 @@ class Campaign {
             fief.consecutiveGoldShortageDays = 0;
           }
 
+          // Migrant Camp chain: spend gold to pull in settlers directly, capped by
+          // remaining housing room and gold on hand after upkeep. Independent of
+          // (and stacks with) birth-chance population growth.
+          const migrantConfig = Campaign.getMigrantAttractionConfig(completed);
+          if (migrantConfig.ratePerDay > 0) {
+            const housingCapacityForMigrants = Campaign.calculateHousingCapacityFromCompletedBuildings(
+              completed,
+              fief.completedResearch,
+              fief.population
+            );
+            const housingRoom = Math.max(0, housingCapacityForMigrants - (fief.population + fief.slaves));
+            const goldOnHand = Math.max(0, Number(fief.storedResources.gold || 0));
+            const affordableByGold = migrantConfig.goldPerMigrant > 0
+              ? Math.floor(goldOnHand / migrantConfig.goldPerMigrant)
+              : Math.floor(migrantConfig.ratePerDay);
+            const migrantsToday = Math.max(0, Math.min(Math.floor(migrantConfig.ratePerDay), housingRoom, affordableByGold));
+            if (migrantsToday > 0) {
+              fief.storedResources.gold = goldOnHand - (migrantsToday * migrantConfig.goldPerMigrant);
+              fief.population += migrantsToday;
+              populationGained[fief.id] = (Number(populationGained[fief.id]) || 0) + migrantsToday;
+            }
+          }
+
+          // Animal Management: every 10 animals in this fief need 1 worker assigned to the
+          // Farming lane (the vegetables key) or the herd starts dying/escaping. Understaffed
+          // fiefs lose a small, escalating fraction of their animals each day.
+          const fiefAnimals = animalsByFief.get(fief.id) || [];
+          if (fiefAnimals.length > 0) {
+            const requiredFarmingWorkers = Math.ceil(fiefAnimals.length / 10);
+            const assignedFarmingWorkers = Math.max(0, Number((fief.workerAssignments || {}).vegetables || 0));
+            if (assignedFarmingWorkers < requiredFarmingWorkers) {
+              const shortfallRatio = (requiredFarmingWorkers - assignedFarmingWorkers) / requiredFarmingWorkers;
+              const lossChancePerAnimal = Math.min(0.15, shortfallRatio * 0.10);
+              const lostIds = fiefAnimals.filter(() => Math.random() < lossChancePerAnimal).map((a) => a.id);
+              if (lostIds.length > 0) {
+                await client.query(`DELETE FROM fief_animals WHERE id = ANY($1::int[])`, [lostIds]);
+                animalsLost[fief.id] = (Number(animalsLost[fief.id]) || 0) + lostIds.length;
+              }
+            }
+          }
+
           // Tier 5+ revolts: once unrest is high enough there's a daily chance the
           // fief boils over. Garrisoned reserve units die trying to put it down;
           // civilians die as rebels in the streets — worse still if no one was
@@ -1732,7 +1853,7 @@ class Campaign {
             return sum + (BUILDER_HUT_BONUS_BY_TYPE[type] || 0);
           }, 0);
           const builderWorkers = Math.max(0, Number(fief.workerAssignments.building || 0))
-            + Math.max(0, Number((fief.slaveWorkerAssignments || {}).building || 0))
+            + (Math.max(0, Number((fief.slaveWorkerAssignments || {}).building || 0)) * slaveOutputMultiplier)
             + passiveBuilderBonus;
           if (builderWorkers > 0) {
             let remainingEffort = builderWorkers;
@@ -2121,6 +2242,7 @@ class Campaign {
         revolts,
         resourcesGained,
         populationGained,
+        animalsLost,
       };
     } catch (err) {
       await client.query('ROLLBACK');

@@ -10,6 +10,9 @@ import {
   LegendaryCharacter,
   PrayerDefinition,
   KingdomTradeDepot,
+  AnimalTypeDefinition,
+  FiefAnimalsSummary,
+  FiefAnimal,
 } from '../../services/api';
 
 interface Player {
@@ -32,7 +35,7 @@ interface Props {
   socket: any;
 }
 
-type ManagementMode = 'fief' | 'kingdom';
+type ManagementMode = 'fief' | 'kingdom' | 'animals';
 
 const WORKER_STEP_OPTIONS = [1, 5, 10, 50, 100] as const;
 const POPULATION_MATURITY_DAYS = 15 * 365;
@@ -155,6 +158,30 @@ const STABILITY_CAPACITY_BY_TYPE: Record<string, number> = {
   golden_cup_hall: 30,
   royal_tavern: 35,
   legendary_tavern: 40,
+  overseers_post: 10,
+  overseer_barracks: 15,
+  slave_marshal_hall: 20,
+  grand_overseer_citadel: 25,
+  amphitheater: 15,
+  grand_amphitheater: 25,
+  coliseum: 35,
+  imperial_coliseum: 45,
+};
+
+// Mirrors the backend's Campaign.SLAVE_OUTPUT_BONUS_PCT_BY_TYPE exactly (Overseer's Post chain).
+const SLAVE_OUTPUT_BONUS_PCT_BY_TYPE: Record<string, number> = {
+  overseers_post: 10,
+  overseer_barracks: 15,
+  slave_marshal_hall: 20,
+  grand_overseer_citadel: 25,
+};
+
+const getSlaveOutputMultiplier = (completedBuildings: any[]) => {
+  let pct = 0;
+  for (const b of (completedBuildings || [])) {
+    pct += SLAVE_OUTPUT_BONUS_PCT_BY_TYPE[String(b?.building_type || '')] || 0;
+  }
+  return 1 + (pct / 100);
 };
 const UNREST_BASELINE_POPULATION_PER_TIER = 40;
 const UNREST_STABILITY_POPULATION_PER_CAPACITY_POINT = 2;
@@ -240,6 +267,39 @@ const RESOURCE_ICONS: Record<string, string> = {
   building: '🏗️',
 };
 
+// Display-only rename: the underlying resource/worker-lane key stays 'vegetables'
+// everywhere (DB, API payloads, calculations) — only the label shown to players changes.
+const RESOURCE_LABEL_OVERRIDES: Record<string, string> = {
+  vegetables: 'Farming',
+};
+const getResourceLabel = (key: string) => RESOURCE_LABEL_OVERRIDES[key] || key;
+
+// ── Animal Management ────────────────────────────────────────────────────
+const ANIMAL_ICONS: Record<string, string> = {
+  war_horse: '🐴',
+  plough_horse: '🐎',
+  sheep: '🐑',
+  goat: '🐐',
+  pig: '🐖',
+  cow: '🐄',
+};
+
+const getQualityColor = (quality: number) => {
+  if (quality >= 85) return '#fde047';
+  if (quality >= 60) return '#86efac';
+  if (quality >= 30) return '#fbbf24';
+  return '#fca5a5';
+};
+
+const groupAnimalsByType = (animals: FiefAnimal[]) => {
+  const byType = new Map<string, FiefAnimal[]>();
+  for (const animal of animals) {
+    if (!byType.has(animal.animal_type)) byType.set(animal.animal_type, []);
+    byType.get(animal.animal_type)!.push(animal);
+  }
+  return byType;
+};
+
 // Terrain / location modifier lanes — shared by the "Set Location" modal (used
 // right after a fief is created) and the DM Terrain Editor panel (used to
 // revisit any existing fief's terrain bonuses later).
@@ -248,7 +308,7 @@ const LOCATION_LANES: Array<{ key: string; label: string; icon: string }> = [
   { key: 'stone', label: 'Stone', icon: '🪨' },
   { key: 'iron', label: 'Iron', icon: '⛓️' },
   { key: 'meat', label: 'Meat', icon: '🥩' },
-  { key: 'vegetables', label: 'Vegetables', icon: '🥕' },
+  { key: 'vegetables', label: 'Farming', icon: '🥕' },
   { key: 'gold', label: 'Gold', icon: '🪙' },
   { key: 'research', label: 'Research', icon: '📘' },
   { key: 'faith', label: 'Faith', icon: '✨' },
@@ -260,7 +320,7 @@ const LEGENDARY_BONUS_LABELS: Record<string, string> = {
   stone_bonus_pct: 'Stone',
   iron_bonus_pct: 'Iron',
   meat_bonus_pct: 'Meat',
-  vegetables_bonus_pct: 'Vegetables',
+  vegetables_bonus_pct: 'Farming',
   gold_bonus_pct: 'Gold',
   research_bonus_pct: 'Research',
   faith_bonus_pct: 'Faith',
@@ -528,6 +588,11 @@ const KingdomTab: React.FC<Props> = ({
   const [prayers, setPrayers] = useState<PrayerDefinition[]>([]);
   const [pooledFaith, setPooledFaith] = useState(0);
   const [tradeDepot, setTradeDepot] = useState<KingdomTradeDepot | null>(null);
+  const [animalsLoading, setAnimalsLoading] = useState(false);
+  const [animalTypes, setAnimalTypes] = useState<Record<string, AnimalTypeDefinition>>({});
+  const [animalFiefs, setAnimalFiefs] = useState<FiefAnimalsSummary[]>([]);
+  const [animalPurchaseForm, setAnimalPurchaseForm] = useState<Record<number, { animalType: string; qty: number }>>({});
+  const [animalBreedForm, setAnimalBreedForm] = useState<Record<number, { animalType: string; maleId: number | null; femaleId: number | null }>>({});
   const [showLegendaryCreateModal, setShowLegendaryCreateModal] = useState(false);
   const [legendaryForm, setLegendaryForm] = useState({
     name: '',
@@ -758,6 +823,25 @@ const KingdomTab: React.FC<Props> = ({
     fetchKingdomManagementData();
   }, [managementMode, fetchKingdomManagementData]);
 
+  const fetchAnimalsData = useCallback(async () => {
+    if (!selectedKingdomId) return;
+    setAnimalsLoading(true);
+    try {
+      const res = await kingdomAPI.getKingdomAnimals(Number(selectedKingdomId));
+      setAnimalTypes(res.animalTypes || {});
+      setAnimalFiefs(res.fiefs || []);
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to load animals');
+    } finally {
+      setAnimalsLoading(false);
+    }
+  }, [selectedKingdomId, pushToast]);
+
+  useEffect(() => {
+    if (managementMode !== 'animals') return;
+    fetchAnimalsData();
+  }, [managementMode, fetchAnimalsData]);
+
   useEffect(() => {
     if (!visibleKingdoms.length) {
       setSelectedFiefId(null);
@@ -984,6 +1068,73 @@ const KingdomTab: React.FC<Props> = ({
       await fetchKingdoms();
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to save fief modifiers');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const getAnimalPurchaseForm = (fiefId: number, defaultType: string) =>
+    animalPurchaseForm[fiefId] || { animalType: defaultType, qty: 1 };
+
+  const setAnimalPurchaseFormFor = (fiefId: number, next: Partial<{ animalType: string; qty: number }>) => {
+    setAnimalPurchaseForm((prev) => ({
+      ...prev,
+      [fiefId]: { ...getAnimalPurchaseForm(fiefId, next.animalType || 'sheep'), ...next },
+    }));
+  };
+
+  const getAnimalBreedForm = (fiefId: number, defaultType: string) =>
+    animalBreedForm[fiefId] || { animalType: defaultType, maleId: null, femaleId: null };
+
+  const setAnimalBreedFormFor = (fiefId: number, next: Partial<{ animalType: string; maleId: number | null; femaleId: number | null }>) => {
+    setAnimalBreedForm((prev) => ({
+      ...prev,
+      [fiefId]: { ...getAnimalBreedForm(fiefId, next.animalType || 'sheep'), ...next },
+    }));
+  };
+
+  const handlePurchaseAnimals = async (fiefId: number, animalType: string, qty: number) => {
+    if (qty <= 0) return;
+    setBusy(`animal-purchase-${fiefId}`);
+    try {
+      const result = await kingdomAPI.purchaseAnimals(fiefId, animalType, qty);
+      pushToast(`Purchased ${result.purchased.length} ${animalTypes[animalType]?.name || animalType} for ${result.goldSpent} gold`, 'success');
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to purchase animal');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSlaughterAnimal = async (fiefId: number, animal: FiefAnimal) => {
+    const def = animalTypes[animal.animal_type];
+    if (!window.confirm(`Slaughter this ${def?.name || animal.animal_type} (${animal.quality}% quality) for meat? This cannot be undone.`)) return;
+    setBusy(`animal-slaughter-${animal.id}`);
+    try {
+      const result = await kingdomAPI.slaughterAnimal(fiefId, animal.id);
+      pushToast(`Slaughtered for +${Math.round(result.meatGained)} food`, 'success');
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to slaughter animal');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleBreedAnimals = async (fiefId: number, maleId: number, femaleId: number) => {
+    setBusy(`animal-breed-${fiefId}`);
+    try {
+      const result = await kingdomAPI.breedAnimals(fiefId, maleId, femaleId);
+      if (result.success && result.offspring) {
+        pushToast(`Breeding succeeded — new offspring at ${result.offspring.quality}% quality`, 'success');
+      } else {
+        pushToast(`Breeding failed (${result.chance}% chance) — the animals are unharmed`, 'info');
+      }
+      setAnimalBreedFormFor(fiefId, { maleId: null, femaleId: null });
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to breed animals');
     } finally {
       setBusy(null);
     }
@@ -1265,13 +1416,16 @@ const KingdomTab: React.FC<Props> = ({
     // Tavern lane is citizen-only — no slave counterpart is read here by design.
     const workersTavern = Math.max(0, Number(assignments.tavern || 0));
 
-    const slaveMeat = Math.max(0, Number(slaveAssignments.meat || 0));
-    const slaveWood = Math.max(0, Number(slaveAssignments.wood || 0));
-    const slaveStone = Math.max(0, Number(slaveAssignments.stone || 0));
-    const slaveIron = Math.max(0, Number(slaveAssignments.iron || 0));
-    const slaveGold = Math.max(0, Number(slaveAssignments.gold || 0));
-    const slaveBuilding = Math.max(0, Number(slaveAssignments.building || 0));
-    const slaveVegetables = Math.max(0, Number(slaveAssignments.vegetables || 0));
+    // Overseer's Post chain: every slave-assigned worker produces more, applied
+    // as a multiplier on the slave headcount fed into production (mirrors backend).
+    const slaveOutputMultiplier = getSlaveOutputMultiplier(completedBuildings);
+    const slaveMeat = Math.max(0, Number(slaveAssignments.meat || 0)) * slaveOutputMultiplier;
+    const slaveWood = Math.max(0, Number(slaveAssignments.wood || 0)) * slaveOutputMultiplier;
+    const slaveStone = Math.max(0, Number(slaveAssignments.stone || 0)) * slaveOutputMultiplier;
+    const slaveIron = Math.max(0, Number(slaveAssignments.iron || 0)) * slaveOutputMultiplier;
+    const slaveGold = Math.max(0, Number(slaveAssignments.gold || 0)) * slaveOutputMultiplier;
+    const slaveBuilding = Math.max(0, Number(slaveAssignments.building || 0)) * slaveOutputMultiplier;
+    const slaveVegetables = Math.max(0, Number(slaveAssignments.vegetables || 0)) * slaveOutputMultiplier;
 
     // Use server-tracked vegetable phase state to show accurate cycle behavior.
     const harvestState = (fiefDetails?.vegetable_harvest_state || {
@@ -1561,7 +1715,7 @@ const KingdomTab: React.FC<Props> = ({
 
     await submitWorkers(next);
     if (!canClearVegetables && Math.max(0, Number(current.vegetables || 0)) > 0) {
-      pushToast('Cleared all available citizen lanes. Vegetable workers stay locked until assignment phase.', 'success');
+      pushToast('Cleared all available citizen lanes. Farming workers stay locked until assignment phase.', 'success');
     }
   };
 
@@ -2248,7 +2402,7 @@ const KingdomTab: React.FC<Props> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem' }}>
                     {outputEntries.map(([resource, amount]) => (
                       <div key={resource} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                        <span style={{ textTransform: 'capitalize' }}>{RESOURCE_ICONS[resource] ? `${RESOURCE_ICONS[resource]} ` : ''}{resource}</span>
+                        <span style={{ textTransform: 'capitalize' }}>{RESOURCE_ICONS[resource] ? `${RESOURCE_ICONS[resource]} ` : ''}{getResourceLabel(resource)}</span>
                         <span style={{ color: '#86efac', fontWeight: 700 }}>+{Number(amount).toFixed(1)} /day</span>
                       </div>
                     ))}
@@ -2444,23 +2598,40 @@ const KingdomTab: React.FC<Props> = ({
                     </button>
                   )}
                   {canToggleManagement && isSelectedKingdom && (
-                    <button
-                      onClick={() => setManagementMode((prev) => (prev === 'fief' ? 'kingdom' : 'fief'))}
-                      style={{
-                        marginLeft: 'auto',
-                        padding: '0.4rem 0.75rem',
-                        borderRadius: '1.4rem',
-                        border: '1px solid rgba(96,165,250,0.45)',
-                        background: managementMode === 'kingdom' ? 'rgba(30,58,138,0.35)' : 'rgba(15,15,15,0.4)',
-                        color: managementMode === 'kingdom' ? '#93c5fd' : 'var(--text-secondary)',
-                        cursor: 'pointer',
-                        fontSize: '0.88rem',
-                        fontWeight: 700,
-                      }}
-                      title="Toggle between fief and kingdom management views"
-                    >
-                      {managementMode === 'fief' ? 'Fief Management' : 'Kingdom Management'}
-                    </button>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
+                      <button
+                        onClick={() => setManagementMode((prev) => (prev === 'kingdom' ? 'fief' : 'kingdom'))}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          borderRadius: '1.4rem',
+                          border: '1px solid rgba(96,165,250,0.45)',
+                          background: managementMode === 'kingdom' ? 'rgba(30,58,138,0.35)' : 'rgba(15,15,15,0.4)',
+                          color: managementMode === 'kingdom' ? '#93c5fd' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          fontSize: '0.88rem',
+                          fontWeight: 700,
+                        }}
+                        title="Toggle between fief and kingdom management views"
+                      >
+                        {managementMode === 'kingdom' ? 'Kingdom Management' : 'Fief Management'}
+                      </button>
+                      <button
+                        onClick={() => setManagementMode((prev) => (prev === 'animals' ? 'fief' : 'animals'))}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          borderRadius: '1.4rem',
+                          border: '1px solid rgba(217,119,6,0.45)',
+                          background: managementMode === 'animals' ? 'rgba(120,53,15,0.35)' : 'rgba(15,15,15,0.4)',
+                          color: managementMode === 'animals' ? '#fbbf24' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          fontSize: '0.88rem',
+                          fontWeight: 700,
+                        }}
+                        title="Manage horses and livestock across every fief in this kingdom"
+                      >
+                        🐴 Animal Management
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -2765,6 +2936,242 @@ const KingdomTab: React.FC<Props> = ({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {managementMode === 'animals' && selectedKingdom && canUseKingdomManagement && (
+            <div className="kt-panel" data-tone="gold">
+              <div className="kt-panel-header">
+                <div className="kt-panel-icon">🐴</div>
+                <div className="kt-panel-titles">
+                  <div className="kt-panel-title">Animal Management</div>
+                  <div className="kt-panel-sub">Horses and livestock across every fief — purchase, breed, and slaughter</div>
+                </div>
+              </div>
+
+              {animalsLoading && animalFiefs.length === 0 ? (
+                <div className="kt-empty">
+                  <div className="kt-empty-icon">🐴</div>
+                  <div className="kt-empty-title">Loading herds…</div>
+                </div>
+              ) : animalFiefs.length === 0 ? (
+                <div className="kt-empty">
+                  <div className="kt-empty-icon">🐴</div>
+                  <div className="kt-empty-title">This kingdom has no fiefs yet</div>
+                  <div className="kt-empty-sub">Create a fief, then build an Animal Stable or Animal Farm to start herding.</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {animalFiefs.map((fief) => {
+                    const grouped = groupAnimalsByType(fief.animals);
+                    const horseUsed = fief.animals.filter((a) => animalTypes[a.animal_type]?.category === 'horse').length;
+                    const livestockUsed = fief.animals.filter((a) => animalTypes[a.animal_type]?.category === 'livestock').length;
+
+                    const purchaseForm = getAnimalPurchaseForm(fief.fief_id, 'sheep');
+                    const purchaseDef = animalTypes[purchaseForm.animalType];
+                    const purchaseCapacity = purchaseDef?.category === 'horse' ? fief.horse_capacity : fief.livestock_capacity;
+                    const purchaseUsed = purchaseDef?.category === 'horse' ? horseUsed : livestockUsed;
+                    const purchaseRoom = Math.max(0, purchaseCapacity - purchaseUsed);
+                    const purchaseCost = (purchaseDef?.purchaseCost || 0) * Math.max(1, purchaseForm.qty);
+
+                    const breedForm = getAnimalBreedForm(fief.fief_id, grouped.size > 0 ? Array.from(grouped.keys())[0] : 'sheep');
+                    const breedCandidates = grouped.get(breedForm.animalType) || [];
+                    const males = breedCandidates.filter((a) => a.sex === 'male');
+                    const females = breedCandidates.filter((a) => a.sex === 'female');
+                    const canBreed = Boolean(breedForm.maleId && breedForm.femaleId);
+                    const selectedMale = males.find((a) => a.id === breedForm.maleId);
+                    const selectedFemale = females.find((a) => a.id === breedForm.femaleId);
+                    const breedChance = selectedMale && selectedFemale
+                      ? Math.round(Math.max(5, Math.min(85, 30 + ((selectedMale.quality + selectedFemale.quality) / 2 / 100) * 40)))
+                      : null;
+
+                    const inputStyle: React.CSSProperties = { padding: '0.3rem 0.45rem', borderRadius: '0.34rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)', fontSize: '0.78rem' };
+
+                    return (
+                      <div key={fief.fief_id} className="kt-card" style={{ border: '1px solid rgba(var(--theme-accent-rgb),0.2)', background: 'rgba(15,15,15,0.4)', padding: '0.9rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', flexWrap: 'wrap' }}>
+                          <span style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1rem' }}>{fief.fief_name}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>Tier {fief.tier}</span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.55rem' }}>
+                          {([
+                            { label: '🐴 Horses', used: horseUsed, cap: fief.horse_capacity, color: '#93c5fd' },
+                            { label: '🐑 Livestock', used: livestockUsed, cap: fief.livestock_capacity, color: '#86efac' },
+                          ] as const).map((bar) => {
+                            const pct = bar.cap > 0 ? Math.min(1, bar.used / bar.cap) : 0;
+                            return (
+                              <div key={bar.label}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                                  <span>{bar.label}</span>
+                                  <span style={{ color: bar.cap > 0 ? bar.color : 'var(--text-muted)', fontWeight: 700 }}>{bar.used} / {bar.cap}</span>
+                                </div>
+                                <div className="kt-bar-track" style={{ height: '7px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>
+                                  <div className="kt-bar-fill" style={{ height: '100%', width: `${pct * 100}%`, color: bar.color, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                                </div>
+                                {bar.cap <= 0 && (
+                                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.15rem' }}>
+                                    Requires an {bar.label.includes('Horses') ? 'Animal Stable' : 'Animal Farm'}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {grouped.size === 0 ? (
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No animals in this fief yet.</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {Array.from(grouped.entries()).map(([type, animals]) => {
+                              const def = animalTypes[type];
+                              const avgQuality = Math.round(animals.reduce((s, a) => s + a.quality, 0) / animals.length);
+                              return (
+                                <div key={type} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem', padding: '0.5rem 0.6rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                                      {ANIMAL_ICONS[type] || '🐾'} {def?.name || type} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>× {animals.length}</span>
+                                    </span>
+                                    <span style={{ fontSize: '0.72rem', color: getQualityColor(avgQuality), fontWeight: 700 }}>avg {avgQuality}% quality</span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                                    {animals.map((a) => (
+                                      <div
+                                        key={a.id}
+                                        title={`${a.sex === 'male' ? 'Male' : 'Female'} · ${a.quality}% quality · click to slaughter for +${Math.round((def?.slaughterMeatBase || 0) * (a.quality / 100))} food`}
+                                        style={{
+                                          display: 'flex', alignItems: 'center', gap: '0.3rem',
+                                          padding: '0.2rem 0.4rem', borderRadius: '0.35rem',
+                                          border: `1px solid ${getQualityColor(a.quality)}55`,
+                                          background: `${getQualityColor(a.quality)}14`,
+                                          fontSize: '0.72rem',
+                                        }}
+                                      >
+                                        <span style={{ color: a.sex === 'male' ? '#93c5fd' : '#f9a8d4', fontWeight: 700 }}>{a.sex === 'male' ? '♂' : '♀'}</span>
+                                        <span style={{ color: getQualityColor(a.quality), fontWeight: 700 }}>{a.quality}%</span>
+                                        <button
+                                          onClick={() => handleSlaughterAnimal(fief.fief_id, a)}
+                                          disabled={busy === `animal-slaughter-${a.id}`}
+                                          title="Slaughter for meat"
+                                          style={{ border: 'none', background: 'transparent', color: '#fca5a5', cursor: 'pointer', fontSize: '0.72rem', padding: 0, opacity: busy === `animal-slaughter-${a.id}` ? 0.5 : 1 }}
+                                        >
+                                          🔪
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.55rem' }}>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>Purchase</div>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <select
+                              value={purchaseForm.animalType}
+                              onChange={(e) => setAnimalPurchaseFormFor(fief.fief_id, { animalType: e.target.value })}
+                              style={inputStyle}
+                            >
+                              <optgroup label="Horses">
+                                {Object.values(animalTypes).filter((t) => t.category === 'horse').map((t) => (
+                                  <option key={t.key} value={t.key}>{ANIMAL_ICONS[t.key]} {t.name} — {t.purchaseCost}g</option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Livestock">
+                                {Object.values(animalTypes).filter((t) => t.category === 'livestock').map((t) => (
+                                  <option key={t.key} value={t.key}>{ANIMAL_ICONS[t.key]} {t.name} — {t.purchaseCost}g</option>
+                                ))}
+                              </optgroup>
+                            </select>
+                            <input
+                              type="number" min="1" step="1"
+                              value={purchaseForm.qty}
+                              onChange={(e) => setAnimalPurchaseFormFor(fief.fief_id, { qty: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
+                              style={{ ...inputStyle, width: '58px' }}
+                            />
+                            <button
+                              onClick={() => handlePurchaseAnimals(fief.fief_id, purchaseForm.animalType, purchaseForm.qty)}
+                              disabled={busy === `animal-purchase-${fief.fief_id}` || purchaseCapacity <= 0 || purchaseForm.qty > purchaseRoom}
+                              title={purchaseCapacity <= 0 ? `Requires an ${purchaseDef?.category === 'horse' ? 'Animal Stable' : 'Animal Farm'}` : purchaseForm.qty > purchaseRoom ? `Only ${purchaseRoom} capacity remaining` : ''}
+                              style={{
+                                padding: '0.3rem 0.65rem', borderRadius: '0.34rem',
+                                border: '1px solid rgba(234,179,8,0.5)', background: 'rgba(120,53,15,0.4)', color: '#fde68a',
+                                cursor: (busy === `animal-purchase-${fief.fief_id}` || purchaseCapacity <= 0 || purchaseForm.qty > purchaseRoom) ? 'not-allowed' : 'pointer',
+                                opacity: (purchaseCapacity <= 0 || purchaseForm.qty > purchaseRoom) ? 0.5 : 1,
+                                fontWeight: 700, fontSize: '0.78rem',
+                              }}
+                            >
+                              Buy for {purchaseCost}g
+                            </button>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{purchaseUsed}/{purchaseCapacity} capacity used</span>
+                          </div>
+                        </div>
+
+                        <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.55rem' }}>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>Breed</div>
+                          {grouped.size === 0 ? (
+                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Purchase animals first to breed them.</div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                              <select
+                                value={breedForm.animalType}
+                                onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { animalType: e.target.value, maleId: null, femaleId: null })}
+                                style={inputStyle}
+                              >
+                                {Array.from(grouped.keys()).map((type) => (
+                                  <option key={type} value={type}>{ANIMAL_ICONS[type]} {animalTypes[type]?.name || type}</option>
+                                ))}
+                              </select>
+                              <select
+                                value={breedForm.maleId ?? ''}
+                                onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { maleId: Number(e.target.value) || null })}
+                                style={inputStyle}
+                                disabled={males.length === 0}
+                              >
+                                <option value="">♂ Sire…</option>
+                                {males.map((a) => (
+                                  <option key={a.id} value={a.id}>♂ {a.quality}% quality</option>
+                                ))}
+                              </select>
+                              <select
+                                value={breedForm.femaleId ?? ''}
+                                onChange={(e) => setAnimalBreedFormFor(fief.fief_id, { femaleId: Number(e.target.value) || null })}
+                                style={inputStyle}
+                                disabled={females.length === 0}
+                              >
+                                <option value="">♀ Dam…</option>
+                                {females.map((a) => (
+                                  <option key={a.id} value={a.id}>♀ {a.quality}% quality</option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={() => canBreed && handleBreedAnimals(fief.fief_id, breedForm.maleId as number, breedForm.femaleId as number)}
+                                disabled={!canBreed || busy === `animal-breed-${fief.fief_id}`}
+                                style={{
+                                  padding: '0.3rem 0.65rem', borderRadius: '0.34rem',
+                                  border: '1px solid rgba(236,72,153,0.5)', background: 'rgba(131,24,67,0.35)', color: '#f9a8d4',
+                                  cursor: (!canBreed || busy === `animal-breed-${fief.fief_id}`) ? 'not-allowed' : 'pointer',
+                                  opacity: !canBreed ? 0.5 : 1,
+                                  fontWeight: 700, fontSize: '0.78rem',
+                                }}
+                              >
+                                Breed (20g){breedChance !== null ? ` — ${breedChance}% chance` : ''}
+                              </button>
+                              {(males.length === 0 || females.length === 0) && (
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                  Needs at least one male and one female of this type.
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -3414,7 +3821,7 @@ const KingdomTab: React.FC<Props> = ({
                       return (
                         <div key={citizenRow.key} style={{ display: 'grid', gridTemplateColumns: laneCols, background: rowBg, borderTop: idx > 0 ? '1px solid rgba(var(--theme-accent-rgb),0.08)' : undefined, alignItems: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.3rem 0.2rem' }}>
-                            <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>{citizenRow.key}</span>
+                            <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>{getResourceLabel(citizenRow.key)}</span>
                           </div>
                           <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)', alignSelf: 'stretch' }} />
                           <div>{citizenControls(citizenRow)}</div>
@@ -4542,7 +4949,7 @@ const KingdomTab: React.FC<Props> = ({
                   ['stone_bonus_pct', 'Stone %'],
                   ['iron_bonus_pct', 'Iron %'],
                   ['meat_bonus_pct', 'Meat %'],
-                  ['vegetables_bonus_pct', 'Vegetables %'],
+                  ['vegetables_bonus_pct', 'Farming %'],
                   ['gold_bonus_pct', 'Gold %'],
                   ['research_bonus_pct', 'Research %'],
                   ['faith_bonus_pct', 'Faith %'],

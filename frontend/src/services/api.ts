@@ -1447,6 +1447,33 @@ export interface KingdomSummary {
   co_owners?: KingdomCoOwner[];
 }
 
+export type AnimalCategory = 'horse' | 'livestock';
+
+export interface AnimalTypeDefinition {
+  key: string;
+  name: string;
+  category: AnimalCategory;
+  purchaseCost: number;
+  slaughterMeatBase: number;
+}
+
+export interface FiefAnimal {
+  id: number;
+  animal_type: string;
+  sex: 'male' | 'female';
+  quality: number;
+  created_at: string;
+}
+
+export interface FiefAnimalsSummary {
+  fief_id: number;
+  fief_name: string;
+  tier: number;
+  horse_capacity: number;
+  livestock_capacity: number;
+  animals: FiefAnimal[];
+}
+
 export interface LegendaryCharacter {
   id: number;
   kingdom_id: number;
@@ -1715,6 +1742,37 @@ export const kingdomAPI = {
 
   giveBirth: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
     const response = await api.post(`/kingdoms/fiefs/${fiefId}/give-birth`);
+    return response.data;
+  },
+
+  getKingdomAnimals: async (kingdomId: number): Promise<{ animalTypes: Record<string, AnimalTypeDefinition>; fiefs: FiefAnimalsSummary[] }> => {
+    const response = await api.get(`/kingdoms/${kingdomId}/animals`);
+    return response.data;
+  },
+
+  purchaseAnimals: async (
+    fiefId: number,
+    animalType: string,
+    count: number
+  ): Promise<{ purchased: FiefAnimal[]; goldSpent: number; remainingGold: number }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/purchase`, { animalType, count });
+    return response.data;
+  },
+
+  slaughterAnimal: async (
+    fiefId: number,
+    animalId: number
+  ): Promise<{ slaughtered: FiefAnimal; meatGained: number; meatYieldBeforeStorageCap: number }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/${animalId}/slaughter`);
+    return response.data;
+  },
+
+  breedAnimals: async (
+    fiefId: number,
+    maleId: number,
+    femaleId: number
+  ): Promise<{ success: boolean; chance: number; offspring: FiefAnimal | null; goldSpent: number }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/breed`, { maleId, femaleId });
     return response.data;
   },
 
