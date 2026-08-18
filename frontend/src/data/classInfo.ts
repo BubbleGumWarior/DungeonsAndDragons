@@ -203,29 +203,30 @@ export const classInfo: Record<string, ClassInfo> = {
     features: ['Oathbound Vitality', 'Guarding Stance', 'Ascended Oath', 'Bulwark Aura'],
     subclasses: [
       { name: 'Oath of the Aegis', color: '#C0C0C0', description: 'Shield-focused ultimate defender' },
-      { name: 'Oath of the Vanguard', color: '#DC143C', description: 'Two-handed offensive juggernaut' }
+      { name: 'Oath of the Vanguard', color: '#DC143C', description: 'Two-handed offensive juggernaut' },
+      { name: 'Oath of Mercy', color: '#FFD700', description: 'Battlefield medic who sustains allies through vitality' }
     ],
     levelProgression: [
       { level: 1, features: 'Oathbound Vitality, Martial Training' },
       { level: 2, features: 'Guarding Stance' },
-      { level: 3, features: 'Ascended Oath, Unyielding Guard (Aegis) / Crusader Might (Vanguard)' },
+      { level: 3, features: 'Ascended Oath, Unyielding Guard (Aegis) / Crusader Might (Vanguard) / Battlefield Medic (Mercy)' },
       { level: 4, features: 'Ability Score Improvement' },
-      { level: 5, features: 'Retributive Strike' },
-      { level: 6, features: 'Shield Mastery (Aegis) / Momentum Guard (Vanguard)' },
+      { level: 5, features: 'Extra Attack, Retributive Strike' },
+      { level: 6, features: 'Shield Mastery (Aegis) / Momentum Guard (Vanguard) / Shared Vitality (Mercy)' },
       { level: 7, features: 'Iron Will' },
       { level: 8, features: 'Ability Score Improvement' },
       { level: 9, features: 'Bulwark Aura' },
-      { level: 10, features: 'Living Fortress (Aegis) / Wrath Unending (Vanguard)' },
+      { level: 10, features: 'Living Fortress (Aegis) / Wrath Unending (Vanguard) / Vow of Redemption (Mercy)' },
       { level: 11, features: 'Juggernaut Fortitude' },
       { level: 12, features: 'Ability Score Improvement' },
       { level: 13, features: 'Stoneheart' },
-      { level: 14, features: 'Reflective Aegis (Aegis) / Blood Warlord (Vanguard)' },
+      { level: 14, features: 'Reflective Aegis (Aegis) / Blood Warlord (Vanguard) / Blessed Recovery (Mercy)' },
       { level: 15, features: 'Adamant Resolve' },
       { level: 16, features: 'Ability Score Improvement' },
-      { level: 17, features: 'Indestructible (Aegis) / Titan Ascension (Vanguard)' },
+      { level: 17, features: 'Indestructible (Aegis) / Titan Ascension (Vanguard) / Miracle Worker (Mercy)' },
       { level: 18, features: 'Immortal Guard' },
       { level: 19, features: 'Ability Score Improvement' },
-      { level: 20, features: 'Avatar of the Oath, Avatar - Aegis (Aegis) / Avatar - Vanguard (Vanguard)' }
+      { level: 20, features: 'Avatar of the Oath, Avatar - Aegis (Aegis) / Avatar - Vanguard (Vanguard) / Avatar - Mercy Enhancement (Mercy)' }
     ]
   },
   'Paladin': {
