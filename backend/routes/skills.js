@@ -806,10 +806,12 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       }
     }
     
-    // If no subclass-specific skill found, look for general class skill
+    // If no subclass-specific skill found, look for general class skill(s). A class can gain
+    // more than one simultaneous base feature at the same level — e.g. Oathknight's 5th level
+    // is both Extra Attack and Retributive Strike, Barbarian's 2nd is Reckless Attack and
+    // Danger Sense. Previously this only ever granted one (LIMIT 1), silently dropping the
+    // other(s) from the character's persisted Skills tab forever. Grant every match instead.
     if (!skillGained) {
-      // Exclude subclass-specific skills (name contains "(Subclass)") for non-Primal-Bond classes
-      // Primal Bond has its own beast-name logic handled below
       let query = `
         SELECT * FROM skills
         WHERE (class_restriction = $1 OR class_restriction IS NULL)
@@ -817,13 +819,13 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
           ${character.class !== 'Primal Bond' ? "AND name NOT LIKE '%(%)%'" : ''}
       `;
       let queryParams = [character.class, newLevel];
-      
+
       if (character.class === 'Primal Bond') {
         // Check if character has a beast selected
         const beastCheck = await pool.query(`
           SELECT beast_type FROM character_beasts WHERE character_id = $1
         `, [characterId]);
-        
+
         if (beastCheck.rows.length > 0) {
           const characterBeast = beastCheck.rows[0].beast_type;
           // Exclude skills with beast names in parentheses that don't match this character's beast
@@ -831,24 +833,28 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
           queryParams.push(`%${characterBeast}%`);
         }
       }
-      
-      query += ` ORDER BY class_restriction DESC NULLS LAST LIMIT 1`;
-      
+
+      query += ` ORDER BY class_restriction DESC NULLS LAST, name`;
+      // Primal Bond's beast-name pattern matching is more permissive (ILIKE against a
+      // substring) and hasn't been audited for safely returning more than one row, so it
+      // keeps the original single-match behavior. Every other class grants every match.
+      if (character.class === 'Primal Bond') query += ` LIMIT 1`;
+
       const skillResult = await pool.query(query, queryParams);
-      
-      // If there's a skill for this level, add it to the character
-      if (skillResult.rows.length > 0) {
-        const skill = skillResult.rows[0];
-        // Only add non-subclass-choice skills
-        if (!skill.description.toLowerCase().includes('choose your path') && 
-            !skill.description.toLowerCase().includes('ascended oath')) {
-          await pool.query(`
-            INSERT INTO character_skills (character_id, skill_id)
-            VALUES ($1, $2)
-            ON CONFLICT (character_id, skill_id) DO NOTHING
-          `, [characterId, skill.id]);
-          skillGained = skill;
+
+      // Add every matching skill for this level to the character (skipping subclass-choice
+      // flavor text, which is granted separately via the subclass system)
+      for (const skill of skillResult.rows) {
+        if (skill.description.toLowerCase().includes('choose your path') ||
+            skill.description.toLowerCase().includes('ascended oath')) {
+          continue;
         }
+        await pool.query(`
+          INSERT INTO character_skills (character_id, skill_id)
+          VALUES ($1, $2)
+          ON CONFLICT (character_id, skill_id) DO NOTHING
+        `, [characterId, skill.id]);
+        skillGained = skill; // last one wins for the existing single-skill toast/summary display
       }
     }
     

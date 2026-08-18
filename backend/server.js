@@ -385,6 +385,7 @@ const startServer = async () => {
         { name: 'addFiefAnimals', fn: require('./migrations/add_fief_animals') },
         { name: 'addFiefAnimalBreeding', fn: require('./migrations/add_fief_animal_breeding') },
         { name: 'addFiefAnimalCooldown', fn: require('./migrations/add_fief_animal_cooldown') },
+        { name: 'addOathknightExtraAttack', fn: require('./migrations/add_oathknight_extra_attack') },
       ];
       
       const failedMigrations = [];
