@@ -605,6 +605,12 @@ const KingdomTab: React.FC<Props> = ({
   // socket effect below needs to call the latest version without depending on it
   // directly (that would reference it before its declaration runs each render).
   const fetchAnimalsDataRef = React.useRef<() => Promise<void>>(async () => {});
+  // Same reasoning as selectedFiefIdRef: the socket effect's onDayAdvanced handler
+  // looks up fief names from `kingdoms` inside findFiefName. Depending on `kingdoms`
+  // directly would tear down and re-attach the socket listeners on every kingdom
+  // refetch (very frequent — any kingdomDataChanged event refetches it), so read the
+  // latest value through a ref instead.
+  const kingdomsRef = React.useRef<KingdomSummary[]>([]);
 
   const [managementMode, setManagementMode] = useState<ManagementMode>('fief');
   const [kingdomManagementLoading, setKingdomManagementLoading] = useState(false);
@@ -716,6 +722,11 @@ const KingdomTab: React.FC<Props> = ({
     selectedFiefIdRef.current = selectedFiefId;
   }, [selectedFiefId]);
 
+  // Keep ref in sync with state so socket handlers always use the latest kingdoms list
+  useEffect(() => {
+    kingdomsRef.current = kingdoms;
+  }, [kingdoms]);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -749,7 +760,7 @@ const KingdomTab: React.FC<Props> = ({
       // Explain animal population changes from this tick — losses especially are
       // otherwise a silent mystery (herd size crept past what the Farming lane can support).
       const findFiefName = (fiefId: number): string | null => {
-        for (const k of kingdoms) {
+        for (const k of kingdomsRef.current) {
           const canSee = isDungeonMaster
             || Number(k.player_id) === Number(userId)
             || (k.co_owners || []).some((co) => Number(co.player_id) === Number(userId));
@@ -799,7 +810,7 @@ const KingdomTab: React.FC<Props> = ({
       socket.off('dayAdvanced', onDayAdvanced);
       socket.off('fiefCreated', onFiefCreated);
     };
-  }, [socket, campaignId, fetchKingdoms, fetchFief, isDungeonMaster]);
+  }, [socket, campaignId, fetchKingdoms, fetchFief, isDungeonMaster, userId, pushToast]);
 
   const myKingdom = useMemo(() => {
     if (isDungeonMaster) return null;
@@ -3347,7 +3358,7 @@ const KingdomTab: React.FC<Props> = ({
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{fief.breeding_pairs.length}/{fief.breeding_pen_capacity} pairs</span>
                           </div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '0.5rem' }}>
-                            Paired animals roll their breeding chance every long rest — success starts a {pregnancyDays}-day pregnancy, not an instant birth. Unpaired adults of the same type still breed naturally at the same odds, chosen at random.
+                            Paired animals roll their breeding chance every long rest — success starts a {pregnancyDays}-day pregnancy, not an instant birth. After giving birth, a female rests for {postpartumCooldownDays} days before she can breed again. Unpaired adults of the same type still breed naturally at the same odds, chosen at random.
                           </div>
 
                           {fief.breeding_pairs.length > 0 && (
