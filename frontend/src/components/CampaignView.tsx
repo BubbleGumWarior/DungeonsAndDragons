@@ -14874,21 +14874,6 @@ const CampaignView: React.FC = () => {
                   const myMounts = campaignMounts.filter(m =>
                     Number(m.assigned_to_character_id) === Number(selectedCharacterData.id)
                   );
-                  // The equipped mount (at most 1)
-                  const equippedMount = myMounts.find(m => m.is_equipped) ?? null;
-                  // Mounts assigned to this character that are NOT equipped
-                  const stableMount = myMounts.filter(m => !m.is_equipped);
-
-                  const statRows = (mount: Mount) => [
-                    { icon: '⚡', label: 'Speed',         value: `${mount.speed} ft` },
-                    ...(mount.fly_speed > 0 ? [{ icon: '🦅', label: 'Fly Speed', value: `${mount.fly_speed} ft` }] : []),
-                    { icon: '❤️', label: 'HP',            value: String(mount.hp) },
-                    { icon: '🛡️', label: 'AC',            value: mount.armor_ac_bonus ? `${mount.effective_ac ?? mount.ac + mount.armor_ac_bonus} (${mount.ac}+${mount.armor_ac_bonus})` : String(mount.ac) },
-                    { icon: '📦', label: 'Carry',         value: `${mount.carrying_capacity} lbs` },
-                    { icon: '🔗', label: 'Pull',          value: `${mount.pull_strength ?? 0} lbs` },
-                    { icon: '🔋', label: 'Stamina',       value: mount.stamina ?? '—' },
-                    { icon: '⚔️', label: 'Max Armor',     value: mount.max_rider_armor ?? '—' },
-                  ];
 
                   const handleToggleEquip = async (mount: Mount) => {
                     try {
@@ -15019,21 +15004,6 @@ const CampaignView: React.FC = () => {
                       setCampaignPets(prev => prev.map(p => p.id === updated.id ? updated : p));
                     } catch (err) { console.error('Error setting pet feeding mode:', err); }
                   };
-
-                  const hpColor = (cur: number, max: number) => {
-                    const pct = max > 0 ? (cur / max) * 100 : 0;
-                    if (pct > 66) return '#4ade80';
-                    if (pct > 33) return 'var(--text-gold)';
-                    return '#ef4444';
-                  };
-
-                  const abilityMod = (score: number) => {
-                    const mod = Math.floor((score - 10) / 2);
-                    return mod >= 0 ? `+${mod}` : String(mod);
-                  };
-
-                  const ABILITY_LABELS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const;
-                  const ABILITY_KEYS: (keyof Pet['abilities'])[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
                   return (
                     <div className="glass-panel">
