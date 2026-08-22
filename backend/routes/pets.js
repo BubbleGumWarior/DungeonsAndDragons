@@ -3,13 +3,14 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const Pet = require('../models/Pet');
+const FoodStockpile = require('../models/FoodStockpile');
 const { pool } = require('../models/database');
 const { authenticateToken: auth } = require('../middleware/auth');
 
 // ── Image upload config — store in memory, persisted to database ───────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 }, // client-side compression handles most large photos; this is a safety net
   fileFilter: (req, file, cb) => {
     const ok = /jpeg|jpg|png|gif|webp|avif/.test(path.extname(file.originalname).toLowerCase());
     cb(ok ? null : new Error('Only image files are allowed'), ok);
@@ -94,7 +95,10 @@ router.put('/:id', auth, async (req, res) => {
     const pet = await verifyPetAccess(req, res, req.params.id, true);
     if (!pet) return;
 
-    const updated = await Pet.update(req.params.id, req.body);
+    await Pet.update(req.params.id, req.body);
+    // Re-fetch through findById (not update's bare RETURNING *) so the companion_armor_items JOIN
+    // runs and armor_class_bonus/effective_armor_class stay accurate in the response.
+    const updated = await Pet.findById(req.params.id);
 
     const io = req.app.get('io');
     if (io) {
@@ -121,7 +125,8 @@ router.patch('/:id/hp', auth, async (req, res) => {
       return res.status(400).json({ error: 'hit_points_current is required' });
     }
 
-    const updated = await Pet.updateHP(req.params.id, Math.max(0, parseInt(hit_points_current)));
+    await Pet.updateHP(req.params.id, Math.max(0, parseInt(hit_points_current)));
+    const updated = await Pet.findById(req.params.id);
 
     const io = req.app.get('io');
     if (io) {
@@ -134,6 +139,72 @@ router.patch('/:id/hp', auth, async (req, res) => {
   } catch (err) {
     console.error('Error updating pet HP:', err);
     res.status(500).json({ error: 'Failed to update pet HP' });
+  }
+});
+
+// PATCH /api/pets/:id/feed — owner or DM manually feeds the pet from the player's shared stockpile (full efficiency)
+router.patch('/:id/feed', auth, async (req, res) => {
+  try {
+    const pet = await verifyPetAccess(req, res, req.params.id, false);
+    if (!pet) return;
+
+    const { rations } = req.body;
+    const result = await FoodStockpile.feedAnimal({
+      kind: 'pet',
+      id: pet.id,
+      campaignId: pet.campaign_id,
+      characterId: pet.character_id,
+      diet: pet.diet,
+      hunger: pet.hunger,
+      foodConsumption: pet.food_consumption,
+      rations,
+    });
+
+    // result.animal comes from a bare UPDATE...RETURNING * (no companion_armor_items JOIN) — re-fetch for an accurate AC.
+    const updatedPet = await Pet.findById(pet.id);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${pet.campaign_id}`).emit('petUpdated', {
+        pet: (({ image_data, ...p }) => p)(updatedPet),
+        timestamp: new Date().toISOString(),
+      });
+      io.to(`campaign_${pet.campaign_id}`).emit('foodStockpileUpdated', {
+        campaignId: pet.campaign_id,
+        updates: [{ characterId: pet.character_id, meat_rations: result.stockpile.meat_rations, veg_rations: result.stockpile.veg_rations }],
+        timestamp: new Date().toISOString(),
+      });
+    }
+    res.json({ pet: (({ image_data, ...p }) => p)(updatedPet), rationsConsumed: result.rationsConsumed });
+  } catch (err) {
+    console.error('Error feeding pet:', err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to feed pet' });
+  }
+});
+
+// PATCH /api/pets/:id/feeding-mode — owner or DM toggles self-feed vs automatic
+router.patch('/:id/feeding-mode', auth, async (req, res) => {
+  try {
+    const pet = await verifyPetAccess(req, res, req.params.id, false);
+    if (!pet) return;
+
+    const { feeding_mode } = req.body;
+    if (!['self', 'automatic'].includes(feeding_mode)) {
+      return res.status(400).json({ error: 'feeding_mode must be "self" or "automatic"' });
+    }
+    await Pet.update(req.params.id, { feeding_mode });
+    const updated = await Pet.findById(req.params.id);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${pet.campaign_id}`).emit('petUpdated', {
+        pet: (({ image_data, ...p }) => p)(updated),
+        timestamp: new Date().toISOString(),
+      });
+    }
+    res.json((({ image_data, ...p }) => p)(updated));
+  } catch (err) {
+    console.error('Error setting pet feeding mode:', err);
+    res.status(500).json({ error: 'Failed to set feeding mode' });
   }
 });
 
@@ -162,7 +233,8 @@ router.post('/:id/image', auth, upload.single('image'), async (req, res) => {
     if (!pet) return;
     if (!req.file) return res.status(400).json({ error: 'No image file provided' });
 
-    const updated = await Pet.updateImage(req.params.id, req.file.buffer, req.file.mimetype);
+    await Pet.updateImage(req.params.id, req.file.buffer, req.file.mimetype);
+    const updated = await Pet.findById(req.params.id);
 
     const io = req.app.get('io');
     if (io) {

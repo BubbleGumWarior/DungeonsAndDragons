@@ -23,6 +23,8 @@ const shadowRoutes = require('./routes/shadows');
 const mountRoutes = require('./routes/mounts');
 const battleMapsRoutes = require('./routes/battleMaps');
 const petRoutes = require('./routes/pets');
+const petFoodRoutes = require('./routes/petFood');
+const companionArmorRoutes = require('./routes/companionArmor');
 const npcRoutes = require('./routes/npcs');
 const kingdomRoutes = require('./routes/kingdoms');
 const Character = require('./models/Character');
@@ -160,6 +162,8 @@ app.use('/api/shadows', shadowRoutes);
 app.use('/api/mounts', mountRoutes);
 app.use('/api/battle-maps', battleMapsRoutes);
 app.use('/api/pets', petRoutes);
+app.use('/api/pet-food', petFoodRoutes);
+app.use('/api/companion-armor', companionArmorRoutes);
 app.use('/api', npcRoutes);
 app.use('/api/kingdoms', kingdomRoutes);
 
@@ -198,13 +202,21 @@ if (process.env.NODE_ENV !== 'production') {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Global error handler:', err);
-  
+
   // Ensure CORS headers are always present in error responses
   res.header('Access-Control-Allow-Origin', req.headers.origin || 'http://localhost:3000');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-access-token, Accept, Origin, X-Requested-With');
-  
+
+  // Multer upload errors (oversized file, wrong field, etc.) deserve a clear message, not a generic 500.
+  if (err && err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'That image is too large even after compression — please use a smaller file.' });
+    }
+    return res.status(400).json({ error: `Upload failed: ${err.message}` });
+  }
+
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -387,6 +399,9 @@ const startServer = async () => {
         { name: 'addFiefAnimalCooldown', fn: require('./migrations/add_fief_animal_cooldown') },
         { name: 'addOathknightExtraAttack', fn: require('./migrations/add_oathknight_extra_attack') },
         { name: 'addOathknightOathOfMercy', fn: require('./migrations/add_oathknight_oath_of_mercy') },
+        { name: 'addPetHungerSystem', fn: require('./migrations/add_pet_hunger_system') },
+        { name: 'addCompanionArmorLimbsAndCharStockpile', fn: require('./migrations/add_companion_armor_limbs_and_char_stockpile') },
+        { name: 'updatePetFoodDefaultPrices', fn: require('./migrations/update_pet_food_default_prices') },
       ];
       
       const failedMigrations = [];
@@ -441,22 +456,35 @@ const startServer = async () => {
   // Structure: { campaignId: { requestId: { type, config, targetPlayerId, status } } }
   const battleRollState = {};
 
+  // ─── Helper: per-limb HP maxes for a given base HP + CON score ───
+  // Shared by characters, pets, and mounts — mirrors calcCharacterLimbHealthMax on the frontend.
+  function calcLimbHealthMax(hp, con) {
+    const conMod = Math.floor((con - 10) / 2);
+    const conBonus = Math.max(0, conMod * 0.1);
+    const baseHp = hp || 1;
+    // Each limb HP = floor(baseHP × ratio) — NOT normalized, so limbs can exceed baseHP in sum
+    return {
+      head:      Math.floor(baseHp * Math.min(1.0, 0.25 + conBonus)),
+      chest:     Math.floor(baseHp * Math.min(2.0, 1.0 + conBonus)),
+      left_arm:  Math.floor(baseHp * Math.min(1.0, 0.15 + conBonus)),
+      right_arm: Math.floor(baseHp * Math.min(1.0, 0.15 + conBonus)),
+      left_leg:  Math.floor(baseHp * Math.min(1.0, 0.40 + conBonus)),
+      right_leg: Math.floor(baseHp * Math.min(1.0, 0.40 + conBonus)),
+    };
+  }
+
   // ─── Helper: initialise per-limb health for a character (proportional to current HP) ───
   function initCharacterLimbHealth(character) {
     const abilities = typeof character.abilities === 'string' ? JSON.parse(character.abilities) : (character.abilities || {});
     const con = abilities.con ?? 10;
-    const conMod = Math.floor((con - 10) / 2);
-    const conBonus = Math.max(0, conMod * 0.1);
-    // Each limb HP = floor(baseHP × ratio) — NOT normalized, so limbs can exceed baseHP in sum
-    const hp = character.hit_points || 1;
-    return {
-      head:      Math.floor(hp * Math.min(1.0, 0.25 + conBonus)),
-      chest:     Math.floor(hp * Math.min(2.0, 1.0 + conBonus)),
-      left_arm:  Math.floor(hp * Math.min(1.0, 0.15 + conBonus)),
-      right_arm: Math.floor(hp * Math.min(1.0, 0.15 + conBonus)),
-      left_leg:  Math.floor(hp * Math.min(1.0, 0.40 + conBonus)),
-      right_leg: Math.floor(hp * Math.min(1.0, 0.40 + conBonus)),
-    };
+    return calcLimbHealthMax(character.hit_points || 1, con);
+  }
+
+  // ─── Helper: initialise per-limb health for a pet/mount (proportional to base HP) ───
+  function initCompanionLimbHealth(baseHp, abilities) {
+    const parsedAbilities = typeof abilities === 'string' ? JSON.parse(abilities) : (abilities || {});
+    const con = parsedAbilities.con ?? 10;
+    return calcLimbHealthMax(baseHp || 1, con);
   }
 
   // Server-side storage for battle movement tracking (prevents client-side exploits)
@@ -1245,12 +1273,13 @@ const startServer = async () => {
             let battlePets = [];
             try {
               const petResult = await pool.query(
-                'SELECT id, name, species, hit_points, hit_points_current, armor_class, speed, abilities FROM character_pets WHERE character_id = $1 AND is_battle_pet = TRUE',
+                'SELECT id, name, species, hit_points, hit_points_current, armor_class, speed, abilities, hunger FROM character_pets WHERE character_id = $1 AND is_battle_pet = TRUE',
                 [characterId]
               );
               battlePets = petResult.rows.map(p => ({
                 ...p,
                 abilities: typeof p.abilities === 'string' ? JSON.parse(p.abilities) : (p.abilities || {}),
+                starving: Number(p.hunger) <= 0,
               }));
             } catch (petErr) {
               console.warn('Could not fetch battle pets for invite:', petErr.message);
@@ -1419,6 +1448,10 @@ const startServer = async () => {
                 );
                 if (petResult.rows.length === 0) continue;
                 const pet = petResult.rows[0];
+                if (Number(pet.hunger) <= 0) {
+                  console.log(`🍖 Battle pet "${pet.name}" is starving and cannot enter combat`);
+                  continue;
+                }
                 const petAbilities = typeof pet.abilities === 'string' ? JSON.parse(pet.abilities) : (pet.abilities || {});
                 const petDex = petAbilities.dex ?? 10;
                 const petDexMod = Math.floor((petDex - 10) / 2);
@@ -1998,6 +2031,50 @@ const startServer = async () => {
                 }
                 io.to(`campaign_${campaignId}`).emit('characterDowned', { characterId: charId, campaignId });
               }
+            }
+          } else if (targetType === 'pet') {
+            // targetKey may be "pet_5" or plain "5" — strip prefix before parsing
+            const petId = parseInt(String(targetKey).replace(/^pet_/, ''), 10);
+            const row = (await pool.query(`SELECT * FROM character_pets WHERE id = $1`, [petId])).rows[0];
+            if (!row) return;
+
+            let limbHealth = row.limb_health
+              ? (typeof row.limb_health === 'string' ? JSON.parse(row.limb_health) : row.limb_health)
+              : initCompanionLimbHealth(row.hit_points, row.abilities);
+            const validLimb = limbHealth[limbName] !== undefined ? limbName : 'chest';
+
+            // Consume temp HP for this limb first before real HP
+            const tempLimbHealth = row.temp_limb_health
+              ? { ...(typeof row.temp_limb_health === 'string' ? JSON.parse(row.temp_limb_health) : row.temp_limb_health) }
+              : {};
+            const tempAvailable = tempLimbHealth[validLimb] ?? 0;
+            const tempAbsorbed = Math.min(tempAvailable, damage);
+            tempLimbHealth[validLimb] = tempAvailable - tempAbsorbed;
+            if (tempLimbHealth[validLimb] <= 0) delete tempLimbHealth[validLimb];
+            const remainingDamage = damage - tempAbsorbed;
+
+            limbHealth[validLimb] = Math.max(0, (limbHealth[validLimb] || 0) - remainingDamage);
+
+            // Vital hit: head or chest real HP reduced to 0 = instant death — zero all limbs
+            const vitalKeys = ['head', 'chest'];
+            const vitalKilled = vitalKeys.some(k => limbHealth[k] !== undefined && limbHealth[k] === 0);
+            if (vitalKilled) {
+              Object.keys(limbHealth).forEach(k => { limbHealth[k] = 0; });
+            }
+
+            const newHP = Math.max(0, Object.values(limbHealth).reduce((s, v) => s + Number(v), 0));
+            const tempToStore = Object.keys(tempLimbHealth).length > 0 ? tempLimbHealth : null;
+
+            await pool.query(
+              `UPDATE character_pets SET hit_points_current = $1, limb_health = $2, temp_limb_health = $3, updated_at = NOW() WHERE id = $4`,
+              [newHP, JSON.stringify(limbHealth), tempToStore ? JSON.stringify(tempToStore) : null, petId]
+            );
+
+            updatedHealthData = { type: 'pet', petId, newHP, limbHealth, tempLimbHealth: tempToStore, isDead: newHP <= 0 };
+
+            if (newHP <= 0 && session.sessionId) {
+              const cached = session.combatants.find(c => c.characterId === `pet_${petId}`);
+              if (cached) cached.isDead = true;
             }
           }
 
@@ -3685,14 +3762,48 @@ const startServer = async () => {
       // ── Apply damage to a mount during combat ────────────────────────────────
       socket.on('applyMountDamage', async (data) => {
         try {
-          const { campaignId, combatantKey, damage } = data;
+          const { campaignId, combatantKey, damage, limbName } = data;
           const session = battleCombatState[campaignId];
           if (!session?.sessionId) return;
 
           const combatant = await CombatSession.getCombatantByKey(session.sessionId, combatantKey);
           if (!combatant || !combatant.is_mounted || !combatant.mount_id) return;
 
-          const newMountHp = Math.max(0, (combatant.mount_current_hp || 0) - damage);
+          // Real limb-targeted damage, persisted on the mount's own row (not just the combatant cache).
+          const mountRow = (await pool.query(`SELECT * FROM campaign_mounts WHERE id = $1`, [combatant.mount_id])).rows[0];
+          if (!mountRow) return;
+
+          let mountLimbHealth = mountRow.limb_health
+            ? (typeof mountRow.limb_health === 'string' ? JSON.parse(mountRow.limb_health) : mountRow.limb_health)
+            : initCompanionLimbHealth(mountRow.hp, mountRow.abilities);
+          const validMountLimb = mountLimbHealth[limbName] !== undefined ? limbName : 'chest';
+
+          const mountTempLimbHealth = mountRow.temp_limb_health
+            ? { ...(typeof mountRow.temp_limb_health === 'string' ? JSON.parse(mountRow.temp_limb_health) : mountRow.temp_limb_health) }
+            : {};
+          const mountTempAvailable = mountTempLimbHealth[validMountLimb] ?? 0;
+          const mountTempAbsorbed = Math.min(mountTempAvailable, damage);
+          mountTempLimbHealth[validMountLimb] = mountTempAvailable - mountTempAbsorbed;
+          if (mountTempLimbHealth[validMountLimb] <= 0) delete mountTempLimbHealth[validMountLimb];
+          const mountRemainingDamage = damage - mountTempAbsorbed;
+
+          mountLimbHealth[validMountLimb] = Math.max(0, (mountLimbHealth[validMountLimb] || 0) - mountRemainingDamage);
+
+          const mountVitalKilled = ['head', 'chest'].some(k => mountLimbHealth[k] !== undefined && mountLimbHealth[k] === 0);
+          if (mountVitalKilled) Object.keys(mountLimbHealth).forEach(k => { mountLimbHealth[k] = 0; });
+
+          const newMountHp = Math.max(0, Object.values(mountLimbHealth).reduce((s, v) => s + Number(v), 0));
+          const mountTempToStore = Object.keys(mountTempLimbHealth).length > 0 ? mountTempLimbHealth : null;
+
+          await pool.query(
+            `UPDATE campaign_mounts SET hit_points_current = $1, limb_health = $2, temp_limb_health = $3, updated_at = NOW() WHERE id = $4`,
+            [newMountHp, JSON.stringify(mountLimbHealth), mountTempToStore ? JSON.stringify(mountTempToStore) : null, combatant.mount_id]
+          );
+
+          io.to(`campaign_${campaignId}`).emit('healthUpdated', {
+            type: 'mount', mountId: combatant.mount_id, newHP: newMountHp, limbHealth: mountLimbHealth, tempLimbHealth: mountTempToStore, isDead: newMountHp <= 0,
+            campaignId, timestamp: new Date().toISOString(),
+          });
 
           if (newMountHp <= 0) {
             // Mount is dead — fetch mount name

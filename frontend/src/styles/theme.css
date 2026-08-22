@@ -62,22 +62,27 @@
 
 /* Campaign seasonal accents: base darkness remains unchanged while accent tokens shift by season. */
 :root[data-season='spring'] {
-  --primary-gold: #0C6301;
-  --secondary-gold: #60AF02;
-  --accent-gold: #FBE27F;
-  --light-gold: #FEC900;
-  --metallic-gold: #60AF02;
-  --dark-gold: #FD3469;
-  --theme-accent-rgb: 251, 226, 127;
-  --accent-highlight: #FF3366;
+  /* Dark moss green */
+  --primary-gold: #2f3d20;
+  --secondary-gold: #4a5f32;
+  --accent-gold: #7c9a5c;
+  --light-gold: #c3d4a8;
+  --metallic-gold: #6b8a4a;
+  --dark-gold: #1a2412;
+  --theme-accent-rgb: 107, 138, 74;
+  --accent-highlight: #8fbc5a;
   --text-gold: var(--metallic-gold);
   --border-gold: var(--metallic-gold);
-  --shadow-gold: 0 0 15px rgba(251, 226, 127, 0.38);
-  --gradient-gold: linear-gradient(135deg, #FBE27F 0%, #FEC900 25%, #60AF02 50%, #0C6301 75%, #FD3469 100%);
-  --gradient-gold-reverse: linear-gradient(315deg, #FBE27F 0%, #FEC900 25%, #60AF02 50%, #0C6301 75%, #FD3469 100%);
-  --theme-halo-1: rgba(251, 226, 127, 0.09);
-  --theme-halo-2: rgba(96, 175, 2, 0.072);
-  --theme-halo-3: rgba(12, 99, 1, 0.055);
+  --shadow-gold: 0 0 15px rgba(107, 138, 74, 0.38);
+  --gradient-gold: linear-gradient(135deg, #c3d4a8 0%, #7c9a5c 25%, #4a5f32 50%, #2f3d20 75%, #1a2412 100%);
+  --gradient-gold-reverse: linear-gradient(315deg, #c3d4a8 0%, #7c9a5c 25%, #4a5f32 50%, #2f3d20 75%, #1a2412 100%);
+  --theme-halo-1: rgba(124, 154, 92, 0.09);
+  --theme-halo-2: rgba(74, 95, 50, 0.072);
+  --theme-halo-3: rgba(47, 61, 32, 0.055);
+}
+
+:root[data-season='spring'] .campaign-container {
+  background-image: url('../assets/images/backgrounds/GreenBackground.jpg');
 }
 
 :root[data-season='summer'] {
@@ -85,41 +90,51 @@
 }
 
 :root[data-season='autumn'] {
-  --primary-gold: #9a031e;
-  --secondary-gold: #e36414;
-  --accent-gold: #fb8b24;
-  --light-gold: #fbb655;
-  --metallic-gold: #e36414;
-  --dark-gold: #5f0f40;
-  --theme-accent-rgb: 251, 139, 36;
-  --accent-highlight: #FF7700;
+  /* Burgundy and dark */
+  --primary-gold: #7c1128;
+  --secondary-gold: #a11e3d;
+  --accent-gold: #d9455f;
+  --light-gold: #f2b8c6;
+  --metallic-gold: #d0708c;
+  --dark-gold: #2e0813;
+  --theme-accent-rgb: 208, 112, 140;
+  --accent-highlight: #ff4d6d;
   --text-gold: var(--metallic-gold);
   --border-gold: var(--metallic-gold);
-  --shadow-gold: 0 0 15px rgba(251, 139, 36, 0.38);
-  --gradient-gold: linear-gradient(135deg, #fb8b24 0%, #e36414 25%, #9a031e 50%, #5f0f40 75%, #0f4c5c 100%);
-  --gradient-gold-reverse: linear-gradient(315deg, #fb8b24 0%, #e36414 25%, #9a031e 50%, #5f0f40 75%, #0f4c5c 100%);
-  --theme-halo-1: rgba(251, 139, 36, 0.09);
-  --theme-halo-2: rgba(227, 100, 20, 0.072);
-  --theme-halo-3: rgba(180, 83, 9, 0.055);
+  --shadow-gold: 0 0 15px rgba(208, 112, 140, 0.38);
+  --gradient-gold: linear-gradient(135deg, #f2b8c6 0%, #d9455f 25%, #a11e3d 50%, #7c1128 75%, #2e0813 100%);
+  --gradient-gold-reverse: linear-gradient(315deg, #f2b8c6 0%, #d9455f 25%, #a11e3d 50%, #7c1128 75%, #2e0813 100%);
+  --theme-halo-1: rgba(217, 69, 95, 0.09);
+  --theme-halo-2: rgba(161, 30, 61, 0.072);
+  --theme-halo-3: rgba(124, 17, 40, 0.055);
+}
+
+:root[data-season='autumn'] .campaign-container {
+  background-image: url('../assets/images/backgrounds/RedBackground.jpg');
 }
 
 :root[data-season='winter'] {
-  --primary-gold: #00D9FF;
-  --secondary-gold: #5A7A94;
-  --accent-gold: #B4C1CC;
-  --light-gold: #D9E1E8;
-  --metallic-gold: #4F6E86;
-  --dark-gold: #1A3D52;
-  --theme-accent-rgb: 180, 193, 204;
-  --accent-highlight: #556B78;
+  /* Dark navy blue */
+  --primary-gold: #0a3d62;
+  --secondary-gold: #145a8a;
+  --accent-gold: #2e86de;
+  --light-gold: #a9cce3;
+  --metallic-gold: #4f8fc0;
+  --dark-gold: #051c33;
+  --theme-accent-rgb: 79, 143, 192;
+  --accent-highlight: #2e86de;
   --text-gold: var(--metallic-gold);
   --border-gold: var(--metallic-gold);
-  --shadow-gold: 0 0 15px rgba(180, 193, 204, 0.34);
-  --gradient-gold: linear-gradient(135deg, #D9E1E8 0%, #B4C1CC 25%, #556B78 50%, #4F6E86 75%, #1A3D52 100%);
-  --gradient-gold-reverse: linear-gradient(315deg, #D9E1E8 0%, #B4C1CC 25%, #556B78 50%, #4F6E86 75%, #1A3D52 100%);
-  --theme-halo-1: rgba(180, 193, 204, 0.075);
-  --theme-halo-2: rgba(85, 107, 120, 0.06);
-  --theme-halo-3: rgba(61, 90, 111, 0.05);
+  --shadow-gold: 0 0 15px rgba(79, 143, 192, 0.34);
+  --gradient-gold: linear-gradient(135deg, #a9cce3 0%, #2e86de 25%, #145a8a 50%, #0a3d62 75%, #051c33 100%);
+  --gradient-gold-reverse: linear-gradient(315deg, #a9cce3 0%, #2e86de 25%, #145a8a 50%, #0a3d62 75%, #051c33 100%);
+  --theme-halo-1: rgba(46, 134, 222, 0.09);
+  --theme-halo-2: rgba(20, 90, 138, 0.072);
+  --theme-halo-3: rgba(10, 61, 98, 0.055);
+}
+
+:root[data-season='winter'] .campaign-container {
+  background-image: url('../assets/images/backgrounds/BlueBackground.jpg');
 }
 
 /* Day of Silence: every 11th day uses a muted variant of the active season accent set. */
@@ -142,58 +157,61 @@
 }
 
 :root[data-day-ritual='silence'][data-season='spring'] {
-  --primary-gold: #4a5c3f;
-  --secondary-gold: #3d4a31;
-  --accent-gold: #9db586;
-  --light-gold: #b5c9a1;
-  --metallic-gold: #3d4a31;
-  --dark-gold: #c9a84c;
-  --theme-accent-rgb: 157, 181, 134;
+  /* Muted moss */
+  --primary-gold: #2a3520;
+  --secondary-gold: #35422a;
+  --accent-gold: #5c6f48;
+  --light-gold: #7a8f60;
+  --metallic-gold: #35422a;
+  --dark-gold: #161d10;
+  --theme-accent-rgb: 92, 111, 72;
   --text-gold: var(--metallic-gold);
   --border-gold: var(--metallic-gold);
-  --shadow-gold: 0 0 10px rgba(157, 181, 134, 0.2);
-  --gradient-gold: linear-gradient(135deg, #b5c9a1 0%, #9db586 25%, #4a5c3f 50%, #3d4a31 75%, #2a3220 100%);
-  --gradient-gold-reverse: linear-gradient(315deg, #b5c9a1 0%, #9db586 25%, #4a5c3f 50%, #3d4a31 75%, #2a3220 100%);
-  --theme-halo-1: rgba(157, 181, 134, 0.05);
-  --theme-halo-2: rgba(96, 120, 75, 0.04);
-  --theme-halo-3: rgba(61, 74, 49, 0.035);
+  --shadow-gold: 0 0 10px rgba(92, 111, 72, 0.2);
+  --gradient-gold: linear-gradient(135deg, #7a8f60 0%, #5c6f48 25%, #2a3520 50%, #161d10 75%, #0d120a 100%);
+  --gradient-gold-reverse: linear-gradient(315deg, #7a8f60 0%, #5c6f48 25%, #2a3520 50%, #161d10 75%, #0d120a 100%);
+  --theme-halo-1: rgba(92, 111, 72, 0.05);
+  --theme-halo-2: rgba(53, 66, 42, 0.04);
+  --theme-halo-3: rgba(42, 53, 32, 0.035);
 }
 
 :root[data-day-ritual='silence'][data-season='autumn'] {
-  --primary-gold: #6a1a2c;
-  --secondary-gold: #a84a1a;
-  --accent-gold: #c86a2a;
-  --light-gold: #d4825a;
-  --metallic-gold: #a84a1a;
-  --dark-gold: #4a0a32;
-  --theme-accent-rgb: 200, 106, 42;
+  /* Muted burgundy */
+  --primary-gold: #4a1020;
+  --secondary-gold: #5c1a2c;
+  --accent-gold: #7a3040;
+  --light-gold: #96525f;
+  --metallic-gold: #5c1a2c;
+  --dark-gold: #260810;
+  --theme-accent-rgb: 122, 48, 64;
   --text-gold: var(--metallic-gold);
   --border-gold: var(--metallic-gold);
-  --shadow-gold: 0 0 10px rgba(200, 106, 42, 0.24);
-  --gradient-gold: linear-gradient(135deg, #c86a2a 0%, #a84a1a 25%, #6a1a2c 50%, #4a0a32 75%, #0a2e38 100%);
-  --gradient-gold-reverse: linear-gradient(315deg, #c86a2a 0%, #a84a1a 25%, #6a1a2c 50%, #4a0a32 75%, #0a2e38 100%);
-  --theme-halo-1: rgba(200, 106, 42, 0.05);
-  --theme-halo-2: rgba(168, 74, 26, 0.04);
-  --theme-halo-3: rgba(106, 26, 44, 0.035);
+  --shadow-gold: 0 0 10px rgba(122, 48, 64, 0.24);
+  --gradient-gold: linear-gradient(135deg, #96525f 0%, #7a3040 25%, #4a1020 50%, #260810 75%, #150509 100%);
+  --gradient-gold-reverse: linear-gradient(315deg, #96525f 0%, #7a3040 25%, #4a1020 50%, #260810 75%, #150509 100%);
+  --theme-halo-1: rgba(122, 48, 64, 0.05);
+  --theme-halo-2: rgba(92, 26, 44, 0.04);
+  --theme-halo-3: rgba(74, 16, 32, 0.035);
 }
 
 :root[data-day-ritual='silence'][data-season='winter'] {
-  --primary-gold: #4a5a68;
-  --secondary-gold: #505f73;
-  --accent-gold: #8a96a4;
-  --light-gold: #a5b2be;
-  --metallic-gold: #4a5f73;
-  --dark-gold: #1a2835;
-  --theme-accent-rgb: 138, 150, 164;
-  --accent-highlight: #8a96a4;
+  /* Muted navy */
+  --primary-gold: #16324a;
+  --secondary-gold: #1f3f5c;
+  --accent-gold: #3a5f7a;
+  --light-gold: #5c7f96;
+  --metallic-gold: #1f3f5c;
+  --dark-gold: #0a1c2c;
+  --theme-accent-rgb: 58, 95, 122;
+  --accent-highlight: #3a5f7a;
   --text-gold: var(--metallic-gold);
   --border-gold: var(--metallic-gold);
-  --shadow-gold: 0 0 10px rgba(138, 150, 164, 0.2);
-  --gradient-gold: linear-gradient(135deg, #a5b2be 0%, #8a96a4 25%, #4a5a68 50%, #4a5f73 75%, #1a2835 100%);
-  --gradient-gold-reverse: linear-gradient(315deg, #a5b2be 0%, #8a96a4 25%, #4a5a68 50%, #4a5f73 75%, #1a2835 100%);
-  --theme-halo-1: rgba(138, 150, 164, 0.05);
-  --theme-halo-2: rgba(74, 90, 104, 0.04);
-  --theme-halo-3: rgba(58, 71, 85, 0.035);
+  --shadow-gold: 0 0 10px rgba(58, 95, 122, 0.2);
+  --gradient-gold: linear-gradient(135deg, #5c7f96 0%, #3a5f7a 25%, #16324a 50%, #0a1c2c 75%, #05111c 100%);
+  --gradient-gold-reverse: linear-gradient(315deg, #5c7f96 0%, #3a5f7a 25%, #16324a 50%, #0a1c2c 75%, #05111c 100%);
+  --theme-halo-1: rgba(58, 95, 122, 0.05);
+  --theme-halo-2: rgba(31, 63, 92, 0.04);
+  --theme-halo-3: rgba(22, 50, 74, 0.035);
 }
 
 /* Custom Scrollbar Styling - Black and Gold Theme */

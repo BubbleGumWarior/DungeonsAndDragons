@@ -264,6 +264,20 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (gold !== undefined) updateData.gold = Math.max(0, parseInt(gold, 10) || 0);
     
     const updatedCharacter = await Character.update(id, updateData);
+
+    // Gold changes need to reach every connected client (not just the editor) — the market panel,
+    // other players' views, and the DM's own screen all show this character's gold live.
+    if (gold !== undefined) {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`campaign_${character.campaign_id}`).emit('characterGoldUpdated', {
+          characterId: Number(id),
+          gold: updatedCharacter.gold,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
     res.json({
       message: 'Character updated successfully',
       character: updatedCharacter

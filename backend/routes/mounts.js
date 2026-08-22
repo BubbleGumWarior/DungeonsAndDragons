@@ -5,33 +5,56 @@ const path = require('path');
 const fs = require('fs');
 const { pool } = require('../models/database');
 const { authenticateToken: auth } = require('../middleware/auth');
+const FoodStockpile = require('../models/FoodStockpile');
 
-// Configure multer for mount image uploads (disk storage like monsters)
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../uploads/mounts');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, 'mount-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// Mount images are stored in the database (bytea) so they survive a Railway rebuild,
+// exactly like pet images already do.
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // client-side compression handles most large photos; this is a safety net
   fileFilter: function (req, file, cb) {
-    const allowed = /jpeg|jpg|png|gif|webp|avif/;
-    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-    const mime = allowed.test(file.mimetype);
-    if (ext && mime) return cb(null, true);
-    cb(new Error('Only image files are allowed'));
+    const ok = /jpeg|jpg|png|gif|webp|avif/.test(file.mimetype);
+    cb(ok ? null : new Error('Only image files are allowed'), ok);
   }
 });
+
+// ──────────────────────────────────────────────
+// Shared SELECT: mount + owning character + 4-slot companion armor join
+// ──────────────────────────────────────────────
+const MOUNT_SELECT = `
+  SELECT m.*,
+         c.name  AS character_name,
+         c.player_id AS character_player_id,
+         ah.name AS armor_head_name,        COALESCE(ah.armor_class_bonus,0)  AS armor_head_bonus,
+         ab.name AS armor_body_name,        COALESCE(ab.armor_class_bonus,0)  AS armor_body_bonus,
+         afl.name AS armor_front_legs_name, COALESCE(afl.armor_class_bonus,0) AS armor_front_legs_bonus,
+         arl.name AS armor_rear_legs_name,  COALESCE(arl.armor_class_bonus,0) AS armor_rear_legs_bonus,
+         COALESCE(ah.armor_class_bonus,0) + COALESCE(ab.armor_class_bonus,0) +
+         COALESCE(afl.armor_class_bonus,0) + COALESCE(arl.armor_class_bonus,0) AS armor_ac_bonus
+    FROM campaign_mounts m
+    LEFT JOIN characters c ON c.id = m.assigned_to_character_id
+    LEFT JOIN companion_armor_items ah  ON ah.id  = m.armor_head_id
+    LEFT JOIN companion_armor_items ab  ON ab.id  = m.armor_body_id
+    LEFT JOIN companion_armor_items afl ON afl.id = m.armor_front_legs_id
+    LEFT JOIN companion_armor_items arl ON arl.id = m.armor_rear_legs_id
+`;
+
+function parseMount(row) {
+  if (!row) return null;
+  const asJson = (v) => (typeof v === 'string' ? JSON.parse(v) : v) || null;
+  const { image_data, ...rest } = row;
+  const armorBonus = Number(row.armor_ac_bonus || 0);
+  const parsed = {
+    ...rest,
+    abilities: asJson(row.abilities) || {},
+    limb_health: asJson(row.limb_health),
+    temp_limb_health: asJson(row.temp_limb_health),
+    armor_ac_bonus: armorBonus,
+    effective_ac: Number(row.ac || 10) + armorBonus,
+  };
+  if (row.image_data) parsed.image_url = `/api/mounts/${row.id}/image`;
+  return parsed;
+}
 
 // ──────────────────────────────────────────────
 // GET /api/mounts/campaign/:campaignId
@@ -40,33 +63,10 @@ router.get('/campaign/:campaignId', auth, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const result = await pool.query(
-      `SELECT m.*,
-              c.name  AS character_name,
-              c.player_id AS character_player_id,
-              ih.item_name AS armor_head_name,   ih.armor_class AS armor_head_ac,
-              ib.item_name AS armor_body_name,   ib.armor_class AS armor_body_ac,
-              ifl.item_name AS armor_front_legs_name, ifl.armor_class AS armor_front_legs_ac,
-              irl.item_name AS armor_rear_legs_name,  irl.armor_class AS armor_rear_legs_ac,
-              COALESCE(ih.armor_class,0) + COALESCE(ib.armor_class,0) +
-              COALESCE(ifl.armor_class,0) + COALESCE(irl.armor_class,0) AS armor_ac_bonus
-         FROM campaign_mounts m
-         LEFT JOIN characters   c   ON c.id   = m.assigned_to_character_id
-         LEFT JOIN inventory    ih  ON ih.item_name = m.armor_head
-         LEFT JOIN inventory    ib  ON ib.item_name = m.armor_body
-         LEFT JOIN inventory    ifl ON ifl.item_name = m.armor_front_legs
-         LEFT JOIN inventory    irl ON irl.item_name = m.armor_rear_legs
-        WHERE m.campaign_id = $1
-        ORDER BY m.created_at ASC`,
+      `${MOUNT_SELECT} WHERE m.campaign_id = $1 ORDER BY m.created_at ASC`,
       [campaignId]
     );
-
-    // Strip raw binary; clients work with image_url only
-    const mounts = result.rows.map(row => {
-      const { image_data, ...rest } = row;
-      return rest;
-    });
-
-    res.json(mounts);
+    res.json(result.rows.map(parseMount));
   } catch (error) {
     console.error('Error fetching mounts:', error);
     res.status(500).json({ message: 'Server error' });
@@ -75,29 +75,24 @@ router.get('/campaign/:campaignId', auth, async (req, res) => {
 
 // ──────────────────────────────────────────────
 // POST /api/mounts/:id/equip-armor
-// Equip an armor item to a specific mount slot
-// Body: { slot: 'head'|'body'|'front_legs'|'rear_legs', itemName: string }
+// Equip a companion armor item to a specific mount slot
+// Body: { slot: 'head'|'body'|'front_legs'|'rear_legs', armorItemId: number }
 // ──────────────────────────────────────────────
 router.post('/:id/equip-armor', auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { slot, itemName } = req.body;
+    const { slot, armorItemId } = req.body;
 
     const validSlots = ['head', 'body', 'front_legs', 'rear_legs'];
     if (!validSlots.includes(slot)) {
       return res.status(400).json({ message: 'Invalid slot. Use head, body, front_legs, or rear_legs' });
     }
-    if (!itemName) {
-      return res.status(400).json({ message: 'itemName is required' });
-    }
+    if (!armorItemId) return res.status(400).json({ message: 'armorItemId is required' });
 
-    // Validate item exists in inventory and is armor
-    const itemResult = await pool.query(
-      `SELECT item_name, armor_class FROM inventory WHERE item_name = $1 AND category = 'Armor'`,
-      [itemName]
-    );
-    if (itemResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Armor item not found in inventory' });
+    const item = (await pool.query(`SELECT * FROM companion_armor_items WHERE id = $1 AND kind = 'mount'`, [armorItemId])).rows[0];
+    if (!item) return res.status(404).json({ message: 'Mount armor item not found' });
+    if (item.slot !== slot) {
+      return res.status(400).json({ message: `"${item.name}" was built for the ${item.slot?.replace(/_/g, ' ')} slot and can't be equipped to ${slot.replace(/_/g, ' ')}` });
     }
 
     // Check mount ownership
@@ -115,29 +110,11 @@ router.post('/:id/equip-armor', auth, async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    const col = `armor_${slot}`;
-    await pool.query(
-      `UPDATE campaign_mounts SET ${col} = $1, updated_at = NOW() WHERE id = $2`,
-      [itemName, id]
-    );
+    const col = `armor_${slot}_id`;
+    await pool.query(`UPDATE campaign_mounts SET ${col} = $1, updated_at = NOW() WHERE id = $2`, [armorItemId, id]);
 
-    // Re-fetch with joins for consistent shape
-    const updated = await pool.query(
-      `SELECT m.*,
-              c.name AS character_name, c.player_id AS character_player_id,
-              ih.armor_class AS armor_head_ac,   ib.armor_class AS armor_body_ac,
-              ifl.armor_class AS armor_front_legs_ac, irl.armor_class AS armor_rear_legs_ac,
-              COALESCE(ih.armor_class,0) + COALESCE(ib.armor_class,0) +
-              COALESCE(ifl.armor_class,0) + COALESCE(irl.armor_class,0) AS armor_ac_bonus
-         FROM campaign_mounts m
-         LEFT JOIN characters c   ON c.id = m.assigned_to_character_id
-         LEFT JOIN inventory ih   ON ih.item_name  = m.armor_head
-         LEFT JOIN inventory ib   ON ib.item_name  = m.armor_body
-         LEFT JOIN inventory ifl  ON ifl.item_name = m.armor_front_legs
-         LEFT JOIN inventory irl  ON irl.item_name = m.armor_rear_legs
-        WHERE m.id = $1`, [id]
-    );
-    const { image_data, ...mountOut } = updated.rows[0];
+    const updated = await pool.query(`${MOUNT_SELECT} WHERE m.id = $1`, [id]);
+    const mountOut = parseMount(updated.rows[0]);
 
     const io = req.app.get('io');
     if (io) io.to(`campaign_${mount.campaign_id}`).emit('mountUpdated', { mount: mountOut, timestamp: new Date().toISOString() });
@@ -176,25 +153,11 @@ router.delete('/:id/equip-armor', auth, async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    const col = `armor_${slot}`;
+    const col = `armor_${slot}_id`;
     await pool.query(`UPDATE campaign_mounts SET ${col} = NULL, updated_at = NOW() WHERE id = $1`, [id]);
 
-    const updated = await pool.query(
-      `SELECT m.*,
-              c.name AS character_name, c.player_id AS character_player_id,
-              ih.armor_class AS armor_head_ac,   ib.armor_class AS armor_body_ac,
-              ifl.armor_class AS armor_front_legs_ac, irl.armor_class AS armor_rear_legs_ac,
-              COALESCE(ih.armor_class,0) + COALESCE(ib.armor_class,0) +
-              COALESCE(ifl.armor_class,0) + COALESCE(irl.armor_class,0) AS armor_ac_bonus
-         FROM campaign_mounts m
-         LEFT JOIN characters c   ON c.id = m.assigned_to_character_id
-         LEFT JOIN inventory ih   ON ih.item_name  = m.armor_head
-         LEFT JOIN inventory ib   ON ib.item_name  = m.armor_body
-         LEFT JOIN inventory ifl  ON ifl.item_name = m.armor_front_legs
-         LEFT JOIN inventory irl  ON irl.item_name = m.armor_rear_legs
-        WHERE m.id = $1`, [id]
-    );
-    const { image_data, ...mountOut } = updated.rows[0];
+    const updated = await pool.query(`${MOUNT_SELECT} WHERE m.id = $1`, [id]);
+    const mountOut = parseMount(updated.rows[0]);
 
     const io = req.app.get('io');
     if (io) io.to(`campaign_${mount.campaign_id}`).emit('mountUpdated', { mount: mountOut, timestamp: new Date().toISOString() });
@@ -231,32 +194,32 @@ router.post('/campaign/:campaignId', auth, async (req, res) => {
       max_rider_armor = 'Any',
       purpose = '',
       image_url = null,
-      assigned_to_character_id = null
+      assigned_to_character_id = null,
+      diet = 'herbivore',
+      food_consumption = 4,
+      feeding_mode = 'self',
+      abilities = { str: 16, dex: 13, con: 15, int: 2, wis: 12, cha: 7 }
     } = req.body;
 
     const result = await pool.query(
       `INSERT INTO campaign_mounts
          (campaign_id, name, mount_type, description, speed, fly_speed, hp, ac,
           carrying_capacity, pull_strength, stamina, max_rider_armor, purpose,
-          image_url, assigned_to_character_id, is_equipped)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,false)
+          image_url, assigned_to_character_id, is_equipped, diet, food_consumption, feeding_mode,
+          abilities, hit_points_current)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,false,$16,$17,$18,$19,$7)
        RETURNING *`,
       [campaignId, name, mount_type, description, speed, fly_speed, hp, ac,
        carrying_capacity, pull_strength, stamina, max_rider_armor, purpose,
-       image_url, assigned_to_character_id || null]
+       image_url, assigned_to_character_id || null, diet, food_consumption, feeding_mode,
+       JSON.stringify(abilities)]
     );
 
     const mount = result.rows[0];
 
-    // Re-fetch with character JOIN so socket payload matches the GET route shape
-    const joinResult = await pool.query(
-      `SELECT m.*, c.name AS character_name, c.player_id AS character_player_id
-         FROM campaign_mounts m
-         LEFT JOIN characters c ON c.id = m.assigned_to_character_id
-        WHERE m.id = $1`,
-      [mount.id]
-    );
-    const mountWithChar = (() => { const { image_data, ...r } = joinResult.rows[0]; return r; })();
+    // Re-fetch with full joins so socket payload matches the GET route shape
+    const joinResult = await pool.query(`${MOUNT_SELECT} WHERE m.id = $1`, [mount.id]);
+    const mountWithChar = parseMount(joinResult.rows[0]);
 
     // Broadcast via socket if io is available
     const io = req.app.get('io');
@@ -300,7 +263,12 @@ router.put('/:id', auth, async (req, res) => {
       purpose,
       image_url,
       assigned_to_character_id,
-      is_equipped
+      is_equipped,
+      diet,
+      food_consumption,
+      feeding_mode,
+      abilities,
+      hit_points_current
     } = req.body;
 
     const result = await pool.query(
@@ -320,13 +288,19 @@ router.put('/:id', auth, async (req, res) => {
               image_url = COALESCE($13, image_url),
               assigned_to_character_id = $14,
               is_equipped = COALESCE($15, is_equipped),
+              diet = COALESCE($16, diet),
+              food_consumption = COALESCE($17, food_consumption),
+              feeding_mode = COALESCE($18, feeding_mode),
+              abilities = COALESCE($19, abilities),
+              hit_points_current = COALESCE($20, hit_points_current),
               updated_at = NOW()
-        WHERE id = $16
+        WHERE id = $21
        RETURNING *`,
       [name, mount_type, description, speed, fly_speed, hp, ac,
        carrying_capacity, pull_strength, stamina, max_rider_armor, purpose, image_url,
        assigned_to_character_id !== undefined ? assigned_to_character_id : null,
-       is_equipped, id]
+       is_equipped, diet, food_consumption, feeding_mode,
+       abilities !== undefined ? JSON.stringify(abilities) : undefined, hit_points_current, id]
     );
 
     if (result.rows.length === 0) {
@@ -335,15 +309,9 @@ router.put('/:id', auth, async (req, res) => {
 
     const mount = result.rows[0];
 
-    // Re-fetch with character JOIN
-    const joinResult = await pool.query(
-      `SELECT m.*, c.name AS character_name, c.player_id AS character_player_id
-         FROM campaign_mounts m
-         LEFT JOIN characters c ON c.id = m.assigned_to_character_id
-        WHERE m.id = $1`,
-      [mount.id]
-    );
-    const mountWithChar = (() => { const { image_data, ...r } = joinResult.rows[0]; return r; })();
+    // Re-fetch with full joins
+    const joinResult = await pool.query(`${MOUNT_SELECT} WHERE m.id = $1`, [mount.id]);
+    const mountWithChar = parseMount(joinResult.rows[0]);
 
     const io = req.app.get('io');
     if (io) {
@@ -389,15 +357,9 @@ router.post('/:id/assign', auth, async (req, res) => {
 
     const mount = result.rows[0];
 
-    // Re-fetch with character JOIN
-    const joinResult = await pool.query(
-      `SELECT m.*, c.name AS character_name, c.player_id AS character_player_id
-         FROM campaign_mounts m
-         LEFT JOIN characters c ON c.id = m.assigned_to_character_id
-        WHERE m.id = $1`,
-      [mount.id]
-    );
-    const mountWithChar = (() => { const { image_data, ...r } = joinResult.rows[0]; return r; })();
+    // Re-fetch with full joins
+    const joinResult = await pool.query(`${MOUNT_SELECT} WHERE m.id = $1`, [mount.id]);
+    const mountWithChar = parseMount(joinResult.rows[0]);
 
     const io = req.app.get('io');
     if (io) {
@@ -464,14 +426,8 @@ router.post('/:id/equip', auth, async (req, res) => {
     const updatedMount = result.rows[0];
 
     // Fetch all mounts for this campaign to broadcast full state
-    const allMountsResult = await pool.query(
-      `SELECT m.*, c.name AS character_name, c.player_id AS character_player_id
-         FROM campaign_mounts m
-         LEFT JOIN characters c ON c.id = m.assigned_to_character_id
-        WHERE m.campaign_id = $1`,
-      [mount.campaign_id]
-    );
-    const allMounts = allMountsResult.rows.map(({ image_data, ...r }) => r);
+    const allMountsResult = await pool.query(`${MOUNT_SELECT} WHERE m.campaign_id = $1`, [mount.campaign_id]);
+    const allMounts = allMountsResult.rows.map(parseMount);
 
     const io = req.app.get('io');
     if (io) {
@@ -527,7 +483,8 @@ router.post('/:id/unequip', auth, async (req, res) => {
       return res.status(404).json({ message: 'Mount not found' });
     }
 
-    const mount = result.rows[0];
+    const joinResult = await pool.query(`${MOUNT_SELECT} WHERE m.id = $1`, [id]);
+    const mount = parseMount(joinResult.rows[0]);
 
     const io = req.app.get('io');
     if (io) {
@@ -540,6 +497,96 @@ router.post('/:id/unequip', auth, async (req, res) => {
     res.json(mount);
   } catch (error) {
     console.error('Error unequipping mount:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// PATCH /api/mounts/:id/feed
+// Owner or DM manually feeds the mount from the player's shared stockpile (full efficiency)
+// ──────────────────────────────────────────────
+router.patch('/:id/feed', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const mountResult = await pool.query(
+      `SELECT m.*, c.player_id AS owner_player_id
+         FROM campaign_mounts m LEFT JOIN characters c ON c.id = m.assigned_to_character_id
+        WHERE m.id = $1`,
+      [id]
+    );
+    if (mountResult.rows.length === 0) return res.status(404).json({ message: 'Mount not found' });
+    const mount = mountResult.rows[0];
+    if (req.user.role !== 'Dungeon Master' && mount.owner_player_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    if (!mount.assigned_to_character_id) {
+      return res.status(400).json({ message: 'Mount must be assigned to a character before it can be fed' });
+    }
+
+    const result = await FoodStockpile.feedAnimal({
+      kind: 'mount',
+      id: mount.id,
+      campaignId: mount.campaign_id,
+      characterId: mount.assigned_to_character_id,
+      diet: mount.diet,
+      hunger: mount.hunger,
+      foodConsumption: mount.food_consumption,
+      rations: req.body.rations,
+    });
+
+    const { image_data, ...mountOut } = result.animal;
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${mount.campaign_id}`).emit('mountUpdated', { mount: mountOut, timestamp: new Date().toISOString() });
+      io.to(`campaign_${mount.campaign_id}`).emit('foodStockpileUpdated', {
+        campaignId: mount.campaign_id,
+        updates: [{ characterId: mount.assigned_to_character_id, meat_rations: result.stockpile.meat_rations, veg_rations: result.stockpile.veg_rations }],
+        timestamp: new Date().toISOString(),
+      });
+    }
+    res.json({ mount: mountOut, rationsConsumed: result.rationsConsumed });
+  } catch (error) {
+    console.error('Error feeding mount:', error);
+    res.status(error.status || 500).json({ message: error.message || 'Server error' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// PATCH /api/mounts/:id/feeding-mode
+// Owner or DM toggles self-feed vs automatic
+// ──────────────────────────────────────────────
+router.patch('/:id/feeding-mode', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { feeding_mode } = req.body;
+    if (!['self', 'automatic'].includes(feeding_mode)) {
+      return res.status(400).json({ message: 'feeding_mode must be "self" or "automatic"' });
+    }
+
+    const mountResult = await pool.query(
+      `SELECT m.*, c.player_id AS owner_player_id
+         FROM campaign_mounts m LEFT JOIN characters c ON c.id = m.assigned_to_character_id
+        WHERE m.id = $1`,
+      [id]
+    );
+    if (mountResult.rows.length === 0) return res.status(404).json({ message: 'Mount not found' });
+    const mount = mountResult.rows[0];
+    if (req.user.role !== 'Dungeon Master' && mount.owner_player_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const updated = await pool.query(
+      `UPDATE campaign_mounts SET feeding_mode = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [feeding_mode, id]
+    );
+    const { image_data, ...mountOut } = updated.rows[0];
+
+    const io = req.app.get('io');
+    if (io) io.to(`campaign_${mount.campaign_id}`).emit('mountUpdated', { mount: mountOut, timestamp: new Date().toISOString() });
+
+    res.json(mountOut);
+  } catch (error) {
+    console.error('Error setting mount feeding mode:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -559,19 +606,20 @@ router.post('/:id/image', auth, upload.single('image'), async (req, res) => {
     }
 
     const { id } = req.params;
-    const imageUrl = `/uploads/mounts/${req.file.filename}`;
-
+    // Stored as bytea in the DB (not disk) so it survives a Railway rebuild — same as pet images.
     const result = await pool.query(
-      `UPDATE campaign_mounts SET image_url = $1, updated_at = NOW()
-        WHERE id = $2 RETURNING *`,
-      [imageUrl, id]
+      `UPDATE campaign_mounts
+          SET image_data = $1, image_mime_type = $2, image_url = $3, updated_at = NOW()
+        WHERE id = $4 RETURNING *`,
+      [req.file.buffer, req.file.mimetype, `/api/mounts/${id}/image`, id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Mount not found' });
     }
 
-    const mount = result.rows[0];
+    const joinResult = await pool.query(`${MOUNT_SELECT} WHERE m.id = $1`, [id]);
+    const mount = parseMount(joinResult.rows[0]);
 
     const io = req.app.get('io');
     if (io) {
@@ -584,6 +632,23 @@ router.post('/:id/image', auth, upload.single('image'), async (req, res) => {
     res.json(mount);
   } catch (error) {
     console.error('Error uploading mount image:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// GET /api/mounts/:id/image — serve mount image from database (no auth required for img tags)
+// ──────────────────────────────────────────────
+router.get('/:id/image', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT image_data, image_mime_type FROM campaign_mounts WHERE id = $1', [req.params.id]);
+    const row = result.rows[0];
+    if (!row || !row.image_data) return res.status(404).json({ message: 'Image not found' });
+    res.set('Content-Type', row.image_mime_type || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=31536000');
+    res.send(row.image_data);
+  } catch (error) {
+    console.error('Error serving mount image:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

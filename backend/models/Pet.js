@@ -3,9 +3,11 @@ const { pool } = require('./database');
 class Pet {
   static async getByCampaignId(campaignId) {
     const result = await pool.query(
-      `SELECT p.*, c.name AS character_name, c.player_id AS character_player_id
+      `SELECT p.*, c.name AS character_name, c.player_id AS character_player_id,
+              a.name AS armor_item_name, COALESCE(a.armor_class_bonus, 0) AS armor_class_bonus
          FROM character_pets p
          JOIN characters c ON c.id = p.character_id
+         LEFT JOIN companion_armor_items a ON a.id = p.armor_item_id
         WHERE p.campaign_id = $1
         ORDER BY p.character_id ASC, p.created_at ASC`,
       [campaignId]
@@ -15,7 +17,10 @@ class Pet {
 
   static async getByCharacterId(characterId) {
     const result = await pool.query(
-      `SELECT * FROM character_pets WHERE character_id = $1 ORDER BY created_at ASC`,
+      `SELECT p.*, a.name AS armor_item_name, COALESCE(a.armor_class_bonus, 0) AS armor_class_bonus
+         FROM character_pets p
+         LEFT JOIN companion_armor_items a ON a.id = p.armor_item_id
+        WHERE p.character_id = $1 ORDER BY p.created_at ASC`,
       [characterId]
     );
     return result.rows.map(Pet._parse);
@@ -23,9 +28,11 @@ class Pet {
 
   static async findById(id) {
     const result = await pool.query(
-      `SELECT p.*, c.name AS character_name, c.player_id AS character_player_id
+      `SELECT p.*, c.name AS character_name, c.player_id AS character_player_id,
+              a.name AS armor_item_name, COALESCE(a.armor_class_bonus, 0) AS armor_class_bonus
          FROM character_pets p
          JOIN characters c ON c.id = p.character_id
+         LEFT JOIN companion_armor_items a ON a.id = p.armor_item_id
         WHERE p.id = $1`,
       [id]
     );
@@ -47,6 +54,9 @@ class Pet {
       abilities = { str: 10, dex: 10, con: 10, int: 2, wis: 10, cha: 6 },
       is_battle_pet = false,
       image_url = null,
+      diet = 'omnivore',
+      food_consumption = 4,
+      feeding_mode = 'self',
     } = data;
 
     const currentHP = hit_points_current !== undefined ? hit_points_current : hit_points;
@@ -55,13 +65,14 @@ class Pet {
       `INSERT INTO character_pets
          (character_id, campaign_id, name, species, description,
           hit_points, hit_points_current, armor_class, speed, abilities,
-          is_battle_pet, image_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          is_battle_pet, image_url, diet, food_consumption, feeding_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         character_id, campaign_id, name, species, description,
         hit_points, currentHP, armor_class, speed,
         JSON.stringify(abilities), is_battle_pet, image_url,
+        diet, food_consumption, feeding_mode,
       ]
     );
     return Pet._parse(result.rows[0]);
@@ -72,6 +83,7 @@ class Pet {
       name, species, description,
       hit_points, hit_points_current, armor_class, speed,
       abilities, is_battle_pet, image_url,
+      diet, food_consumption, feeding_mode, armor_item_id,
     } = data;
 
     const result = await pool.query(
@@ -86,16 +98,37 @@ class Pet {
               abilities          = COALESCE($8,  abilities),
               is_battle_pet      = COALESCE($9,  is_battle_pet),
               image_url          = COALESCE($10, image_url),
+              diet               = COALESCE($11, diet),
+              food_consumption   = COALESCE($12, food_consumption),
+              feeding_mode       = COALESCE($13, feeding_mode),
+              armor_item_id      = COALESCE($14, armor_item_id),
               updated_at         = NOW()
-        WHERE id = $11
+        WHERE id = $15
        RETURNING *`,
       [
         name, species, description,
         hit_points, hit_points_current, armor_class, speed,
         abilities !== undefined ? JSON.stringify(abilities) : undefined,
         is_battle_pet, image_url,
+        diet, food_consumption, feeding_mode, armor_item_id,
         id,
       ]
+    );
+    if (result.rows.length === 0) return null;
+    return Pet._parse(result.rows[0]);
+  }
+
+  // Combat damage — persists per-limb health directly (bypasses COALESCE so nulls/zeros stick).
+  static async updateLimbHealth(id, { hit_points_current, limb_health, temp_limb_health }) {
+    const result = await pool.query(
+      `UPDATE character_pets
+          SET hit_points_current = $1,
+              limb_health        = $2,
+              temp_limb_health   = $3,
+              updated_at         = NOW()
+        WHERE id = $4
+       RETURNING *`,
+      [hit_points_current, limb_health ? JSON.stringify(limb_health) : null, temp_limb_health ? JSON.stringify(temp_limb_health) : null, id]
     );
     if (result.rows.length === 0) return null;
     return Pet._parse(result.rows[0]);
@@ -135,9 +168,15 @@ class Pet {
 
   static _parse(row) {
     if (!row) return null;
+    const asJson = (v) => (typeof v === 'string' ? JSON.parse(v) : v) || null;
+    const armorBonus = Number(row.armor_class_bonus || 0);
     const parsed = {
       ...row,
       abilities: typeof row.abilities === 'string' ? JSON.parse(row.abilities) : (row.abilities || {}),
+      limb_health: asJson(row.limb_health),
+      temp_limb_health: asJson(row.temp_limb_health),
+      armor_class_bonus: armorBonus,
+      effective_armor_class: Number(row.armor_class || 10) + armorBonus,
     };
     // If image is stored in the database, point image_url to the serve endpoint
     if (row.image_data) {

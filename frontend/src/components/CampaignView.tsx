@@ -3,11 +3,12 @@ import ReactDOM from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
-import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, kingdomAPI, CharacterFeatState } from '../services/api';
+import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, petFoodAPI, FoodStockpileRow, FoodMarketSettings, companionArmorAPI, CompanionArmorItem, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, kingdomAPI, CharacterFeatState } from '../services/api';
 import { BATTLE_GOALS, findGoalByKey, isGoalEligible } from '../utils/battleGoals';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
+import { compressImageFile } from '../utils/imageCompression';
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
 import { classInfo } from '../data/classInfo';
 import { getChoiceOptions } from '../data/choiceOptions';
@@ -555,7 +556,7 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'companions' | 'npcs' | 'notes' | 'others'>('board');
   const [characterNotes, setCharacterNotes] = useState<{ [charId: number]: { id: number; title: string; content: string; created_at: string }[] }>({});
   const [notesLoading, setNotesLoading] = useState<{ [charId: number]: boolean }>({});
   const [noteEditModal, setNoteEditModal] = useState<{ charId: number; note: { id: number; title: string; content: string } | null } | null>(null);
@@ -771,7 +772,7 @@ const CampaignView: React.FC = () => {
   const [showAddToCombatModal, setShowAddToCombatModal] = useState(false);
   const [showResetCombatModal, setShowResetCombatModal] = useState(false);
   const [showCombatInviteModal, setShowCombatInviteModal] = useState(false);
-  const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string; battlePets: Pet[] } | null>(null);
+  const [combatInvite, setCombatInvite] = useState<{ characterId: number; characterName: string; battlePets: (Pet & { starving?: boolean })[] } | null>(null);
   const [combatantDetailModal, setCombatantDetailModal] = useState<{ combatantId: number | string } | null>(null);
   const [combatants, setCombatants] = useState<Array<{ 
     characterId: number | string; 
@@ -903,13 +904,15 @@ const CampaignView: React.FC = () => {
     max_rider_armor: 'Any',
     purpose: '',
     assigned_to_character_id: null,
-    image_url: undefined
+    image_url: undefined,
+    diet: 'omnivore',
+    food_consumption: 4,
+    feeding_mode: 'self'
   });
   const [mountImageFile, setMountImageFile] = useState<File | null>(null);
   const [mountImagePreviewUrl, setMountImagePreviewUrl] = useState<string | null>(null);
   const [mountArmorPicker, setMountArmorPicker] = useState<{ mountId: number; slot: 'head' | 'body' | 'front_legs' | 'rear_legs' } | null>(null);
-  const [mountDamageModal, setMountDamageModal] = useState<{ combatantKey: string; mountName: string } | null>(null);
-  const [mountDamageInput, setMountDamageInput] = useState<string>('');
+  const [mountDamageModal, setMountDamageModal] = useState<{ combatantKey: string; mountId: number; mountName: string; riderName: string } | null>(null);
 
   // Battle maps state
   const [campaignBattleMaps, setCampaignBattleMaps] = useState<BattleMap[]>([]);
@@ -930,11 +933,23 @@ const CampaignView: React.FC = () => {
     armor_class: 10, speed: 30,
     abilities: { str: 10, dex: 10, con: 10, int: 2, wis: 10, cha: 6 },
     is_battle_pet: false, image_url: undefined,
+    diet: 'omnivore', food_consumption: 4, feeding_mode: 'self',
   });
   const [petFormData, setPetFormData] = useState<Partial<Pet>>(defaultPetForm());
   const [petImageFile, setPetImageFile] = useState<File | null>(null);
   const [petImagePreviewUrl, setPetImagePreviewUrl] = useState<string | null>(null);
   const [combatPetSelections, setCombatPetSelections] = useState<number[]>([]);
+
+  // Companions tab (fused Pets + Mounts + Armor + Market)
+  const [companionsSubTab, setCompanionsSubTab] = useState<'pets' | 'mounts' | 'armor' | 'market'>('pets');
+  const [foodStockpiles, setFoodStockpiles] = useState<FoodStockpileRow[]>([]);
+  const [foodMarketSettings, setFoodMarketSettings] = useState<FoodMarketSettings>({ meat_price: 85, veg_price: 42 });
+  const [buyQuantity, setBuyQuantity] = useState<{ meat: number; veg: number }>({ meat: 1, veg: 1 });
+  const [grantQuantity, setGrantQuantity] = useState<{ meat: number; veg: number }>({ meat: 5, veg: 5 });
+  const [feedingBusyId, setFeedingBusyId] = useState<number | null>(null);
+  const [companionArmorItems, setCompanionArmorItems] = useState<CompanionArmorItem[]>([]);
+  const [showAddArmorModal, setShowAddArmorModal] = useState(false);
+  const [armorFormData, setArmorFormData] = useState<{ kind: 'mount' | 'pet'; name: string; armor_class_bonus: number; description: string; slot: 'head' | 'body' | 'front_legs' | 'rear_legs' }>({ kind: 'mount', name: '', armor_class_bonus: 1, description: '', slot: 'head' });
 
   // Army and Battlefield state
   const [armies, setArmies] = useState<Army[]>([]);
@@ -1026,6 +1041,234 @@ const CampaignView: React.FC = () => {
     // Uploaded files (/uploads/...) — served by the Express backend
     if (process.env.NODE_ENV === 'production') return imageUrl;
     return `http://localhost:5000${imageUrl}`;
+  };
+
+  // Shared hunger/diet/feeding-mode widget for pet & mount cards (Companions tab)
+  const hungerColor = (hunger: number) => hunger <= 0 ? '#ef4444' : hunger < 35 ? '#f87171' : hunger < 70 ? 'var(--text-gold)' : '#4ade80';
+  const DIET_META: Record<'herbivore' | 'carnivore' | 'omnivore', { icon: string; label: string }> = {
+    herbivore: { icon: '🥬', label: 'Herbivore' },
+    carnivore: { icon: '🥩', label: 'Carnivore' },
+    omnivore: { icon: '🍽️', label: 'Omnivore' },
+  };
+  // Quick at-a-glance diet coding on companion cards: red = carnivore, green = herbivore, blue = omnivore.
+  const DIET_BORDER: Record<'herbivore' | 'carnivore' | 'omnivore', string> = {
+    carnivore: '#ef4444',
+    herbivore: '#4ade80',
+    omnivore: '#60a5fa',
+  };
+  const renderHungerWidget = (
+    animal: { id: number; diet: 'herbivore' | 'carnivore' | 'omnivore'; hunger: number; food_consumption: number; feeding_mode: 'self' | 'automatic' },
+    canManage: boolean,
+    onFeed: () => void,
+    onModeChange: (mode: 'self' | 'automatic') => void,
+    busy: boolean,
+    compact: boolean = false
+  ) => {
+    const diet = DIET_META[animal.diet] || DIET_META.omnivore;
+    const hColor = hungerColor(animal.hunger);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '0.3rem' : '0.4rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: compact ? '0.68rem' : '0.75rem', color: 'var(--text-muted)' }}>
+            <span>{diet.icon} {diet.label}</span>
+            <span style={{ opacity: 0.6 }}>· eats {animal.food_consumption}/rest</span>
+          </div>
+          {animal.hunger <= 0 && (
+            <span style={{ fontSize: compact ? '0.62rem' : '0.68rem', fontWeight: 700, color: '#fca5a5', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.3rem', padding: '0.05rem 0.35rem' }}>⚠️ Starving</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ flex: 1, height: compact ? 6 : 8, background: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, animal.hunger))}%`, background: hColor, borderRadius: 4, transition: 'width 0.3s ease' }} />
+          </div>
+          <span style={{ fontSize: compact ? '0.65rem' : '0.75rem', color: hColor, fontWeight: 700, minWidth: '2.4rem', textAlign: 'right' }}>{animal.hunger}/100</span>
+        </div>
+        {canManage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', borderRadius: '0.35rem', overflow: 'hidden', border: '1px solid rgba(var(--theme-accent-rgb),0.3)' }}>
+              {(['self', 'automatic'] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => onModeChange(mode)}
+                  style={{
+                    padding: compact ? '0.15rem 0.4rem' : '0.2rem 0.55rem', fontSize: compact ? '0.6rem' : '0.68rem', fontWeight: 700, cursor: 'pointer', border: 'none',
+                    background: animal.feeding_mode === mode ? 'rgba(var(--theme-accent-rgb),0.28)' : 'rgba(255,255,255,0.03)',
+                    color: animal.feeding_mode === mode ? 'var(--text-gold)' : 'var(--text-muted)',
+                  }}
+                >{mode === 'self' ? '🖐️ Self' : '⚙️ Auto'}</button>
+              ))}
+            </div>
+            {animal.feeding_mode === 'self' && (
+              <button
+                onClick={onFeed}
+                disabled={busy}
+                style={{ padding: compact ? '0.15rem 0.5rem' : '0.2rem 0.65rem', fontSize: compact ? '0.6rem' : '0.7rem', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', borderRadius: '0.35rem', border: '1px solid rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.14)', color: '#86efac', opacity: busy ? 0.6 : 1 }}
+              >{busy ? '…' : '🍖 Feed'}</button>
+            )}
+            {animal.feeding_mode === 'automatic' && (
+              <span style={{ fontSize: compact ? '0.6rem' : '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>fed automatically at 25% efficiency</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Single shared card renderer for both Pets and Mounts — same theme, same layout (centered image
+  // on top, 3-column grid from the caller), same limb HP/AC + ability grids. Kind-specific fields
+  // (species vs mount type, battle-pet vs equipped, stamina/carry/pull for mounts) still show through.
+  const renderCompanionCard = (
+    kind: 'pet' | 'mount',
+    animal: Pet | Mount,
+    opts: {
+      isDM: boolean;
+      canManage: boolean;
+      feedingBusy: boolean;
+      onFeed: () => void;
+      onFeedingMode: (mode: 'self' | 'automatic') => void;
+      onEdit: () => void;
+      onDelete: () => void;
+      onImageClick: () => void;
+      mount?: { isEquipped: boolean; onToggleEquip: () => void };
+    }
+  ) => {
+    const isPet = kind === 'pet';
+    const pet = isPet ? (animal as Pet) : null;
+    const mount = !isPet ? (animal as Mount) : null;
+
+    const typeLabel = isPet ? pet!.species : mount!.mount_type;
+    const imageUrl = animal.image_url ? getImageUrl(animal.image_url) : undefined;
+    const baseHp = isPet ? pet!.hit_points : mount!.hp;
+    const con = animal.abilities?.con ?? 10;
+    const baseAc = isPet ? pet!.armor_class : mount!.ac;
+    const armorBonus = isPet ? (pet!.armor_class_bonus || 0) : (mount!.armor_ac_bonus || 0);
+    const effectiveAc = isPet ? (pet!.effective_armor_class ?? baseAc) : (mount!.effective_ac ?? baseAc + armorBonus);
+    const limbHealthMax = calcCharacterLimbHealthMax(baseHp, con);
+    const limbAcValues = calcCharacterLimbHealthMax(effectiveAc, con);
+    const limbHealthCurrent = animal.limb_health;
+
+    const speedStats: { icon: string; label: string; value: string }[] = [
+      { icon: '💨', label: 'Speed', value: `${animal.speed} ft` },
+      ...(mount && mount.fly_speed > 0 ? [{ icon: '🦅', label: 'Fly', value: `${mount.fly_speed} ft` }] : []),
+    ];
+    const extraStats: { icon: string; label: string; value: string }[] = mount ? [
+      { icon: '🔋', label: 'Stamina', value: mount.stamina ?? '—' },
+      { icon: '📦', label: 'Carry', value: `${mount.carrying_capacity} lbs` },
+      { icon: '🔗', label: 'Pull', value: `${mount.pull_strength ?? 0} lbs` },
+      { icon: '⚔️', label: 'Max Armor', value: mount.max_rider_armor ?? '—' },
+    ] : [];
+
+    const LIMB_ENTRIES = [
+      { key: 'head', label: 'Head' }, { key: 'chest', label: 'Body' },
+      { key: 'left_arm', label: 'L.Arm' }, { key: 'right_arm', label: 'R.Arm' },
+      { key: 'left_leg', label: 'L.Leg' }, { key: 'right_leg', label: 'R.Leg' },
+    ];
+
+    const dietBorder = DIET_BORDER[animal.diet] || 'rgba(var(--theme-accent-rgb),0.18)';
+
+    return (
+      <div key={`${kind}-${animal.id}`} style={{ background: 'rgba(0,0,0,0.32)', border: `1px solid ${dietBorder}`, boxShadow: `inset 3px 0 0 ${dietBorder}`, borderRadius: '0.85rem', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {/* Centered image on top — same treatment for pets and mounts */}
+        <div style={{ width: '100%', height: 170, background: '#0a0a15', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
+          {imageUrl ? (
+            <img src={imageUrl} alt={animal.name} onClick={opts.onImageClick} style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center', cursor: 'pointer', display: 'block' }} />
+          ) : (
+            <span style={{ fontSize: '3rem' }}>{isPet ? '🐾' : '🐴'}</span>
+          )}
+          {isPet && pet!.is_battle_pet && (
+            <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(239,68,68,0.85)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.65rem', fontWeight: 700, color: '#fff' }}>⚔️ Battle Pet</div>
+          )}
+          {mount && mount.is_equipped && (
+            <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(74,222,128,0.85)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.65rem', fontWeight: 700, color: '#052e12' }}>▶ Riding</div>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.2rem' }}>{animal.name}</div>
+              <span style={{ background: 'rgba(var(--theme-accent-rgb),0.14)', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', borderRadius: '0.9rem', padding: '0.1rem 0.55rem', fontSize: '0.7rem', color: 'var(--text-gold)' }}>{typeLabel}</span>
+            </div>
+            {opts.isDM && (
+              <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
+                <button onClick={opts.onEdit} style={{ padding: '0.25rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(var(--theme-accent-rgb),0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.75rem' }}>✏️</button>
+                <button onClick={opts.onDelete} style={{ padding: '0.25rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}>🗑️</button>
+              </div>
+            )}
+          </div>
+
+          {animal.description && (
+            <p style={{ color: '#bbb', fontSize: '0.78rem', margin: 0, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{animal.description}</p>
+          )}
+
+          {/* Stat pills */}
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <span style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '0.4rem', padding: '0.15rem 0.5rem', fontSize: '0.7rem', color: '#86efac', fontWeight: 600 }}>
+              🛡️ AC {effectiveAc}{!!armorBonus && ` (${baseAc}+${armorBonus})`}
+            </span>
+            {speedStats.map(s => (
+              <span key={s.label} style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.4rem', padding: '0.15rem 0.5rem', fontSize: '0.7rem', color: '#93c5fd', fontWeight: 600 }}>{s.icon} {s.value}</span>
+            ))}
+            {extraStats.map(s => (
+              <span key={s.label} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '0.4rem', padding: '0.15rem 0.5rem', fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{s.icon} {s.label}: {s.value}</span>
+            ))}
+          </div>
+
+          {/* Hunger */}
+          <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(var(--theme-accent-rgb),0.12)', borderRadius: '0.4rem', padding: '0.4rem 0.5rem' }}>
+            {renderHungerWidget(animal, opts.canManage, opts.onFeed, opts.onFeedingMode, opts.feedingBusy, true)}
+          </div>
+
+          {/* Limb HP + AC — same proportional formula for both, so equipping armor shifts every limb's AC together */}
+          <div>
+            <div style={{ color: 'rgba(var(--theme-accent-rgb),0.6)', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.3rem' }}>Limbs (HP · AC)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.25rem' }}>
+              {LIMB_ENTRIES.map(({ key, label }) => {
+                const maxVal = limbHealthMax[key] || 1;
+                const curVal = limbHealthCurrent?.[key] ?? maxVal;
+                const limbAcVal = limbAcValues[key] || 1;
+                const limbColor = curVal <= 0 ? '#ef4444' : curVal < maxVal * 0.5 ? 'var(--text-gold)' : '#4ade80';
+                return (
+                  <div key={key} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '0.35rem', padding: '0.2rem 0.25rem', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.55rem', fontWeight: 700 }}>{label}</div>
+                    <div style={{ color: limbColor, fontSize: '0.68rem', fontWeight: 600 }}>{curVal}/{maxVal}</div>
+                    <div style={{ color: 'rgba(147,197,253,0.8)', fontSize: '0.55rem' }}>AC {limbAcVal}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Ability scores */}
+          <div>
+            <div style={{ color: 'rgba(var(--theme-accent-rgb),0.6)', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.3rem' }}>Abilities</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.25rem' }}>
+              {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map((k, i) => {
+                const score = animal.abilities?.[k] ?? 10;
+                const mod = Math.floor((score - 10) / 2);
+                return (
+                  <div key={k} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '0.35rem', padding: '0.2rem 0.1rem', textAlign: 'center', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.52rem', fontWeight: 700 }}>{['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'][i]}</div>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.72rem' }}>{score}</div>
+                    <div style={{ fontSize: '0.55rem', color: mod >= 0 ? '#4ade80' : '#f87171' }}>{mod >= 0 ? `+${mod}` : mod}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {opts.mount && (
+            <button
+              onClick={opts.mount.onToggleEquip}
+              style={{ padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: `1px solid ${opts.mount.isEquipped ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.5)'}`, background: opts.mount.isEquipped ? 'rgba(239,68,68,0.14)' : 'rgba(34,197,94,0.15)', color: opts.mount.isEquipped ? '#f87171' : '#4ade80', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}
+            >
+              {opts.mount.isEquipped ? '⛺ Dismount' : '▶ Mount'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const formatCR = (cr: number | undefined): string => {
@@ -2026,12 +2269,20 @@ const CampaignView: React.FC = () => {
     loadPets();
   }, [currentCampaign]);
 
-  // Re-fetch mounts from DB whenever the mounts tab is opened (ensures fresh data)
+  // Re-fetch mounts + food stockpiles + armor from DB whenever the Companions tab is opened (ensures fresh data)
   useEffect(() => {
-    if (activeTab === 'mounts' && currentCampaign) {
+    if (activeTab === 'companions' && currentCampaign) {
       mountAPI.getCampaignMounts(currentCampaign.campaign.id)
         .then(setCampaignMounts)
         .catch(err => console.error('Error refreshing mounts:', err));
+      petFoodAPI.getStockpiles(currentCampaign.campaign.id, selectedCharacterData?.id)
+        .then(({ stockpiles, prices }) => { setFoodStockpiles(stockpiles); setFoodMarketSettings(prices); })
+        .catch(err => console.error('Error refreshing food stockpiles:', err));
+      if (selectedCharacterData) {
+        companionArmorAPI.getForCharacter(currentCampaign.campaign.id, selectedCharacterData.id)
+          .then(({ items }) => setCompanionArmorItems(items))
+          .catch(err => console.error('Error refreshing companion armor:', err));
+      }
     }
     if (activeTab === 'npcs' && selectedCharacter) {
       npcAPI.getSavedNPCs(selectedCharacter)
@@ -3956,7 +4207,7 @@ const CampaignView: React.FC = () => {
         campaignId: number;
         characterId: number;
         targetPlayerId: number;
-        battlePets?: Pet[];
+        battlePets?: (Pet & { starving?: boolean })[];
         timestamp: string;
       }) => {
         // Check if this invite is for the current user
@@ -3965,8 +4216,8 @@ const CampaignView: React.FC = () => {
           if (character) {
             const pets = data.battlePets || [];
             setCombatInvite({ characterId: data.characterId, characterName: character.name, battlePets: pets });
-            // Pre-select all battle pets
-            setCombatPetSelections(pets.map(p => p.id));
+            // Pre-select all non-starving battle pets
+            setCombatPetSelections(pets.filter(p => !p.starving).map(p => p.id));
             setShowCombatInviteModal(true);
           }
         }
@@ -4169,6 +4420,14 @@ const CampaignView: React.FC = () => {
           if (Object.prototype.hasOwnProperty.call(data, 'tempLimbHealth')) {
             setCombatTempHealth(prev => ({ ...prev, [monsterKey]: data.tempLimbHealth }));
           }
+        } else if (data.type === 'pet') {
+          setCampaignPets(prev => prev.map(p => p.id === data.petId
+            ? { ...p, hit_points_current: data.newHP, limb_health: data.limbHealth, temp_limb_health: data.tempLimbHealth ?? null }
+            : p));
+        } else if (data.type === 'mount') {
+          setCampaignMounts(prev => prev.map(m => m.id === data.mountId
+            ? { ...m, hit_points_current: data.newHP, limb_health: data.limbHealth, temp_limb_health: data.tempLimbHealth ?? null }
+            : m));
         }
       });
 
@@ -4744,6 +5003,37 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('petDeleted', (data: { petId: number; characterId: number; timestamp: string }) => {
         setCampaignPets(prev => prev.filter(p => p.id !== data.petId));
+      });
+
+      // ─── Food stockpile socket events ────────────────────────────────────
+      newSocket.on('foodStockpileUpdated', (data: { campaignId: number; updates: Array<{ characterId: number; meat_rations: number; veg_rations: number; max_slots?: number }>; timestamp: string }) => {
+        setFoodStockpiles(prev => {
+          const next = [...prev];
+          for (const upd of data.updates) {
+            const idx = next.findIndex(s => s.character_id === upd.characterId);
+            if (idx >= 0) {
+              next[idx] = { ...next[idx], meat_rations: upd.meat_rations, veg_rations: upd.veg_rations, max_slots: upd.max_slots ?? next[idx].max_slots };
+            }
+          }
+          return next;
+        });
+      });
+
+      newSocket.on('foodMarketSettingsUpdated', (data: { campaignId: number; prices: FoodMarketSettings; timestamp: string }) => {
+        setFoodMarketSettings(data.prices);
+      });
+
+      // Gold changes (market purchases, DM edits) broadcast to every connected client.
+      newSocket.on('characterGoldUpdated', (data: { characterId: number; gold: number; timestamp: string }) => {
+        patchCampaignCharacters([{ id: data.characterId, gold: data.gold }]);
+      });
+
+      newSocket.on('companionArmorUpdated', (data: { campaignId: number; characterId: number; timestamp: string }) => {
+        if (currentCampaignRef.current) {
+          companionArmorAPI.getForCharacter(currentCampaignRef.current.campaign.id, data.characterId)
+            .then(({ items }) => setCompanionArmorItems(prev => selectedCharacterRef.current === data.characterId ? items : prev))
+            .catch(err => console.error('Error refreshing companion armor:', err));
+        }
       });
 
       // Listen for battle round advanced (emit to all users when DM advances round)
@@ -6444,7 +6734,7 @@ const CampaignView: React.FC = () => {
   ] as const;
 
   const characterTabConfig: Record<
-    'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'mounts' | 'pets' | 'npcs' | 'notes' | 'others',
+    'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'companions' | 'npcs' | 'notes' | 'others',
     { label: string; icon: string }
   > = {
     board: { label: 'Overview', icon: '📋' },
@@ -6457,8 +6747,7 @@ const CampaignView: React.FC = () => {
     companion: { label: 'Companion', icon: '🐾' },
     shadows: { label: 'Shadows', icon: '🌑' },
     levelup: { label: 'Level Up', icon: '⬆️' },
-    mounts: { label: 'Mounts', icon: '🐴' },
-    pets: { label: 'Pets', icon: '🐾' },
+    companions: { label: 'Companions', icon: '🐾' },
     npcs: { label: 'Characters', icon: '👥' },
     notes: { label: 'Notes', icon: '📝' },
     others: { label: 'Others', icon: '🎲' }
@@ -6479,7 +6768,7 @@ const CampaignView: React.FC = () => {
     ? (isOwnCharacter
         ? (['board', 'sheet', 'npcs', 'notes', 'inventory',
           ...(shouldShowFeatsTab(selectedCharacterData.id) ? ['feats' as const] : []),
-          'skills', 'equip', 'armies', 'mounts', 'pets' as const,
+          'skills', 'equip', 'armies', 'companions' as const,
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
             ...(shouldShowShadowsTab(selectedCharacterData) ? ['shadows' as const] : []),
             ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : []),
@@ -8391,8 +8680,8 @@ const CampaignView: React.FC = () => {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setMountDamageInput('');
-                                          setMountDamageModal({ combatantKey: String(combatant.characterId), mountName: mount?.name ?? 'Mount' });
+                                          if (!mount) return;
+                                          setMountDamageModal({ combatantKey: String(combatant.characterId), mountId: mount.id, mountName: mount.name, riderName: combatant.name });
                                         }}
                                         style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.25rem', color: '#f87171', cursor: 'pointer' }}
                                       >⚔️ Damage Mount</button>
@@ -14548,7 +14837,35 @@ const CampaignView: React.FC = () => {
                 )}
                 
                 {/* Mounts Tab */}
-                {activeTab === 'mounts' && (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (() => {
+                {/* Companions Tab — Pets / Mounts / Market segmented panel */}
+                {activeTab === 'companions' && canViewAllTabs(selectedCharacterData.id) && (
+                  <div className="glass-panel" style={{ marginBottom: '1.25rem', padding: '0.6rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {([
+                        { key: 'pets', icon: '🐾', label: 'Pets' },
+                        { key: 'mounts', icon: '🐴', label: 'Mounts' },
+                        { key: 'armor', icon: '🛡️', label: 'Armor' },
+                        { key: 'market', icon: '🛒', label: 'Market' },
+                      ] as const).map(seg => (
+                        <button
+                          key={seg.key}
+                          onClick={() => setCompanionsSubTab(seg.key)}
+                          style={{
+                            flex: '1 1 120px', padding: '0.55rem 1rem', borderRadius: '0.5rem', cursor: 'pointer',
+                            fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+                            background: companionsSubTab === seg.key ? 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.22), rgba(var(--theme-accent-rgb),0.1))' : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${companionsSubTab === seg.key ? 'rgba(var(--theme-accent-rgb),0.5)' : 'rgba(255,255,255,0.1)'}`,
+                            color: companionsSubTab === seg.key ? 'var(--text-gold)' : 'var(--text-secondary)',
+                            boxShadow: companionsSubTab === seg.key ? '0 0 14px rgba(var(--theme-accent-rgb),0.15)' : 'none',
+                            transition: 'all 0.15s',
+                          }}
+                        >{seg.icon} {seg.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'companions' && companionsSubTab === 'mounts' && (user?.role === 'Dungeon Master' || selectedCharacterData.player_id === user?.id) && (() => {
                   const isDM = user?.role === 'Dungeon Master';
                   const isMyCharacter = selectedCharacterData.player_id === user?.id;
                   const canEquip = isDM || isMyCharacter;
@@ -14566,7 +14883,7 @@ const CampaignView: React.FC = () => {
                     { icon: '⚡', label: 'Speed',         value: `${mount.speed} ft` },
                     ...(mount.fly_speed > 0 ? [{ icon: '🦅', label: 'Fly Speed', value: `${mount.fly_speed} ft` }] : []),
                     { icon: '❤️', label: 'HP',            value: String(mount.hp) },
-                    { icon: '🛡️', label: 'AC',            value: String(mount.ac) },
+                    { icon: '🛡️', label: 'AC',            value: mount.armor_ac_bonus ? `${mount.effective_ac ?? mount.ac + mount.armor_ac_bonus} (${mount.ac}+${mount.armor_ac_bonus})` : String(mount.ac) },
                     { icon: '📦', label: 'Carry',         value: `${mount.carrying_capacity} lbs` },
                     { icon: '🔗', label: 'Pull',          value: `${mount.pull_strength ?? 0} lbs` },
                     { icon: '🔋', label: 'Stamina',       value: mount.stamina ?? '—' },
@@ -14593,6 +14910,24 @@ const CampaignView: React.FC = () => {
                     }
                   };
 
+                  const handleFeedMount = async (mount: Mount) => {
+                    setFeedingBusyId(mount.id);
+                    try {
+                      const { mount: updated } = await mountAPI.feedMount(mount.id);
+                      setCampaignMounts(prev => prev.map(m => m.id === updated.id ? updated : m));
+                    } catch (err: any) {
+                      console.error('Error feeding mount:', err);
+                    } finally {
+                      setFeedingBusyId(null);
+                    }
+                  };
+                  const handleMountFeedingMode = async (mount: Mount, mode: 'self' | 'automatic') => {
+                    try {
+                      const updated = await mountAPI.setFeedingMode(mount.id, mode);
+                      setCampaignMounts(prev => prev.map(m => m.id === updated.id ? updated : m));
+                    } catch (err) { console.error('Error setting mount feeding mode:', err); }
+                  };
+
                   return (
                     <div className="glass-panel">
                       {/* ── Header ── */}
@@ -14616,184 +14951,17 @@ const CampaignView: React.FC = () => {
                               setShowAddMountModal(true);
                             }}
                             style={{
-                              padding: '8px 16px', backgroundColor: '#7c3aed', color: '#fff',
-                              border: 'none', borderRadius: '6px', fontSize: '14px',
+                              padding: '8px 16px', backgroundColor: 'rgba(var(--theme-accent-rgb),0.18)', color: 'var(--text-gold)',
+                              border: '1px solid rgba(var(--theme-accent-rgb),0.5)', borderRadius: '6px', fontSize: '14px',
                               fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#6d28d9'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7c3aed'}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(var(--theme-accent-rgb),0.3)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(var(--theme-accent-rgb),0.18)'}
                           >+ Add Mount</button>
                         )}
                       </div>
 
-                      {/* ── EQUIPPED MOUNT hero card ── */}
-                      {equippedMount && (() => {
-                        const imgUrl = equippedMount.image_url ? getImageUrl(equippedMount.image_url) : undefined;
-                        return (
-                          <div style={{
-                            background: 'linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(76,29,149,0.12) 100%)',
-                            border: '2px solid rgba(167,139,250,0.55)',
-                            borderRadius: '1rem',
-                            overflow: 'hidden',
-                            marginBottom: '2rem',
-                            boxShadow: '0 0 40px rgba(124,58,237,0.2)'
-                          }}>
-                            {/* Riding banner */}
-                            <div style={{
-                              background: 'linear-gradient(90deg, rgba(124,58,237,0.8), rgba(109,40,217,0.6))',
-                              padding: '0.4rem 1.2rem',
-                              display: 'flex', alignItems: 'center', gap: '0.6rem'
-                            }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#e9d5ff', letterSpacing: '1px' }}>▶ CURRENTLY RIDING</span>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
-                              {/* Full image — left half */}
-                              <div style={{ position: 'relative', minHeight: '300px', background: '#0a0a15' }}>
-                                {imgUrl ? (
-                                  <img
-                                    src={imgUrl}
-                                    alt={equippedMount.name}
-                                    onClick={() => setViewImageModal({ imageUrl: imgUrl, name: equippedMount.name })}
-                                    style={{
-                                      width: '100%', height: '100%', minHeight: '300px',
-                                      objectFit: 'contain', objectPosition: 'center',
-                                      display: 'block', cursor: 'pointer'
-                                    }}
-                                  />
-                                ) : (
-                                  <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem', opacity: 0.25 }}>🐴</div>
-                                )}
-                              </div>
-
-                              {/* Stats — right half */}
-                              <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                                {/* Name + type */}
-                                <div>
-                                  <h3 style={{ margin: '0 0 0.3rem', color: 'var(--text-gold)', fontSize: '1.4rem' }}>{equippedMount.name}</h3>
-                                  <span style={{
-                                    fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '999px',
-                                    background: 'rgba(var(--theme-accent-rgb),0.1)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
-                                    color: 'var(--text-muted)'
-                                  }}>{equippedMount.mount_type}</span>
-                                </div>
-
-                                {/* Purpose */}
-                                {equippedMount.purpose && (
-                                  <div style={{
-                                    fontSize: '0.78rem', color: '#c4b5fd',
-                                    background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.35)',
-                                    borderRadius: '999px', padding: '0.2rem 0.75rem', display: 'inline-block', alignSelf: 'flex-start'
-                                  }}>{equippedMount.purpose}</div>
-                                )}
-
-                                {/* Description */}
-                                {equippedMount.description && (
-                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                                    {equippedMount.description}
-                                  </p>
-                                )}
-
-                                {/* Stat grid */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem 0.75rem', marginTop: '0.25rem' }}>
-                                  {statRows(equippedMount).map(({ icon, label, value }) => (
-                                    <div key={label} style={{
-                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                      background: 'rgba(255,255,255,0.04)', borderRadius: '0.4rem',
-                                      padding: '0.3rem 0.6rem', border: '1px solid rgba(var(--theme-accent-rgb),0.1)'
-                                    }}>
-                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{icon} {label}</span>
-                                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{value}</span>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {/* Mount Armor Slots */}
-                                {(() => {
-                                  const slots: { key: 'head'|'body'|'front_legs'|'rear_legs'; label: string; icon: string }[] = [
-                                    { key: 'head',       label: 'Head',       icon: '🪖' },
-                                    { key: 'body',       label: 'Body',       icon: '🛡️' },
-                                    { key: 'front_legs', label: 'Front Legs', icon: '🦵' },
-                                    { key: 'rear_legs',  label: 'Rear Legs',  icon: '🦶' },
-                                  ];
-                                  return (
-                                    <div style={{ marginTop: '0.5rem' }}>
-                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-gold)', fontWeight: 'bold', marginBottom: '0.4rem' }}>🛡️ Horse Armor Slots</div>
-                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
-                                        {slots.map(slot => {
-                                          const equippedName = equippedMount[`armor_${slot.key}` as keyof Mount] as string | null;
-                                          return (
-                                            <div key={slot.key} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3rem' }}>
-                                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{slot.icon} {slot.label}</span>
-                                              {equippedName ? (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                                  <span style={{ fontSize: '0.7rem', color: '#c4b5fd' }}>{equippedName}</span>
-                                                  {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(equippedMount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.7rem', padding:0 }}>✕</button>}
-                                                </div>
-                                              ) : (
-                                                canEquip ? (
-                                                  <button
-                                                    onClick={() => setMountArmorPicker({ mountId: equippedMount.id, slot: slot.key })}
-                                                    style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: '0.25rem', color: '#c4b5fd', cursor: 'pointer' }}
-                                                  >+ Equip</button>
-                                                ) : <span style={{ fontSize: '0.65rem', color: '#555' }}>Empty</span>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Assigned to */}
-                                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 'auto' }}>
-                                  👤 <strong style={{ color: 'var(--text-gold)' }}>{equippedMount.character_name ?? selectedCharacterData.name}</strong>
-                                </div>
-
-                                {/* Dismount button */}
-                                {canEquip && (
-                                  <button
-                                    onClick={() => handleToggleEquip(equippedMount)}
-                                    style={{
-                                      padding: '0.6rem 1rem', borderRadius: '0.5rem',
-                                      border: '1px solid rgba(167,139,250,0.5)',
-                                      background: 'rgba(124,58,237,0.25)',
-                                      color: '#c4b5fd', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold'
-                                    }}
-                                  >⛺ Dismount</button>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* DM edit/delete bar */}
-                            {isDM && (
-                              <div style={{
-                                display: 'flex', gap: '0.5rem', padding: '0.6rem 1rem',
-                                borderTop: '1px solid rgba(var(--theme-accent-rgb),0.1)', background: 'rgba(0,0,0,0.2)'
-                              }}>
-                                <button
-                                  onClick={() => {
-                                    setMountModalMode('edit'); setMountModalStep('configure');
-                                    setEditingMountId(equippedMount.id);
-                                    setMountFormData({ name: equippedMount.name, mount_type: equippedMount.mount_type, description: equippedMount.description || '', speed: equippedMount.speed, fly_speed: equippedMount.fly_speed, hp: equippedMount.hp, ac: equippedMount.ac, carrying_capacity: equippedMount.carrying_capacity, pull_strength: equippedMount.pull_strength ?? 1000, stamina: equippedMount.stamina ?? 'Medium', max_rider_armor: equippedMount.max_rider_armor ?? 'Any', purpose: equippedMount.purpose ?? '', assigned_to_character_id: equippedMount.assigned_to_character_id ?? null, image_url: equippedMount.image_url });
-                                    setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true);
-                                  }}
-                                  style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(var(--theme-accent-rgb),0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
-                                >✏️ Edit</button>
-                                <button
-                                  onClick={() => setPendingConfirm({ msg: `Delete "${equippedMount.name}"?`, onYes: async () => {
-                                    try { await mountAPI.deleteMount(equippedMount.id); setCampaignMounts(prev => prev.filter(m => m.id !== equippedMount.id)); } catch (err) { console.error(err); }
-                                  }})}
-                                  style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
-                                >🗑️ Delete</button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {/* ── No mounts yet ── */}
+                      {/* Empty state */}
                       {myMounts.length === 0 && (
                         <div style={{ minHeight: '260px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.75rem', padding: '2.5rem' }}>
                           <div style={{ fontSize: '3.5rem', marginBottom: '1rem', opacity: 0.4 }}>🐴</div>
@@ -14804,88 +14972,24 @@ const CampaignView: React.FC = () => {
                         </div>
                       )}
 
-                      {/* ── Stable: mounts assigned to this character (not equipped) ── */}
-                      {stableMount.length > 0 && (
-                        <div style={{ marginBottom: '1.5rem' }}>
-                          <h6 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', marginBottom: '0.85rem' }}>
-                            🏠 Stable
-                          </h6>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '1rem' }}>
-                            {stableMount.map((mount) => {
-                              const imgUrl = mount.image_url ? getImageUrl(mount.image_url) : undefined;
-                              return (
-                                <div key={mount.id} style={{ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(var(--theme-accent-rgb),0.18)', borderRadius: '0.75rem', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                                  {imgUrl ? (
-                                    <img src={imgUrl} alt={mount.name} onClick={() => setViewImageModal({ imageUrl: imgUrl, name: mount.name })} style={{ width: '100%', height: '180px', objectFit: 'contain', objectPosition: 'center', background: '#0a0a15', cursor: 'pointer', display: 'block' }} />
-                                  ) : (
-                                    <div style={{ height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', fontSize: '3.5rem', opacity: 0.3 }}>🐴</div>
-                                  )}
-                                  <div style={{ padding: '0.85rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '0.5rem' }}>
-                                      <h4 style={{ margin: 0, color: 'var(--text-gold)', fontSize: '0.95rem' }}>{mount.name}</h4>
-                                      <span style={{ fontSize: '0.67rem', padding: '0.15rem 0.45rem', borderRadius: '999px', background: 'rgba(var(--theme-accent-rgb),0.08)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{mount.mount_type}</span>
-                                    </div>
-                                    {mount.purpose && <div style={{ fontSize: '0.7rem', color: '#c4b5fd', background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: '999px', padding: '0.1rem 0.5rem', display: 'inline-block', alignSelf: 'flex-start' }}>{mount.purpose}</div>}
-                                    {mount.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{mount.description}</div>}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 0.5rem', marginTop: '0.15rem' }}>
-                                      {statRows(mount).map(({ icon, label, value }) => (
-                                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', padding: '0.2rem 0.4rem', background: 'rgba(255,255,255,0.04)', borderRadius: '0.3rem' }}>
-                                          <span style={{ color: 'var(--text-muted)' }}>{icon} {label}</span>
-                                          <span style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>{value}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    {/* Armor slots for stable mounts */}
-                                    {(() => {
-                                      const stableSlots: { key: 'head'|'body'|'front_legs'|'rear_legs'; label: string; icon: string }[] = [
-                                        { key: 'head',       label: 'Head',       icon: '🪖' },
-                                        { key: 'body',       label: 'Body',       icon: '🛡️' },
-                                        { key: 'front_legs', label: 'Front Legs', icon: '🦵' },
-                                        { key: 'rear_legs',  label: 'Rear Legs',  icon: '🦶' },
-                                      ];
-                                      const anyArmor = stableSlots.some(s => mount[`armor_${s.key}` as keyof Mount]);
-                                      if (!anyArmor && !canEquip) return null;
-                                      return (
-                                        <div style={{ marginTop: '0.3rem' }}>
-                                          {anyArmor && <div style={{ fontSize: '0.65rem', color: '#c4b5fd', marginBottom: '0.2rem' }}>🛡️ Horse Armor</div>}
-                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.2rem' }}>
-                                            {stableSlots.map(slot => {
-                                              const equippedName = mount[`armor_${slot.key}` as keyof Mount] as string | null;
-                                              if (!equippedName && !canEquip) return null;
-                                              return (
-                                                <div key={slot.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.65rem', padding: '0.15rem 0.35rem', background: 'rgba(255,255,255,0.04)', borderRadius: '0.3rem', gap: '0.2rem' }}>
-                                                  <span style={{ color: 'var(--text-muted)' }}>{slot.icon}</span>
-                                                  {equippedName ? (
-                                                    <div style={{ display: 'flex', flex: 1, justifyContent: 'space-between', alignItems: 'center' }}>
-                                                      <span style={{ color: '#c4b5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>{equippedName}</span>
-                                                      {canEquip && <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(mount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch(e){console.error(e);} }} style={{ background:'none', border:'none', color:'#f87171', cursor:'pointer', fontSize:'0.65rem', padding:0, flexShrink:0 }}>✕</button>}
-                                                    </div>
-                                                  ) : canEquip ? (
-                                                    <button onClick={() => setMountArmorPicker({ mountId: mount.id, slot: slot.key })} style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '0.2rem', color: '#c4b5fd', cursor: 'pointer' }}>+</button>
-                                                  ) : null}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
-                                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
-                                      {canEquip && (
-                                        <button onClick={() => handleToggleEquip(mount)} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(34,197,94,0.5)', background: 'rgba(34,197,94,0.15)', color: '#4ade80', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}>▶ Mount</button>
-                                      )}
-                                      {isDM && (
-                                        <>
-                                          <button onClick={() => { setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id); setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url }); setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true); }} style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(var(--theme-accent-rgb),0.12)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.78rem' }}>✏️ Edit</button>
-                                          <button onClick={() => setPendingConfirm({ msg: `Delete "${mount.name}"?`, onYes: async () => { try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } }})} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.78rem' }}>🗑️</button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                      {/* Mount cards — same 3-column, centered-image card theme as Pets */}
+                      {myMounts.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
+                          {myMounts.map(mount => renderCompanionCard('mount', mount, {
+                            isDM,
+                            canManage: canEquip,
+                            feedingBusy: feedingBusyId === mount.id,
+                            onFeed: () => handleFeedMount(mount),
+                            onFeedingMode: (mode) => handleMountFeedingMode(mount, mode),
+                            onEdit: () => {
+                              setMountModalMode('edit'); setMountModalStep('configure'); setEditingMountId(mount.id);
+                              setMountFormData({ name: mount.name, mount_type: mount.mount_type, description: mount.description || '', speed: mount.speed, fly_speed: mount.fly_speed, hp: mount.hp, ac: mount.ac, carrying_capacity: mount.carrying_capacity, pull_strength: mount.pull_strength ?? 1000, stamina: mount.stamina ?? 'Medium', max_rider_armor: mount.max_rider_armor ?? 'Any', purpose: mount.purpose ?? '', assigned_to_character_id: mount.assigned_to_character_id ?? null, image_url: mount.image_url, diet: mount.diet, food_consumption: mount.food_consumption, feeding_mode: mount.feeding_mode, abilities: mount.abilities });
+                              setMountImageFile(null); setMountImagePreviewUrl(null); setShowAddMountModal(true);
+                            },
+                            onDelete: () => setPendingConfirm({ msg: `Delete "${mount.name}"?`, onYes: async () => { try { await mountAPI.deleteMount(mount.id); setCampaignMounts(prev => prev.filter(m => m.id !== mount.id)); } catch (err) { console.error(err); } } }),
+                            onImageClick: () => { const url = mount.image_url ? getImageUrl(mount.image_url) : undefined; if (url) setViewImageModal({ imageUrl: url, name: mount.name }); },
+                            mount: canEquip ? { isEquipped: mount.is_equipped, onToggleEquip: () => handleToggleEquip(mount) } : undefined,
+                          }))}
                         </div>
                       )}
                     </div>
@@ -14893,9 +14997,28 @@ const CampaignView: React.FC = () => {
                 })()}
 
                 {/* Pets Tab */}
-                {activeTab === 'pets' && canViewAllTabs(selectedCharacterData.id) && (() => {
+                {activeTab === 'companions' && companionsSubTab === 'pets' && canViewAllTabs(selectedCharacterData.id) && (() => {
                   const isDM = user?.role === 'Dungeon Master';
                   const charPets = campaignPets.filter(p => p.character_id === selectedCharacterData.id);
+                  const canManagePet = isDM || selectedCharacterData.player_id === user?.id;
+
+                  const handleFeedPet = async (pet: Pet) => {
+                    setFeedingBusyId(pet.id);
+                    try {
+                      const { pet: updated } = await petAPI.feedPet(pet.id);
+                      setCampaignPets(prev => prev.map(p => p.id === updated.id ? updated : p));
+                    } catch (err) {
+                      console.error('Error feeding pet:', err);
+                    } finally {
+                      setFeedingBusyId(null);
+                    }
+                  };
+                  const handlePetFeedingMode = async (pet: Pet, mode: 'self' | 'automatic') => {
+                    try {
+                      const updated = await petAPI.setFeedingMode(pet.id, mode);
+                      setCampaignPets(prev => prev.map(p => p.id === updated.id ? updated : p));
+                    } catch (err) { console.error('Error setting pet feeding mode:', err); }
+                  };
 
                   const hpColor = (cur: number, max: number) => {
                     const pct = max > 0 ? (cur / max) * 100 : 0;
@@ -14951,170 +15074,362 @@ const CampaignView: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Pet cards */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        {charPets.map(pet => {
-                          const hpPct = pet.hit_points > 0 ? (pet.hit_points_current / pet.hit_points) * 100 : 0;
-                          const limbMax = calcCharacterLimbHealthMax(pet.hit_points, pet.abilities?.con ?? 10);
-                          const LIMB_LABELS = [
-                            { key: 'head', label: 'Head' },
-                            { key: 'chest', label: 'Body' },
-                            { key: 'left_arm', label: 'L.Arm' },
-                            { key: 'right_arm', label: 'R.Arm' },
-                            { key: 'left_leg', label: 'L.Leg' },
-                            { key: 'right_leg', label: 'R.Leg' },
-                          ];
+                      {/* Pet cards — same 3-column, centered-image card theme as Mounts */}
+                      {charPets.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
+                          {charPets.map(pet => renderCompanionCard('pet', pet, {
+                            isDM,
+                            canManage: canManagePet,
+                            feedingBusy: feedingBusyId === pet.id,
+                            onFeed: () => handleFeedPet(pet),
+                            onFeedingMode: (mode) => handlePetFeedingMode(pet, mode),
+                            onEdit: () => {
+                              setEditingPet(pet);
+                              setPetFormData({ name: pet.name, species: pet.species, description: pet.description || '', hit_points: pet.hit_points, hit_points_current: pet.hit_points_current, armor_class: pet.armor_class, speed: pet.speed, abilities: { ...pet.abilities }, is_battle_pet: pet.is_battle_pet, image_url: pet.image_url, diet: pet.diet, food_consumption: pet.food_consumption, feeding_mode: pet.feeding_mode });
+                              setPetImageFile(null);
+                              setPetImagePreviewUrl(null);
+                              setShowAddPetModal(true);
+                            },
+                            onDelete: () => setPendingConfirm({ msg: `Delete "${pet.name}"?`, onYes: async () => { try { await petAPI.deletePet(pet.id); setCampaignPets(prev => prev.filter(p => p.id !== pet.id)); } catch (err) { console.error(err); } } }),
+                            onImageClick: () => { const url = pet.image_url ? getImageUrl(pet.image_url) : undefined; if (url) setViewImageModal({ imageUrl: url, name: pet.name }); },
+                          }))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                          return (
-                            <div key={pet.id} style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(var(--theme-accent-rgb),0.18)', borderRadius: '0.85rem', overflow: 'hidden' }}>
-                              {/* Card top: image + core info */}
-                              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 0 }}>
-                                {/* Image column */}
-                                <div style={{ width: 130, minHeight: 130, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                  {pet.image_url ? (
-                                    <img
-                                      src={getImageUrl(pet.image_url ?? undefined)}
-                                      alt={pet.name}
-                                      style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block', cursor: 'pointer' }}
-                                      onClick={() => setViewImageModal({ imageUrl: getImageUrl(pet.image_url ?? undefined) ?? '', name: pet.name })}
-                                    />
-                                  ) : (
-                                    <span style={{ fontSize: '3rem' }}>🐾</span>
-                                  )}
-                                  {/* Battle pet badge overlay */}
-                                  {pet.is_battle_pet && (
-                                    <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(239,68,68,0.85)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.65rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      ⚔️ Battle Pet
-                                    </div>
-                                  )}
-                                </div>
+                {/* Armor Panel — companion armor for pets & mounts */}
+                {activeTab === 'companions' && companionsSubTab === 'armor' && canViewAllTabs(selectedCharacterData.id) && (() => {
+                  const isDM = user?.role === 'Dungeon Master';
+                  const myMounts = campaignMounts.filter(m => Number(m.assigned_to_character_id) === Number(selectedCharacterData.id));
+                  const myPets = campaignPets.filter(p => p.character_id === selectedCharacterData.id);
+                  const mountItems = companionArmorItems.filter(a => a.kind === 'mount');
+                  const petItems = companionArmorItems.filter(a => a.kind === 'pet');
 
-                                {/* Info column */}
-                                <div style={{ padding: '0.85rem 1rem' }}>
-                                  {/* Name + badges row */}
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                                    <div>
-                                      <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.2rem' }}>{pet.name}</div>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                        <span style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '0.9rem', padding: '0.1rem 0.55rem', fontSize: '0.72rem', color: '#c4b5fd' }}>
-                                          {pet.species}
-                                        </span>
-                                        {pet.is_battle_pet && (
-                                          <span style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.9rem', padding: '0.1rem 0.55rem', fontSize: '0.72rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                            ⚔️ Battle Pet
-                                          </span>
-                                        )}
+                  const equippedMountItemIds = new Set(myMounts.flatMap(m => [m.armor_head_id, m.armor_body_id, m.armor_front_legs_id, m.armor_rear_legs_id].filter(Boolean)));
+                  const equippedPetItemIds = new Set(myPets.map(p => p.armor_item_id).filter(Boolean));
+
+                  const refreshArmor = async () => {
+                    if (!currentCampaign) return;
+                    try {
+                      const { items } = await companionArmorAPI.getForCharacter(currentCampaign.campaign.id, selectedCharacterData.id);
+                      setCompanionArmorItems(items);
+                    } catch (err) { console.error('Error refreshing companion armor:', err); }
+                  };
+
+                  const handleDeleteArmor = async (id: number) => {
+                    try {
+                      await companionArmorAPI.deleteItem(id);
+                      await refreshArmor();
+                    } catch (err: any) {
+                      setToastMessage(err?.response?.data?.error || 'Failed to delete — unequip it first');
+                      setTimeout(() => setToastMessage(null), 4000);
+                    }
+                  };
+
+                  const mountSlotLabels: { key: 'head' | 'body' | 'front_legs' | 'rear_legs'; label: string }[] = [
+                    { key: 'head', label: 'Head' }, { key: 'body', label: 'Body' }, { key: 'front_legs', label: 'Front Legs' }, { key: 'rear_legs', label: 'Rear Legs' },
+                  ];
+
+                  return (
+                    <div className="glass-panel">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🛡️ Companion Armor</h5>
+                        {isDM && (
+                          <button
+                            onClick={() => { setArmorFormData({ kind: 'mount', name: '', armor_class_bonus: 1, description: '', slot: 'head' }); setShowAddArmorModal(true); }}
+                            style={{ padding: '0.45rem 1rem', background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.22), rgba(var(--theme-accent-rgb),0.1))', border: '1px solid rgba(var(--theme-accent-rgb),0.5)', borderRadius: '0.5rem', color: 'var(--text-gold)', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}
+                          >+ Add Armor</button>
+                        )}
+                      </div>
+
+                      {/* Mount armor */}
+                      <div style={{ marginBottom: '2rem' }}>
+                        <h6 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', marginBottom: '0.85rem' }}>🐴 Mount Armor</h6>
+                        {myMounts.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No mounts to equip armor on yet.</p>}
+                        {myMounts.map(mount => (
+                          <div key={mount.id} style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.6rem', padding: '0.85rem', marginBottom: '0.75rem' }}>
+                            <div style={{ color: 'var(--text-gold)', fontWeight: 700, marginBottom: '0.5rem' }}>{mount.name}</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem' }}>
+                              {mountSlotLabels.map(slot => {
+                                const idField = `armor_${slot.key}_id` as keyof Mount;
+                                const nameField = `armor_${slot.key}_name` as keyof Mount;
+                                const equippedId = mount[idField] as number | null | undefined;
+                                const equippedName = mount[nameField] as string | null | undefined;
+                                return (
+                                  <div key={slot.key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.4rem', padding: '0.5rem' }}>
+                                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>{slot.label}</div>
+                                    {equippedId ? (
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3rem' }}>
+                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-gold)' }}>{equippedName}</span>
+                                        <button onClick={async () => { try { const upd = await mountAPI.unequipMountArmor(mount.id, slot.key); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch (e) { console.error(e); } }} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
                                       </div>
-                                    </div>
-                                    {/* DM controls */}
-                                    {isDM && (
-                                      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-                                        <button
-                                          onClick={() => {
-                                            setEditingPet(pet);
-                                            setPetFormData({ name: pet.name, species: pet.species, description: pet.description || '', hit_points: pet.hit_points, hit_points_current: pet.hit_points_current, armor_class: pet.armor_class, speed: pet.speed, abilities: { ...pet.abilities }, is_battle_pet: pet.is_battle_pet, image_url: pet.image_url });
-                                            setPetImageFile(null);
-                                            setPetImagePreviewUrl(null);
-                                            setShowAddPetModal(true);
-                                          }}
-                                          style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(var(--theme-accent-rgb),0.1)', color: 'var(--text-gold)', cursor: 'pointer', fontSize: '0.8rem' }}
-                                        >✏️ Edit</button>
-                                        <button
-                                          onClick={() => setPendingConfirm({ msg: `Delete "${pet.name}"?`, onYes: async () => { try { await petAPI.deletePet(pet.id); setCampaignPets(prev => prev.filter(p => p.id !== pet.id)); } catch (err) { console.error(err); } }})}
-                                          style={{ padding: '0.3rem 0.55rem', borderRadius: '0.4rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
-                                        >🗑️</button>
-                                      </div>
+                                    ) : (
+                                      <select
+                                        defaultValue=""
+                                        onChange={async (e) => {
+                                          const itemId = parseInt(e.target.value, 10);
+                                          if (!itemId) return;
+                                          try { const upd = await mountAPI.equipMountArmor(mount.id, slot.key, itemId); setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m)); } catch (err) { console.error(err); }
+                                        }}
+                                        style={{ width: '100%', padding: '0.25rem', background: '#1a1a2e', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.3rem', color: '#eee', fontSize: '0.75rem' }}
+                                      >
+                                        <option value="" style={{ background: '#1a1a2e', color: '#eee' }}>— Empty —</option>
+                                        {mountItems.filter(item => item.slot === slot.key).map(item => (
+                                          <option key={item.id} value={item.id} style={{ background: '#1a1a2e', color: '#eee' }}>{item.name} (+{item.armor_class_bonus} AC)</option>
+                                        ))}
+                                      </select>
                                     )}
                                   </div>
-
-                                  {/* Description */}
-                                  {pet.description && (
-                                    <p style={{ color: '#bbb', fontSize: '0.82rem', marginBottom: '0.65rem', lineHeight: 1.5, margin: '0 0 0.65rem' }}>{pet.description}</p>
-                                  )}
-
-                                  {/* Stats row */}
-                                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.7rem' }}>
-                                    <span style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '0.4rem', padding: '0.2rem 0.6rem', fontSize: '0.75rem', color: '#86efac', fontWeight: 600 }}>
-                                      🛡️ AC {pet.armor_class}
-                                    </span>
-                                    <span style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.4rem', padding: '0.2rem 0.6rem', fontSize: '0.75rem', color: '#93c5fd', fontWeight: 600 }}>
-                                      💨 {pet.speed} ft
-                                    </span>
-                                  </div>
-
-                                  {/* HP bar */}
-                                  <div style={{ marginBottom: '0.75rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                                      <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.73rem' }}>Hit Points</span>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        {isDM ? (
-                                          <input
-                                            type="number"
-                                            value={pet.hit_points_current}
-                                            min={0}
-                                            max={pet.hit_points}
-                                            onChange={async (e) => {
-                                              const val = Math.max(0, Math.min(pet.hit_points, parseInt(e.target.value) || 0));
-                                              try {
-                                                const updated = await petAPI.updatePetHP(pet.id, val);
-                                                setCampaignPets(prev => prev.map(p => p.id === updated.id ? updated : p));
-                                              } catch (err) { console.error(err); }
-                                            }}
-                                            style={{ width: 50, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: hpColor(pet.hit_points_current, pet.hit_points), fontSize: '0.82rem', padding: '0.1rem 0.3rem', textAlign: 'center' }}
-                                          />
-                                        ) : (
-                                          <span style={{ color: hpColor(pet.hit_points_current, pet.hit_points), fontWeight: 700, fontSize: '0.85rem' }}>{pet.hit_points_current}</span>
-                                        )}
-                                        <span style={{ color: '#777', fontSize: '0.75rem' }}>/ {pet.hit_points}</span>
-                                      </div>
-                                    </div>
-                                    <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
-                                      <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, hpPct))}%`, background: hpColor(pet.hit_points_current, pet.hit_points), borderRadius: 3, transition: 'width 0.3s ease' }} />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Bottom strip: ability scores + limb health */}
-                              <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.12)', padding: '0.75rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                {/* Ability scores */}
-                                <div>
-                                  <div style={{ color: 'rgba(var(--theme-accent-rgb),0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Abilities</div>
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem' }}>
-                                    {ABILITY_KEYS.map((key, i) => {
-                                      const score = pet.abilities?.[key] ?? 10;
-                                      const mod = Math.floor((score - 10) / 2);
-                                      return (
-                                        <div key={key} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.2rem', textAlign: 'center', border: '1px solid rgba(255,255,255,0.07)' }}>
-                                          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.58rem', fontWeight: 700, marginBottom: '0.15rem' }}>{ABILITY_LABELS[i]}</div>
-                                          <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1 }}>{score}</div>
-                                          <div style={{ fontSize: '0.62rem', color: mod >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{abilityMod(score)}</div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-
-                                {/* Limb health grid */}
-                                <div>
-                                  <div style={{ color: 'rgba(var(--theme-accent-rgb),0.6)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Limb Vitality</div>
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.3rem' }}>
-                                    {LIMB_LABELS.map(({ key, label }) => {
-                                      const maxVal = limbMax[key as keyof typeof limbMax] || 1;
-                                      return (
-                                        <div key={key} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', padding: '0.25rem 0.3rem', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
-                                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.58rem', fontWeight: 700 }}>{label}</div>
-                                          <div style={{ color: '#4ade80', fontSize: '0.75rem', fontWeight: 600 }}>{maxVal}</div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
+                                );
+                              })}
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </div>
+
+                      {/* Pet armor */}
+                      <div style={{ marginBottom: '2rem' }}>
+                        <h6 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', marginBottom: '0.85rem' }}>🐾 Pet Armor</h6>
+                        {myPets.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No pets to equip armor on yet.</p>}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                          {myPets.map(pet => (
+                            <div key={pet.id} style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(var(--theme-accent-rgb),0.15)', borderRadius: '0.6rem', padding: '0.75rem' }}>
+                              <div style={{ color: 'var(--text-gold)', fontWeight: 700, marginBottom: '0.4rem' }}>{pet.name}</div>
+                              {pet.armor_item_id ? (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3rem' }}>
+                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-gold)' }}>{pet.armor_item_name} (+{pet.armor_class_bonus} AC)</span>
+                                  <button onClick={async () => { try { const upd = await companionArmorAPI.equipPetArmor(pet.id, null); setCampaignPets(prev => prev.map(p => p.id === upd.id ? upd : p)); } catch (e) { console.error(e); } }} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
+                                </div>
+                              ) : (
+                                <select
+                                  defaultValue=""
+                                  onChange={async (e) => {
+                                    const itemId = parseInt(e.target.value, 10);
+                                    if (!itemId) return;
+                                    try { const upd = await companionArmorAPI.equipPetArmor(pet.id, itemId); setCampaignPets(prev => prev.map(p => p.id === upd.id ? upd : p)); } catch (err) { console.error(err); }
+                                  }}
+                                  style={{ width: '100%', padding: '0.3rem', background: '#1a1a2e', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.3rem', color: '#eee', fontSize: '0.8rem' }}
+                                >
+                                  <option value="" style={{ background: '#1a1a2e', color: '#eee' }}>— Empty —</option>
+                                  {petItems.map(item => (
+                                    <option key={item.id} value={item.id} style={{ background: '#1a1a2e', color: '#eee' }}>{item.name} (+{item.armor_class_bonus} AC)</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* DM: full item library with delete */}
+                      {isDM && (
+                        <div>
+                          <h6 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', marginBottom: '0.85rem' }}>📦 Armor Library</h6>
+                          {companionArmorItems.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No armor items created for this character yet.</p>}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {companionArmorItems.map(item => {
+                              const isEquipped = item.kind === 'mount' ? equippedMountItemIds.has(item.id) : equippedPetItemIds.has(item.id);
+                              return (
+                                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.4rem', padding: '0.5rem 0.75rem' }}>
+                                  <span style={{ fontSize: '0.85rem', color: '#fff' }}>{item.kind === 'mount' ? '🐴' : '🐾'} {item.name} <span style={{ color: 'var(--text-muted)' }}>(+{item.armor_class_bonus} AC{item.slot ? ` · ${item.slot.replace(/_/g, ' ')}` : ''})</span></span>
+                                  <button
+                                    onClick={() => handleDeleteArmor(item.id)}
+                                    disabled={isEquipped}
+                                    title={isEquipped ? 'Unequip before deleting' : undefined}
+                                    style={{ padding: '0.2rem 0.6rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#f87171', cursor: isEquipped ? 'not-allowed' : 'pointer', fontSize: '0.75rem', opacity: isEquipped ? 0.4 : 1 }}
+                                  >🗑️</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Market Panel — buy & stockpile pet/mount food */}
+                {activeTab === 'companions' && companionsSubTab === 'market' && canViewAllTabs(selectedCharacterData.id) && (() => {
+                  const isDM = user?.role === 'Dungeon Master';
+                  const myStockpile = foodStockpiles.find(s => s.character_id === selectedCharacterData.id) ?? null;
+                  const marketBusy = feedingBusyId === -1;
+                  const setMarketBusyLocal = (v: boolean) => setFeedingBusyId(v ? -1 : null);
+
+                  const refreshStockpiles = async () => {
+                    if (!currentCampaign) return;
+                    try {
+                      const { stockpiles, prices } = await petFoodAPI.getStockpiles(currentCampaign.campaign.id, selectedCharacterData.id);
+                      setFoodStockpiles(stockpiles);
+                      setFoodMarketSettings(prices);
+                    } catch (err) { console.error('Error refreshing stockpiles:', err); }
+                  };
+
+                  const handleBuy = async (rationType: 'meat' | 'veg') => {
+                    if (!currentCampaign) return;
+                    const quantity = buyQuantity[rationType];
+                    setMarketBusyLocal(true);
+                    try {
+                      await petFoodAPI.buyRations(currentCampaign.campaign.id, { characterId: selectedCharacterData.id, rationType, quantity });
+                      await refreshStockpiles();
+                      setToastMessage(`Bought ${quantity} ${rationType === 'meat' ? 'Meat' : 'Vegetable'} Ration${quantity > 1 ? 's' : ''}`);
+                      setTimeout(() => setToastMessage(null), 3000);
+                    } catch (err: any) {
+                      setToastMessage(err?.response?.data?.error || 'Failed to buy rations');
+                      setTimeout(() => setToastMessage(null), 4000);
+                    } finally {
+                      setMarketBusyLocal(false);
+                    }
+                  };
+
+                  const handleGrant = async (characterId: number, rationType: 'meat' | 'veg', sign: 1 | -1) => {
+                    if (!currentCampaign) return;
+                    const quantity = grantQuantity[rationType] * sign;
+                    try {
+                      const updated = await petFoodAPI.grantRations(currentCampaign.campaign.id, { characterId, rationType, quantity });
+                      setFoodStockpiles(prev => prev.map(row => row.id === updated.id ? { ...row, ...updated } : row));
+                    } catch (err) { console.error('Error granting rations:', err); }
+                  };
+
+                  const usedSlots = (s: FoodStockpileRow) => s.meat_rations + s.veg_rations;
+
+                  return (
+                    <div className="glass-panel">
+                      <h5 style={{ color: 'var(--text-gold)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>🛒 Food Market</h5>
+
+                      {/* This character's stockpile + buy controls */}
+                      {myStockpile && (
+                        <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.75rem', padding: '1.1rem', marginBottom: '1.5rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>{selectedCharacterData.name}'s Stockpile</div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{usedSlots(myStockpile)} / {myStockpile.max_slots} slots used</div>
+                          </div>
+                          <div style={{ height: 8, background: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginBottom: '1.1rem' }}>
+                            <div style={{ height: '100%', width: `${Math.min(100, (usedSlots(myStockpile) / Math.max(1, myStockpile.max_slots)) * 100)}%`, background: usedSlots(myStockpile) >= myStockpile.max_slots ? '#ef4444' : 'var(--text-gold)', borderRadius: 4 }} />
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                            {([
+                              { type: 'meat' as const, icon: '🥩', label: 'Meat Ration', count: myStockpile.meat_rations, price: foodMarketSettings.meat_price },
+                              { type: 'veg' as const, icon: '🥬', label: 'Vegetable Ration', count: myStockpile.veg_rations, price: foodMarketSettings.veg_price },
+                            ]).map(r => (
+                              <div key={r.type} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.6rem', padding: '0.85rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                  <span style={{ fontWeight: 700, color: '#fff' }}>{r.icon} {r.label}</span>
+                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>have {r.count}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.4rem', overflow: 'hidden' }}>
+                                    <button onClick={() => setBuyQuantity(prev => ({ ...prev, [r.type]: Math.max(1, prev[r.type] - 1) }))} style={{ padding: '0.3rem 0.6rem', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'var(--text-gold)', cursor: 'pointer' }}>−</button>
+                                    <span style={{ padding: '0.3rem 0.7rem', minWidth: '2rem', textAlign: 'center', color: '#fff' }}>{buyQuantity[r.type]}</span>
+                                    <button onClick={() => setBuyQuantity(prev => ({ ...prev, [r.type]: prev[r.type] + 1 }))} style={{ padding: '0.3rem 0.6rem', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'var(--text-gold)', cursor: 'pointer' }}>+</button>
+                                  </div>
+                                  <button
+                                    onClick={() => handleBuy(r.type)}
+                                    disabled={marketBusy || usedSlots(myStockpile) >= myStockpile.max_slots}
+                                    style={{ flex: 1, padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.14)', color: '#86efac', cursor: marketBusy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem', opacity: usedSlots(myStockpile) >= myStockpile.max_slots ? 0.5 : 1 }}
+                                  >Buy — {r.price * buyQuantity[r.type]}cp</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.85rem', marginBottom: 0 }}>
+                            Paid in copper from <strong style={{ color: 'var(--text-gold)' }}>{selectedCharacterData.name}</strong>'s purse ({selectedCharacterData.gold ?? 0}cp). Shared by every pet and mount assigned to this character.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* DM: every character's stockpile, direct grants, and market prices */}
+                      {isDM && (
+                        <div>
+                          <div style={{ color: 'var(--text-gold)', fontWeight: 700, marginBottom: '0.75rem' }}>⚙️ Market Prices (DM)</div>
+                          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+                            {([
+                              { key: 'meat_price' as const, label: 'Meat Price (cp)', value: foodMarketSettings.meat_price },
+                              { key: 'veg_price' as const, label: 'Veg Price (cp)', value: foodMarketSettings.veg_price },
+                            ]).map(f => (
+                              <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                {f.label}
+                                <input
+                                  type="number" min={0} defaultValue={f.value}
+                                  onBlur={async (e) => {
+                                    const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                    if (val === f.value || !currentCampaign) return;
+                                    try {
+                                      const payload = f.key === 'meat_price' ? { meatPrice: val } : { vegPrice: val };
+                                      const prices = await petFoodAPI.setPrices(currentCampaign.campaign.id, payload);
+                                      setFoodMarketSettings(prices);
+                                    } catch (err) { console.error('Error updating market prices:', err); }
+                                  }}
+                                  style={{ width: '110px', padding: '0.35rem 0.5rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.35rem', color: '#fff' }}
+                                />
+                              </label>
+                            ))}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                            <div style={{ color: 'var(--text-gold)', fontWeight: 700 }}>👥 Character Stockpiles</div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Grant amount:</span>
+                            {(['meat', 'veg'] as const).map(t => (
+                              <label key={t} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {t === 'meat' ? '🥩' : '🥬'}
+                                <input type="number" min={1} value={grantQuantity[t]} onChange={e => setGrantQuantity(prev => ({ ...prev, [t]: Math.max(1, parseInt(e.target.value, 10) || 1) }))} style={{ width: '50px', padding: '0.2rem 0.35rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: '#fff' }} />
+                              </label>
+                            ))}
+                          </div>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(var(--theme-accent-rgb),0.25)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                                  <th style={{ padding: '0.4rem 0.6rem' }}>Character</th>
+                                  <th style={{ padding: '0.4rem 0.6rem' }}>🥩 Meat</th>
+                                  <th style={{ padding: '0.4rem 0.6rem' }}>🥬 Veg</th>
+                                  <th style={{ padding: '0.4rem 0.6rem' }}>Used / Max</th>
+                                  <th style={{ padding: '0.4rem 0.6rem' }}>Max Slots</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {foodStockpiles.map(s => (
+                                  <tr key={s.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                    <td style={{ padding: '0.4rem 0.6rem', color: '#fff' }}>{s.character_name ?? `Character #${s.character_id}`}</td>
+                                    <td style={{ padding: '0.4rem 0.6rem', color: 'var(--text-secondary)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                        {s.meat_rations}
+                                        <button onClick={() => handleGrant(s.character_id, 'meat', 1)} title="Grant meat" style={{ background: 'none', border: '1px solid rgba(74,222,128,0.4)', color: '#86efac', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0.3rem' }}>+</button>
+                                        <button onClick={() => handleGrant(s.character_id, 'meat', -1)} title="Remove meat" style={{ background: 'none', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0.3rem' }}>−</button>
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '0.4rem 0.6rem', color: 'var(--text-secondary)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                        {s.veg_rations}
+                                        <button onClick={() => handleGrant(s.character_id, 'veg', 1)} title="Grant veg" style={{ background: 'none', border: '1px solid rgba(74,222,128,0.4)', color: '#86efac', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0.3rem' }}>+</button>
+                                        <button onClick={() => handleGrant(s.character_id, 'veg', -1)} title="Remove veg" style={{ background: 'none', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0.3rem' }}>−</button>
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '0.4rem 0.6rem', color: 'var(--text-secondary)' }}>{usedSlots(s)} / {s.max_slots}</td>
+                                    <td style={{ padding: '0.4rem 0.6rem' }}>
+                                      <input
+                                        type="number" min={0} defaultValue={s.max_slots}
+                                        onBlur={async (e) => {
+                                          if (!currentCampaign) return;
+                                          const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                          if (val === s.max_slots) return;
+                                          try {
+                                            const updated = await petFoodAPI.setMaxSlots(currentCampaign.campaign.id, s.character_id, val);
+                                            setFoodStockpiles(prev => prev.map(row => row.id === updated.id ? { ...row, ...updated } : row));
+                                          } catch (err) { console.error('Error setting max slots:', err); }
+                                        }}
+                                        style={{ width: '80px', padding: '0.3rem 0.45rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.3rem', color: '#fff' }}
+                                      />
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -15150,7 +15465,7 @@ const CampaignView: React.FC = () => {
                 )}
 
                 {/* Show access denied message for restricted tabs */}
-                {(activeTab === 'inventory' || activeTab === 'feats' || activeTab === 'equip' || activeTab === 'armies' || activeTab === 'pets' || activeTab === 'npcs') && !canViewAllTabs(selectedCharacterData.id) && (
+                {(activeTab === 'inventory' || activeTab === 'feats' || activeTab === 'equip' || activeTab === 'armies' || activeTab === 'companions' || activeTab === 'npcs') && !canViewAllTabs(selectedCharacterData.id) && (
                   <div className="glass-panel">
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
                       <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔒</div>
@@ -17195,21 +17510,27 @@ const CampaignView: React.FC = () => {
           if (!target) return null;
 
           // Build limb AC for target
-          const targetCharacter = !target.isMonster ? currentCampaign.characters.find((c: any) => c.id === target.characterId) : null;
+          const targetIsPet = !!(target as any).isPet;
+          const targetPet = targetIsPet ? campaignPets.find(p => p.id === (target as any).petId) : null;
+          const targetCharacter = (!target.isMonster && !targetIsPet) ? currentCampaign.characters.find((c: any) => c.id === target.characterId) : null;
           const targetMonsterTemplate = (target.isMonster && target.monsterId)
             ? (monsters.find((m: any) => m.id === target.monsterId) ?? combatMonsterTemplates[String(target.monsterId)])
             : null;
           const targetResistances = target.isMonster
             ? targetMonsterTemplate?.resistances
             : ((characterDataOverrides[Number(target.characterId)]?.resistances ?? targetCharacter?.resistances) as { resistances: string[]; immunities: string[]; vulnerabilities: string[] } | undefined);
-          const limbAC = targetMonsterTemplate?.limb_ac ?? {
+          const targetPetAc = targetPet ? (targetPet.effective_armor_class ?? (targetPet.armor_class + (targetPet.armor_class_bonus || 0))) : 10;
+          // Pets get per-limb AC using the same proportional formula as per-limb HP, fed the
+          // armor-equipped effective AC — equipping a piece shifts every limb's AC together.
+          const targetPetLimbAc = targetPet ? calcCharacterLimbHealthMax(targetPetAc, targetPet.abilities?.con ?? 10) : null;
+          const limbAC = targetMonsterTemplate?.limb_ac ?? (targetPetLimbAc ?? {
             head: targetCharacter?.armor_class ?? 10,
             chest: targetCharacter?.armor_class ?? 10,
             left_arm: targetCharacter?.armor_class ?? 10,
             right_arm: targetCharacter?.armor_class ?? 10,
             left_leg: targetCharacter?.armor_class ?? 10,
             right_leg: targetCharacter?.armor_class ?? 10,
-          };
+          });
 
           // Build per-limb current + max HP for the target
           let targetLimbHealth: Record<string, number> | undefined;
@@ -17218,6 +17539,9 @@ const CampaignView: React.FC = () => {
             const instHp = monsterInstanceHp[String(target.characterId)];
             if (instHp) targetLimbHealth = instHp.limbHealth;
             if (targetMonsterTemplate?.limb_health) targetLimbHealthMax = targetMonsterTemplate.limb_health as Record<string, number>;
+          } else if (targetPet) {
+            targetLimbHealth = targetPet.limb_health ?? undefined;
+            targetLimbHealthMax = calcCharacterLimbHealthMax(targetPet.hit_points, targetPet.abilities?.con ?? 10);
           } else if (targetCharacter) {
             const charId = Number(target.characterId);
             targetLimbHealth = characterLimbHealth[charId];
@@ -17230,7 +17554,7 @@ const CampaignView: React.FC = () => {
           return (
             <AttackModal
               attacker={{ characterId: attacker.characterId, name: attacker.name, isMonster: attacker.isMonster }}
-              target={{ characterId: target.characterId, name: target.name, isMonster: target.isMonster, monsterId: target.monsterId }}
+              target={{ characterId: target.characterId, name: target.name, isMonster: target.isMonster, monsterId: target.monsterId, kind: targetIsPet ? 'pet' : undefined }}
               targetLimbAC={limbAC}
               targetLimbHealth={targetLimbHealth}
               targetLimbHealthMax={targetLimbHealthMax}
@@ -18480,26 +18804,34 @@ const CampaignView: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {combatInvite.battlePets.map(pet => {
-                      const isSelected = combatPetSelections.includes(pet.id);
+                      const isStarving = !!pet.starving;
+                      const isSelected = !isStarving && combatPetSelections.includes(pet.id);
                       const hpPct = pet.hit_points > 0 ? (pet.hit_points_current / pet.hit_points) * 100 : 0;
                       const hpCol = hpPct > 66 ? '#4ade80' : hpPct > 33 ? 'var(--text-gold)' : '#ef4444';
                       const dexMod = Math.floor(((pet.abilities?.dex ?? 10) - 10) / 2);
                       return (
-                        <label key={pet.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: isSelected ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.25)', border: `1px solid ${isSelected ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '0.5rem', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        <label key={pet.id} title={isStarving ? `${pet.name} is starving and cannot enter battle — feed it first` : undefined} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: isStarving ? 'rgba(0,0,0,0.35)' : isSelected ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.25)', border: `1px solid ${isStarving ? 'rgba(239,68,68,0.3)' : isSelected ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '0.5rem', cursor: isStarving ? 'not-allowed' : 'pointer', opacity: isStarving ? 0.55 : 1, transition: 'all 0.15s' }}>
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => setCombatPetSelections(prev => isSelected ? prev.filter(id => id !== pet.id) : [...prev, pet.id])}
-                            style={{ width: 16, height: 16, accentColor: '#ef4444', cursor: 'pointer' }}
+                            disabled={isStarving}
+                            onChange={() => !isStarving && setCombatPetSelections(prev => isSelected ? prev.filter(id => id !== pet.id) : [...prev, pet.id])}
+                            style={{ width: 16, height: 16, accentColor: '#ef4444', cursor: isStarving ? 'not-allowed' : 'pointer' }}
                           />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{pet.name}</div>
                             <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>{pet.species}</div>
                           </div>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0 }}>
-                            <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.7rem', color: '#86efac' }}>AC {pet.armor_class}</span>
-                            <span style={{ fontSize: '0.7rem', color: hpCol, fontWeight: 600 }}>{pet.hit_points_current}/{pet.hit_points} HP</span>
-                            <span style={{ fontSize: '0.7rem', color: '#93c5fd' }}>DEX {dexMod >= 0 ? `+${dexMod}` : dexMod}</span>
+                            {isStarving ? (
+                              <span style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.7rem', color: '#fca5a5', fontWeight: 700 }}>🍖 Starving</span>
+                            ) : (
+                              <>
+                                <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontSize: '0.7rem', color: '#86efac' }}>AC {pet.armor_class}</span>
+                                <span style={{ fontSize: '0.7rem', color: hpCol, fontWeight: 600 }}>{pet.hit_points_current}/{pet.hit_points} HP</span>
+                                <span style={{ fontSize: '0.7rem', color: '#93c5fd' }}>DEX {dexMod >= 0 ? `+${dexMod}` : dexMod}</span>
+                              </>
+                            )}
                           </div>
                         </label>
                       );
@@ -19362,7 +19694,7 @@ const CampaignView: React.FC = () => {
         {/* ─── ADD / EDIT MOUNT MODAL ─────────────────────────────────── */}
         {showAddMountModal && (() => {
           // Template definitions
-          const MOUNT_TEMPLATES = [
+          const MOUNT_TEMPLATES_RAW = [
             // ── Light / Speed horses ──
             { type: 'Thoroughbred',    speed: 70, fly_speed: 0, hp: 25, ac: 10, carrying_capacity: 380, pull_strength: 800,  stamina: 'Low',         max_rider_armor: 'Light',  purpose: 'Racing · Courier',              description: 'The fastest horse alive — bred for racing and lightning-fast courier runs.', image: '/images/Mounts/Thoroughbred.jpg' },
             { type: 'Arabian',         speed: 65, fly_speed: 0, hp: 28, ac: 10, carrying_capacity: 420, pull_strength: 900,  stamina: 'High',        max_rider_armor: 'Medium', purpose: 'Long Travel · Scouting',        description: 'A fierce desert breed with near-supernatural stamina and agility.', image: '/images/Mounts/Arabian.jpg' },
@@ -19394,6 +19726,22 @@ const CampaignView: React.FC = () => {
             // ── Custom ──
             { type: 'Custom',          speed: 60, fly_speed: 0, hp: 30, ac: 10, carrying_capacity: 480, pull_strength: 1000, stamina: 'Medium',      max_rider_armor: 'Any',    purpose: '',                              description: '', image: null }
           ];
+
+          // All real-world mount templates are herbivores. Food consumption and ability scores
+          // are derived from each template's existing stat tier rather than hand-authored per entry.
+          const MOUNT_TEMPLATES = MOUNT_TEMPLATES_RAW.map(tpl => ({
+            ...tpl,
+            diet: 'herbivore' as const,
+            food_consumption: Math.max(2, Math.round(tpl.hp / 8)),
+            abilities: {
+              str: Math.min(24, Math.max(10, Math.round(tpl.pull_strength / 65))),
+              dex: Math.min(20, Math.max(8, Math.round(tpl.speed / 4.5))),
+              con: Math.min(22, Math.max(8, Math.round(tpl.hp / 2.5))),
+              int: 2,
+              wis: 12,
+              cha: tpl.type === 'Destrier' || tpl.type === 'Friesian' ? 10 : 7,
+            },
+          }));
 
           const inputStyle = {
             width: '100%',
@@ -19454,8 +19802,8 @@ const CampaignView: React.FC = () => {
               onClick={(e) => { if (e.target === e.currentTarget) setShowAddMountModal(false); }}
             >
               <div style={{
-                background: 'linear-gradient(135deg, rgba(20,10,40,0.97) 0%, rgba(10,5,25,0.97) 100%)',
-                border: '2px solid rgba(124,58,237,0.5)',
+                background: 'linear-gradient(135deg, rgba(15,15,20,0.97) 0%, rgba(10,10,14,0.97) 100%)',
+                border: '2px solid var(--text-gold)',
                 borderRadius: '1rem',
                 padding: '2rem',
                 width: '100%',
@@ -19495,7 +19843,10 @@ const CampaignView: React.FC = () => {
                             max_rider_armor: tpl.max_rider_armor,
                             purpose: tpl.purpose,
                             assigned_to_character_id: null,
-                            image_url: tpl.image || undefined
+                            image_url: tpl.image || undefined,
+                            diet: tpl.diet,
+                            food_consumption: tpl.food_consumption,
+                            abilities: tpl.abilities
                           });
                           setMountModalStep('configure');
                         }}
@@ -19511,8 +19862,8 @@ const CampaignView: React.FC = () => {
                           color: 'inherit'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(124,58,237,0.12)';
-                          e.currentTarget.style.borderColor = 'rgba(167,139,250,0.5)';
+                          e.currentTarget.style.background = 'rgba(var(--theme-accent-rgb),0.1)';
+                          e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb),0.5)';
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
@@ -19533,7 +19884,7 @@ const CampaignView: React.FC = () => {
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: '3rem',
-                            background: 'rgba(124,58,237,0.1)'
+                            background: 'rgba(var(--theme-accent-rgb),0.08)'
                           }}>
                             ✨
                           </div>
@@ -19543,9 +19894,9 @@ const CampaignView: React.FC = () => {
                           {tpl.purpose && (
                             <div style={{
                               fontSize: '0.7rem',
-                              color: '#c4b5fd',
-                              background: 'rgba(124,58,237,0.18)',
-                              border: '1px solid rgba(167,139,250,0.3)',
+                              color: 'var(--text-gold)',
+                              background: 'rgba(var(--theme-accent-rgb),0.14)',
+                              border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
                               borderRadius: '999px',
                               padding: '0.1rem 0.55rem',
                               display: 'inline-block',
@@ -19591,7 +19942,7 @@ const CampaignView: React.FC = () => {
                         width: '100%', height: '180px',
                         borderRadius: '0.5rem',
                         overflow: 'hidden',
-                        border: '2px solid rgba(124,58,237,0.4)',
+                        border: '2px solid rgba(var(--theme-accent-rgb),0.4)',
                         backgroundImage: `url(${mountImagePreviewUrl || getImageUrl(mountFormData.image_url)})`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center'
@@ -19685,6 +20036,29 @@ const CampaignView: React.FC = () => {
                       />
                     </div>
 
+                    {/* Diet / Food Consumption / Feeding Mode */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={labelStyle}>Diet</label>
+                        <select value={mountFormData.diet ?? 'omnivore'} onChange={e => setMountFormData(p => ({ ...p, diet: e.target.value as Mount['diet'] }))} style={{ ...inputStyle, cursor: 'pointer' }}>
+                          <option value="herbivore">🥬 Herbivore</option>
+                          <option value="carnivore">🥩 Carnivore</option>
+                          <option value="omnivore">🍽️ Omnivore</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Food / Long Rest</label>
+                        <input type="number" min={0} value={mountFormData.food_consumption ?? 4} onChange={e => setMountFormData(p => ({ ...p, food_consumption: Math.max(0, parseInt(e.target.value, 10) || 0) }))} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Feeding Mode</label>
+                        <select value={mountFormData.feeding_mode ?? 'self'} onChange={e => setMountFormData(p => ({ ...p, feeding_mode: e.target.value as Mount['feeding_mode'] }))} style={{ ...inputStyle, cursor: 'pointer' }}>
+                          <option value="self">🖐️ Self-Feed</option>
+                          <option value="automatic">⚙️ Automatic</option>
+                        </select>
+                      </div>
+                    </div>
+
                     {/* Custom image upload */}
                     {mountFormData.mount_type === 'Custom' && (
                       <div>
@@ -19692,11 +20066,12 @@ const CampaignView: React.FC = () => {
                         <input
                           type="file"
                           accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              setMountImageFile(file);
-                              setMountImagePreviewUrl(URL.createObjectURL(file));
+                              const compressed = await compressImageFile(file);
+                              setMountImageFile(compressed);
+                              setMountImagePreviewUrl(URL.createObjectURL(compressed));
                             }
                           }}
                           style={{ ...inputStyle, cursor: 'pointer' }}
@@ -19727,10 +20102,10 @@ const CampaignView: React.FC = () => {
                         style={{
                           flex: 1,
                           padding: '0.7rem 1.5rem',
-                          background: 'linear-gradient(135deg, rgba(124,58,237,0.7), rgba(109,40,217,0.8))',
-                          border: '2px solid rgba(167,139,250,0.5)',
+                          background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.35), rgba(var(--theme-accent-rgb),0.2))',
+                          border: '2px solid rgba(var(--theme-accent-rgb),0.6)',
                           borderRadius: '0.5rem',
-                          color: '#e9d5ff',
+                          color: 'var(--text-gold)',
                           fontWeight: 'bold',
                           cursor: 'pointer',
                           fontSize: '0.95rem'
@@ -19759,6 +20134,82 @@ const CampaignView: React.FC = () => {
             </div>
           );
         })()}
+
+        {/* ── Add Companion Armor Modal (DM) ──────────────────────────────── */}
+        {showAddArmorModal && selectedCharacterData && (
+          <div
+            onClick={(e) => { if (e.target === e.currentTarget) setShowAddArmorModal(false); }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+          >
+            <div style={{ background: 'linear-gradient(135deg, rgba(15,15,20,0.97), rgba(25,20,30,0.97))', border: '2px solid var(--text-gold)', borderRadius: '1rem', padding: '2rem', maxWidth: 460, width: '95%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <h3 style={{ color: 'var(--text-gold)', margin: 0 }}>🛡️ Add Companion Armor</h3>
+                <button onClick={() => setShowAddArmorModal(false)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.3rem' }}>✕</button>
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 0 }}>For <strong style={{ color: 'var(--text-gold)' }}>{selectedCharacterData.name}</strong>'s companions.</p>
+
+              <div style={{ marginBottom: '0.85rem' }}>
+                <label style={{ color: 'rgba(var(--theme-accent-rgb),0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' }}>Kind</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {(['mount', 'pet'] as const).map(k => (
+                    <button key={k} onClick={() => setArmorFormData(p => ({ ...p, kind: k }))} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', cursor: 'pointer', border: `1px solid ${armorFormData.kind === k ? 'var(--text-gold)' : 'rgba(255,255,255,0.15)'}`, background: armorFormData.kind === k ? 'rgba(var(--theme-accent-rgb),0.2)' : 'transparent', color: armorFormData.kind === k ? 'var(--text-gold)' : '#ccc' }}>
+                      {k === 'mount' ? '🐴 Mount' : '🐾 Pet'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {armorFormData.kind === 'mount' && (
+                <div style={{ marginBottom: '0.85rem' }}>
+                  <label style={{ color: 'rgba(var(--theme-accent-rgb),0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' }}>Limb Slot</label>
+                  <select
+                    value={armorFormData.slot}
+                    onChange={e => setArmorFormData(p => ({ ...p, slot: e.target.value as typeof p.slot }))}
+                    style={{ width: '100%', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.4rem', color: '#fff', padding: '0.5rem 0.65rem', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  >
+                    <option value="head" style={{ background: '#1a1a2e' }}>Head</option>
+                    <option value="body" style={{ background: '#1a1a2e' }}>Body</option>
+                    <option value="front_legs" style={{ background: '#1a1a2e' }}>Front Legs</option>
+                    <option value="rear_legs" style={{ background: '#1a1a2e' }}>Rear Legs</option>
+                  </select>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', margin: '0.3rem 0 0' }}>This piece is built for one limb and can only be equipped there.</p>
+                </div>
+              )}
+
+              <div style={{ marginBottom: '0.85rem' }}>
+                <label style={{ color: 'rgba(var(--theme-accent-rgb),0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' }}>Name *</label>
+                <input value={armorFormData.name} onChange={e => setArmorFormData(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Iron Barding" style={{ width: '100%', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.4rem', color: '#fff', padding: '0.5rem 0.65rem', fontSize: '0.88rem', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ marginBottom: '0.85rem' }}>
+                <label style={{ color: 'rgba(var(--theme-accent-rgb),0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' }}>AC Bonus</label>
+                <input type="number" min={0} value={armorFormData.armor_class_bonus} onChange={e => setArmorFormData(p => ({ ...p, armor_class_bonus: Math.max(0, parseInt(e.target.value, 10) || 0) }))} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.4rem', color: '#fff', padding: '0.5rem 0.65rem', fontSize: '0.88rem', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ color: 'rgba(var(--theme-accent-rgb),0.75)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', display: 'block' }}>Description</label>
+                <textarea value={armorFormData.description} onChange={e => setArmorFormData(p => ({ ...p, description: e.target.value }))} rows={2} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '0.4rem', color: '#fff', padding: '0.5rem 0.65rem', fontSize: '0.88rem', boxSizing: 'border-box', resize: 'vertical' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  disabled={!armorFormData.name.trim()}
+                  onClick={async () => {
+                    if (!currentCampaign) return;
+                    try {
+                      await companionArmorAPI.createItem(currentCampaign.campaign.id, { characterId: selectedCharacterData.id, ...armorFormData });
+                      const { items } = await companionArmorAPI.getForCharacter(currentCampaign.campaign.id, selectedCharacterData.id);
+                      setCompanionArmorItems(items);
+                      setShowAddArmorModal(false);
+                    } catch (err) { console.error('Error creating armor item:', err); }
+                  }}
+                  style={{ flex: 1, padding: '0.7rem', background: 'linear-gradient(135deg, rgba(var(--theme-accent-rgb),0.25), rgba(var(--theme-accent-rgb),0.12))', border: '1px solid var(--text-gold)', borderRadius: '0.5rem', color: 'var(--text-gold)', fontWeight: 700, cursor: 'pointer', opacity: !armorFormData.name.trim() ? 0.5 : 1 }}
+                >Add Armor</button>
+                <button onClick={() => setShowAddArmorModal(false)} style={{ padding: '0.7rem 1.25rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem', color: '#ccc', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Add / Edit Pet Modal ──────────────────────────────────────── */}
         {showAddPetModal && (() => {
@@ -19815,16 +20266,17 @@ const CampaignView: React.FC = () => {
                   </div>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Pet Image</label>
-                    <input type="file" accept="image/*" onChange={(e) => {
+                    <input type="file" accept="image/*" onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (f) {
-                        setPetImageFile(f);
+                        const compressed = await compressImageFile(f);
+                        setPetImageFile(compressed);
                         const reader = new FileReader();
                         reader.onload = (ev) => setPetImagePreviewUrl(ev.target?.result as string);
-                        reader.readAsDataURL(f);
+                        reader.readAsDataURL(compressed);
                       }
                     }} style={{ ...inputStyle, padding: '0.4rem' }} />
-                    <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', margin: '0.3rem 0 0' }}>JPG, PNG, GIF, WebP — max 5 MB</p>
+                    <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', margin: '0.3rem 0 0' }}>JPG, PNG, GIF, WebP — large photos are automatically resized to fit</p>
                   </div>
                 </div>
 
@@ -19888,6 +20340,32 @@ const CampaignView: React.FC = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* Diet / Food Consumption / Feeding Mode */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={labelStyle}>Diet</label>
+                    <select value={petFormData.diet ?? 'omnivore'} onChange={e => setPetFormData(p => ({ ...p, diet: e.target.value as Pet['diet'] }))} style={inputStyle}>
+                      <option value="herbivore" style={{ background: '#1a1a2e' }}>🥬 Herbivore</option>
+                      <option value="carnivore" style={{ background: '#1a1a2e' }}>🥩 Carnivore</option>
+                      <option value="omnivore" style={{ background: '#1a1a2e' }}>🍽️ Omnivore</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Food / Long Rest</label>
+                    <input type="number" min={0} value={petFormData.food_consumption ?? 4} onChange={e => setPetFormData(p => ({ ...p, food_consumption: Math.max(0, parseInt(e.target.value, 10) || 0) }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Feeding Mode</label>
+                    <select value={petFormData.feeding_mode ?? 'self'} onChange={e => setPetFormData(p => ({ ...p, feeding_mode: e.target.value as Pet['feeding_mode'] }))} style={inputStyle}>
+                      <option value="self" style={{ background: '#1a1a2e' }}>🖐️ Self-Feed</option>
+                      <option value="automatic" style={{ background: '#1a1a2e' }}>⚙️ Automatic</option>
+                    </select>
+                  </div>
+                </div>
+                <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', margin: '0 0 1.25rem' }}>
+                  Hunger drops 40 every long rest. Self-feed owners spend rations manually at full effect; automatic feeding pulls rations at rest time but only at 25% efficiency.
+                </p>
 
                 {/* Is Battle Pet toggle */}
                 <div style={{ marginBottom: '1.5rem', padding: '0.85rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -23730,47 +24208,35 @@ const CampaignView: React.FC = () => {
       )}
 
       {/* Mount Armor Slot Picker Modal */}
-      {/* Damage Mount Modal */}
-      {mountDamageModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 12000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
-          <div style={{ background: '#1a1a2e', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '12px', padding: '1.5rem', maxWidth: '360px', width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h5 style={{ color: '#f87171', margin: 0 }}>⚔️ Damage {mountDamageModal.mountName}</h5>
-              <button onClick={() => setMountDamageModal(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
-            </div>
-            <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Enter the amount of damage to deal to this mount.</p>
-            <input
-              type="number"
-              min="0"
-              value={mountDamageInput}
-              onChange={e => setMountDamageInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  const dmg = Number(mountDamageInput);
-                  if (isNaN(dmg) || dmg <= 0) return;
-                  socket?.emit('applyMountDamage', { campaignId: currentCampaign?.campaign.id, combatantKey: mountDamageModal.combatantKey, damage: dmg });
-                  setMountDamageModal(null);
-                }
-              }}
-              autoFocus
-              placeholder="Damage amount..."
-              style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '0.4rem', color: '#f87171', fontSize: '1rem', boxSizing: 'border-box', marginBottom: '0.75rem' }}
-            />
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setMountDamageModal(null)} style={{ padding: '0.4rem 0.9rem', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.4rem', color: '#999', cursor: 'pointer', fontSize: '0.85rem' }}>Cancel</button>
-              <button
-                onClick={() => {
-                  const dmg = Number(mountDamageInput);
-                  if (isNaN(dmg) || dmg <= 0) return;
-                  socket?.emit('applyMountDamage', { campaignId: currentCampaign?.campaign.id, combatantKey: mountDamageModal.combatantKey, damage: dmg });
-                  setMountDamageModal(null);
-                }}
-                style={{ padding: '0.4rem 0.9rem', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '0.4rem', color: '#f87171', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}
-              >Deal Damage</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Damage Mount Modal — same limb-targeted AttackModal used for characters/monsters/pets */}
+      {mountDamageModal && (() => {
+        const mount = campaignMounts.find(m => m.id === mountDamageModal.mountId);
+        if (!mount) return null;
+        const effectiveAc = mount.effective_ac ?? (mount.ac + (mount.armor_ac_bonus || 0));
+        // Per-limb AC uses the same proportional formula as per-limb HP, fed the armor-equipped
+        // effective AC — so equipping a piece shifts every limb's AC together.
+        const limbAC = calcCharacterLimbHealthMax(effectiveAc, mount.abilities?.con ?? 10) as { head: number; chest: number; left_arm: number; right_arm: number; left_leg: number; right_leg: number };
+        const limbHealthMax = calcCharacterLimbHealthMax(mount.hp, mount.abilities?.con ?? 10);
+        return (
+          <AttackModal
+            attacker={{ characterId: 'dm', name: 'Dungeon Master' }}
+            target={{ characterId: `mount_${mount.id}`, name: mount.name, kind: 'mount' }}
+            targetLimbAC={limbAC}
+            targetLimbHealth={mount.limb_health ?? undefined}
+            targetLimbHealthMax={limbHealthMax}
+            onConfirm={(params) => {
+              socket?.emit('applyMountDamage', {
+                campaignId: currentCampaign?.campaign.id,
+                combatantKey: mountDamageModal.combatantKey,
+                damage: params.damage,
+                limbName: params.limbName,
+              });
+              setMountDamageModal(null);
+            }}
+            onClose={() => setMountDamageModal(null)}
+          />
+        );
+      })()}
 
       {mountArmorPicker && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 11000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
@@ -23779,32 +24245,28 @@ const CampaignView: React.FC = () => {
               <h5 style={{ color: 'var(--text-gold)', margin: 0 }}>🛡️ Equip Armor — {mountArmorPicker.slot.replace(/_/g, ' ')}</h5>
               <button onClick={() => setMountArmorPicker(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
             </div>
-            <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Select an armor item from the character's inventory to equip to this mount slot.</p>
+            <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>Select a companion armor item (from the Armor panel) to equip to this mount slot. Each piece is built for one specific limb.</p>
             {(() => {
-              const charId = selectedCharacter;
-              const inventoryForChar = charId ? (equipmentDetails[charId] ?? []) : [];
-              const slotSubcategoryMap: Record<string, string> = { head: 'Horse Head', body: 'Horse Body', front_legs: 'Horse Feet', rear_legs: 'Horse Feet' };
-              const requiredSubcategory = slotSubcategoryMap[mountArmorPicker.slot];
-              const armorItems = inventoryForChar.filter(item => item.subcategory === requiredSubcategory);
+              const armorItems = companionArmorItems.filter(item => item.kind === 'mount' && item.slot === mountArmorPicker.slot);
               if (armorItems.length === 0) {
-                return <p style={{ color: '#888', fontStyle: 'italic' }}>No {requiredSubcategory} items found in this character's inventory. Create one using the custom item creator.</p>;
+                return <p style={{ color: '#888', fontStyle: 'italic' }}>No armor built for the {mountArmorPicker.slot.replace(/_/g, ' ')} slot yet. Add one from the Companions → Armor panel.</p>;
               }
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  {armorItems.map((item, idx) => (
+                  {armorItems.map((item) => (
                     <button
-                      key={(item as any).id ?? idx}
+                      key={item.id}
                       onClick={async () => {
                         try {
-                          const upd = await mountAPI.equipMountArmor(mountArmorPicker.mountId, mountArmorPicker.slot, (item as any).name ?? (item as any).item_name);
+                          const upd = await mountAPI.equipMountArmor(mountArmorPicker.mountId, mountArmorPicker.slot, item.id);
                           setCampaignMounts(prev => prev.map(m => m.id === upd.id ? upd : m));
                           setMountArmorPicker(null);
                         } catch(e) { console.error(e); }
                       }}
-                      style={{ padding: '0.5rem 0.75rem', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '0.4rem', color: '#c4b5fd', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      style={{ padding: '0.5rem 0.75rem', background: 'rgba(var(--theme-accent-rgb),0.1)', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', borderRadius: '0.4rem', color: 'var(--text-gold)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                     >
-                      <span>{(item as any).name ?? (item as any).item_name}</span>
-                      {item.armor_class != null && <span style={{ color: '#93c5fd', fontSize: '0.75rem' }}>AC {item.armor_class}</span>}
+                      <span>{item.name}</span>
+                      <span style={{ color: '#93c5fd', fontSize: '0.75rem' }}>+{item.armor_class_bonus} AC</span>
                     </button>
                   ))}
                 </div>

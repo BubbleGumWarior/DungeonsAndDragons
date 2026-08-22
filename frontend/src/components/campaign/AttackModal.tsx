@@ -15,6 +15,9 @@ interface Combatant {
   isMonster?: boolean;
   monsterId?: number;
   monsterInstanceId?: number;
+  // Explicit override for targets that aren't a plain character/monster (e.g. a pet).
+  // Falls back to the isMonster ternary when omitted, so existing callers are unaffected.
+  kind?: 'character' | 'monster' | 'pet' | 'mount';
 }
 
 interface Props {
@@ -28,7 +31,7 @@ interface Props {
   targetResistances?: { resistances: string[]; immunities: string[]; vulnerabilities: string[] };
   onConfirm: (params: {
     targetKey: string;
-    targetType: 'character' | 'monster';
+    targetType: 'character' | 'monster' | 'pet' | 'mount';
     targetName: string;
     limbName: string;
     attackRoll: number;
@@ -59,7 +62,7 @@ export const AttackModal: React.FC<Props> = ({ attacker, target, targetLimbAC, t
     if (isHeal ? isNaN(damageNum) : (!selectedLimb || isNaN(damageNum))) return;
     onConfirm({
       targetKey: String(target.characterId),
-      targetType: target.isMonster ? 'monster' : 'character',
+      targetType: target.kind ?? (target.isMonster ? 'monster' : 'character'),
       targetName: target.name,
       limbName: selectedLimb || '',
       attackRoll: 0,

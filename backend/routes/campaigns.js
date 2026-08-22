@@ -311,6 +311,41 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
       req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', { campaignId: req.params.id, ...summary, restType });
       req.io.to(`campaign_${req.params.id}`).emit('kingdomDataChanged', { campaignId: Number(req.params.id) });
 
+      // Broadcast hunger tick results — pet/mount cards and the market panel refresh live.
+      if (summary.petFoodUpdates?.length) {
+        const { pool } = require('../models/database');
+        const Pet = require('../models/Pet');
+        for (const upd of summary.petFoodUpdates) {
+          try {
+            if (upd.kind === 'pet') {
+              const pet = await Pet.findById(upd.id);
+              if (pet) {
+                const { image_data, ...petOut } = pet;
+                req.io.to(`campaign_${req.params.id}`).emit('petUpdated', { pet: petOut, timestamp: new Date().toISOString() });
+              }
+            } else {
+              const mountResult = await pool.query(
+                `SELECT m.*, c.name AS character_name, c.player_id AS character_player_id
+                   FROM campaign_mounts m LEFT JOIN characters c ON c.id = m.assigned_to_character_id
+                  WHERE m.id = $1`,
+                [upd.id]
+              );
+              if (mountResult.rows[0]) {
+                const { image_data, ...mountOut } = mountResult.rows[0];
+                req.io.to(`campaign_${req.params.id}`).emit('mountUpdated', { mount: mountOut, timestamp: new Date().toISOString() });
+              }
+            }
+          } catch (e) { console.error('Error broadcasting hunger tick update:', e); }
+        }
+      }
+      if (summary.stockpileUpdates?.length) {
+        req.io.to(`campaign_${req.params.id}`).emit('foodStockpileUpdated', {
+          campaignId: Number(req.params.id),
+          updates: summary.stockpileUpdates,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       const userSocketMap = req.app.get('userSocketMap');
       const io = req.app.get('io') || req.io;
       if (io && userSocketMap) {

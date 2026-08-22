@@ -2450,6 +2450,11 @@ class Campaign {
       }
       const seasonChanged = previousSeason !== seasonMetadata.season;
 
+      // Pet/mount hunger tick — shares this transaction, gated on days > 0 (short rests pass days=0
+      // and never reach this function at all, since the route returns early for restType === 'short').
+      const FoodStockpile = require('./FoodStockpile');
+      const { petFoodUpdates, stockpileUpdates } = await FoodStockpile.runRestTick(client, campaignId, days);
+
       await client.query('COMMIT');
       return {
         newDay,
@@ -2467,6 +2472,8 @@ class Campaign {
         populationGained,
         animalsLost,
         animalsBorn,
+        petFoodUpdates,
+        stockpileUpdates,
       };
     } catch (err) {
       await client.query('ROLLBACK');

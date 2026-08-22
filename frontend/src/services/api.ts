@@ -1198,17 +1198,29 @@ export interface Mount {
   character_name?: string;
   character_player_id?: number;
   is_equipped: boolean;
-  // Armor slots
-  armor_head?: string | null;
-  armor_body?: string | null;
-  armor_front_legs?: string | null;
-  armor_rear_legs?: string | null;
-  // Armor AC values (from inventory JOINs)
-  armor_head_ac?: number;
-  armor_body_ac?: number;
-  armor_front_legs_ac?: number;
-  armor_rear_legs_ac?: number;
+  // Companion armor slots (reference companion_armor_items)
+  armor_head_id?: number | null;
+  armor_body_id?: number | null;
+  armor_front_legs_id?: number | null;
+  armor_rear_legs_id?: number | null;
+  armor_head_name?: string | null;
+  armor_body_name?: string | null;
+  armor_front_legs_name?: string | null;
+  armor_rear_legs_name?: string | null;
+  armor_head_bonus?: number;
+  armor_body_bonus?: number;
+  armor_front_legs_bonus?: number;
+  armor_rear_legs_bonus?: number;
   armor_ac_bonus?: number;
+  effective_ac?: number;
+  diet: 'herbivore' | 'carnivore' | 'omnivore';
+  food_consumption: number;
+  hunger: number;
+  feeding_mode: 'self' | 'automatic';
+  abilities?: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  hit_points_current?: number;
+  limb_health?: Record<string, number> | null;
+  temp_limb_health?: Record<string, number> | null;
   created_at: string;
   updated_at: string;
 }
@@ -1258,13 +1270,23 @@ export const mountAPI = {
     return response.data;
   },
 
-  equipMountArmor: async (mountId: number, slot: 'head' | 'body' | 'front_legs' | 'rear_legs', itemName: string): Promise<Mount> => {
-    const response = await api.post(`/mounts/${mountId}/equip-armor`, { slot, itemName });
+  equipMountArmor: async (mountId: number, slot: 'head' | 'body' | 'front_legs' | 'rear_legs', armorItemId: number): Promise<Mount> => {
+    const response = await api.post(`/mounts/${mountId}/equip-armor`, { slot, armorItemId });
     return response.data;
   },
 
   unequipMountArmor: async (mountId: number, slot: 'head' | 'body' | 'front_legs' | 'rear_legs'): Promise<Mount> => {
     const response = await api.delete(`/mounts/${mountId}/equip-armor`, { data: { slot } });
+    return response.data;
+  },
+
+  feedMount: async (mountId: number, rations?: number): Promise<{ mount: Mount; rationsConsumed: number }> => {
+    const response = await api.patch(`/mounts/${mountId}/feed`, rations !== undefined ? { rations } : {});
+    return response.data;
+  },
+
+  setFeedingMode: async (mountId: number, feeding_mode: 'self' | 'automatic'): Promise<Mount> => {
+    const response = await api.patch(`/mounts/${mountId}/feeding-mode`, { feeding_mode });
     return response.data;
   },
 };
@@ -1546,6 +1568,16 @@ export interface Pet {
   character_player_id?: number;
   created_at?: string;
   updated_at?: string;
+  diet: 'herbivore' | 'carnivore' | 'omnivore';
+  food_consumption: number;
+  hunger: number;
+  feeding_mode: 'self' | 'automatic';
+  limb_health?: Record<string, number> | null;
+  temp_limb_health?: Record<string, number> | null;
+  armor_item_id?: number | null;
+  armor_item_name?: string | null;
+  armor_class_bonus?: number;
+  effective_armor_class?: number;
 }
 
 export const petAPI = {
@@ -1585,6 +1617,96 @@ export const petAPI = {
 
   deletePet: async (petId: number): Promise<{ message: string }> => {
     const response = await api.delete(`/pets/${petId}`);
+    return response.data;
+  },
+
+  feedPet: async (petId: number, rations?: number): Promise<{ pet: Pet; rationsConsumed: number }> => {
+    const response = await api.patch(`/pets/${petId}/feed`, rations !== undefined ? { rations } : {});
+    return response.data;
+  },
+
+  setFeedingMode: async (petId: number, feeding_mode: 'self' | 'automatic'): Promise<Pet> => {
+    const response = await api.patch(`/pets/${petId}/feeding-mode`, { feeding_mode });
+    return response.data;
+  },
+};
+
+// ─── Pet & Mount Food Stockpile ──────────────────────────────────────────
+
+export interface FoodStockpileRow {
+  id: number;
+  campaign_id: number;
+  character_id: number;
+  character_name?: string;
+  meat_rations: number;
+  veg_rations: number;
+  max_slots: number;
+}
+
+export interface FoodMarketSettings {
+  meat_price: number;
+  veg_price: number;
+}
+
+export const petFoodAPI = {
+  getStockpiles: async (campaignId: number, characterId?: number): Promise<{ stockpiles: FoodStockpileRow[]; prices: FoodMarketSettings }> => {
+    const response = await api.get(`/pet-food/campaign/${campaignId}/stockpiles`, { params: characterId ? { characterId } : undefined });
+    return response.data;
+  },
+
+  buyRations: async (campaignId: number, params: { characterId: number; rationType: 'meat' | 'veg'; quantity: number }): Promise<{ stockpile: FoodStockpileRow; totalCost: number; remainingGold: number }> => {
+    const response = await api.post(`/pet-food/campaign/${campaignId}/buy`, params);
+    return response.data;
+  },
+
+  grantRations: async (campaignId: number, params: { characterId: number; rationType: 'meat' | 'veg'; quantity: number }): Promise<FoodStockpileRow> => {
+    const response = await api.patch(`/pet-food/campaign/${campaignId}/grant`, params);
+    return response.data;
+  },
+
+  setMaxSlots: async (campaignId: number, characterId: number, maxSlots: number): Promise<FoodStockpileRow> => {
+    const response = await api.patch(`/pet-food/campaign/${campaignId}/max-slots`, { characterId, maxSlots });
+    return response.data;
+  },
+
+  setPrices: async (campaignId: number, settings: Partial<{ meatPrice: number; vegPrice: number }>): Promise<FoodMarketSettings> => {
+    const response = await api.patch(`/pet-food/campaign/${campaignId}/prices`, settings);
+    return response.data;
+  },
+};
+
+// ─── Companion Armor (mounts + pets) ─────────────────────────────────────
+
+export interface CompanionArmorItem {
+  id: number;
+  campaign_id: number;
+  character_id: number;
+  kind: 'mount' | 'pet';
+  name: string;
+  description?: string;
+  armor_class_bonus: number;
+  slot?: 'head' | 'body' | 'front_legs' | 'rear_legs' | null;
+  created_at?: string;
+}
+
+export const companionArmorAPI = {
+  getForCharacter: async (campaignId: number, characterId: number): Promise<{ items: CompanionArmorItem[]; petsEquipped: any[]; mountsEquipped: any[] }> => {
+    const response = await api.get(`/companion-armor/campaign/${campaignId}/character/${characterId}`);
+    return response.data;
+  },
+
+  createItem: async (campaignId: number, data: { characterId: number; kind: 'mount' | 'pet'; name: string; armor_class_bonus: number; description?: string; slot?: 'head' | 'body' | 'front_legs' | 'rear_legs' }): Promise<CompanionArmorItem> => {
+    const response = await api.post(`/companion-armor/campaign/${campaignId}`, data);
+    return response.data;
+  },
+
+  deleteItem: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/companion-armor/${id}`);
+    return response.data;
+  },
+
+  equipPetArmor: async (petId: number, armorItemId: number | null): Promise<Pet> => {
+    const response = await api.post(`/companion-armor/pets/${petId}/equip`, { armorItemId });
     return response.data;
   },
 };
