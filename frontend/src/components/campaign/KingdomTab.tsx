@@ -115,8 +115,9 @@ const getTierWorkerYieldMultiplier = (tier?: number) => {
 const getFoodConsumptionRateForTier = (tier?: number) => (Number(tier || 1) <= 1 ? 0.7 : 1);
 
 // Tier 4+ fiefs owe gold upkeep: 1 gold per 10 population, 1 gold per Militia
-// in reserve, 2 gold per any other reserve unit type. Mirrors the backend's
-// Campaign.getDailyGoldConsumption exactly.
+// in reserve, 2 gold per any other reserve unit type — then doubled once tier 4
+// is reached (2 gold per 10 population, 2 gold per Militia, 4 gold per any other
+// reserve unit type). Mirrors the backend's Campaign.getDailyGoldConsumption exactly.
 const getDailyGoldConsumption = (population: number, unitReserves: Record<string, number> | undefined, tier?: number) => {
   const numericTier = Math.max(1, Math.floor(Number(tier || 1)));
   if (numericTier < 4) return 0;
@@ -130,7 +131,8 @@ const getDailyGoldConsumption = (population: number, unitReserves: Record<string
     if (unitType === 'Militia') militiaCount += count;
     else otherSoldierCount += count;
   }
-  return (pop / 10) + (militiaCount * 1) + (otherSoldierCount * 2);
+  const TIER4_UPKEEP_MULTIPLIER = 2;
+  return ((pop / 10) + (militiaCount * 1) + (otherSoldierCount * 2)) * TIER4_UPKEEP_MULTIPLIER;
 };
 
 // ── Tier 5+ civic stability (unrest) ────────────────────────────────────────
@@ -1672,6 +1674,9 @@ const KingdomTab: React.FC<Props> = ({
         projectedVegetableYield,
         daysLeftInCycle,
         vegetablePhase,
+        vegetableDayInPhase,
+        lockedVegetableWorkers,
+        currentVegetableWorkers: workersVegetables + slaveVegetables,
         logisticsLevel,
       },
     };
@@ -4096,8 +4101,11 @@ const KingdomTab: React.FC<Props> = ({
                       const slaveRow = showSlaves ? slaveResourceRows.find(r => r.key === citizenRow.key) : null;
                       const isEven = idx % 2 === 0;
                       const rowBg = isEven ? 'rgba(255,255,255,0.02)' : 'transparent';
+                      const isVegetables = citizenRow.key === 'vegetables';
+                      const veg = productionByLane.foodBreakdown;
                       return (
-                        <div key={citizenRow.key} style={{ display: 'grid', gridTemplateColumns: laneCols, background: rowBg, borderTop: idx > 0 ? '1px solid rgba(var(--theme-accent-rgb),0.08)' : undefined, alignItems: 'center' }}>
+                        <React.Fragment key={citizenRow.key}>
+                        <div style={{ display: 'grid', gridTemplateColumns: laneCols, background: rowBg, borderTop: idx > 0 ? '1px solid rgba(var(--theme-accent-rgb),0.08)' : undefined, alignItems: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.3rem 0.2rem' }}>
                             <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>{getResourceLabel(citizenRow.key)}</span>
                           </div>
@@ -4115,6 +4123,39 @@ const KingdomTab: React.FC<Props> = ({
                           <div style={{ background: 'rgba(var(--theme-accent-rgb),0.15)', alignSelf: 'stretch' }} />
                           <div style={{ background: 'rgba(15,15,15,0.4)', alignSelf: 'stretch' }}>{totalCell(citizenRow.key)}</div>
                         </div>
+                        {isVegetables && (
+                          <div style={{
+                            gridColumn: '1 / -1',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.4rem 0.8rem 0.55rem',
+                            background: 'rgba(202,138,4,0.08)',
+                            borderTop: '1px dashed rgba(202,138,4,0.3)',
+                            borderBottom: '1px solid rgba(var(--theme-accent-rgb),0.08)',
+                          }}>
+                            {veg.vegetablePhase === 'assigning' && (
+                              <span style={{ color: '#fbbf24', fontSize: '0.78rem', fontWeight: 600 }}>
+                                🌾 Assigning — day {Math.min(VEGETABLE_ASSIGNMENT_DAYS, veg.vegetableDayInPhase + 1)}/{VEGETABLE_ASSIGNMENT_DAYS}. Locks in at {veg.currentVegetableWorkers} worker{veg.currentVegetableWorkers === 1 ? '' : 's'} (citizen + slave) →{' '}
+                                <strong style={{ color: '#fde047' }}>~{veg.projectedVegetableYield.toFixed(1)} food</strong> harvested over {veg.daysLeftInCycle} more days (6d growth + 4d harvest).
+                              </span>
+                            )}
+                            {veg.vegetablePhase === 'growing' && (
+                              <span style={{ color: '#86efac', fontSize: '0.78rem', fontWeight: 600 }}>
+                                🌱 Growing — {veg.lockedVegetableWorkers} worker{veg.lockedVegetableWorkers === 1 ? '' : 's'} locked in for this harvest (assignment reopens after growth). Expect{' '}
+                                <strong style={{ color: '#4ade80' }}>~{veg.projectedVegetableYield.toFixed(1)} food</strong> in {veg.daysLeftInCycle} more day{veg.daysLeftInCycle === 1 ? '' : 's'}.
+                              </span>
+                            )}
+                            {veg.vegetablePhase === 'harvesting' && (
+                              <span style={{ color: '#93c5fd', fontSize: '0.78rem', fontWeight: 600 }}>
+                                🧺 Harvesting now — {veg.lockedVegetableWorkers} locked worker{veg.lockedVegetableWorkers === 1 ? '' : 's'} collecting daily. Still{' '}
+                                <strong style={{ color: '#60a5fa' }}>~{veg.projectedVegetableYield.toFixed(1)} food</strong> left to come before the lane reopens for assignment.
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </div>

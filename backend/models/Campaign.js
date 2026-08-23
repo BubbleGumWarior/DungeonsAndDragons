@@ -420,7 +420,10 @@ class Campaign {
 
   // Tier 4+ fiefs must pay gold upkeep: 1 gold per 10 population, 1 gold per
   // Militia in reserve, and 2 gold per any other reserve unit type. Below
-  // tier 4 no gold upkeep applies at all.
+  // tier 4 no gold upkeep applies at all. Once a fief reaches tier 4, every
+  // upkeep source is doubled (2 gold per 10 population, 2 gold per Militia,
+  // 4 gold per any other reserve unit type) — the cost of maintaining a
+  // larger, more established fief.
   static getDailyGoldConsumption(population, unitReserves, tier) {
     const numericTier = Math.max(1, Math.floor(Number(tier) || 1));
     if (numericTier < 4) return 0;
@@ -436,7 +439,8 @@ class Campaign {
       else otherSoldierCount += count;
     }
 
-    return (pop / 10) + (militiaCount * 1) + (otherSoldierCount * 2);
+    const TIER4_UPKEEP_MULTIPLIER = 2;
+    return ((pop / 10) + (militiaCount * 1) + (otherSoldierCount * 2)) * TIER4_UPKEEP_MULTIPLIER;
   }
 
   static getBirthChanceMultiplier(foodProducedToday, foodNeededToday, starvationDeaths, season = null) {
