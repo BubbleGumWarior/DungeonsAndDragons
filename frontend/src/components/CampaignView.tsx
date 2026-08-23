@@ -155,6 +155,10 @@ const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
   'Yllwyn': [
     '/images/CityImages/YllwynRiverBlockade.jpg',
     '/images/CityImages/YllwynWesternBlockade.jpg',
+    '/images/CityImages/YllwynBottom.jpg',
+    '/images/CityImages/YllwynCenter.jpg',
+    '/images/CityImages/YllwynTemple.jpg',
+    '/images/CityImages/YllwynTop.jpg',
     '/images/CityImages/YllwynTerrain.png',
   ],
   'Silva Umbra': ['/images/CityImages/SilvaUmbraTerrain.png'],
