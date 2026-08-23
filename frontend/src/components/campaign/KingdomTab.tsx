@@ -3114,7 +3114,8 @@ const KingdomTab: React.FC<Props> = ({
                     // Every 10 animals (any stage) need 1 worker on the Farming lane or the
                     // herd starts dying/escaping each long rest (see Campaign.advanceDays).
                     const rawFiefForFarmers = (selectedKingdom?.fiefs || []).find((f) => Number(f.id) === fief.fief_id);
-                    const assignedFarmers = Math.max(0, Number(rawFiefForFarmers?.worker_assignments?.vegetables || 0));
+                    const assignedFarmers = Math.max(0, Number(rawFiefForFarmers?.worker_assignments?.vegetables || 0))
+                      + Math.max(0, Number(rawFiefForFarmers?.slave_worker_assignments?.vegetables || 0));
                     const requiredFarmers = Math.ceil(fief.animals.length / 10);
                     const farmerCoveragePct = requiredFarmers > 0 ? Math.min(1, assignedFarmers / requiredFarmers) : 1;
                     const farmersUnderstaffed = requiredFarmers > 0 && assignedFarmers < requiredFarmers;

@@ -1834,11 +1834,12 @@ class Campaign {
 
           // Animal Management: every 10 animals in this fief need 1 worker assigned to the
           // Farming lane (the vegetables key) or the herd starts dying/escaping. Understaffed
-          // fiefs lose a small, escalating fraction of their animals each day.
+          // fiefs lose a small, escalating fraction of their animals each day. Slave-assigned
+          // farmers count too (see effectiveAssignments above), same as they do for production.
           let fiefAnimals = animalsByFief.get(fief.id) || [];
           if (fiefAnimals.length > 0) {
             const requiredFarmingWorkers = Math.ceil(fiefAnimals.length / 10);
-            const assignedFarmingWorkers = Math.max(0, Number((fief.workerAssignments || {}).vegetables || 0));
+            const assignedFarmingWorkers = Math.max(0, Number(effectiveAssignments.vegetables || 0));
             if (assignedFarmingWorkers < requiredFarmingWorkers) {
               const shortfallRatio = (requiredFarmingWorkers - assignedFarmingWorkers) / requiredFarmingWorkers;
               const lossChancePerAnimal = Math.min(0.15, shortfallRatio * 0.10);
