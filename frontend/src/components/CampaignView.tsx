@@ -144,10 +144,13 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
   { name: 'Fairy Grove',              x: 28.2,  y: 75 },
   { name: 'Pass-Crown',               x: 50,  y: 46,  major: true },
   { name: "Ruk'da",                   x: 64,  y: 28 },
+  { name: "Massa Put",                x: 58,  y: 17 },
   { name: 'Eastreach',                x: 71.5,  y: 40,  major: true },
   { name: 'Ridagast',                 x: 83.25,  y: 46.5 },
   { name: 'Khairok',                  x: 74.5,  y: 49 },
   { name: 'Uhlruk',                   x: 72,  y: 58, major: true },
+  { name: 'Mitolo',                   x: 81.5,  y: 64 },
+  { name: 'Oblivion',                 x: 63,  y: 72, major: true },
 ];
 
 // Extra images for player cities (in addition to the default .jpg)
