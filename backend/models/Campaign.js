@@ -2080,8 +2080,12 @@ class Campaign {
             const type = String(b?.buildingType || b?.building_type || '');
             return sum + (BUILDER_HUT_BONUS_BY_TYPE[type] || 0);
           }, 0);
-          const builderWorkers = Math.max(0, Number(fief.workerAssignments.building || 0))
-            + (Math.max(0, Number((fief.slaveWorkerAssignments || {}).building || 0)) * slaveOutputMultiplier)
+          // Floor each term (matches the vegetable/meat/etc. lanes) — the Overseer's Post
+          // chain's slave output multiplier (1.10-1.25x) can otherwise leave a fractional
+          // headcount, which then subtracts a fractional amount from a building's
+          // daysRemaining and fails to persist into the integer days_remaining column.
+          const builderWorkers = Math.max(0, Math.floor(Number(fief.workerAssignments.building || 0)))
+            + Math.max(0, Math.floor(Math.max(0, Number((fief.slaveWorkerAssignments || {}).building || 0)) * slaveOutputMultiplier))
             + passiveBuilderBonus;
           if (builderWorkers > 0) {
             let remainingEffort = builderWorkers;
@@ -2395,6 +2399,9 @@ class Campaign {
         for (const fiefBuildings of buildingsByFief.values()) {
           for (const building of fiefBuildings) {
             if (!building.dirty) continue;
+            // days_remaining is an integer column — guard against any fractional worker-effort
+            // math upstream (e.g. a slave output multiplier) so this write can never 500.
+            building.daysRemaining = Math.max(0, Math.round(Number(building.daysRemaining) || 0));
             await client.query(
               `UPDATE fief_buildings
                SET days_remaining = $1,
