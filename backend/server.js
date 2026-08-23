@@ -402,6 +402,8 @@ const startServer = async () => {
         { name: 'addPetHungerSystem', fn: require('./migrations/add_pet_hunger_system') },
         { name: 'addCompanionArmorLimbsAndCharStockpile', fn: require('./migrations/add_companion_armor_limbs_and_char_stockpile') },
         { name: 'updatePetFoodDefaultPrices', fn: require('./migrations/update_pet_food_default_prices') },
+        { name: 'addWarlockUtilityInvocations', fn: require('./migrations/add_warlock_utility_invocations') },
+        { name: 'addSkillsAutoGrantColumn', fn: require('./migrations/add_skills_auto_grant_column') },
       ];
       
       const failedMigrations = [];

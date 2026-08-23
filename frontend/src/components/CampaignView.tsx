@@ -1199,7 +1199,7 @@ const CampaignView: React.FC = () => {
           </div>
 
           {animal.description && (
-            <p style={{ color: '#bbb', fontSize: '0.78rem', margin: 0, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{animal.description}</p>
+            <p style={{ color: '#bbb', fontSize: '0.78rem', margin: 0, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{animal.description}</p>
           )}
 
           {/* Stat pills */}
@@ -3415,6 +3415,9 @@ const CampaignView: React.FC = () => {
         const extras: string[] = [];
         if (result.eldritchBlastUpgrade) extras.push(`${result.eldritchBlastUpgrade.name} unlocked!`);
         if (result.pactBoonUpdate) extras.push(`${result.pactBoonUpdate.name} unlocked!`);
+        if (result.invocationSkillsGranted && result.invocationSkillsGranted.length > 0) {
+          extras.push(`${result.invocationSkillsGranted.map((s: any) => s.name).join(', ')} unlocked!`);
+        }
         if (extras.length === 0 && result.skillGained) extras.push(`Learned: ${result.skillGained.name}`);
         setToastMessage(extras.length > 0 ? `${result.message} ${extras.join(' ')}` : result.message);
       }
@@ -19211,7 +19214,7 @@ const CampaignView: React.FC = () => {
                           </div>
                         </div>
                         {petData.description && (
-                          <div style={{ color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(167,139,250,0.15)', paddingTop: '0.75rem' }}>
+                          <div style={{ color: '#888', fontSize: '0.8rem', fontStyle: 'italic', borderTop: '1px solid rgba(167,139,250,0.15)', paddingTop: '0.75rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>
                             {petData.description}
                           </div>
                         )}

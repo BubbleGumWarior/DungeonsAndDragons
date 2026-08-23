@@ -101,6 +101,48 @@ async function computePactBoonUpdate(characterId) {
   return targetResult.rows[0];
 }
 
+// Most eldritch invocations (Devil's Sight, Mask of Many Faces, Thirsting Blade, etc.) don't
+// modify Eldritch Blast — they're standalone abilities. Picking one via the Eldritch
+// Invocation Choice dropdown only ever recorded a row in character_feature_choices, which
+// nothing displays, so it looked like the pick "did nothing." This grants the matching
+// standalone skill (see add_warlock_utility_invocations.js) for every such invocation the
+// character has ever chosen and doesn't already have — additive, not a swap, since a
+// character can know several of these at once (unlike Eldritch Blast or Pact Boon, which
+// are each one evolving thing).
+async function grantChosenInvocationSkills(characterId) {
+  const choicesResult = await pool.query(`
+    SELECT DISTINCT choice_name FROM character_feature_choices
+    WHERE character_id = $1
+      AND choice_name IN (
+        'Armor of Shadows', 'Devil''s Sight', 'Mask of Many Faces', 'Misty Visions',
+        'Thirsting Blade', 'Eldritch Sight', 'Book of Ancient Secrets',
+        'Voice of the Chain Master', 'Lifedrinker'
+      )
+  `, [characterId]);
+
+  const granted = [];
+  for (const row of choicesResult.rows) {
+    const alreadyHas = await pool.query(`
+      SELECT 1 FROM character_skills cs
+      JOIN skills s ON cs.skill_id = s.id
+      WHERE cs.character_id = $1 AND s.name = $2
+    `, [characterId, row.choice_name]);
+    if (alreadyHas.rows.length > 0) continue;
+
+    const skillResult = await pool.query(`SELECT * FROM skills WHERE name = $1`, [row.choice_name]);
+    if (skillResult.rows.length === 0) continue;
+
+    await pool.query(`
+      INSERT INTO character_skills (character_id, skill_id)
+      VALUES ($1, $2)
+      ON CONFLICT (character_id, skill_id) DO NOTHING
+    `, [characterId, skillResult.rows[0].id]);
+    granted.push(skillResult.rows[0]);
+  }
+
+  return granted;
+}
+
 // Get all available skills
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -492,6 +534,7 @@ router.get('/level-up-info/:characterId', authenticateToken, async (req, res) =>
           AND level_requirement = $2
           AND NOT (description ILIKE '%choose your path%' OR description ILIKE '%ascended oath%')
           AND NOT (name ILIKE '%(%)%')
+          AND (auto_grant IS NULL OR auto_grant = true)
         ORDER BY class_restriction DESC NULLS LAST
         LIMIT 1
       `, [character.class, newLevel]);
@@ -816,6 +859,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         SELECT * FROM skills
         WHERE (class_restriction = $1 OR class_restriction IS NULL)
           AND level_requirement = $2
+          AND (auto_grant IS NULL OR auto_grant = true)
           ${character.class !== 'Primal Bond' ? "AND name NOT LIKE '%(%)%'" : ''}
       `;
       let queryParams = [character.class, newLevel];
@@ -885,6 +929,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
     // since featureChoices were saved above already). See computeEldritchBlastUpdate.
     let eldritchBlastUpgrade = null;
     let pactBoonUpdate = null;
+    let invocationSkillsGranted = [];
     if (character.class === 'Warlock') {
       eldritchBlastUpgrade = await computeEldritchBlastUpdate(characterId, newLevel);
       if (eldritchBlastUpgrade) {
@@ -918,6 +963,10 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
           ON CONFLICT (character_id, skill_id) DO NOTHING
         `, [characterId, pactBoonUpdate.id]);
       }
+
+      // Standalone utility invocations (Devil's Sight, Thirsting Blade, etc.) — grant the
+      // matching skill for any such invocation ever chosen and not already held.
+      invocationSkillsGranted = await grantChosenInvocationSkills(characterId);
     }
 
     // Create beast companion if beast was selected during level-up
@@ -1027,6 +1076,7 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
         beastCreated,
         eldritchBlastUpgrade,
         pactBoonUpdate,
+        invocationSkillsGranted,
         timestamp: new Date().toISOString()
       });
       // Sync HP bars — includes updated limb health so combat health state stays accurate
@@ -1050,7 +1100,8 @@ router.post('/level-up/:characterId', authenticateToken, async (req, res) => {
       skillGained,
       beastCreated,
       eldritchBlastUpgrade,
-      pactBoonUpdate
+      pactBoonUpdate,
+      invocationSkillsGranted
     });
   } catch (error) {
     console.error('Error leveling up character:', error);
