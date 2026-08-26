@@ -453,7 +453,7 @@ const getBuildingCategory = (building: any): BuildTabId => {
   // Faith
   if (['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'].includes(key)) return 'faith';
   // Storage & Housing
-  if (['housing', 'wood_lodge', 'reinforced_lodge', 'stone_lodge', 'longhouse_block', 'manor_house', 'townhouse_row', 'urban_residence', 'noble_residence', 'royal_estate', 'storage', 'storage_shack', 'advanced_storage_tent', 'storehouse', 'reinforced_storehouse', 'central_storehouse', 'storage_advanced', 'vaulted_warehouse', 'granary', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'builders_hut', 'masons_workshop', 'engineers_lodge', 'construction_guildhall', 'master_builder_hall', 'grand_architect_hall'].includes(key)) return 'storage';
+  if (['housing', 'wood_lodge', 'reinforced_lodge', 'stone_lodge', 'longhouse_block', 'manor_house', 'townhouse_row', 'urban_residence', 'noble_residence', 'royal_estate', 'storage', 'storage_shack', 'advanced_storage_tent', 'storehouse', 'reinforced_storehouse', 'central_storehouse', 'storage_advanced', 'vaulted_warehouse', 'granary', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'bank', 'trade_bank', 'merchant_bank', 'royal_treasury', 'builders_hut', 'masons_workshop', 'engineers_lodge', 'construction_guildhall', 'master_builder_hall', 'grand_architect_hall'].includes(key)) return 'storage';
   // Military
   if (['militia_camp', 'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
        'stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables',
@@ -567,6 +567,12 @@ const KingdomTab: React.FC<Props> = ({
 
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [showChildrenModal, setShowChildrenModal] = useState(false);
+  const [showGiveBirthModal, setShowGiveBirthModal] = useState(false);
+  const [giveBirthCount, setGiveBirthCount] = useState('1');
+  const [giveBirthMode, setGiveBirthMode] = useState<'fixed' | 'random'>('fixed');
+  const [giveBirthAge, setGiveBirthAge] = useState('0');
+  const [giveBirthMinAge, setGiveBirthMinAge] = useState('0');
+  const [giveBirthMaxAge, setGiveBirthMaxAge] = useState('14');
   const [showBuildModal, setShowBuildModal] = useState(false);
   const [showBuildQueueModal, setShowBuildQueueModal] = useState(false);
   const [buildQueueOrder, setBuildQueueOrder] = useState<number[]>([]);
@@ -661,6 +667,8 @@ const KingdomTab: React.FC<Props> = ({
   const [selectedTrainUnitType, setSelectedTrainUnitType] = useState('Militia');
   const [trainUnitsAmount, setTrainUnitsAmount] = useState('1');
   const [upgradeAmountByUnit, setUpgradeAmountByUnit] = useState<Record<string, string>>({});
+  const [guardAmountByKey, setGuardAmountByKey] = useState<Record<string, string>>({});
+  const [buildCountByKey, setBuildCountByKey] = useState<Record<string, string>>({});
   const [dmUnitAdjustAmounts, setDmUnitAdjustAmounts] = useState<Record<string, string>>({});
   const [showProgressionModal, setShowProgressionModal] = useState(false);
   const [legendaryAssignFief, setLegendaryAssignFief] = useState<Record<number, number>>({});
@@ -2047,11 +2055,13 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const queueBuilding = async (buildingType: string) => {
+  const queueBuilding = async (buildingType: string, count: number = 1) => {
     if (!fiefDetails) return;
     setBusy(`build-${buildingType}`);
     try {
-      await kingdomAPI.queueBuilding(Number(fiefDetails.id), buildingType);
+      const result = await kingdomAPI.queueBuilding(Number(fiefDetails.id), buildingType, count);
+      const queued = result.buildings?.length || 1;
+      if (queued > 1) pushToast(`Queued ${queued}× ${buildingType.replace(/_/g, ' ')}`, 'success');
       setShowBuildModal(false);
       await fetchFief(Number(fiefDetails.id));
     } catch (e: any) {
@@ -2174,6 +2184,21 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const upgradeBuildingsBatch = async (buildingIds: number[]) => {
+    if (!fiefDetails || buildingIds.length === 0) return;
+    const busyKey = `upgrade-batch-${buildingIds.join(',')}`;
+    setBusy(busyKey);
+    try {
+      const result = await kingdomAPI.upgradeBuildingsBatch(Number(fiefDetails.id), buildingIds);
+      pushToast(`Queued upgrades for ${result.buildings?.length || buildingIds.length} buildings`, 'success');
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to upgrade buildings');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const dmSetResourceAmount = async (resourceKey: string, currentAmount: number) => {
     if (!fiefDetails || !isDungeonMaster) return;
 
@@ -2202,12 +2227,28 @@ const KingdomTab: React.FC<Props> = ({
 
   const handleGiveBirth = async () => {
     if (!fiefDetails || !isDungeonMaster) return;
+    const count = Math.max(1, Math.min(1000, Math.floor(Number(giveBirthCount) || 1)));
+    const options: { count: number; age?: number; minAge?: number; maxAge?: number } = { count };
+    if (giveBirthMode === 'random') {
+      const minAge = Math.max(0, Number(giveBirthMinAge) || 0);
+      const maxAge = Math.max(0, Number(giveBirthMaxAge) || 0);
+      if (minAge > maxAge) {
+        pushToast('Minimum age cannot be greater than maximum age.');
+        return;
+      }
+      options.minAge = minAge;
+      options.maxAge = maxAge;
+    } else {
+      options.age = Math.max(0, Number(giveBirthAge) || 0);
+    }
+
     setBusy('give-birth');
     try {
-      await kingdomAPI.giveBirth(Number(fiefDetails.id));
+      const result = await kingdomAPI.giveBirth(Number(fiefDetails.id), options);
       await fetchFief(Number(fiefDetails.id));
       await fetchKingdoms();
-      pushToast('A child was born!', 'success');
+      setShowGiveBirthModal(false);
+      pushToast(result.count > 1 ? `${result.count} children were born!` : 'A child was born!', 'success');
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to give birth');
     } finally {
@@ -3569,51 +3610,97 @@ const KingdomTab: React.FC<Props> = ({
                   </div>
                 </div>
                 {(() => {
-                  const storageEntries = Object.entries((fiefDetails.stored_resources || {}) as Record<string, number>)
-                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research');
-                  const totalStored = storageEntries
+                  // Food (Granary) and gold (Bank) each have their own dedicated pool — they
+                  // no longer compete with an unspent wood/stone pile for the same shelf
+                  // space. A full Granary/Bank isn't a dead end either: overflow spills into
+                  // the Warehouse if it has room, same priority order as Campaign.applyStorageCapacity
+                  // (Granary/Bank filled first, then Warehouse absorbs the rest).
+                  const storedResources = (fiefDetails.stored_resources || {}) as Record<string, number>;
+                  const foodStored = Math.max(0, Number(storedResources.food || 0));
+                  const goldStored = Math.max(0, Number(storedResources.gold || 0));
+                  const warehouseStored = Object.entries(storedResources)
+                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research' && k !== 'food' && k !== 'gold')
                     .reduce((sum, [, amount]) => sum + Math.max(0, Number(amount || 0)), 0);
-                  const cap = Number(fiefDetails.storage_capacity || 100);
-                  const available = Math.max(0, cap - totalStored);
+
+                  const foodCap = Number(fiefDetails.food_storage_capacity || 100);
+                  const bankCap = Number(fiefDetails.bank_capacity || 0);
+                  const warehouseCap = Number(fiefDetails.storage_capacity || 100);
+
                   const { output: prodOutput, foodBreakdown } = productionByLane;
                   const grossFood = Math.max(0, foodBreakdown.total);
-                  const otherProd = [
+                  const grossGold = Math.max(0, Number(prodOutput.gold || 0));
+                  const warehouseProd = [
                     { label: 'Wood',     amount: Math.max(0, Number(prodOutput.wood  || 0)) },
                     { label: 'Stone',    amount: Math.max(0, Number(prodOutput.stone || 0)) },
                     { label: 'Minerals', amount: Math.max(0, Number(prodOutput.iron  || 0)) },
-                    { label: 'Gold',     amount: Math.max(0, Number(prodOutput.gold  || 0)) },
                     { label: 'Faith',    amount: Math.max(0, Number(prodOutput.faith || 0)) },
                   ];
-                  let rem = Math.max(0, available - Math.min(grossFood, available));
+
+                  // Same fill-dedicated-then-overflow order as the backend: food, then gold,
+                  // then everything else shares whatever Warehouse room is left.
+                  let warehouseAvailable = Math.max(0, warehouseCap - warehouseStored);
+
+                  const foodDedicatedAvailable = Math.max(0, foodCap - foodStored);
+                  const foodToWarehouse = Math.max(0, grossFood - foodDedicatedAvailable);
+                  const foodToWarehouseAccepted = Math.min(foodToWarehouse, warehouseAvailable);
+                  warehouseAvailable = Math.max(0, warehouseAvailable - foodToWarehouseAccepted);
+                  const foodLost = Math.max(0, foodToWarehouse - foodToWarehouseAccepted);
+
+                  const goldDedicatedAvailable = Math.max(0, bankCap - goldStored);
+                  const goldToWarehouse = Math.max(0, grossGold - goldDedicatedAvailable);
+                  const goldToWarehouseAccepted = Math.min(goldToWarehouse, warehouseAvailable);
+                  warehouseAvailable = Math.max(0, warehouseAvailable - goldToWarehouseAccepted);
+                  const goldLost = Math.max(0, goldToWarehouse - goldToWarehouseAccepted);
+
                   const lostResources: { label: string; lost: number }[] = [];
-                  for (const res of otherProd) {
+                  for (const res of warehouseProd) {
                     if (res.amount <= 0.001) continue;
-                    const accepted = Math.min(res.amount, rem);
+                    const accepted = Math.min(res.amount, warehouseAvailable);
                     const lost = res.amount - accepted;
-                    rem = Math.max(0, rem - accepted);
+                    warehouseAvailable = Math.max(0, warehouseAvailable - accepted);
                     if (lost > 0.05) lostResources.push({ label: res.label, lost });
                   }
-                  const willLose = lostResources.length > 0;
-                  const pct = cap > 0 ? Math.min(1, totalStored / cap) : 0;
-                  const barColor = willLose ? '#ef4444' : pct >= 0.8 ? '#fbbf24' : '#22c55e';
+
+                  const foodWillLose = foodLost > 0.05;
+                  const goldWillLose = goldLost > 0.05;
+                  const warehouseWillLose = lostResources.length > 0;
+                  const foodPct = foodCap > 0 ? Math.min(1, foodStored / foodCap) : 0;
+                  const goldPct = bankCap > 0 ? Math.min(1, goldStored / bankCap) : (goldStored > 0 ? 1 : 0);
+                  const warehousePct = warehouseCap > 0 ? Math.min(1, warehouseStored / warehouseCap) : 0;
+                  const foodBarColor = foodWillLose ? '#ef4444' : foodPct >= 0.8 ? '#fbbf24' : '#22c55e';
+                  const goldBarColor = goldWillLose ? '#ef4444' : goldPct >= 0.8 ? '#fbbf24' : '#22c55e';
+                  const warehouseBarColor = warehouseWillLose ? '#ef4444' : warehousePct >= 0.8 ? '#fbbf24' : '#22c55e';
+
+                  const barRow = (icon: string, label: string, stored: number, cap: number, pct: number, color: string, willLose: boolean, warning: string, capNote?: string) => (
+                    <div style={{ marginBottom: '0.7rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{icon} {label}</span>
+                        <span style={{ color: willLose ? '#ef4444' : 'var(--text-muted)' }}>{stored.toFixed(1)} / {cap}{capNote || ''}</span>
+                      </div>
+                      <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', marginTop: '0.25rem' }}>
+                        <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      {willLose && (
+                        <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {warning}
+                        </div>
+                      )}
+                    </div>
+                  );
+
                   return (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                        <div style={{ color: 'var(--text-secondary)' }}>Tier {fiefDetails.tier} {fiefDetails.is_capital ? '• Capital' : ''}</div>
-                        <div style={{ color: willLose ? '#ef4444' : 'var(--text-muted)' }}>
-                          Storage: {totalStored.toFixed(1)} / {cap}
-                        </div>
-                      </div>
-                      <div style={{ marginTop: '0.45rem', marginBottom: '0.5rem' }}>
-                        <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)' }}>
-                          <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
-                        </div>
-                        {willLose && (
-                          <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
-                            📦 Storage nearly full — {lostResources.map(r => `${r.lost.toFixed(1)} ${r.label}`).join(', ')} will be lost today (food fills storage first)
-                          </div>
-                        )}
-                      </div>
+                      <div style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Tier {fiefDetails.tier} {fiefDetails.is_capital ? '• Capital' : ''}</div>
+
+                      {barRow('🌾', 'Granary (Food)', foodStored, foodCap, foodPct, foodBarColor, foodWillLose,
+                        `🌾 Granary full and the Warehouse has no room either — ${foodLost.toFixed(1)} food will be lost today. Build the next Granary tier or free up Warehouse space.`)}
+
+                      {barRow('🏦', 'Bank (Gold)', goldStored, bankCap, goldPct, goldBarColor, goldWillLose,
+                        `🏦 Bank full and the Warehouse has no room either — ${goldLost.toFixed(1)} gold will be lost today. Build a Bank (Tier 4+) or the next Bank tier.`,
+                        bankCap <= 0 ? ' (no Bank built — gold flows straight to the Warehouse)' : '')}
+
+                      {barRow('📦', 'Warehouse', warehouseStored, warehouseCap, warehousePct, warehouseBarColor, warehouseWillLose,
+                        `📦 Warehouse nearly full — ${lostResources.map(r => `${r.lost.toFixed(1)} ${r.label}`).join(', ')} will be lost today`)}
                     </>
                   );
                 })()}
@@ -3730,7 +3817,7 @@ const KingdomTab: React.FC<Props> = ({
                         {underagePopulation}
                       </button>
                       {isDungeonMaster && (
-                        <button onClick={handleGiveBirth} disabled={busy === 'give-birth'} title="DM: Immediately add one newborn child" style={{ display: 'inline-block', width: 'fit-content', padding: '0.18rem 0.45rem', borderRadius: '0.32rem', border: '1px solid rgba(251,191,36,0.5)', background: 'rgba(120,53,15,0.35)', color: '#fbbf24', fontSize: '0.72rem', fontWeight: 700, cursor: busy === 'give-birth' ? 'not-allowed' : 'pointer', opacity: busy === 'give-birth' ? 0.6 : 1, marginBottom: '0.1rem' }}>
+                        <button onClick={() => setShowGiveBirthModal(true)} disabled={busy === 'give-birth'} title="DM: Add one or more children, with a fixed or random age" style={{ display: 'inline-block', width: 'fit-content', padding: '0.18rem 0.45rem', borderRadius: '0.32rem', border: '1px solid rgba(251,191,36,0.5)', background: 'rgba(120,53,15,0.35)', color: '#fbbf24', fontSize: '0.72rem', fontWeight: 700, cursor: busy === 'give-birth' ? 'not-allowed' : 'pointer', opacity: busy === 'give-birth' ? 0.6 : 1, marginBottom: '0.1rem' }}>
                           Give Birth
                         </button>
                       )}
@@ -4334,8 +4421,26 @@ const KingdomTab: React.FC<Props> = ({
                                         fontWeight: 700,
                                       }}
                                     >
-                                      {/* Upgrade always targets a single building's id — grouping never lets one upgrade affect the whole stack. */}
                                       {busy === `upgrade-building-${Number(b.id)}` ? '...' : (count > 1 ? '↑ Upgrade 1' : '↑ Upgrade')}
+                                    </button>
+                                  )}
+                                  {count > 1 && upgrade?.canUpgrade && (
+                                    <button
+                                      onClick={() => upgradeBuildingsBatch(ids)}
+                                      disabled={busy === `upgrade-batch-${ids.join(',')}`}
+                                      title={`Upgrade all ${count} at once — cost applies per building`}
+                                      style={{
+                                        padding: '0.14rem 0.4rem',
+                                        borderRadius: '0.34rem',
+                                        border: '1px solid rgba(96,165,250,0.6)',
+                                        background: busy === `upgrade-batch-${ids.join(',')}` ? 'rgba(71,85,105,0.35)' : 'rgba(30,58,138,0.4)',
+                                        color: busy === `upgrade-batch-${ids.join(',')}` ? 'var(--text-muted)' : '#93c5fd',
+                                        cursor: busy === `upgrade-batch-${ids.join(',')}` ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {busy === `upgrade-batch-${ids.join(',')}` ? '...' : `↑↑ Upgrade All (${count})`}
                                     </button>
                                   )}
                                 </div>
@@ -4345,7 +4450,7 @@ const KingdomTab: React.FC<Props> = ({
                                 </span>
                                 {count > 1 && upgrade && (
                                   <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', fontStyle: 'italic' }}>
-                                    Upgrades 1 of {count} — cost applies once
+                                    "Upgrade 1" costs once; "Upgrade All" upgrades all {count} (cost × {count})
                                   </span>
                                 )}
                               </div>
@@ -4441,13 +4546,14 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
 
                 <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.18)', paddingTop: '0.55rem' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training (Per Unit Timers)</div>
+                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>In Training</div>
                   {(fiefDetails?.training_queue || []).length === 0 ? (
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No units currently in training.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       {(fiefDetails?.training_queue || []).map((row) => {
                         const isReady = String(row.status || '').toLowerCase() === 'ready';
+                        const count = Math.max(1, Math.floor(Number(row.count || 1)));
                         return (
                           <div
                             key={row.id}
@@ -4464,7 +4570,9 @@ const KingdomTab: React.FC<Props> = ({
                             }}
                           >
                             <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>{row.unit_type}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>#{row.id}</span>
+                            <span style={{ color: count > 1 ? 'var(--text-gold)' : 'var(--text-muted)', fontSize: '0.75rem', fontWeight: count > 1 ? 700 : 400 }}>
+                              {count > 1 ? `×${count}` : '×1'}
+                            </span>
                             <span style={{ color: isReady ? '#86efac' : 'var(--text-gold)', fontSize: '0.75rem', fontWeight: isReady ? 700 : 500 }}>
                               {isReady ? 'Ready to collect' : row.status}
                             </span>
@@ -4603,19 +4711,33 @@ const KingdomTab: React.FC<Props> = ({
                                   <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>No reserve units available.</div>
                                 ) : (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                                    {reserveEntries.map(([unit, count]) => (
-                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem' }}>{unit} <span style={{ color: 'var(--text-muted)' }}>x{Math.max(0, Number(count || 0))}</span></span>
-                                        <button
-                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, 1)}
-                                          disabled={busy === `guards-${g.building_type}` || remainingCapacity <= 0}
-                                          title={remainingCapacity <= 0 ? 'Post is at capacity' : `Assign 1 ${unit}`}
-                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: (busy === `guards-${g.building_type}` || remainingCapacity <= 0) ? 0.5 : 1 }}
-                                        >
-                                          Assign →
-                                        </button>
-                                      </div>
-                                    ))}
+                                    {reserveEntries.map(([unit, count]) => {
+                                      const key = `${g.building_type}|${unit}`;
+                                      const amount = Math.max(1, Math.floor(Number(guardAmountByKey[key] || '1') || 1));
+                                      return (
+                                        <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem' }}>{unit} <span style={{ color: 'var(--text-muted)' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              max={Math.max(1, Math.min(remainingCapacity, Math.max(0, Number(count || 0))))}
+                                              value={guardAmountByKey[key] ?? '1'}
+                                              onChange={(e) => setGuardAmountByKey((prev) => ({ ...prev, [key]: e.target.value }))}
+                                              style={{ width: '48px', padding: '0.1rem 0.25rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)', fontSize: '0.72rem' }}
+                                            />
+                                            <button
+                                              onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, amount)}
+                                              disabled={busy === `guards-${g.building_type}` || remainingCapacity <= 0}
+                                              title={remainingCapacity <= 0 ? 'Post is at capacity' : `Assign ${amount} ${unit}`}
+                                              style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.35)', color: '#86efac', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: (busy === `guards-${g.building_type}` || remainingCapacity <= 0) ? 0.5 : 1 }}
+                                            >
+                                              Assign →
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -4627,19 +4749,33 @@ const KingdomTab: React.FC<Props> = ({
                                   <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>No units posted yet.</div>
                                 ) : (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                                    {assignedEntries.map(([unit, count]) => (
-                                      <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                        <span style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>{unit} <span style={{ color: 'var(--text-muted)' }}>x{Math.max(0, Number(count || 0))}</span></span>
-                                        <button
-                                          onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, -1)}
-                                          disabled={busy === `guards-${g.building_type}`}
-                                          title={`Unassign 1 ${unit}`}
-                                          style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: busy === `guards-${g.building_type}` ? 0.5 : 1 }}
-                                        >
-                                          ← Unassign
-                                        </button>
-                                      </div>
-                                    ))}
+                                    {assignedEntries.map(([unit, count]) => {
+                                      const key = `${g.building_type}|${unit}|unassign`;
+                                      const amount = Math.max(1, Math.floor(Number(guardAmountByKey[key] || '1') || 1));
+                                      return (
+                                        <div key={unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                          <span style={{ color: 'var(--text-gold)', fontSize: '0.76rem' }}>{unit} <span style={{ color: 'var(--text-muted)' }}>x{Math.max(0, Number(count || 0))}</span></span>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              max={Math.max(1, Number(count || 0))}
+                                              value={guardAmountByKey[key] ?? '1'}
+                                              onChange={(e) => setGuardAmountByKey((prev) => ({ ...prev, [key]: e.target.value }))}
+                                              style={{ width: '48px', padding: '0.1rem 0.25rem', borderRadius: '0.3rem', border: '1px solid rgba(var(--theme-accent-rgb),0.35)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)', fontSize: '0.72rem' }}
+                                            />
+                                            <button
+                                              onClick={() => adjustBuildingGuardsDirect(g.building_type, unit, -amount)}
+                                              disabled={busy === `guards-${g.building_type}`}
+                                              title={`Unassign ${amount} ${unit}`}
+                                              style={{ padding: '0.12rem 0.4rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(127,29,29,0.35)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: '0.72rem', opacity: busy === `guards-${g.building_type}` ? 0.5 : 1 }}
+                                            >
+                                              ← Unassign
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -5684,6 +5820,139 @@ const KingdomTab: React.FC<Props> = ({
         document.body
       )}
 
+      {showGiveBirthModal && isDungeonMaster && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            padding: '2rem 1rem',
+            overflowY: 'auto',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowGiveBirthModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: 'rgba(18, 18, 18, 0.96)',
+              border: '1px solid rgba(251,191,36,0.35)',
+              borderRadius: '12px',
+              boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+              width: '100%',
+              maxWidth: '480px',
+              maxHeight: '90vh',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3 className="modal-title">Give Birth</h3>
+              <button className="modal-close" onClick={() => setShowGiveBirthModal(false)} aria-label="Close">×</button>
+            </div>
+
+            <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: 'calc(90vh - 90px)', overflowY: 'auto' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                Add one or more children directly to this fief's population. Children under 15 are added to the maturation schedule; age 15+ join as adults immediately.
+              </div>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                How many children?
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={giveBirthCount}
+                  onChange={(e) => setGiveBirthCount(e.target.value)}
+                  style={{ padding: '0.4rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
+                />
+              </label>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={() => setGiveBirthMode('fixed')}
+                  style={{
+                    flex: 1, padding: '0.4rem', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem',
+                    border: giveBirthMode === 'fixed' ? '1px solid rgba(251,191,36,0.6)' : '1px solid rgba(var(--theme-accent-rgb),0.25)',
+                    background: giveBirthMode === 'fixed' ? 'rgba(120,53,15,0.4)' : 'rgba(15,15,15,0.4)',
+                    color: giveBirthMode === 'fixed' ? '#fbbf24' : 'var(--text-muted)',
+                  }}
+                >
+                  Fixed age
+                </button>
+                <button
+                  onClick={() => setGiveBirthMode('random')}
+                  style={{
+                    flex: 1, padding: '0.4rem', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem',
+                    border: giveBirthMode === 'random' ? '1px solid rgba(251,191,36,0.6)' : '1px solid rgba(var(--theme-accent-rgb),0.25)',
+                    background: giveBirthMode === 'random' ? 'rgba(120,53,15,0.4)' : 'rgba(15,15,15,0.4)',
+                    color: giveBirthMode === 'random' ? '#fbbf24' : 'var(--text-muted)',
+                  }}
+                >
+                  Random age range
+                </button>
+              </div>
+
+              {giveBirthMode === 'fixed' ? (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                  Age (years) — 0 for a newborn, 15+ joins as an adult
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={giveBirthAge}
+                    onChange={(e) => setGiveBirthAge(e.target.value)}
+                    style={{ padding: '0.4rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
+                  />
+                </label>
+              ) : (
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', color: 'var(--text-secondary)', fontSize: '0.82rem', flex: 1 }}>
+                    Min age (years)
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={giveBirthMinAge}
+                      onChange={(e) => setGiveBirthMinAge(e.target.value)}
+                      style={{ padding: '0.4rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
+                    />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', color: 'var(--text-secondary)', fontSize: '0.82rem', flex: 1 }}>
+                    Max age (years)
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={giveBirthMaxAge}
+                      onChange={(e) => setGiveBirthMaxAge(e.target.value)}
+                      style={{ padding: '0.4rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)' }}
+                    />
+                  </label>
+                </div>
+              )}
+              {giveBirthMode === 'random' && (
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.76rem', fontStyle: 'italic' }}>
+                  Each child independently rolls a random age between min and max (inclusive).
+                </div>
+              )}
+
+              <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button className="btn btn-secondary" onClick={() => setShowGiveBirthModal(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleGiveBirth} disabled={busy === 'give-birth'}>
+                  {busy === 'give-birth' ? 'Adding...' : 'Add Children'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {showBuildModal && ReactDOM.createPortal(
         <div
           style={{
@@ -5799,22 +6068,32 @@ const KingdomTab: React.FC<Props> = ({
                         {locked && (
                           <div style={{ color: '#fca5a5', fontSize: '0.74rem' }}>{lockReason || 'Locked'}</div>
                         )}
-                        <button
-                          onClick={() => queueBuilding(String(b.key))}
-                          disabled={locked || busy === `build-${String(b.key)}`}
-                          style={{
-                            marginTop: '0.15rem',
-                            padding: '0.34rem 0.62rem',
-                            borderRadius: '0.4rem',
-                            border: `1px solid ${c.border}`,
-                            background: (locked || busy === `build-${String(b.key)}`) ? 'rgba(71,85,105,0.35)' : 'rgba(8,8,8,0.55)',
-                            color: (locked || busy === `build-${String(b.key)}`) ? 'var(--text-muted)' : c.text,
-                            cursor: (locked || busy === `build-${String(b.key)}`) ? 'not-allowed' : 'pointer',
-                            alignSelf: 'flex-start',
-                          }}
-                        >
-                          {locked ? 'Locked' : busy === `build-${String(b.key)}` ? 'Queueing...' : 'Build'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={buildCountByKey[String(b.key)] ?? '1'}
+                            onChange={(e) => setBuildCountByKey((prev) => ({ ...prev, [String(b.key)]: e.target.value }))}
+                            disabled={locked}
+                            title="How many to queue at once"
+                            style={{ width: '52px', padding: '0.3rem 0.35rem', borderRadius: '0.4rem', border: `1px solid ${c.border}`, background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)', fontSize: '0.78rem' }}
+                          />
+                          <button
+                            onClick={() => queueBuilding(String(b.key), Math.max(1, Math.min(100, Math.floor(Number(buildCountByKey[String(b.key)] || '1') || 1))))}
+                            disabled={locked || busy === `build-${String(b.key)}`}
+                            style={{
+                              padding: '0.34rem 0.62rem',
+                              borderRadius: '0.4rem',
+                              border: `1px solid ${c.border}`,
+                              background: (locked || busy === `build-${String(b.key)}`) ? 'rgba(71,85,105,0.35)' : 'rgba(8,8,8,0.55)',
+                              color: (locked || busy === `build-${String(b.key)}`) ? 'var(--text-muted)' : c.text,
+                              cursor: (locked || busy === `build-${String(b.key)}`) ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {locked ? 'Locked' : busy === `build-${String(b.key)}` ? 'Queueing...' : 'Build'}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

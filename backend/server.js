@@ -404,6 +404,8 @@ const startServer = async () => {
         { name: 'updatePetFoodDefaultPrices', fn: require('./migrations/update_pet_food_default_prices') },
         { name: 'addWarlockUtilityInvocations', fn: require('./migrations/add_warlock_utility_invocations') },
         { name: 'addSkillsAutoGrantColumn', fn: require('./migrations/add_skills_auto_grant_column') },
+        { name: 'addFoodStorageCapacity', fn: require('./migrations/add_food_storage_capacity') },
+        { name: 'addBankCapacity', fn: require('./migrations/add_bank_capacity') },
       ];
       
       const failedMigrations = [];

@@ -658,9 +658,29 @@ class Campaign {
     return Campaign.STORAGE_CAPACITY_BONUS_BY_TYPE[key] || 0;
   }
 
+  // General warehouse capacity — wood/stone/minerals/gold/faith only. Food has its own
+  // separate pool (see FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE below) so an unspent woodpile
+  // can never crowd out food storage and starve a population that's actually producing
+  // plenty of food.
   static STORAGE_CAPACITY_BONUS_BY_TYPE = {
     storage: 100,
     storage_shack: 200,
+    advanced_storage_tent: 300,
+    storehouse: 400,
+    reinforced_storehouse: 500,
+    central_storehouse: 600,
+    storage_advanced: 700,
+    vaulted_warehouse: 800,
+  };
+
+  static getFoodStorageCapacityBonusForBuilding(buildingType) {
+    const key = String(buildingType || '');
+    return Campaign.FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE[key] || 0;
+  }
+
+  // Granary chain — the same building line that raises vegetable worker output
+  // (see VEG_BUILDING_CHAIN) also raises how much food that farming can bank.
+  static FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE = {
     granary: 200,
     reinforced_granary: 250,
     cold_cellar_granary: 300,
@@ -670,13 +690,24 @@ class Campaign {
     nutrient_reserve_hall: 500,
     strategic_food_vault: 550,
     eternal_harvest_vault: 600,
-    advanced_storage_tent: 300,
-    storehouse: 400,
-    reinforced_storehouse: 500,
-    central_storehouse: 600,
-    storage_advanced: 700,
-    vaulted_warehouse: 800,
   };
+
+  // Base food storage scales with fief tier — a bigger population needs a bigger larder
+  // even before any granary is built. Alternates x5/x2 per tier.
+  static FOOD_STORAGE_BASE_BY_TIER = {
+    1: 100,
+    2: 500,
+    3: 1000,
+    4: 5000,
+    5: 10000,
+  };
+
+  static getFoodStorageBaseForTier(tier) {
+    const normalizedTier = Math.max(1, Math.floor(Number(tier) || 1));
+    const tiers = Object.keys(Campaign.FOOD_STORAGE_BASE_BY_TIER).map(Number).sort((a, b) => a - b);
+    const cappedTier = Math.min(normalizedTier, tiers[tiers.length - 1]);
+    return Campaign.FOOD_STORAGE_BASE_BY_TIER[cappedTier] || Campaign.FOOD_STORAGE_BASE_BY_TIER[1];
+  }
 
   static getStorageCapacityResearchMultiplier(completedResearch) {
     const done = new Set(Array.isArray(completedResearch) ? completedResearch : []);
@@ -697,6 +728,48 @@ class Campaign {
     return Math.max(baseCapacity, capacity);
   }
 
+  // Food's own dedicated storage pool: tier-scaled base + Granary-chain bonuses, with the
+  // same storage research multiplier the general warehouse gets.
+  static calculateFoodStorageCapacityFromCompletedBuildings(completedBuildings, tier, completedResearch = []) {
+    const baseCapacity = Campaign.getFoodStorageBaseForTier(tier);
+    let bonus = 0;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      bonus += Campaign.getFoodStorageCapacityBonusForBuilding(type);
+    }
+    const multiplier = Campaign.getStorageCapacityResearchMultiplier(completedResearch);
+    const capacity = (baseCapacity + bonus) * multiplier;
+    return Math.max(baseCapacity, capacity);
+  }
+
+  static getBankCapacityBonusForBuilding(buildingType) {
+    const key = String(buildingType || '');
+    return Campaign.BANK_CAPACITY_BONUS_BY_TYPE[key] || 0;
+  }
+
+  // Bank chain (Tier 4+) — gold's own dedicated pool, separate from the general Warehouse,
+  // mirroring the Granary/food split. Unlike food there's no free tier-based base: gold
+  // storage exists only in the Bank you build (base capacity is 0 until the first Bank
+  // is complete), so an unbanked kingdom keeps its old behavior (gold shares the general
+  // Warehouse pool via the overflow rule in applyStorageCapacity).
+  static BANK_CAPACITY_BONUS_BY_TYPE = {
+    bank: 300,
+    trade_bank: 500,
+    merchant_bank: 750,
+    royal_treasury: 1000,
+  };
+
+  // No tier-based free base for gold — it only banks in a Bank. See comment above.
+  static calculateBankCapacityFromCompletedBuildings(completedBuildings, completedResearch = []) {
+    let bonus = 0;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      bonus += Campaign.getBankCapacityBonusForBuilding(type);
+    }
+    const multiplier = Campaign.getStorageCapacityResearchMultiplier(completedResearch);
+    return Math.max(0, bonus * multiplier);
+  }
+
   static applyBuildingUnlockEffects(fief, buildingType) {
     if (!buildingType) return;
     const key = String(buildingType);
@@ -704,6 +777,16 @@ class Campaign {
     const storageBonus = Campaign.getStorageCapacityBonusForBuilding(key);
     if (storageBonus > 0) {
       fief.storageCapacity = Math.max(0, Number(fief.storageCapacity || 100)) + storageBonus;
+    }
+
+    const foodStorageBonus = Campaign.getFoodStorageCapacityBonusForBuilding(key);
+    if (foodStorageBonus > 0) {
+      fief.foodStorageCapacity = Math.max(0, Number(fief.foodStorageCapacity || 100)) + foodStorageBonus;
+    }
+
+    const bankCapacityBonus = Campaign.getBankCapacityBonusForBuilding(key);
+    if (bankCapacityBonus > 0) {
+      fief.bankCapacity = Math.max(0, Number(fief.bankCapacity || 0)) + bankCapacityBonus;
     }
 
     if (key === 'hunters_guild' || key === 'hunting_lodge') {
@@ -1004,7 +1087,13 @@ class Campaign {
     return output;
   }
 
-  static applyStorageCapacity(storedResources, producedResources, capacity) {
+  // `capacity` caps the general Warehouse (wood/stone/minerals/faith, plus any food/gold
+  // overflow — see below). `foodCapacity` is the Granary pool, `bankCapacity` is the Bank
+  // pool. Food and gold each fill their own dedicated pool first; anything that doesn't
+  // fit there overflows into the general Warehouse instead of being wasted outright —
+  // Granary/Bank space is always used before Warehouse space, but a full Granary/Bank no
+  // longer means the surplus is simply lost as long as the Warehouse has room.
+  static applyStorageCapacity(storedResources, producedResources, capacity, foodCapacity, bankCapacity) {
     const stored = Campaign.toNumericResourceMap(storedResources);
     const legacyFood = Math.max(0, Number(stored.food || 0)) + Math.max(0, Number(stored.meat || 0)) + Math.max(0, Number(stored.vegetables || 0));
     stored.food = legacyFood;
@@ -1025,20 +1114,66 @@ class Campaign {
       }
     }
     const applied = {};
-    let used = Object.values(stored).reduce((sum, n) => sum + Math.max(0, Number(n) || 0), 0);
 
+    // How much of the *existing* stockpile already sits above its dedicated pool's cap —
+    // that portion is occupying general Warehouse space right now (e.g. from a previous
+    // day's overflow, or a Granary/Bank capacity that shrank). Stateless: derived fresh
+    // from current totals vs. caps each time, no separate "origin" tracking needed.
+    const foodCap = Math.max(0, Number(foodCapacity ?? capacity) || 0);
+    const bankCap = Math.max(0, Number(bankCapacity ?? 0));
+    let generalUsed = Object.entries(stored).reduce((sum, [resource, n]) => {
+      const amount = Math.max(0, Number(n) || 0);
+      if (resource === 'food') return sum + Math.max(0, amount - foodCap);
+      if (resource === 'gold') return sum + Math.max(0, amount - bankCap);
+      return sum + amount;
+    }, 0);
+
+    // Fills `stored[resource]` from `produced`, up to `dedicatedCap` first, then spills
+    // any remainder into the shared general pool (tracked via the closured generalUsed).
+    const fillDedicatedThenOverflow = (resource, produced, dedicatedCap) => {
+      if (produced <= 0) {
+        applied[resource] = 0;
+        return;
+      }
+      let accepted = 0;
+      const currentStored = Math.max(0, Number(stored[resource]) || 0);
+      const roomInDedicated = Math.max(0, dedicatedCap - currentStored);
+      const toDedicated = Math.min(produced, roomInDedicated);
+      if (toDedicated > 0) {
+        stored[resource] = currentStored + toDedicated;
+        accepted += toDedicated;
+      }
+      const remainder = produced - toDedicated;
+      if (remainder > 0) {
+        const roomGeneral = Math.max(0, Number(capacity) - generalUsed);
+        const toGeneral = Math.min(remainder, roomGeneral);
+        if (toGeneral > 0) {
+          stored[resource] = (Number(stored[resource]) || 0) + toGeneral;
+          accepted += toGeneral;
+          generalUsed += toGeneral;
+        }
+      }
+      applied[resource] = accepted;
+    };
+
+    // Food (Granary) and gold (Bank) each get their dedicated pool first, then overflow.
+    fillDedicatedThenOverflow('food', Math.max(0, Number(normalizedProduced.food) || 0), foodCap);
+    fillDedicatedThenOverflow('gold', Math.max(0, Number(normalizedProduced.gold) || 0), bankCap);
+
+    // Everything else shares the general Warehouse pool only, same as before.
     for (const [resource, amountRaw] of Object.entries(normalizedProduced)) {
+      if (resource === 'food' || resource === 'gold') continue;
       const amount = Math.max(0, Number(amountRaw) || 0);
       if (amount <= 0) {
         applied[resource] = 0;
         continue;
       }
 
-      const available = Math.max(0, Number(capacity) - used);
+      const available = Math.max(0, Number(capacity) - generalUsed);
       const accepted = Math.min(amount, available);
       if (accepted > 0) {
         stored[resource] = (Number(stored[resource]) || 0) + accepted;
-        used += accepted;
+        generalUsed += accepted;
       }
       applied[resource] = accepted;
     }
@@ -1314,6 +1449,8 @@ class Campaign {
       let hasLocationModifiersColumn = false;
       let hasTravelDaysColumn = false;
       let hasUnitReservesColumn = false;
+      let hasFoodStorageCapacityColumn = false;
+      let hasBankCapacityColumn = false;
       if (canSimulateKingdoms) {
         const fiefColumnsCheck = await client.query(
           `SELECT column_name
@@ -1334,6 +1471,8 @@ class Campaign {
             'travel_days_remaining',
             'unit_reserves',
             'unrest',
+            'food_storage_capacity',
+            'bank_capacity',
           ]]
         );
         const availableColumns = new Set(fiefColumnsCheck.rows.map((r) => String(r.column_name || '')));
@@ -1350,6 +1489,8 @@ class Campaign {
         hasTravelDaysColumn = availableColumns.has('travel_days_remaining');
         hasUnitReservesColumn = availableColumns.has('unit_reserves');
         hasUnrestColumn = availableColumns.has('unrest');
+        hasFoodStorageCapacityColumn = availableColumns.has('food_storage_capacity');
+        hasBankCapacityColumn = availableColumns.has('bank_capacity');
       }
 
       const resourcesGained = {};
@@ -1380,6 +1521,8 @@ class Campaign {
                     ${hasTierUpgradeDaysRemaining4Column ? "COALESCE(f.tier_upgrade_days_remaining_4, 0)" : '0'} AS tier_upgrade_days_remaining_4,
                     ${hasTierUpgradeDaysRemaining5Column ? "COALESCE(f.tier_upgrade_days_remaining_5, 0)" : '0'} AS tier_upgrade_days_remaining_5,
                   COALESCE(f.storage_capacity, 100) AS storage_capacity,
+                    ${hasFoodStorageCapacityColumn ? 'COALESCE(f.food_storage_capacity, 100)' : '100'} AS food_storage_capacity,
+                    ${hasBankCapacityColumn ? 'COALESCE(f.bank_capacity, 0)' : '0'} AS bank_capacity,
                   COALESCE(f.stored_resources, '{}'::jsonb) AS stored_resources,
                   COALESCE(f.worker_assignments, '{}'::jsonb) AS worker_assignments,
                     ${hasSlaveWorkerAssignmentsColumn ? "COALESCE(f.slave_worker_assignments, '{}'::jsonb)" : "'{}'::jsonb"} AS slave_worker_assignments,
@@ -1416,6 +1559,8 @@ class Campaign {
             tierUpgradeDaysRemaining4: Number(row.tier_upgrade_days_remaining_4 || 0),
             tierUpgradeDaysRemaining5: Number(row.tier_upgrade_days_remaining_5 || 0),
             storageCapacity: Number(row.storage_capacity || 100),
+            foodStorageCapacity: Number(row.food_storage_capacity || 100),
+            bankCapacity: Number(row.bank_capacity || 0),
             storedResources: Campaign.toNumericResourceMap(row.stored_resources),
             workerAssignments: Campaign.toNumericResourceMap(row.worker_assignments),
             slaveWorkerAssignments: Campaign.toNumericResourceMap(row.slave_worker_assignments),
@@ -1605,6 +1750,8 @@ class Campaign {
           const fiefBuildings = buildingsByFief.get(fief.id) || [];
           const completed = fiefBuildings.filter((b) => b.isComplete);
           fief.storageCapacity = Campaign.calculateStorageCapacityFromCompletedBuildings(completed, fief.completedResearch);
+          fief.foodStorageCapacity = Campaign.calculateFoodStorageCapacityFromCompletedBuildings(completed, fief.tier, fief.completedResearch);
+          fief.bankCapacity = Campaign.calculateBankCapacityFromCompletedBuildings(completed, fief.completedResearch);
           Campaign.applyBuildingBasedWorkerCaps(fief, completed);
 
           // Tier 5+ civic stability: unrest drifts toward a target set by population
@@ -1646,7 +1793,14 @@ class Campaign {
           const vegHarvestPerWorkerPerDay = Math.max(0, Number(productionConfig.vegetablesPerWorkerPerHarvestDay || 9.375));
           const vegetableResearchMultiplier = Campaign.getResearchWorkerYieldMultiplier(fief.completedResearch, 'vegetables');
           if (hasVegetableHarvestStateColumn) {
-            const state = Campaign.normalizeVegetableHarvestState(fief.vegetableHarvestState);
+            // fief.vegetableHarvestState is already normalized (camelCase) — it was normalized
+            // once from the raw DB row before this day loop started (see fiefStates load above),
+            // and every iteration writes an already-normalized object back to it. Re-normalizing
+            // here would re-run normalizeVegetableHarvestState on its own camelCase output, which
+            // expects snake_case keys (day_in_phase/locked_workers/etc.) — on day 2+ of any
+            // multi-day advance that silently zeroed dayInPhase/lockedWorkers/accumulatedWorkerDays
+            // every day, collapsing the harvest to near-nothing after the very first day.
+            const state = fief.vegetableHarvestState;
             const currentAssignedVegetableWorkers = Math.max(0, Math.floor(Number((fief.workerAssignments || {}).vegetables || 0)))
               + Math.max(0, Math.floor(Number((fief.slaveWorkerAssignments || {}).vegetables || 0) * slaveOutputMultiplier));
 
@@ -1726,7 +1880,7 @@ class Campaign {
             ),
             unrestPenaltyPct
           );
-          const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity);
+          const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity, fief.foodStorageCapacity, fief.bankCapacity);
           fief.storedResources = capacityApplied.stored;
 
           for (const [resource, amount] of Object.entries(capacityApplied.applied)) {
@@ -2324,6 +2478,18 @@ class Campaign {
           updateSetClauses.push(`storage_capacity = $${paramIndex}`);
           updateValues.push(Math.max(0, Number(fief.storageCapacity || 100)));
           paramIndex += 1;
+
+          if (hasFoodStorageCapacityColumn) {
+            updateSetClauses.push(`food_storage_capacity = $${paramIndex}`);
+            updateValues.push(Math.max(0, Number(fief.foodStorageCapacity || 100)));
+            paramIndex += 1;
+          }
+
+          if (hasBankCapacityColumn) {
+            updateSetClauses.push(`bank_capacity = $${paramIndex}`);
+            updateValues.push(Math.max(0, Number(fief.bankCapacity || 0)));
+            paramIndex += 1;
+          }
 
           updateSetClauses.push(`population = $${paramIndex}`);
           updateValues.push(Math.max(0, Math.floor(Number(fief.population || 0))));

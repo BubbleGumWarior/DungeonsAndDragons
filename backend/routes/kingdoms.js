@@ -1884,6 +1884,36 @@ Object.assign(BUILDING_CATALOG, {
     prerequisites: [{ type: 'strategic_food_vault', minCount: 1 }],
   },
 
+  // ── Bank chain (Tier 4+) ─────────────────────────────────────────────────
+  // Passive, no worker lane. Gold's own dedicated storage pool — separate from the
+  // general Warehouse, mirroring the Granary/food split. A full Bank still lets gold
+  // overflow into the Warehouse instead of being wasted (see Campaign.applyStorageCapacity),
+  // but Bank space is always filled first.
+  bank: {
+    key: 'bank', name: 'Bank',
+    description: 'Passive civic building — no worker lane. A dedicated vault for the treasury: adds +300 gold storage capacity, separate from the general Warehouse.',
+    tierRequired: 4, cost: { wood: 26, stone: 22, iron: 8 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'market_hall', minCount: 1 }],
+  },
+  trade_bank: {
+    key: 'trade_bank', name: 'Trade Bank',
+    description: 'Passive civic building — no worker lane. Adds +500 gold storage capacity.',
+    tierRequired: 5, cost: { wood: 32, stone: 28, iron: 12 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'bank', minCount: 1 }],
+  },
+  merchant_bank: {
+    key: 'merchant_bank', name: 'Merchant Bank',
+    description: 'Passive civic building — no worker lane. Adds +750 gold storage capacity.',
+    tierRequired: 6, cost: { wood: 38, stone: 34, iron: 16 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'trade_bank', minCount: 1 }],
+  },
+  royal_treasury: {
+    key: 'royal_treasury', name: 'Royal Treasury',
+    description: 'Passive civic building — no worker lane. Adds +1000 gold storage capacity — the best treasury available.',
+    tierRequired: 7, cost: { wood: 44, stone: 40, iron: 20 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'merchant_bank', minCount: 1 }],
+  },
+
   // ── Lumber Mill tiers 3-7 (matches BUILDING_TIER_MATRIX.md) ────────────────
   timber_mill: {
     key: 'timber_mill', name: 'Timber Mill',
@@ -2323,6 +2353,10 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   nutrient_reserve_hall: { researchRequired: null, upgradedBuilding: 'strategic_food_vault', tier3: 'strategic_food_vault' },
   strategic_food_vault: { researchRequired: null, upgradedBuilding: 'eternal_harvest_vault', tier3: 'eternal_harvest_vault' },
 
+  bank: { researchRequired: null, upgradedBuilding: 'trade_bank', tier3: 'trade_bank' },
+  trade_bank: { researchRequired: null, upgradedBuilding: 'merchant_bank', tier3: 'merchant_bank' },
+  merchant_bank: { researchRequired: null, upgradedBuilding: 'royal_treasury', tier3: 'royal_treasury' },
+
   lumber_mill: { researchRequired: null, upgradedBuilding: 'timber_mill', tier3: 'timber_mill' },
   timber_mill: { researchRequired: null, upgradedBuilding: 'advanced_timber_mill', tier3: 'advanced_timber_mill' },
   advanced_timber_mill: { researchRequired: null, upgradedBuilding: 'sawmill_complex', tier3: 'sawmill_complex' },
@@ -2538,9 +2572,24 @@ const applyBuildingBasedWorkerCaps = (unlockedResources, maxWorkersPerResource, 
   return { nextUnlocked, nextMaxWorkers };
 };
 
+// General warehouse capacity — wood/stone/minerals/gold/faith only. Food has its own
+// separate pool (see FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE below) so an unspent woodpile
+// can never crowd out food storage and starve a population that's actually producing
+// plenty of food. Mirrors Campaign.STORAGE_CAPACITY_BONUS_BY_TYPE exactly.
 const STORAGE_CAPACITY_BONUS_BY_TYPE = {
   storage: 100,
   storage_shack: 200,
+  advanced_storage_tent: 300,
+  storehouse: 400,
+  reinforced_storehouse: 500,
+  central_storehouse: 600,
+  storage_advanced: 700,
+  vaulted_warehouse: 800,
+};
+
+// Granary chain — the same building line that raises vegetable worker output also raises
+// how much food that farming can bank. Mirrors Campaign.FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE.
+const FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE = {
   granary: 200,
   reinforced_granary: 250,
   cold_cellar_granary: 300,
@@ -2550,17 +2599,26 @@ const STORAGE_CAPACITY_BONUS_BY_TYPE = {
   nutrient_reserve_hall: 500,
   strategic_food_vault: 550,
   eternal_harvest_vault: 600,
-  advanced_storage_tent: 300,
-  storehouse: 400,
-  reinforced_storehouse: 500,
-  central_storehouse: 600,
-  storage_advanced: 700,
-  vaulted_warehouse: 800,
+};
+
+// Base food storage scales with fief tier — mirrors Campaign.FOOD_STORAGE_BASE_BY_TIER.
+const FOOD_STORAGE_BASE_BY_TIER = { 1: 100, 2: 500, 3: 1000, 4: 5000, 5: 10000 };
+
+const getFoodStorageBaseForTier = (tier) => {
+  const normalizedTier = Math.max(1, Math.floor(Number(tier) || 1));
+  const tiers = Object.keys(FOOD_STORAGE_BASE_BY_TIER).map(Number).sort((a, b) => a - b);
+  const cappedTier = Math.min(normalizedTier, tiers[tiers.length - 1]);
+  return FOOD_STORAGE_BASE_BY_TIER[cappedTier] || FOOD_STORAGE_BASE_BY_TIER[1];
 };
 
 const getStorageCapacityBonusForBuilding = (buildingType) => {
   const key = String(buildingType || '');
   return STORAGE_CAPACITY_BONUS_BY_TYPE[key] || 0;
+};
+
+const getFoodStorageCapacityBonusForBuilding = (buildingType) => {
+  const key = String(buildingType || '');
+  return FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE[key] || 0;
 };
 
 const calculateStorageCapacityFromBuildings = (buildings) => {
@@ -2571,6 +2629,39 @@ const calculateStorageCapacityFromBuildings = (buildings) => {
     bonus += getStorageCapacityBonusForBuilding(building.building_type);
   }
   return Math.max(baseCapacity, baseCapacity + bonus);
+};
+
+const calculateFoodStorageCapacityFromBuildings = (buildings, tier) => {
+  const baseCapacity = getFoodStorageBaseForTier(tier);
+  let bonus = 0;
+  for (const building of (buildings || [])) {
+    if (!building?.is_complete) continue;
+    bonus += getFoodStorageCapacityBonusForBuilding(building.building_type);
+  }
+  return Math.max(baseCapacity, baseCapacity + bonus);
+};
+
+// Bank chain (Tier 4+) — gold's own dedicated pool. No free tier-based base (unlike food):
+// mirrors Campaign.BANK_CAPACITY_BONUS_BY_TYPE.
+const BANK_CAPACITY_BONUS_BY_TYPE = {
+  bank: 300,
+  trade_bank: 500,
+  merchant_bank: 750,
+  royal_treasury: 1000,
+};
+
+const getBankCapacityBonusForBuilding = (buildingType) => {
+  const key = String(buildingType || '');
+  return BANK_CAPACITY_BONUS_BY_TYPE[key] || 0;
+};
+
+const calculateBankCapacityFromBuildings = (buildings) => {
+  let bonus = 0;
+  for (const building of (buildings || [])) {
+    if (!building?.is_complete) continue;
+    bonus += getBankCapacityBonusForBuilding(building.building_type);
+  }
+  return Math.max(0, bonus);
 };
 
 const HOUSING_CAPACITY_BY_TYPE = {
@@ -3089,7 +3180,8 @@ const getFiefTrainingQueue = async (fiefId, currentDay) => {
             days_remaining,
             started_day,
             complete_day,
-            created_at
+            created_at,
+            COALESCE(count, 1) AS count
      FROM fief_training
      WHERE fief_id = $1
        AND status IN ('training', 'ready')
@@ -3097,23 +3189,48 @@ const getFiefTrainingQueue = async (fiefId, currentDay) => {
     [fiefId]
   );
 
-  return queueResult.rows.map((row) => {
+  // Group rows that share the same unit/source/status/finish day into a single queue
+  // entry with a summed count — a batch trained in one request is already one row
+  // (see the training-start/upgrade endpoints), but this also collapses any older
+  // per-unit rows (or separate same-day batches) into one item for display, per the
+  // "group ones with the same training time left" request.
+  const grouped = new Map();
+  for (const row of queueResult.rows) {
     const completeDay = row.complete_day == null ? null : Math.max(0, Number(row.complete_day));
     const daysRemaining = completeDay == null
       ? Math.max(0, Number(row.days_remaining || 0))
       : Math.max(0, completeDay - currentDay);
-    return {
-      id: Number(row.id),
-      unit_type: String(row.unit_type || ''),
-      source_unit_type: row.source_unit_type ? String(row.source_unit_type) : null,
-      status: String(row.status || 'training'),
-      training_days_required: Math.max(0, Number(row.training_days_required || 0)),
-      days_remaining: daysRemaining,
-      started_day: row.started_day == null ? null : Number(row.started_day),
-      complete_day: completeDay,
-      created_at: row.created_at,
-    };
-  });
+    const groupKey = [
+      String(row.unit_type || ''),
+      row.source_unit_type ? String(row.source_unit_type) : '',
+      String(row.status || 'training'),
+      completeDay == null ? `d${daysRemaining}` : `c${completeDay}`,
+    ].join('|');
+
+    const count = Math.max(1, Math.floor(Number(row.count || 1)));
+    const existing = grouped.get(groupKey);
+    if (existing) {
+      existing.count += count;
+      existing.ids.push(Number(row.id));
+      if (Number(row.id) < existing.id) existing.id = Number(row.id);
+    } else {
+      grouped.set(groupKey, {
+        id: Number(row.id),
+        ids: [Number(row.id)],
+        unit_type: String(row.unit_type || ''),
+        source_unit_type: row.source_unit_type ? String(row.source_unit_type) : null,
+        status: String(row.status || 'training'),
+        training_days_required: Math.max(0, Number(row.training_days_required || 0)),
+        days_remaining: daysRemaining,
+        started_day: row.started_day == null ? null : Number(row.started_day),
+        complete_day: completeDay,
+        created_at: row.created_at,
+        count,
+      });
+    }
+  }
+
+  return Array.from(grouped.values());
 };
 
 const buildGuardAssignmentsView = (buildings) => {
@@ -3881,24 +3998,36 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     }
 
     let calculatedStorageCapacity = calculateStorageCapacityFromBuildings(buildingsResult.rows);
-    
-    // Apply storage multiplier from storage research
+    let calculatedFoodStorageCapacity = calculateFoodStorageCapacityFromBuildings(buildingsResult.rows, fief.tier);
+    let calculatedBankCapacity = calculateBankCapacityFromBuildings(buildingsResult.rows);
+
+    // Apply storage multiplier from storage research (same multiplier for all three pools)
     const completedResearchList = Array.isArray(fief.completed_research) ? fief.completed_research : [];
     if (completedResearchList.includes('tier3_storage')) {
       calculatedStorageCapacity = Math.floor(calculatedStorageCapacity * 2);
+      calculatedFoodStorageCapacity = Math.floor(calculatedFoodStorageCapacity * 2);
+      calculatedBankCapacity = Math.floor(calculatedBankCapacity * 2);
     } else if (completedResearchList.includes('tier2_storage')) {
       calculatedStorageCapacity = Math.floor(calculatedStorageCapacity * 1.5);
+      calculatedFoodStorageCapacity = Math.floor(calculatedFoodStorageCapacity * 1.5);
+      calculatedBankCapacity = Math.floor(calculatedBankCapacity * 1.5);
     }
-    
+
     const currentStorageCapacity = Math.max(0, Number(fief.storage_capacity || 100));
-    if (calculatedStorageCapacity !== currentStorageCapacity) {
+    const currentFoodStorageCapacity = Math.max(0, Number(fief.food_storage_capacity || 100));
+    const currentBankCapacity = Math.max(0, Number(fief.bank_capacity || 0));
+    if (calculatedStorageCapacity !== currentStorageCapacity || calculatedFoodStorageCapacity !== currentFoodStorageCapacity || calculatedBankCapacity !== currentBankCapacity) {
       await pool.query(
         `UPDATE fiefs
-         SET storage_capacity = $2
+         SET storage_capacity = $2,
+             food_storage_capacity = $3,
+             bank_capacity = $4
          WHERE id = $1`,
-        [fiefId, calculatedStorageCapacity]
+        [fiefId, calculatedStorageCapacity, calculatedFoodStorageCapacity, calculatedBankCapacity]
       );
       fief.storage_capacity = calculatedStorageCapacity;
+      fief.food_storage_capacity = calculatedFoodStorageCapacity;
+      fief.bank_capacity = calculatedBankCapacity;
     }
 
     let researchQueue = [];
@@ -4340,21 +4469,25 @@ router.patch('/fiefs/:id/military/train', authenticateToken, async (req, res) =>
 
     const currentDay = await getCampaignCurrentDay(owned.campaign_id);
 
-    for (let i = 0; i < amount; i += 1) {
-      await client.query(
-        `INSERT INTO fief_training
-           (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier)
-         VALUES
-           ($1, $2, NULL, 1, $3, $3, 'training', $4, $5, '{}'::jsonb, 1)`,
-        [
-          fiefId,
-          unitType,
-          effectiveDays,
-          currentDay,
-          currentDay + effectiveDays,
-        ]
-      );
-    }
+    // Every unit in this batch shares the same type/training time/start/finish day, so
+    // they're stored as a single row with count = amount instead of `amount` individual
+    // rows — training 1000 at once used to mean 1000 sequential INSERTs in one request,
+    // which is what was overloading the server. One row, grouped by count, is both faster
+    // and what the training-queue UI now displays directly (see getFiefTrainingQueue).
+    await client.query(
+      `INSERT INTO fief_training
+         (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier)
+       VALUES
+         ($1, $2, NULL, $6, $3, $3, 'training', $4, $5, '{}'::jsonb, 1)`,
+      [
+        fiefId,
+        unitType,
+        effectiveDays,
+        currentDay,
+        currentDay + effectiveDays,
+        amount,
+      ]
+    );
 
     await client.query(
       `UPDATE fiefs
@@ -4421,7 +4554,7 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
     await client.query('BEGIN');
 
     const readyRowsResult = await client.query(
-      `SELECT id, unit_type
+      `SELECT id, unit_type, COALESCE(count, 1) AS count
        FROM fief_training
        WHERE fief_id = $1
          AND status IN ('training', 'ready')
@@ -4431,6 +4564,7 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
     );
 
     const readyRows = readyRowsResult.rows;
+    const totalCollected = readyRows.reduce((sum, r) => sum + Math.max(1, Math.floor(Number(r.count || 1))), 0);
     if (readyRows.length > 0) {
       const reservesLock = await client.query(
         `SELECT unit_reserves, soldiers
@@ -4443,7 +4577,8 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
       const currentReserves = normalizeUnitReserves(reservesLock.rows[0]?.unit_reserves);
       for (const row of readyRows) {
         const unitType = String(row.unit_type || MILITIA_UNIT_TYPE);
-        currentReserves[unitType] = Math.max(0, Number(currentReserves[unitType] || 0)) + 1;
+        const rowCount = Math.max(1, Math.floor(Number(row.count || 1)));
+        currentReserves[unitType] = Math.max(0, Number(currentReserves[unitType] || 0)) + rowCount;
       }
 
       const militiaCount = Math.max(0, Number(currentReserves[MILITIA_UNIT_TYPE] || 0));
@@ -4474,7 +4609,7 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
     const refreshed = await getFiefContext(fiefId);
     const queue = await getFiefTrainingQueue(fiefId, currentDay);
     res.json({
-      collected: readyRows.length,
+      collected: totalCollected,
       fief: {
         ...withPopulationBreakdown(refreshed),
         unit_reserves: normalizeUnitReserves(refreshed?.unit_reserves),
@@ -4569,22 +4704,23 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
     reserves[fromUnitType] = availableSource - amount;
 
     const currentDay = await getCampaignCurrentDay(owned.campaign_id);
-    for (let i = 0; i < amount; i += 1) {
-      await client.query(
-        `INSERT INTO fief_training
-           (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier)
-         VALUES
-           ($1, $2, $3, 1, $4, $4, 'training', $5, $6, '{}'::jsonb, 1)`,
-        [
-          fiefId,
-          toUnitType,
-          fromUnitType,
-          effectiveDays,
-          currentDay,
-          currentDay + effectiveDays,
-        ]
-      );
-    }
+    // One row with count = amount instead of `amount` individual INSERTs — see the
+    // training-start endpoint above for why.
+    await client.query(
+      `INSERT INTO fief_training
+         (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier)
+       VALUES
+         ($1, $2, $3, $7, $4, $4, 'training', $5, $6, '{}'::jsonb, 1)`,
+      [
+        fiefId,
+        toUnitType,
+        fromUnitType,
+        effectiveDays,
+        currentDay,
+        currentDay + effectiveDays,
+        amount,
+      ]
+    );
 
     await client.query(
       `UPDATE fiefs
@@ -5158,6 +5294,7 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
   try {
     const fiefId = Number(req.params.id);
     const buildingType = String(req.body?.buildingType || '').trim();
+    const count = Math.max(1, Math.min(100, Math.floor(Number(req.body?.count) || 1)));
     if (!Number.isFinite(fiefId) || !buildingType) {
       return res.status(400).json({ error: 'fief id and buildingType are required' });
     }
@@ -5206,18 +5343,19 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Building prerequisites are not met' });
     }
 
+    // Total cost for all `count` copies, checked and deducted once up front.
     const stored = normalizeStoredResources(fief.stored_resources);
     for (const [resource, needed] of Object.entries(blueprint.cost)) {
       const resourceKey = resource === 'iron' ? 'minerals' : resource;
-      if ((stored[resourceKey] || 0) < needed) {
+      if ((stored[resourceKey] || 0) < needed * count) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: `Insufficient ${resource}` });
+        return res.status(400).json({ error: `Insufficient ${resource} to queue ${count}× ${blueprint.name} (need ${needed * count}, have ${Math.floor(stored[resourceKey] || 0)})` });
       }
     }
 
     for (const [resource, needed] of Object.entries(blueprint.cost)) {
       const resourceKey = resource === 'iron' ? 'minerals' : resource;
-      stored[resourceKey] = (stored[resourceKey] || 0) - needed;
+      stored[resourceKey] = (stored[resourceKey] || 0) - (needed * count);
     }
 
     const queueData = await client.query(
@@ -5226,23 +5364,35 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
        WHERE fief_id = $1 AND is_complete = false`,
       [fiefId]
     );
-    const queuePosition = getNumber(queueData.rows[0]?.max_pos) + 1;
+    const startQueuePosition = getNumber(queueData.rows[0]?.max_pos) + 1;
 
-    const buildingInsert = await client.query(
-      `INSERT INTO fief_buildings
-       (fief_id, name, building_type, level, description, construction_days_required, days_remaining, is_complete, queue_position, resource_output, resource_cost)
-       VALUES ($1, $2, $3, 1, $4, $5, $5, false, $6, $7::jsonb, $8::jsonb)
-       RETURNING *`,
-      [
+    // One multi-row INSERT for all `count` copies instead of `count` round trips —
+    // each still gets its own row/queue slot/independent completion timer, they just
+    // don't cost `count` separate requests to create.
+    const valueRows = [];
+    const values = [];
+    let p = 1;
+    for (let i = 0; i < count; i += 1) {
+      valueRows.push(`($${p}, $${p + 1}, $${p + 2}, 1, $${p + 3}, $${p + 4}, $${p + 4}, false, $${p + 5}, $${p + 6}::jsonb, $${p + 7}::jsonb)`);
+      values.push(
         fiefId,
         blueprint.name,
         blueprint.key,
         `Tier ${blueprint.tierRequired} construction`,
         blueprint.days,
-        queuePosition,
+        startQueuePosition + i,
         JSON.stringify(blueprint.resourceOutput || {}),
         JSON.stringify(blueprint.cost || {}),
-      ]
+      );
+      p += 8;
+    }
+
+    const buildingInsert = await client.query(
+      `INSERT INTO fief_buildings
+       (fief_id, name, building_type, level, description, construction_days_required, days_remaining, is_complete, queue_position, resource_output, resource_cost)
+       VALUES ${valueRows.join(', ')}
+       RETURNING *`,
+      values
     );
 
     await client.query(
@@ -5258,7 +5408,7 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
       req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
     }
 
-    res.status(201).json({ building: buildingInsert.rows[0], stored_resources: stored });
+    res.status(201).json({ building: buildingInsert.rows[0], buildings: buildingInsert.rows, stored_resources: stored });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error queueing building:', error);
@@ -5425,6 +5575,173 @@ router.patch('/fiefs/:id/buildings/:buildingId/upgrade', authenticateToken, asyn
     await client.query('ROLLBACK');
     console.error('Error upgrading building:', error);
     res.status(500).json({ error: 'Failed to upgrade building' });
+  } finally {
+    client.release();
+  }
+});
+
+// Upgrade several completed buildings of the same type in one request — e.g. a grouped
+// tile showing "×5 Farm" upgrades all 5 with one click instead of five separate PATCHes.
+router.patch('/fiefs/:id/buildings/upgrade-batch', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const buildingIds = Array.isArray(req.body?.buildingIds)
+      ? [...new Set(req.body.buildingIds.map((v) => Number(v)).filter(Number.isFinite))]
+      : [];
+    if (!Number.isFinite(fiefId) || buildingIds.length === 0) {
+      return res.status(400).json({ error: 'fief id and buildingIds are required' });
+    }
+    if (buildingIds.length > 100) {
+      return res.status(400).json({ error: 'Cannot upgrade more than 100 buildings at once' });
+    }
+
+    await client.query('BEGIN');
+    const fiefResult = await client.query(
+      `SELECT f.*, k.player_id, k.campaign_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+    if (!canManageFief(req.user, fief)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Not authorized to upgrade on this fief' });
+    }
+
+    const buildingsResult = await client.query(
+      `SELECT * FROM fief_buildings WHERE id = ANY($1::int[]) AND fief_id = $2`,
+      [buildingIds, fiefId]
+    );
+    const buildingsById = new Map(buildingsResult.rows.map((b) => [Number(b.id), b]));
+    if (buildingsById.size !== buildingIds.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'One or more buildings were not found on this fief' });
+    }
+
+    const completedResearchSet = new Set(Array.isArray(fief.completed_research) ? fief.completed_research : []);
+    const levelsTableCheck = await client.query(`SELECT to_regclass('public.fief_research_levels') AS table_name`);
+    if (levelsTableCheck.rows[0]?.table_name) {
+      const completedLevels = await client.query(
+        `SELECT building_type FROM fief_research_levels WHERE fief_id = $1`,
+        [fiefId]
+      );
+      for (const row of completedLevels.rows) completedResearchSet.add(String(row.building_type || ''));
+    }
+
+    // Resolve each building's upgrade blueprint and validate it up front — no partial
+    // application if any single building in the batch can't be upgraded.
+    const plans = [];
+    for (const buildingId of buildingIds) {
+      const building = buildingsById.get(buildingId);
+      if (building.is_complete === false) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Building ${buildingId} must be completed before upgrading` });
+      }
+      const upgradeInfo = BUILDING_UPGRADE_MAP[building.building_type];
+      if (!upgradeInfo) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `${building.name || building.building_type} cannot be upgraded` });
+      }
+      const requiredResearch = String(upgradeInfo.researchRequired || '').trim();
+      if (requiredResearch && !completedResearchSet.has(requiredResearch)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Requires ${requiredResearch} research to be completed` });
+      }
+      const upgradeBlueprint = BUILDING_CATALOG[upgradeInfo.upgradedBuilding];
+      if (!upgradeBlueprint) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Upgrade blueprint not found' });
+      }
+      if (Number(upgradeBlueprint.tierRequired || 1) > Number(fief.tier || 1)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Requires fief tier ${upgradeBlueprint.tierRequired} to upgrade` });
+      }
+      plans.push({ building, upgradeBlueprint });
+    }
+
+    // Total cost across the whole batch, checked once before deducting anything.
+    const stored = normalizeStoredResources(fief.stored_resources);
+    const totalCost = {};
+    for (const { upgradeBlueprint } of plans) {
+      for (const [resource, needed] of Object.entries(upgradeBlueprint.cost)) {
+        const resourceKey = resource === 'iron' ? 'minerals' : resource;
+        totalCost[resourceKey] = (totalCost[resourceKey] || 0) + needed;
+      }
+    }
+    for (const [resourceKey, needed] of Object.entries(totalCost)) {
+      if ((stored[resourceKey] || 0) < needed) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Insufficient ${resourceKey} to upgrade all ${plans.length} buildings (need ${needed}, have ${Math.floor(stored[resourceKey] || 0)})` });
+      }
+    }
+    for (const [resourceKey, needed] of Object.entries(totalCost)) {
+      stored[resourceKey] = (stored[resourceKey] || 0) - needed;
+    }
+
+    const updated = [];
+    for (const { building, upgradeBlueprint } of plans) {
+      const updateResult = await client.query(
+        `UPDATE fief_buildings
+         SET construction_days_required = $1,
+             days_remaining = $1,
+             is_complete = false,
+             queue_position = COALESCE((SELECT MAX(queue_position) + 1 FROM fief_buildings WHERE fief_id = $4 AND is_complete = false), 1),
+             resource_cost = $2::jsonb,
+             level = level + 1,
+             building_type = $5,
+             name = $6,
+             description = $7,
+             resource_output = $8::jsonb,
+             previous_building_type = $9,
+             previous_name = $10,
+             previous_description = $11,
+             previous_resource_output = $12::jsonb,
+             previous_level = $13
+         WHERE id = $3 AND fief_id = $4
+         RETURNING *`,
+        [
+          upgradeBlueprint.days,
+          JSON.stringify(upgradeBlueprint.cost || {}),
+          Number(building.id),
+          fiefId,
+          String(upgradeBlueprint.key || upgradeBlueprint.name),
+          String(upgradeBlueprint.name || upgradeBlueprint.key),
+          String(upgradeBlueprint.description || ''),
+          JSON.stringify(upgradeBlueprint.resourceOutput || {}),
+          building.building_type,
+          building.name,
+          building.description,
+          JSON.stringify(building.resource_output || {}),
+          Number(building.level || 1),
+        ]
+      );
+      updated.push(updateResult.rows[0]);
+    }
+
+    await client.query(
+      `UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`,
+      [fiefId, JSON.stringify(stored)]
+    );
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ buildings: updated, stored_resources: stored });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error batch-upgrading buildings:', error);
+    res.status(500).json({ error: 'Failed to upgrade buildings' });
   } finally {
     client.release();
   }
@@ -6095,12 +6412,16 @@ router.post('/:kingdomId/fiefs', authenticateToken, async (req, res) => {
       const colCheck = await client.query(
         `SELECT column_name FROM information_schema.columns
          WHERE table_name = 'fiefs' AND column_name = ANY($1::text[])`,
-        [['storage_capacity', 'stored_resources', 'worker_assignments', 'unlocked_resources', 'max_workers_per_resource', 'location_modifiers']]
+        [['storage_capacity', 'food_storage_capacity', 'stored_resources', 'worker_assignments', 'unlocked_resources', 'max_workers_per_resource', 'location_modifiers']]
       );
       const cols = new Set(colCheck.rows.map((r) => r.column_name));
 
       if (cols.has('storage_capacity')) {
         await client.query(`UPDATE fiefs SET storage_capacity = 100 WHERE id = $1`, [newFiefId]);
+      }
+      if (cols.has('food_storage_capacity')) {
+        // New fiefs always start at tier 1, matching FOOD_STORAGE_BASE_BY_TIER[1].
+        await client.query(`UPDATE fiefs SET food_storage_capacity = 100 WHERE id = $1`, [newFiefId]);
       }
       if (cols.has('stored_resources')) {
         await client.query(
@@ -6180,7 +6501,9 @@ router.post('/:kingdomId/fiefs', authenticateToken, async (req, res) => {
   }
 });
 
-// ─── DM: Give Birth (immediately add one child to maturation schedule) ────────
+// ─── DM: Give Birth — add one or more children at once, each either a fixed age or a
+// random age within a DM-specified range. A "child" whose age is already >= 15 (mature)
+// joins the population directly with no maturation-schedule entry. ────────────────────
 router.post('/fiefs/:id/give-birth', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -6188,6 +6511,23 @@ router.post('/fiefs/:id/give-birth', authenticateToken, async (req, res) => {
 
     const fiefId = Number(req.params.id);
     if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const count = Math.max(1, Math.min(1000, Math.floor(Number(req.body?.count) || 1)));
+    const hasRange = req.body?.minAge != null && req.body?.maxAge != null;
+    const MATURITY_AGE_YEARS = 15;
+
+    let minAge = 0;
+    let maxAge = 0;
+    let fixedAge = 0;
+    if (hasRange) {
+      minAge = Math.max(0, Number(req.body.minAge) || 0);
+      maxAge = Math.max(0, Number(req.body.maxAge) || 0);
+      if (minAge > maxAge) {
+        return res.status(400).json({ error: 'minAge cannot be greater than maxAge' });
+      }
+    } else {
+      fixedAge = Math.max(0, Number(req.body?.age) || 0);
+    }
 
     await client.query('BEGIN');
 
@@ -6212,14 +6552,18 @@ router.post('/fiefs/:id/give-birth', authenticateToken, async (req, res) => {
       [fief.campaign_id]
     );
     const currentDay = Math.max(1, Math.floor(Number(campDayResult.rows[0]?.current_day || 1)));
-    const MATURITY_DAYS = 15 * 365;
-    const maturityDay = currentDay + MATURITY_DAYS;
 
     const nextSchedule = normalizeMaturationSchedule(fief.population_maturation_schedule);
-    const key = String(maturityDay);
-    nextSchedule[key] = (nextSchedule[key] || 0) + 1;
+    for (let i = 0; i < count; i += 1) {
+      const ageYears = hasRange ? (minAge + Math.random() * (maxAge - minAge)) : fixedAge;
+      const yearsToMaturity = Math.max(0, MATURITY_AGE_YEARS - ageYears);
+      if (yearsToMaturity <= 0) continue; // already an adult — just joins population below, no schedule entry
+      const maturityDay = currentDay + Math.round(yearsToMaturity * 365);
+      const key = String(maturityDay);
+      nextSchedule[key] = (nextSchedule[key] || 0) + 1;
+    }
 
-    const nextPopulation = Math.max(0, Math.floor(Number(fief.population || 0))) + 1;
+    const nextPopulation = Math.max(0, Math.floor(Number(fief.population || 0))) + count;
 
     const updateResult = await client.query(
       `UPDATE fiefs
@@ -6242,7 +6586,7 @@ router.post('/fiefs/:id/give-birth', authenticateToken, async (req, res) => {
       const fiefNameResult = await pool.query(`SELECT name FROM fiefs WHERE id = $1`, [fiefId]);
       const fiefName = fiefNameResult.rows[0]?.name || null;
       const ownerSocketId = userSocketMap ? userSocketMap.get(Number(fief.player_id)) : null;
-      const toastPayload = { campaignId: fief.campaign_id, type: 'birth', fiefName };
+      const toastPayload = { campaignId: fief.campaign_id, type: 'birth', fiefName, count };
       if (ownerSocketId) {
         io.to(ownerSocketId).emit('kingdomProgressToast', toastPayload);
       } else {
@@ -6250,7 +6594,7 @@ router.post('/fiefs/:id/give-birth', authenticateToken, async (req, res) => {
       }
     }
 
-    res.json({ fief: withPopulationBreakdown(updateResult.rows[0]) });
+    res.json({ fief: withPopulationBreakdown(updateResult.rows[0]), count });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error giving birth:', error);
@@ -7686,11 +8030,11 @@ router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (
     try {
       await client.query('BEGIN');
 
-      const storageResult = await client.query(`SELECT storage_capacity, stored_resources FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
-      const storageCapacity = Math.max(0, Number(storageResult.rows[0]?.storage_capacity || 0)) || Infinity;
+      const storageResult = await client.query(`SELECT food_storage_capacity, stored_resources FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
+      const foodStorageCapacity = Math.max(0, Number(storageResult.rows[0]?.food_storage_capacity || 0)) || Infinity;
       const resources = normalizeStoredResources(storageResult.rows[0]?.stored_resources);
       const currentFood = Math.max(0, Number(resources.food || 0));
-      resources.food = Number.isFinite(storageCapacity) ? Math.min(storageCapacity, currentFood + meatYield) : currentFood + meatYield;
+      resources.food = Number.isFinite(foodStorageCapacity) ? Math.min(foodStorageCapacity, currentFood + meatYield) : currentFood + meatYield;
       const actualGained = resources.food - currentFood;
 
       await client.query(`UPDATE fiefs SET stored_resources = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(resources)]);

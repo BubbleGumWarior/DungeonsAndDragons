@@ -1365,6 +1365,8 @@ export interface KingdomFief {
   unit_reserves?: Record<string, number>;
   training_queue?: Array<{
     id: number;
+    ids?: number[];
+    count?: number;
     unit_type: string;
     source_unit_type?: string | null;
     status: 'training' | 'ready';
@@ -1407,6 +1409,8 @@ export interface KingdomFief {
   is_capital: boolean;
   stored_resources?: Record<string, number>;
   storage_capacity?: number;
+  food_storage_capacity?: number;
+  bank_capacity?: number;
   housing_capacity?: number;
   prisoner_capacity?: number;
   worker_assignments?: Record<string, number>;
@@ -1812,8 +1816,8 @@ export const kingdomAPI = {
     return response.data;
   },
 
-  queueBuilding: async (fiefId: number, buildingType: string): Promise<{ building: Record<string, any>; stored_resources: Record<string, number> }> => {
-    const response = await api.post(`/kingdoms/fiefs/${fiefId}/buildings`, { buildingType });
+  queueBuilding: async (fiefId: number, buildingType: string, count?: number): Promise<{ building: Record<string, any>; buildings?: Record<string, any>[]; stored_resources: Record<string, number> }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/buildings`, { buildingType, count });
     return response.data;
   },
 
@@ -1844,6 +1848,11 @@ export const kingdomAPI = {
 
   upgradeBuilding: async (fiefId: number, buildingId: number): Promise<{ building: Record<string, any>; stored_resources: Record<string, number> }> => {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/buildings/${buildingId}/upgrade`);
+    return response.data;
+  },
+
+  upgradeBuildingsBatch: async (fiefId: number, buildingIds: number[]): Promise<{ buildings: Record<string, any>[]; stored_resources: Record<string, number> }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/buildings/upgrade-batch`, { buildingIds });
     return response.data;
   },
 
@@ -1883,8 +1892,11 @@ export const kingdomAPI = {
     return response.data;
   },
 
-  giveBirth: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
-    const response = await api.post(`/kingdoms/fiefs/${fiefId}/give-birth`);
+  giveBirth: async (
+    fiefId: number,
+    options?: { count?: number; age?: number; minAge?: number; maxAge?: number }
+  ): Promise<{ fief: KingdomFief; count: number }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/give-birth`, options || {});
     return response.data;
   },
 

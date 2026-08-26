@@ -116,6 +116,7 @@ class Kingdom {
              AND column_name = ANY($1::text[])`,
           [[
             'storage_capacity',
+            'food_storage_capacity',
             'stored_resources',
             'worker_assignments',
             'unlocked_resources',
@@ -127,6 +128,10 @@ class Kingdom {
 
         if (cols.has('storage_capacity')) {
           await client.query(`UPDATE fiefs SET storage_capacity = 100 WHERE id = $1`, [fiefId]);
+        }
+        if (cols.has('food_storage_capacity')) {
+          // New capitals always start at tier 1, matching FOOD_STORAGE_BASE_BY_TIER[1].
+          await client.query(`UPDATE fiefs SET food_storage_capacity = 100 WHERE id = $1`, [fiefId]);
         }
         if (cols.has('stored_resources')) {
           await client.query(
