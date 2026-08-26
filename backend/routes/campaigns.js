@@ -346,6 +346,19 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
         });
       }
 
+      // Kingdom Taxation payout — refresh each credited character's gold live (same
+      // event the market/pet-food purchase flows use) so character sheets update
+      // without a manual refresh.
+      if (summary.kingdomTaxCharacterUpdates?.length) {
+        for (const upd of summary.kingdomTaxCharacterUpdates) {
+          req.io.to(`campaign_${req.params.id}`).emit('characterGoldUpdated', {
+            characterId: upd.characterId,
+            gold: upd.gold,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
       const userSocketMap = req.app.get('userSocketMap');
       const io = req.app.get('io') || req.io;
       if (io && userSocketMap) {

@@ -1337,6 +1337,9 @@ export interface AdvanceDaysSummary {
   completedTierUpgrades?: Array<{ fiefId: number; fiefName: string; newTier: number }>;
   resourcesGained: Record<number, unknown>;
   populationGained: Record<number, number>;
+  kingdomTaxSummary?: Record<number, { taxGold: number; titheGold: number; faithBonus: number }>;
+  kingdomTaxPayouts?: Record<number, number>;
+  kingdomTaxCharacterUpdates?: Array<{ characterId: number; playerId: number; gold: number; goldGained: number }>;
 }
 
 export interface CampaignDayInfo {
@@ -1471,6 +1474,8 @@ export interface KingdomSummary {
   player_username?: string;
   fiefs: KingdomFief[];
   co_owners?: KingdomCoOwner[];
+  tax_rate_pct?: number;
+  tithe_rate_pct?: number;
 }
 
 export type AnimalCategory = 'horse' | 'livestock';
@@ -1519,6 +1524,7 @@ export interface FiefAnimalsSummary {
   breeding_pen_capacity: number;
   animals: FiefAnimal[];
   breeding_pairs: FiefBreedingPair[];
+  auto_slaughter_limits: Record<string, number>;
 }
 
 export interface LegendaryCharacter {
@@ -1746,6 +1752,15 @@ export const kingdomAPI = {
     return response.data;
   },
 
+  setTaxation: async (
+    kingdomId: number,
+    taxRatePct: number,
+    titheRatePct: number
+  ): Promise<{ kingdomId: number; taxRatePct: number; titheRatePct: number }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/taxation`, { taxRatePct, titheRatePct });
+    return response.data;
+  },
+
   getFief: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
     const response = await api.get(`/kingdoms/fiefs/${fiefId}`);
     return response.data;
@@ -1928,6 +1943,15 @@ export const kingdomAPI = {
     animalId: number
   ): Promise<{ slaughtered: FiefAnimal; meatGained: number; meatYieldBeforeStorageCap: number }> => {
     const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/${animalId}/slaughter`);
+    return response.data;
+  },
+
+  setAnimalAutoSlaughterLimit: async (
+    fiefId: number,
+    animalType: string,
+    limit: number | null
+  ): Promise<{ fiefId: number; animalType: string; limit: number | null }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/auto-slaughter`, { animalType, limit });
     return response.data;
   },
 

@@ -185,6 +185,27 @@ const getSlaveOutputMultiplier = (completedBuildings: any[]) => {
   }
   return 1 + (pct / 100);
 };
+
+// Builder's Hut chain — passive flat add to the construction lane each day, on top of
+// any workers assigned there. Must stay in sync with Campaign.BUILDER_HUT_BONUS_BY_TYPE
+// on the backend (these buildings declare an empty resourceOutput and apply their bonus
+// this way instead, so it has to be mirrored here rather than read off the building).
+const BUILDER_HUT_BONUS_BY_TYPE: Record<string, number> = {
+  builders_hut: 3,
+  masons_workshop: 6,
+  engineers_lodge: 9,
+  construction_guildhall: 12,
+  master_builder_hall: 15,
+  grand_architect_hall: 18,
+};
+
+const getPassiveBuilderBonus = (completedBuildings: any[]) => {
+  let bonus = 0;
+  for (const b of (completedBuildings || [])) {
+    bonus += BUILDER_HUT_BONUS_BY_TYPE[String(b?.building_type || '')] || 0;
+  }
+  return bonus;
+};
 const UNREST_BASELINE_POPULATION_PER_TIER = 40;
 const UNREST_STABILITY_POPULATION_PER_CAPACITY_POINT = 2;
 const UNREST_PENALTY_FLOOR = 30;
@@ -647,6 +668,10 @@ const KingdomTab: React.FC<Props> = ({
     count: number;
   }>({ animalType: 'war_horse', mode: 'exact', quality: 50, minQuality: 20, maxQuality: 80, count: 1 });
   const [slaughterConfirmTarget, setSlaughterConfirmTarget] = useState<{ fiefId: number; animal: FiefAnimal } | null>(null);
+  // Auto-slaughter: keyed by `${fiefId}:${animalType}` — tracks the inline edit popover
+  // (open/value) for "keep this many adults" per fief+type group.
+  const [autoSlaughterEditingKey, setAutoSlaughterEditingKey] = useState<string | null>(null);
+  const [autoSlaughterInputs, setAutoSlaughterInputs] = useState<Record<string, number>>({});
   const [showLegendaryCreateModal, setShowLegendaryCreateModal] = useState(false);
   const [legendaryForm, setLegendaryForm] = useState({
     name: '',
@@ -679,6 +704,8 @@ const KingdomTab: React.FC<Props> = ({
   const [tradePopulationAmount, setTradePopulationAmount] = useState('0');
   const [tradeSlavesAmount, setTradeSlavesAmount] = useState('0');
   const [tradeDesiredText, setTradeDesiredText] = useState('');
+  const [taxRatePctInput, setTaxRatePctInput] = useState(0);
+  const [titheRatePctInput, setTitheRatePctInput] = useState(0);
 
   const fetchKingdoms = useCallback(async () => {
     try {
@@ -750,7 +777,14 @@ const KingdomTab: React.FC<Props> = ({
       fetchAnimalsDataRef.current();
     };
 
-    const onDayAdvanced = (data: { campaignId: number | string; animalsLost?: Record<string, number>; animalsBorn?: Record<string, number> }) => {
+    const onDayAdvanced = (data: {
+      campaignId: number | string;
+      animalsLost?: Record<string, number>;
+      animalsBorn?: Record<string, number>;
+      animalsAutoSlaughtered?: Record<string, Record<string, number>>;
+      kingdomTaxSummary?: Record<string, { taxGold: number; titheGold: number; faithBonus: number }>;
+      kingdomTaxPayouts?: Record<string, number>;
+    }) => {
       if (Number(data?.campaignId) !== Number(campaignId)) return;
       fetchKingdoms();
       const currentFiefId = selectedFiefIdRef.current;
@@ -797,6 +831,49 @@ const KingdomTab: React.FC<Props> = ({
         const fiefName = findFiefName(Number(fiefIdStr));
         if (!fiefName) continue;
         pushToast(`🐣 ${count} new animal${count === 1 ? '' : 's'} born in ${fiefName}`, 'success');
+      }
+      for (const [fiefIdStr, byType] of Object.entries(data.animalsAutoSlaughtered || {})) {
+        const fiefName = findFiefName(Number(fiefIdStr));
+        if (!fiefName) continue;
+        for (const [type, countRaw] of Object.entries(byType || {})) {
+          const count = Number(countRaw);
+          if (count <= 0) continue;
+          const label = animalTypes[type]?.name || type;
+          pushToast(`🔪 Auto-slaughtered ${count} ${label}${count === 1 ? '' : 's'} in ${fiefName} to stay within the set herd limit — meat added to the granary`, 'success');
+        }
+      }
+
+      // Kingdom Taxation — announce what each visible kingdom collected, and separately
+      // let this player know their own personal cut landed on their character sheet.
+      const findKingdomName = (kingdomId: number): string | null => {
+        const k = kingdomsRef.current.find((kk) => Number(kk.id) === kingdomId);
+        if (!k) return null;
+        const canSee = isDungeonMaster
+          || Number(k.player_id) === Number(userId)
+          || (k.co_owners || []).some((co) => Number(co.player_id) === Number(userId));
+        if (!canSee) return null;
+        return k.name || `Kingdom #${kingdomId}`;
+      };
+
+      for (const [kingdomIdStr, summary] of Object.entries(data.kingdomTaxSummary || {})) {
+        const kingdomName = findKingdomName(Number(kingdomIdStr));
+        if (!kingdomName) continue;
+        const taxGold = Number(summary?.taxGold || 0);
+        const titheGold = Number(summary?.titheGold || 0);
+        const faithBonus = Number(summary?.faithBonus || 0);
+        const parts: string[] = [];
+        if (taxGold > 0) parts.push(`${taxGold.toFixed(1)} gold taxed to its ruler${(kingdomsRef.current.find((kk) => Number(kk.id) === Number(kingdomIdStr))?.co_owners?.length || 0) > 0 ? 's' : ''}`);
+        if (titheGold > 0) parts.push(`${titheGold.toFixed(1)} gold tithed (+${faithBonus.toFixed(1)} faith)`);
+        if (parts.length > 0) {
+          pushToast(`💰 ${kingdomName}: ${parts.join(', ')}`, 'success');
+        }
+      }
+
+      for (const [playerIdStr, copperRaw] of Object.entries(data.kingdomTaxPayouts || {})) {
+        if (Number(playerIdStr) !== Number(userId)) continue;
+        const copper = Number(copperRaw);
+        if (copper <= 0) continue;
+        pushToast(`🪙 You received ${(copper / 100).toFixed(1)} gold from Kingdom Taxation`, 'success');
       }
     };
 
@@ -895,6 +972,15 @@ const KingdomTab: React.FC<Props> = ({
   // on the object itself would re-run this fetch — and flash the loading placeholder — on every one
   // of those unrelated events, so key off the stable id instead.
   const selectedKingdomId = selectedKingdom?.id ?? null;
+
+  // Kingdom Taxation panel inputs reset from the server whenever a different kingdom
+  // is selected. A save writes straight back into these two from the response, so an
+  // in-progress edit is never clobbered by an unrelated kingdomDataChanged refetch.
+  useEffect(() => {
+    setTaxRatePctInput(Number(selectedKingdom?.tax_rate_pct ?? 0));
+    setTitheRatePctInput(Number(selectedKingdom?.tithe_rate_pct ?? 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKingdomId]);
 
   const fetchKingdomManagementData = useCallback(async () => {
     if (!selectedKingdomId || !canUseKingdomManagement) return;
@@ -1226,6 +1312,26 @@ const KingdomTab: React.FC<Props> = ({
       await fetchAnimalsData();
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to slaughter animal');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSetAutoSlaughterLimit = async (fiefId: number, animalType: string, limit: number | null) => {
+    const key = `${fiefId}:${animalType}`;
+    setBusy(`animal-auto-slaughter-${key}`);
+    try {
+      await kingdomAPI.setAnimalAutoSlaughterLimit(fiefId, animalType, limit);
+      pushToast(
+        limit === null
+          ? 'Auto-slaughter turned off'
+          : `Auto-slaughter set — herd will be kept at ${limit} adult${limit === 1 ? '' : 's'}`,
+        'success'
+      );
+      setAutoSlaughterEditingKey((prev) => (prev === key ? null : prev));
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to update auto-slaughter setting');
     } finally {
       setBusy(null);
     }
@@ -1626,8 +1732,7 @@ const KingdomTab: React.FC<Props> = ({
     output.gold += (workersGold + slaveGold) * tierWorkerYieldMultiplier + tavernGold;
     output.research += workersResearch;
     output.faith += (workersFaith * 0.5) * tierWorkerYieldMultiplier;
-    const buildersHutCount = completedBuildings.filter((b: any) => String(b?.building_type || '') === 'builders_hut').length;
-    output.building += Math.max(0, Number(assignments.building || 0)) + slaveBuilding + (buildersHutCount * 3);
+    output.building += Math.max(0, Number(assignments.building || 0)) + slaveBuilding + getPassiveBuilderBonus(completedBuildings);
 
     for (const building of completedBuildings) {
       const buildingOutput = (building?.resource_output && typeof building.resource_output === 'object')
@@ -2422,6 +2527,22 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const handleSaveKingdomTaxation = async () => {
+    if (!selectedKingdom) return;
+    setBusy('kingdom-taxation');
+    try {
+      const result = await kingdomAPI.setTaxation(Number(selectedKingdom.id), taxRatePctInput, titheRatePctInput);
+      setTaxRatePctInput(result.taxRatePct);
+      setTitheRatePctInput(result.titheRatePct);
+      pushToast(`Kingdom Taxation set — ${result.taxRatePct}% tax, ${result.titheRatePct}% tithe`, 'success');
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to update kingdom taxation');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const submitTradeMovement = async (direction: 'deposit' | 'withdraw') => {
     if (!selectedKingdom || !tradeSourceFiefId) {
       pushToast('Select a fief first');
@@ -3119,6 +3240,71 @@ const KingdomTab: React.FC<Props> = ({
                   </div>
                 )}
               </div>
+
+              <div className="kt-panel" data-tone="gold">
+                <div className="kt-panel-header">
+                  <div className="kt-panel-icon">💰</div>
+                  <div className="kt-panel-titles">
+                    <div className="kt-panel-title">Kingdom Taxation</div>
+                    <div className="kt-panel-sub">Applied to every fief's gold each day, right when it's produced</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '0.6rem', marginBottom: '0.6rem' }}>
+                  <div style={{ border: '1px solid rgba(234,179,8,0.35)', borderRadius: '0.55rem', background: 'rgba(8,8,8,0.45)', padding: '0.6rem 0.7rem' }}>
+                    <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.84rem', marginBottom: '0.3rem' }}>🪙 Tax Rate</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginBottom: '0.5rem' }}>
+                      This % of daily gold production is paid directly to you
+                      {(selectedKingdom.co_owners || []).length > 0 ? ', split equally with your co-rulers,' : ''} instead of the treasury.
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={taxRatePctInput}
+                        onChange={(e) => setTaxRatePctInput(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                        style={{ width: '5rem', padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(234,179,8,0.4)', background: 'rgba(15,15,15,0.7)', color: 'var(--text-secondary)' }}
+                      />
+                      <span style={{ color: 'var(--text-muted)' }}>%</span>
+                    </div>
+                  </div>
+
+                  <div style={{ border: '1px solid rgba(167,139,250,0.35)', borderRadius: '0.55rem', background: 'rgba(8,8,8,0.45)', padding: '0.6rem 0.7rem' }}>
+                    <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.84rem', marginBottom: '0.3rem' }}>✨ Tithe Rate</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginBottom: '0.5rem' }}>
+                      This % of daily gold production is sacrificed from the treasury, boosting that same day's faith production by the same %.
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={titheRatePctInput}
+                        onChange={(e) => setTitheRatePctInput(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                        style={{ width: '5rem', padding: '0.3rem 0.4rem', borderRadius: '0.35rem', border: '1px solid rgba(167,139,250,0.4)', background: 'rgba(15,15,15,0.7)', color: 'var(--text-secondary)' }}
+                      />
+                      <span style={{ color: 'var(--text-muted)' }}>%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {(taxRatePctInput + titheRatePctInput) > 100 && (
+                  <div style={{ color: '#fca5a5', fontSize: '0.74rem', marginBottom: '0.55rem' }}>
+                    ⚠️ Tax + Tithe adds up to over 100% — together they'll never take more than a full day's gold.
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveKingdomTaxation}
+                  disabled={busy === 'kingdom-taxation'}
+                  style={{ padding: '0.4rem 0.9rem', borderRadius: '0.4rem', border: '1px solid rgba(234,179,8,0.5)', background: 'rgba(120,53,15,0.35)', color: '#fde68a', cursor: busy === 'kingdom-taxation' ? 'not-allowed' : 'pointer', fontWeight: 700 }}
+                >
+                  {busy === 'kingdom-taxation' ? 'Saving...' : 'Save Taxation Rates'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -3268,13 +3454,77 @@ const KingdomTab: React.FC<Props> = ({
                             {Array.from(groupedUnpaired.entries()).map(([type, animals]) => {
                               const def = animalTypes[type];
                               const avgQuality = Math.round(animals.reduce((s, a) => s + a.quality, 0) / animals.length);
+                              const autoKey = `${fief.fief_id}:${type}`;
+                              const autoLimit = fief.auto_slaughter_limits?.[type];
+                              const hasAutoLimit = autoLimit !== undefined && autoLimit !== null;
+                              const isEditingAuto = autoSlaughterEditingKey === autoKey;
+                              const autoBusyKey = `animal-auto-slaughter-${autoKey}`;
+                              const adultCount = animals.filter((a) => a.is_adult).length;
                               return (
                                 <div key={type} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem', padding: '0.6rem 0.7rem' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.55rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
                                     <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
                                       {ANIMAL_ICONS[type] || '🐾'} {def?.name || type} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>× {animals.length}</span>
                                     </span>
-                                    <span style={{ fontSize: '0.76rem', color: getQualityColor(avgQuality), fontWeight: 700 }}>avg {avgQuality}% quality</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                      <span style={{ fontSize: '0.76rem', color: getQualityColor(avgQuality), fontWeight: 700 }}>avg {avgQuality}% quality</span>
+                                      {isEditingAuto ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            value={autoSlaughterInputs[autoKey] ?? (hasAutoLimit ? autoLimit : adultCount)}
+                                            onChange={(e) => setAutoSlaughterInputs((prev) => ({ ...prev, [autoKey]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                                            style={{ width: '3.4rem', padding: '0.15rem 0.3rem', borderRadius: '0.3rem', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.3)', color: 'var(--text-secondary)', fontSize: '0.72rem' }}
+                                          />
+                                          <button
+                                            onClick={() => handleSetAutoSlaughterLimit(fief.fief_id, type, autoSlaughterInputs[autoKey] ?? (hasAutoLimit ? autoLimit : adultCount))}
+                                            disabled={busy === autoBusyKey}
+                                            title="Save desired adult count"
+                                            style={{ border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(20,83,45,0.25)', color: '#86efac', borderRadius: '0.3rem', padding: '0.15rem 0.4rem', cursor: busy === autoBusyKey ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 700 }}
+                                          >
+                                            ✓
+                                          </button>
+                                          <button
+                                            onClick={() => setAutoSlaughterEditingKey(null)}
+                                            title="Cancel"
+                                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                          <button
+                                            onClick={() => {
+                                              setAutoSlaughterInputs((prev) => ({ ...prev, [autoKey]: hasAutoLimit ? autoLimit : adultCount }));
+                                              setAutoSlaughterEditingKey(autoKey);
+                                            }}
+                                            title={hasAutoLimit
+                                              ? `Auto-slaughter is on — the herd is kept at ${autoLimit} adult${autoLimit === 1 ? '' : 's'}. When a juvenile matures past this limit, the lowest-quality adult is slaughtered automatically and the meat is added to the granary.`
+                                              : 'Set a desired adult count — once a juvenile matures and pushes the herd over it, the lowest-quality adult is auto-slaughtered and the meat is added to the granary.'}
+                                            style={{
+                                              fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '1rem', cursor: 'pointer',
+                                              border: `1px solid ${hasAutoLimit ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.18)'}`,
+                                              background: hasAutoLimit ? 'rgba(127,29,29,0.22)' : 'transparent',
+                                              color: hasAutoLimit ? '#fca5a5' : 'var(--text-muted)',
+                                            }}
+                                          >
+                                            🔪 {hasAutoLimit ? `Auto @ ${autoLimit}` : 'Auto-Slaughter'}
+                                          </button>
+                                          {hasAutoLimit && (
+                                            <button
+                                              onClick={() => handleSetAutoSlaughterLimit(fief.fief_id, type, null)}
+                                              disabled={busy === autoBusyKey}
+                                              title="Turn off auto-slaughter for this type"
+                                              style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: busy === autoBusyKey ? 'not-allowed' : 'pointer', fontSize: '0.68rem', fontWeight: 700 }}
+                                            >
+                                              ✕
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: '0.55rem' }}>
                                     {animals.map((a) => {

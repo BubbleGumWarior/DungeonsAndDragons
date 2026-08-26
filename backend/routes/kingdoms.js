@@ -3922,6 +3922,50 @@ router.delete('/:id/co-owners/:playerId', authenticateToken, async (req, res) =>
   }
 });
 
+// POST /api/kingdoms/:id/taxation — set the Kingdom Taxation panel's tax/tithe rates.
+// tax_rate_pct: this % of the kingdom's daily gold production is diverted straight to
+// the owner + co-owners' characters (split equally) instead of the treasury.
+// tithe_rate_pct: this % of gold is sacrificed from the treasury on top of that, in
+// exchange for boosting that day's faith production by the same %. See
+// Campaign.advanceDays for where both are actually applied during the daily tick.
+router.post('/:id/taxation', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const clampPct = (value, fallback) => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return fallback;
+      return Math.max(0, Math.min(100, Math.round(num * 100) / 100));
+    };
+    const taxRatePct = clampPct(req.body.taxRatePct, Number(kingdom.tax_rate_pct) || 0);
+    const titheRatePct = clampPct(req.body.titheRatePct, Number(kingdom.tithe_rate_pct) || 0);
+
+    const result = await pool.query(
+      `UPDATE kingdoms SET tax_rate_pct = $2, tithe_rate_pct = $3, updated_at = NOW() WHERE id = $1
+       RETURNING id, tax_rate_pct, tithe_rate_pct`,
+      [kingdomId, taxRatePct, titheRatePct]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+
+    res.json({
+      kingdomId,
+      taxRatePct: Number(result.rows[0].tax_rate_pct),
+      titheRatePct: Number(result.rows[0].tithe_rate_pct),
+    });
+  } catch (error) {
+    console.error('Error setting kingdom taxation:', error);
+    res.status(500).json({ error: 'Failed to set kingdom taxation' });
+  }
+});
+
 router.get('/fiefs/:id', authenticateToken, async (req, res) => {
   try {
     const fiefId = Number(req.params.id);
@@ -7866,6 +7910,20 @@ const getFiefAnimalsDetailed = async (fiefId, currentDay) => {
   });
 };
 
+// Auto-slaughter: { [animalType]: desiredAdultCount } for one fief. A type with no row
+// here has auto-slaughter off. See Campaign.advanceDays for the trimming logic itself —
+// it runs during the daily tick, right after births/aging, so it catches juveniles the
+// moment they mature into adults and push the count over the limit.
+const getFiefAutoSlaughterLimits = async (fiefId) => {
+  const result = await pool.query(
+    `SELECT animal_type, adult_limit FROM fief_animal_slaughter_limits WHERE fief_id = $1`,
+    [fiefId]
+  );
+  const limits = {};
+  for (const row of result.rows) limits[row.animal_type] = Number(row.adult_limit);
+  return limits;
+};
+
 // GET /api/kingdoms/:id/animals — every fief in the kingdom with its animals and capacity.
 router.get('/:id/animals', authenticateToken, async (req, res) => {
   try {
@@ -7886,10 +7944,11 @@ router.get('/:id/animals', authenticateToken, async (req, res) => {
     const fiefs = [];
     for (const fief of fiefsResult.rows) {
       const fiefId = Number(fief.id);
-      const [completedTypes, animals, breedingPairs] = await Promise.all([
+      const [completedTypes, animals, breedingPairs, autoSlaughterLimits] = await Promise.all([
         getFiefCompletedBuildingTypes(fiefId),
         getFiefAnimalsDetailed(fiefId, currentDay),
         getFiefBreedingPairs(fiefId),
+        getFiefAutoSlaughterLimits(fiefId),
       ]);
 
       fiefs.push({
@@ -7902,6 +7961,7 @@ router.get('/:id/animals', authenticateToken, async (req, res) => {
         breeding_pen_capacity: getBreedingPenPairCapacity(completedTypes),
         animals,
         breeding_pairs: breedingPairs,
+        auto_slaughter_limits: autoSlaughterLimits,
       });
     }
 
@@ -8056,6 +8116,51 @@ router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (
   } catch (error) {
     console.error('Error slaughtering animal:', error);
     res.status(500).json({ error: 'Failed to slaughter animal' });
+  }
+});
+
+// POST /api/kingdoms/fiefs/:id/animals/auto-slaughter — set (or clear) the desired adult
+// headcount for one animal type. Once set, the daily tick (see Campaign.advanceDays) keeps
+// the adult count for that type at or below it: whenever a juvenile matures into an adult
+// and pushes the total over the limit, the lowest-quality adult(s) are slaughtered
+// automatically and the meat goes straight to the granary. Pass limit: null to turn it off.
+router.post('/fiefs/:id/animals/auto-slaughter', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const { animalType, limit } = req.body;
+    if (!ANIMAL_TYPES[animalType]) return res.status(400).json({ error: 'Invalid animal type' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    if (limit === null || limit === undefined) {
+      await pool.query(
+        `DELETE FROM fief_animal_slaughter_limits WHERE fief_id = $1 AND animal_type = $2`,
+        [fiefId, animalType]
+      );
+      if (req.io) req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+      return res.json({ fiefId, animalType, limit: null });
+    }
+
+    const adultLimit = Math.max(0, Math.floor(Number(limit)));
+    if (!Number.isFinite(adultLimit)) return res.status(400).json({ error: 'Invalid limit' });
+
+    await pool.query(
+      `INSERT INTO fief_animal_slaughter_limits (fief_id, animal_type, adult_limit, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (fief_id, animal_type) DO UPDATE SET adult_limit = $3, updated_at = NOW()`,
+      [fiefId, animalType, adultLimit]
+    );
+
+    if (req.io) req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+
+    res.json({ fiefId, animalType, limit: adultLimit });
+  } catch (error) {
+    console.error('Error setting animal auto-slaughter limit:', error);
+    res.status(500).json({ error: 'Failed to set auto-slaughter limit' });
   }
 });
 

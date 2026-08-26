@@ -406,6 +406,8 @@ const startServer = async () => {
         { name: 'addSkillsAutoGrantColumn', fn: require('./migrations/add_skills_auto_grant_column') },
         { name: 'addFoodStorageCapacity', fn: require('./migrations/add_food_storage_capacity') },
         { name: 'addBankCapacity', fn: require('./migrations/add_bank_capacity') },
+        { name: 'addFiefAnimalAutoSlaughter', fn: require('./migrations/add_fief_animal_auto_slaughter') },
+        { name: 'addKingdomTaxation', fn: require('./migrations/add_kingdom_taxation') },
       ];
       
       const failedMigrations = [];

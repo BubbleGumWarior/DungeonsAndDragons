@@ -110,6 +110,13 @@ class Campaign {
     return Math.max(0.05, Math.min(0.85, 0.30 + (avgQuality / 100) * 0.40));
   }
 
+  // Base meat yield per animal type at 100% quality (mirrors ANIMAL_TYPES.slaughterMeatBase
+  // in routes/kingdoms.js) — used to credit the granary when auto-slaughter trims a herd.
+  static ANIMAL_SLAUGHTER_MEAT_BASE_BY_TYPE = {
+    riding_horse: 150, draft_horse: 350, plough_horse: 300, courser: 200, war_horse: 250, destrier: 400,
+    chicken: 15, duck: 20, goose: 30, rabbit: 20, sheep: 80, goat: 100, pig: 150, ox: 400, cow: 1000,
+  };
+
   // Tier 5+ civic stability: guard presence, faith, and governance buildings
   // each raise how much population a fief can support before unrest builds.
   static STABILITY_CAPACITY_BY_TYPE = {
@@ -1422,7 +1429,8 @@ class Campaign {
                to_regclass('public.fief_research_queue') AS fief_research_queue,
                to_regclass('public.fief_research_levels') AS fief_research_levels,
                to_regclass('public.fief_animals') AS fief_animals,
-               to_regclass('public.fief_breeding_pairs') AS fief_breeding_pairs
+               to_regclass('public.fief_breeding_pairs') AS fief_breeding_pairs,
+               to_regclass('public.fief_animal_slaughter_limits') AS fief_animal_slaughter_limits
       `);
       const canSimulateKingdoms = Boolean(
         tableCheck.rows[0]?.kingdoms &&
@@ -1435,6 +1443,7 @@ class Campaign {
       );
       const canSimulateAnimals = Boolean(tableCheck.rows[0]?.fief_animals);
       const canSimulateBreedingPens = Boolean(tableCheck.rows[0]?.fief_breeding_pairs);
+      const canSimulateAutoSlaughter = Boolean(tableCheck.rows[0]?.fief_animal_slaughter_limits);
 
       let hasConsecutiveStarvationDaysColumn = false;
       let hasConsecutiveGoldShortageDaysColumn = false;
@@ -1493,6 +1502,53 @@ class Campaign {
         hasBankCapacityColumn = availableColumns.has('bank_capacity');
       }
 
+      // ── Kingdom Taxation — per-kingdom tax/tithe rates set from the Kingdom
+      // Management panel (see routes/kingdoms.js POST /:id/taxation). Loaded once
+      // per campaign; gated the same way as the fief columns above so campaigns
+      // predating the migration just see 0% for both and behave exactly as before.
+      const kingdomTaxationById = new Map();
+      const kingdomOwnersById = new Map();
+      if (canSimulateKingdoms) {
+        const kingdomTaxColumnsCheck = await client.query(
+          `SELECT column_name FROM information_schema.columns
+           WHERE table_name = 'kingdoms' AND column_name = ANY($1::text[])`,
+          [['tax_rate_pct', 'tithe_rate_pct']]
+        );
+        const hasKingdomTaxColumns = kingdomTaxColumnsCheck.rows.length === 2;
+        const kingdomsResult = await client.query(
+          `SELECT id, player_id${hasKingdomTaxColumns ? ', COALESCE(tax_rate_pct, 0) AS tax_rate_pct, COALESCE(tithe_rate_pct, 0) AS tithe_rate_pct' : ''}
+           FROM kingdoms WHERE campaign_id = $1`,
+          [campaignId]
+        );
+        for (const row of kingdomsResult.rows) {
+          const kingdomId = Number(row.id);
+          kingdomOwnersById.set(kingdomId, { ownerId: Number(row.player_id), coOwnerIds: [] });
+          kingdomTaxationById.set(kingdomId, {
+            taxRatePct: hasKingdomTaxColumns ? Math.max(0, Number(row.tax_rate_pct) || 0) : 0,
+            titheRatePct: hasKingdomTaxColumns ? Math.max(0, Number(row.tithe_rate_pct) || 0) : 0,
+          });
+        }
+        if (kingdomOwnersById.size > 0) {
+          try {
+            const coOwnersResult = await client.query(
+              `SELECT kingdom_id, player_id FROM kingdom_co_owners WHERE kingdom_id = ANY($1::int[])`,
+              [Array.from(kingdomOwnersById.keys())]
+            );
+            for (const row of coOwnersResult.rows) {
+              const kingdomId = Number(row.kingdom_id);
+              const info = kingdomOwnersById.get(kingdomId);
+              if (info) info.coOwnerIds.push(Number(row.player_id));
+            }
+          } catch (_) {
+            // kingdom_co_owners table doesn't exist yet — solo owners only
+          }
+        }
+      }
+      // Accumulates gold owed to players from Kingdom Taxation across every fief/day
+      // in this advance, credited to characters (and reported back) once at the end.
+      const kingdomTaxGoldAccrued = new Map();
+      const kingdomTaxSummary = {};
+
       const resourcesGained = {};
       const populationGained = {};
       const completedBuildings = [];
@@ -1506,12 +1562,15 @@ class Campaign {
       const legendaryBonusesByFief = new Map();
       const animalsByFief = new Map();
       const breedingPairsByFief = new Map();
+      const autoSlaughterLimitsByFief = new Map();
       const animalsLost = {};
       const animalsBorn = {};
+      const animalsAutoSlaughtered = {};
 
       if (canSimulateKingdoms) {
         const fiefsResult = await client.query(
           `SELECT f.id,
+                  f.kingdom_id,
                   f.name,
                   COALESCE(f.population, 0) AS population,
                   COALESCE(f.population_maturation_schedule, '{}'::jsonb) AS population_maturation_schedule,
@@ -1550,6 +1609,7 @@ class Campaign {
           if (unlockedResources.meat !== true) unlockedResources.meat = false;
           fiefStates.push({
             id,
+            kingdomId: Number(row.kingdom_id),
             name: row.name,
             population: Number(row.population || 0),
             populationMaturationSchedule: normalizeMaturationSchedule(row.population_maturation_schedule),
@@ -1657,6 +1717,20 @@ class Campaign {
                 maleAnimalId: Number(row.male_animal_id),
                 femaleAnimalId: Number(row.female_animal_id),
               });
+            }
+          }
+
+          if (canSimulateAutoSlaughter) {
+            const slaughterLimitsResult = await client.query(
+              `SELECT fief_id, animal_type, adult_limit
+               FROM fief_animal_slaughter_limits
+               WHERE fief_id = ANY($1::int[])`,
+              [fiefStates.map((f) => f.id)]
+            );
+            for (const row of slaughterLimitsResult.rows) {
+              const fiefId = Number(row.fief_id);
+              if (!autoSlaughterLimitsByFief.has(fiefId)) autoSlaughterLimitsByFief.set(fiefId, new Map());
+              autoSlaughterLimitsByFief.get(fiefId).set(row.animal_type, Number(row.adult_limit));
             }
           }
 
@@ -1880,6 +1954,50 @@ class Campaign {
             ),
             unrestPenaltyPct
           );
+
+          // Kingdom Taxation — a cut of today's raw gold production (before storage caps,
+          // so a full treasury never blocks collection) is diverted straight to the
+          // player(s) sharing this kingdom instead of the coffers; a tithe on top of that
+          // sacrifices another cut of gold to boost today's faith production by the same
+          // percentage. Both rates are set from the Taxation panel (see routes/kingdoms.js
+          // POST /:id/taxation) and default to 0 (no change) when unset.
+          const kingdomTaxRates = kingdomTaxationById.get(fief.kingdomId);
+          if (kingdomTaxRates && (kingdomTaxRates.taxRatePct > 0 || kingdomTaxRates.titheRatePct > 0)) {
+            const goldBeforeTax = Math.max(0, Number(modifiedProduction.gold) || 0);
+            const taxPct = Math.min(100, kingdomTaxRates.taxRatePct);
+            const tithePct = Math.min(100, kingdomTaxRates.titheRatePct);
+            const combinedPct = Math.min(100, taxPct + tithePct);
+            if (goldBeforeTax > 0 && combinedPct > 0) {
+              let taxGold = goldBeforeTax * (taxPct / 100);
+              let titheGold = goldBeforeTax * (tithePct / 100);
+              // taxPct+tithePct can exceed 100 (two independent 0-100 sliders) — scale
+              // both cuts down proportionally so together they never take more gold than
+              // was actually produced.
+              if (taxPct + tithePct > 100) {
+                const scale = combinedPct / (taxPct + tithePct);
+                taxGold *= scale;
+                titheGold *= scale;
+              }
+              modifiedProduction.gold = goldBeforeTax - taxGold - titheGold;
+
+              if (taxGold > 0) {
+                kingdomTaxGoldAccrued.set(fief.kingdomId, (kingdomTaxGoldAccrued.get(fief.kingdomId) || 0) + taxGold);
+              }
+              if (!kingdomTaxSummary[fief.kingdomId]) kingdomTaxSummary[fief.kingdomId] = { taxGold: 0, titheGold: 0, faithBonus: 0 };
+              kingdomTaxSummary[fief.kingdomId].taxGold += taxGold;
+              kingdomTaxSummary[fief.kingdomId].titheGold += titheGold;
+            }
+            if (tithePct > 0) {
+              const faithBeforeTithe = Math.max(0, Number(modifiedProduction.faith) || 0);
+              const faithBonus = faithBeforeTithe * (tithePct / 100);
+              if (faithBonus > 0) {
+                modifiedProduction.faith = faithBeforeTithe + faithBonus;
+                if (!kingdomTaxSummary[fief.kingdomId]) kingdomTaxSummary[fief.kingdomId] = { taxGold: 0, titheGold: 0, faithBonus: 0 };
+                kingdomTaxSummary[fief.kingdomId].faithBonus += faithBonus;
+              }
+            }
+          }
+
           const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity, fief.foodStorageCapacity, fief.bankCapacity);
           fief.storedResources = capacityApplied.stored;
 
@@ -2006,6 +2124,10 @@ class Campaign {
                 await client.query(`DELETE FROM fief_animals WHERE id = ANY($1::int[])`, [Array.from(lostIdSet)]);
                 animalsLost[fief.id] = (Number(animalsLost[fief.id]) || 0) + lostIdSet.size;
                 fiefAnimals = fiefAnimals.filter((a) => !lostIdSet.has(a.id));
+                // Write the trimmed list back — a multi-day advance re-reads this same map
+                // entry on the next day, so without this it would "revive" already-deleted
+                // animals for the rest of the advance.
+                animalsByFief.set(fief.id, fiefAnimals);
               }
             }
           }
@@ -2113,6 +2235,46 @@ class Campaign {
                 female.pregnantDueDay = dueDay;
                 female.pregnancyAvgQuality = avgQuality;
               }
+            }
+          }
+
+          // Animal Management — auto-slaughter: for animal types where the player has
+          // set a desired adult headcount, trim the herd back down to it whenever a
+          // juvenile maturing into an adult (or any other adult-count increase) pushes
+          // the total over the limit. The lowest-quality adult(s) go first, yielding the
+          // same meat as a manual slaughter, credited straight to the granary.
+          const fiefSlaughterLimits = autoSlaughterLimitsByFief.get(fief.id);
+          if (fiefSlaughterLimits && fiefSlaughterLimits.size > 0 && fiefAnimals.length > 0) {
+            const ageOfForSlaughter = (bornOnDay) => (bornOnDay == null ? Campaign.ANIMAL_ADULT_AGE_DAYS : Math.max(0, dayNumber - bornOnDay));
+            const byTypeForSlaughter = new Map();
+            for (const a of fiefAnimals) {
+              if (!byTypeForSlaughter.has(a.animalType)) byTypeForSlaughter.set(a.animalType, []);
+              byTypeForSlaughter.get(a.animalType).push(a);
+            }
+            for (const [animalType, limit] of fiefSlaughterLimits.entries()) {
+              if (!Number.isFinite(limit) || limit < 0) continue;
+              const adults = (byTypeForSlaughter.get(animalType) || [])
+                .filter((a) => ageOfForSlaughter(a.bornOnDay) >= Campaign.ANIMAL_ADULT_AGE_DAYS);
+              const excess = adults.length - limit;
+              if (excess <= 0) continue;
+              adults.sort((a, b) => a.quality - b.quality);
+              const toSlaughter = adults.slice(0, excess);
+              const toSlaughterIds = toSlaughter.map((a) => a.id);
+              const meatBase = Campaign.ANIMAL_SLAUGHTER_MEAT_BASE_BY_TYPE[animalType] || 0;
+              const totalMeat = toSlaughter.reduce((sum, a) => sum + Math.round(meatBase * (a.quality / 100)), 0);
+
+              await client.query(`DELETE FROM fief_animals WHERE id = ANY($1::int[])`, [toSlaughterIds]);
+              fiefAnimals = fiefAnimals.filter((a) => !toSlaughterIds.includes(a.id));
+              animalsByFief.set(fief.id, fiefAnimals);
+
+              const foodCapacity = Number(fief.foodStorageCapacity) > 0 ? Number(fief.foodStorageCapacity) : Infinity;
+              const currentFoodForSlaughter = Math.max(0, Number(fief.storedResources.food || 0));
+              fief.storedResources.food = Number.isFinite(foodCapacity)
+                ? Math.min(foodCapacity, currentFoodForSlaughter + totalMeat)
+                : currentFoodForSlaughter + totalMeat;
+
+              if (!animalsAutoSlaughtered[fief.id]) animalsAutoSlaughtered[fief.id] = {};
+              animalsAutoSlaughtered[fief.id][animalType] = (Number(animalsAutoSlaughtered[fief.id][animalType]) || 0) + toSlaughterIds.length;
             }
           }
 
@@ -2609,6 +2771,48 @@ class Campaign {
         }
       }
 
+      // Kingdom Taxation payout — split each kingdom's accrued tax gold equally between
+      // its owner and any co-owners, credit it to their characters (stored in copper —
+      // 1 gp = 100 cp, see add_character_gold), and report it back for a toast. Tithe
+      // gold is not paid out here: it was already sacrificed straight out of production
+      // above in exchange for the faith bonus.
+      const kingdomTaxPayouts = {};
+      const kingdomTaxCharacterUpdates = [];
+      for (const [kingdomId, totalGold] of kingdomTaxGoldAccrued.entries()) {
+        if (!(totalGold > 0)) continue;
+        const ownerInfo = kingdomOwnersById.get(kingdomId);
+        if (!ownerInfo) continue;
+        const recipients = Array.from(new Set([ownerInfo.ownerId, ...ownerInfo.coOwnerIds].map(Number)));
+        if (recipients.length === 0) continue;
+
+        const totalCopper = Math.round(totalGold * 100);
+        if (totalCopper <= 0) continue;
+        const perRecipientCopper = Math.floor(totalCopper / recipients.length);
+        const remainderCopper = totalCopper - perRecipientCopper * recipients.length;
+
+        const perPlayerCopper = {};
+        for (let i = 0; i < recipients.length; i++) {
+          perPlayerCopper[recipients[i]] = perRecipientCopper + (i === 0 ? remainderCopper : 0);
+        }
+
+        for (const [playerIdStr, amountCopper] of Object.entries(perPlayerCopper)) {
+          if (amountCopper <= 0) continue;
+          const updated = await client.query(
+            `UPDATE characters SET gold = gold + $1 WHERE campaign_id = $2 AND player_id = $3 RETURNING id, gold`,
+            [amountCopper, campaignId, Number(playerIdStr)]
+          );
+          if (updated.rows.length > 0) {
+            kingdomTaxPayouts[playerIdStr] = (Number(kingdomTaxPayouts[playerIdStr]) || 0) + amountCopper;
+            kingdomTaxCharacterUpdates.push({
+              characterId: Number(updated.rows[0].id),
+              playerId: Number(playerIdStr),
+              gold: Number(updated.rows[0].gold),
+              goldGained: amountCopper,
+            });
+          }
+        }
+      }
+
       // Bump current_day
       const campResult = await client.query(
         `UPDATE campaigns SET current_day = COALESCE(current_day, 1) + $1 WHERE id = $2 RETURNING current_day`,
@@ -2650,6 +2854,10 @@ class Campaign {
         populationGained,
         animalsLost,
         animalsBorn,
+        animalsAutoSlaughtered,
+        kingdomTaxSummary,
+        kingdomTaxPayouts,
+        kingdomTaxCharacterUpdates,
         petFoodUpdates,
         stockpileUpdates,
       };
