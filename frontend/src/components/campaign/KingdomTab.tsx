@@ -640,6 +640,10 @@ const KingdomTab: React.FC<Props> = ({
   // refetch (very frequent — any kingdomDataChanged event refetches it), so read the
   // latest value through a ref instead.
   const kingdomsRef = React.useRef<KingdomSummary[]>([]);
+  // Same reasoning as kingdomsRef: onDayAdvanced looks up animal type names for the
+  // auto-slaughter toast, but shouldn't force the socket effect to re-subscribe every
+  // time animalTypes refreshes.
+  const animalTypesRef = React.useRef<Record<string, AnimalTypeDefinition>>({});
 
   const [managementMode, setManagementMode] = useState<ManagementMode>('fief');
   const [kingdomManagementLoading, setKingdomManagementLoading] = useState(false);
@@ -765,6 +769,10 @@ const KingdomTab: React.FC<Props> = ({
   }, [kingdoms]);
 
   useEffect(() => {
+    animalTypesRef.current = animalTypes;
+  }, [animalTypes]);
+
+  useEffect(() => {
     if (!socket) return;
 
     const onDataChanged = (data: { campaignId: number }) => {
@@ -838,7 +846,7 @@ const KingdomTab: React.FC<Props> = ({
         for (const [type, countRaw] of Object.entries(byType || {})) {
           const count = Number(countRaw);
           if (count <= 0) continue;
-          const label = animalTypes[type]?.name || type;
+          const label = animalTypesRef.current[type]?.name || type;
           pushToast(`🔪 Auto-slaughtered ${count} ${label}${count === 1 ? '' : 's'} in ${fiefName} to stay within the set herd limit — meat added to the granary`, 'success');
         }
       }
