@@ -1487,6 +1487,7 @@ export interface AnimalTypeDefinition {
   purchaseCost: number;
   slaughterMeatBase: number;
   nurseryWeight: number;
+  unslaughterable?: boolean;
 }
 
 export interface FiefAnimal {

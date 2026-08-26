@@ -31,8 +31,11 @@ class Campaign {
   // ── Animal Management (mirrors backend/routes/kingdoms.js exactly) ────────
   static ANIMAL_CATEGORY_BY_TYPE = {
     riding_horse: 'horse', draft_horse: 'horse', plough_horse: 'horse', courser: 'horse', war_horse: 'horse', destrier: 'horse',
-    chicken: 'livestock', duck: 'livestock', goose: 'livestock', rabbit: 'livestock', sheep: 'livestock', goat: 'livestock', pig: 'livestock', ox: 'livestock', cow: 'livestock',
+    chicken: 'livestock', duck: 'livestock', goose: 'livestock', rabbit: 'livestock', sheep: 'livestock', goat: 'livestock', pig: 'livestock', ox: 'livestock', cow: 'livestock', wolf: 'livestock',
   };
+  // Breedable like any other animal, but can never be slaughtered (see the manual and
+  // auto-slaughter routes in routes/kingdoms.js, which block it the same way).
+  static ANIMAL_UNSLAUGHTERABLE_TYPES = new Set(['wolf']);
   // Each tier doubles the previous tier's capacity: 20 -> 40 -> 80 -> 160.
   static HORSE_CAPACITY_BY_TYPE = { animal_stable: 20, grand_stable: 40, royal_stud_farm: 80, imperial_stud_farm: 160 };
   static LIVESTOCK_CAPACITY_BY_TYPE = { animal_farm: 20, grand_pasture: 40, livestock_ranch: 80, grand_stockyards: 160 };
@@ -45,7 +48,7 @@ class Campaign {
   static NURSERY_CAPACITY_BY_TYPE = { nursery: 8 };
   static ANIMAL_NURSERY_WEIGHT_BY_TYPE = {
     riding_horse: 1, draft_horse: 1, plough_horse: 1, courser: 1, war_horse: 1, destrier: 1, cow: 1, ox: 1,
-    sheep: 0.5, goat: 0.5, pig: 0.5,
+    sheep: 0.5, goat: 0.5, pig: 0.5, wolf: 0.5,
     chicken: 0.125, duck: 0.125, goose: 0.125, rabbit: 0.125,
   };
 
@@ -74,6 +77,7 @@ class Campaign {
     ox: { min: 1, max: 2 },
     sheep: { min: 1, max: 3 },
     goat: { min: 1, max: 3 },
+    wolf: { min: 2, max: 5 },
     pig: { min: 3, max: 9 },
     rabbit: { min: 3, max: 8 },
     chicken: { min: 3, max: 7 },
@@ -2253,6 +2257,7 @@ class Campaign {
             }
             for (const [animalType, limit] of fiefSlaughterLimits.entries()) {
               if (!Number.isFinite(limit) || limit < 0) continue;
+              if (Campaign.ANIMAL_UNSLAUGHTERABLE_TYPES.has(animalType)) continue;
               const adults = (byTypeForSlaughter.get(animalType) || [])
                 .filter((a) => ageOfForSlaughter(a.bornOnDay) >= Campaign.ANIMAL_ADULT_AGE_DAYS);
               const excess = adults.length - limit;

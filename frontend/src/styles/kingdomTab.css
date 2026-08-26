@@ -277,12 +277,22 @@
 }
 
 /* ── Multi-column dashboard: kingdom-level systems sit side by side instead
-   of stacking full-width down the page. ── */
+   of stacking full-width down the page. Pinned to exactly 2 columns (not
+   auto-fit) so a wide viewport can't squeeze 3-4 panels into a row — Legendary
+   Command's inventory/assignments sub-grid needs the width a 2-column panel
+   gives it, or it collapses to one column and the fixed-height lists inside
+   need scrolling to see everything. ── */
 .kt-dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.1rem;
   align-items: start;
+}
+
+@media (max-width: 760px) {
+  .kt-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Panel: medallion + title block + banner strip, replaces the centered

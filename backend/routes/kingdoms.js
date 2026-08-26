@@ -6996,7 +6996,9 @@ const buildPrayerPresentation = (highestTier) => {
         name: p.name,
         description: p.description,
         minTier: p.minTier,
-        faithCost: Math.ceil(p.baseFaithCost * scaleFactor),
+        // flatFaithCost prayers (Divine Beast / deity gifts) are priced as a fixed
+        // faith amount regardless of kingdom tier, unlike the tier-scaled prayers above.
+        faithCost: p.flatFaithCost ? Math.ceil(p.baseFaithCost) : Math.ceil(p.baseFaithCost * scaleFactor),
         effects: p.buildEffects(tier),
       };
     });
@@ -7349,9 +7351,11 @@ router.post('/:id/prayers/:prayerKey/cast', authenticateToken, async (req, res) 
     }
     if (!targetFiefId) return res.status(400).json({ error: 'No target fief available for prayer effect' });
 
+    const currentDay = await getCampaignCurrentDay(kingdom.campaign_id);
+
     await client.query('BEGIN');
     await spendKingdomFaith(client, kingdomId, prayer.faithCost);
-    await basePrayer.apply({ client, targetFiefId, highestTier });
+    await basePrayer.apply({ client, targetFiefId, highestTier, currentDay });
 
     await client.query(
       `INSERT INTO kingdom_prayer_casts (kingdom_id, prayer_key, cast_by, target_fief_id, faith_spent, payload)
@@ -7364,6 +7368,27 @@ router.post('/:id/prayers/:prayerKey/cast', authenticateToken, async (req, res) 
     const remainingFaith = await sumKingdomPooledFaith(kingdomId);
     if (req.io) {
       req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+
+    // Deity-gift prayers (Legendary/Artifact Item, Unique Skill) have no automatic
+    // effect — post a chat message so the DM sees the request and hands it over manually.
+    if (basePrayer.manualReward) {
+      try {
+        const fiefNameResult = await pool.query(`SELECT name FROM fiefs WHERE id = $1`, [targetFiefId]);
+        const fiefName = fiefNameResult.rows[0]?.name || 'their fief';
+        const content = `🙏 ${req.user.username} invoked ${prayer.name} at ${fiefName} for ${prayer.faithCost.toLocaleString()} faith — a ${basePrayer.manualReward} is owed, deity-given and linked to religion. DM: please hand this over manually.`;
+        const chatResult = await pool.query(
+          `INSERT INTO campaign_chat_messages (campaign_id, sender_id, sender_name, message_type, content)
+           VALUES ($1, $2, $3, 'server', $4)
+           RETURNING id, campaign_id, sender_id, sender_name, message_type, content, roll_data, created_at`,
+          [kingdom.campaign_id, req.user.id, req.user.username, content]
+        );
+        if (req.io) {
+          req.io.to(`campaign_${kingdom.campaign_id}`).emit('chatMessageReceived', chatResult.rows[0]);
+        }
+      } catch (chatError) {
+        console.error('Error posting deity-gift prayer chat notification:', chatError);
+      }
     }
 
     res.json({ message: `${prayer.name} cast successfully`, pooledFaith: remainingFaith });
@@ -7805,6 +7830,10 @@ const ANIMAL_TYPES = {
   pig: { key: 'pig', name: 'Pig', category: 'livestock', purchaseCost: 160, slaughterMeatBase: 150, nurseryWeight: 0.5 },
   ox: { key: 'ox', name: 'Ox', category: 'livestock', purchaseCost: 350, slaughterMeatBase: 400, nurseryWeight: 1 },
   cow: { key: 'cow', name: 'Cow', category: 'livestock', purchaseCost: 500, slaughterMeatBase: 1000, nurseryWeight: 1 },
+  // Breedable like any other livestock, but kept as a working/companion animal rather
+  // than food stock — unslaughterable blocks it in both the manual slaughter route and
+  // the auto-slaughter feature (see below).
+  wolf: { key: 'wolf', name: 'Wolf', category: 'livestock', purchaseCost: 260, slaughterMeatBase: 0, nurseryWeight: 0.5, unslaughterable: true },
 };
 
 // Each tier doubles the previous tier's capacity: 20 -> 40 -> 80 -> 160.
@@ -7845,6 +7874,63 @@ const ANIMAL_POSTPARTUM_COOLDOWN_DAYS = 183;
 
 // Newly purchased/bred animals start at this quality; breeding is the only way to raise it.
 const ANIMAL_STARTING_QUALITY = 20;
+
+// ── Prayer Chamber: "Divine Beast" prayers — one per animal type ──────────
+// A flat (not tier-scaled — see the flatFaithCost flag read in buildPrayerPresentation)
+// faith cost that delivers one fully-grown, 100%-quality animal of that type straight
+// into the target fief's herd, bypassing gold cost, age, and capacity entirely. Priced
+// far above the gold purchase cost — this is a miracle, not a market transaction.
+const ANIMAL_PRAYER_FAITH_COST_BY_TYPE = {
+  chicken: 5000, duck: 5500, rabbit: 5750, goose: 6000,
+  sheep: 7000, goat: 7500, pig: 8500, wolf: 9500, ox: 10500, cow: 12000,
+  riding_horse: 10000, draft_horse: 11500, plough_horse: 12000, courser: 13500,
+  war_horse: 15000, destrier: 19000,
+};
+for (const [animalTypeKey, animalDef] of Object.entries(ANIMAL_TYPES)) {
+  const faithCost = ANIMAL_PRAYER_FAITH_COST_BY_TYPE[animalTypeKey];
+  if (!faithCost) continue;
+  PRAYER_DEFINITIONS.push({
+    key: `divine_beast_${animalTypeKey}`,
+    name: `Divine ${animalDef.name}`,
+    description: `Beseech the heavens for a flawless ${animalDef.name} — one appears in the target fief's herd at 100% quality, already fully grown. Bypasses gold cost and any stable/pasture capacity limit.`,
+    minTier: 3,
+    baseFaithCost: faithCost,
+    flatFaithCost: true,
+    buildEffects: () => ({}),
+    apply: async ({ client, targetFiefId, currentDay }) => {
+      const bornOnDay = Math.max(0, Number(currentDay || 0)) - ANIMAL_ADULT_AGE_DAYS - 1;
+      const sex = Math.random() < 0.5 ? 'male' : 'female';
+      await client.query(
+        `INSERT INTO fief_animals (fief_id, animal_type, sex, quality, born_on_day)
+         VALUES ($1, $2, $3, 100, $4)`,
+        [targetFiefId, animalTypeKey, sex, bornOnDay]
+      );
+    },
+  });
+}
+
+// ── Prayer Chamber: deity-given rewards ────────────────────────────────────
+// These have no automatic effect — casting only spends the faith and logs the
+// request (see the cast route below, which posts a chat message flagging it for
+// the DM). The DM manually hands over the actual item/skill out of game.
+const DEITY_GIFT_PRAYERS = [
+  { key: 'deity_gift_legendary_item', name: "Deity's Legendary Boon", reward: 'Legendary Item', baseFaithCost: 10000 },
+  { key: 'deity_gift_artifact_item', name: "Deity's Artifact Boon", reward: 'Artifact Item', baseFaithCost: 15000 },
+  { key: 'deity_gift_unique_skill', name: "Deity's Unique Gift", reward: 'Unique Skill', baseFaithCost: 20000 },
+];
+for (const gift of DEITY_GIFT_PRAYERS) {
+  PRAYER_DEFINITIONS.push({
+    key: gift.key,
+    name: gift.name,
+    description: `A direct plea to your deity for a ${gift.reward} — no automatic effect; the DM will hand this over manually once cast.`,
+    minTier: 5,
+    baseFaithCost: gift.baseFaithCost,
+    flatFaithCost: true,
+    manualReward: gift.reward,
+    buildEffects: () => ({}),
+    apply: async () => {},
+  });
+}
 
 const getFiefCompletedBuildingTypes = async (fiefId) => {
   const result = await pool.query(
@@ -8076,6 +8162,10 @@ router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (
     const animal = animalResult.rows[0];
     if (!animal) return res.status(404).json({ error: 'Animal not found in this fief' });
 
+    if (ANIMAL_TYPES[animal.animal_type]?.unslaughterable) {
+      return res.status(400).json({ error: `${ANIMAL_TYPES[animal.animal_type].name} cannot be slaughtered` });
+    }
+
     const currentDay = await getCampaignCurrentDay(owned.campaign_id);
     const ageDays = animal.born_on_day == null ? ANIMAL_ADULT_AGE_DAYS : Math.max(0, currentDay - Number(animal.born_on_day));
     if (ageDays < ANIMAL_ADULT_AGE_DAYS) {
@@ -8143,6 +8233,10 @@ router.post('/fiefs/:id/animals/auto-slaughter', authenticateToken, async (req, 
       );
       if (req.io) req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
       return res.json({ fiefId, animalType, limit: null });
+    }
+
+    if (ANIMAL_TYPES[animalType]?.unslaughterable) {
+      return res.status(400).json({ error: `${ANIMAL_TYPES[animalType].name} cannot be slaughtered, so it can't be auto-slaughtered either` });
     }
 
     const adultLimit = Math.max(0, Math.floor(Number(limit)));

@@ -316,6 +316,7 @@ const ANIMAL_ICONS: Record<string, string> = {
   pig: '🐖',
   ox: '🐂',
   cow: '🐄',
+  wolf: '🐺',
 };
 
 const getQualityColor = (quality: number) => {
@@ -604,6 +605,10 @@ const KingdomTab: React.FC<Props> = ({
   const [conversionInput, setConversionInput] = useState('1');
   const [releaseInput, setReleaseInput] = useState('1');
   const [selectedUpgradeBuildingId, setSelectedUpgradeBuildingId] = useState<number | null>(null);
+  // The full sibling group (same type/level/completion) the selected building belongs to —
+  // lets the Upgrade modal offer "how many of these N" instead of just one-or-all.
+  const [selectedUpgradeBuildingIds, setSelectedUpgradeBuildingIds] = useState<number[]>([]);
+  const [upgradeQuantity, setUpgradeQuantity] = useState(1);
   const [buildTab, setBuildTab] = useState<BuildTabId>('all');
   const [researchTab, setResearchTab] = useState<ResearchTabId>('all');
   const [selectedGrantPlayerIds, setSelectedGrantPlayerIds] = useState<number[]>([]);
@@ -2284,19 +2289,6 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const upgradeBuilding = async (buildingId: number) => {
-    if (!fiefDetails) return;
-    setBusy(`upgrade-building-${buildingId}`);
-    try {
-      await kingdomAPI.upgradeBuilding(Number(fiefDetails.id), Number(buildingId));
-      await fetchFief(Number(fiefDetails.id));
-    } catch (e: any) {
-      pushToast(e?.response?.data?.error || 'Failed to upgrade building');
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const upgradeBuildingsBatch = async (buildingIds: number[]) => {
     if (!fiefDetails || buildingIds.length === 0) return;
     const busyKey = `upgrade-batch-${buildingIds.join(',')}`;
@@ -3476,7 +3468,7 @@ const KingdomTab: React.FC<Props> = ({
                                     </span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                       <span style={{ fontSize: '0.76rem', color: getQualityColor(avgQuality), fontWeight: 700 }}>avg {avgQuality}% quality</span>
-                                      {isEditingAuto ? (
+                                      {def?.unslaughterable ? null : isEditingAuto ? (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                           <input
                                             type="number"
@@ -3544,6 +3536,7 @@ const KingdomTab: React.FC<Props> = ({
                                       const cooldownDaysLeft = a.on_cooldown ? Math.max(0, a.cooldown_until_day! - currentAnimalDay) : null;
                                       const qColor = getQualityColor(a.quality);
                                       const meatYield = Math.round((def?.slaughterMeatBase || 0) * (a.quality / 100));
+                                      const canSlaughter = a.is_adult && !def?.unslaughterable;
                                       return (
                                         <div
                                           key={a.id}
@@ -3590,19 +3583,23 @@ const KingdomTab: React.FC<Props> = ({
                                           </div>
 
                                           <button
-                                            onClick={() => a.is_adult && setSlaughterConfirmTarget({ fiefId: fief.fief_id, animal: a })}
-                                            disabled={!a.is_adult || busy === `animal-slaughter-${a.id}`}
-                                            title={a.is_adult ? `Slaughter for +${meatYield} food` : `Too young to slaughter — becomes an adult in ${Math.max(0, adultAgeDays - a.age_days)}d`}
+                                            onClick={() => canSlaughter && setSlaughterConfirmTarget({ fiefId: fief.fief_id, animal: a })}
+                                            disabled={!canSlaughter || busy === `animal-slaughter-${a.id}`}
+                                            title={
+                                              def?.unslaughterable
+                                                ? `${def.name} cannot be slaughtered`
+                                                : a.is_adult ? `Slaughter for +${meatYield} food` : `Too young to slaughter — becomes an adult in ${Math.max(0, adultAgeDays - a.age_days)}d`
+                                            }
                                             style={{
                                               marginTop: '0.3rem', width: '100%', padding: '0.3rem 0.4rem', borderRadius: '0.35rem',
-                                              border: `1px solid ${a.is_adult ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.12)'}`,
-                                              background: a.is_adult ? 'rgba(127,29,29,0.28)' : 'rgba(255,255,255,0.04)',
-                                              color: a.is_adult ? '#fca5a5' : 'var(--text-muted)',
-                                              cursor: (!a.is_adult || busy === `animal-slaughter-${a.id}`) ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 700,
-                                              opacity: (!a.is_adult || busy === `animal-slaughter-${a.id}`) ? 0.5 : 1,
+                                              border: `1px solid ${canSlaughter ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.12)'}`,
+                                              background: canSlaughter ? 'rgba(127,29,29,0.28)' : 'rgba(255,255,255,0.04)',
+                                              color: canSlaughter ? '#fca5a5' : 'var(--text-muted)',
+                                              cursor: (!canSlaughter || busy === `animal-slaughter-${a.id}`) ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 700,
+                                              opacity: (!canSlaughter || busy === `animal-slaughter-${a.id}`) ? 0.5 : 1,
                                             }}
                                           >
-                                            {a.is_adult ? `🔪 Slaughter · +${meatYield}` : 'Too young'}
+                                            {def?.unslaughterable ? '🛡️ Protected' : a.is_adult ? `🔪 Slaughter · +${meatYield}` : 'Too young'}
                                           </button>
                                         </div>
                                       );
@@ -4653,52 +4650,23 @@ const KingdomTab: React.FC<Props> = ({
                                     <button
                                       onClick={() => {
                                         setSelectedUpgradeBuildingId(Number(b.id));
+                                        setSelectedUpgradeBuildingIds(ids);
+                                        setUpgradeQuantity(1);
                                         setShowUpgradeModal(true);
                                       }}
-                                      disabled={busy === `upgrade-building-${Number(b.id)}`}
+                                      title={count > 1 ? `Choose how many of these ${count} to upgrade` : undefined}
                                       style={{
                                         padding: '0.14rem 0.4rem',
                                         borderRadius: '0.34rem',
-                                        border: busy === `upgrade-building-${Number(b.id)}`
-                                          ? '1px solid rgba(var(--theme-accent-rgb),0.45)'
-                                          : upgrade.canUpgrade
-                                            ? '1px solid rgba(34,197,94,0.6)'
-                                            : '1px solid rgba(239,68,68,0.55)',
-                                        background: busy === `upgrade-building-${Number(b.id)}`
-                                          ? 'rgba(71,85,105,0.35)'
-                                          : upgrade.canUpgrade
-                                            ? 'rgba(20,83,45,0.38)'
-                                            : 'rgba(127,29,29,0.34)',
-                                        color: busy === `upgrade-building-${Number(b.id)}`
-                                          ? 'var(--text-muted)'
-                                          : upgrade.canUpgrade
-                                            ? '#86efac'
-                                            : '#fca5a5',
-                                        cursor: busy === `upgrade-building-${Number(b.id)}` ? 'not-allowed' : 'pointer',
+                                        border: upgrade.canUpgrade ? '1px solid rgba(34,197,94,0.6)' : '1px solid rgba(239,68,68,0.55)',
+                                        background: upgrade.canUpgrade ? 'rgba(20,83,45,0.38)' : 'rgba(127,29,29,0.34)',
+                                        color: upgrade.canUpgrade ? '#86efac' : '#fca5a5',
+                                        cursor: 'pointer',
                                         fontSize: '0.72rem',
                                         fontWeight: 700,
                                       }}
                                     >
-                                      {busy === `upgrade-building-${Number(b.id)}` ? '...' : (count > 1 ? '↑ Upgrade 1' : '↑ Upgrade')}
-                                    </button>
-                                  )}
-                                  {count > 1 && upgrade?.canUpgrade && (
-                                    <button
-                                      onClick={() => upgradeBuildingsBatch(ids)}
-                                      disabled={busy === `upgrade-batch-${ids.join(',')}`}
-                                      title={`Upgrade all ${count} at once — cost applies per building`}
-                                      style={{
-                                        padding: '0.14rem 0.4rem',
-                                        borderRadius: '0.34rem',
-                                        border: '1px solid rgba(96,165,250,0.6)',
-                                        background: busy === `upgrade-batch-${ids.join(',')}` ? 'rgba(71,85,105,0.35)' : 'rgba(30,58,138,0.4)',
-                                        color: busy === `upgrade-batch-${ids.join(',')}` ? 'var(--text-muted)' : '#93c5fd',
-                                        cursor: busy === `upgrade-batch-${ids.join(',')}` ? 'not-allowed' : 'pointer',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 700,
-                                      }}
-                                    >
-                                      {busy === `upgrade-batch-${ids.join(',')}` ? '...' : `↑↑ Upgrade All (${count})`}
+                                      ↑ Upgrade
                                     </button>
                                   )}
                                 </div>
@@ -4706,11 +4674,6 @@ const KingdomTab: React.FC<Props> = ({
                                 <span style={{ fontSize: '0.8rem', color: b.is_complete ? '#86efac' : 'var(--text-gold)' }}>
                                   {b.is_complete ? 'Completed' : `${Number(b.days_remaining || 0)} day(s) remaining`}
                                 </span>
-                                {count > 1 && upgrade && (
-                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', fontStyle: 'italic' }}>
-                                    "Upgrade 1" costs once; "Upgrade All" upgrades all {count} (cost × {count})
-                                  </span>
-                                )}
                               </div>
                             );
                           });
@@ -6946,7 +6909,20 @@ const KingdomTab: React.FC<Props> = ({
       {showUpgradeModal && selectedUpgradeBuildingId !== null && (() => {
         const building = fiefDetails?.buildings?.find((b: any) => Number(b.id) === selectedUpgradeBuildingId);
         const upgrade = building ? upgradeByBuildingId.get(selectedUpgradeBuildingId) : null;
-        
+        // Falls back to just the selected building if the sibling group somehow wasn't set.
+        const groupIds = selectedUpgradeBuildingIds.length > 0 ? selectedUpgradeBuildingIds : [selectedUpgradeBuildingId];
+        const groupCount = groupIds.length;
+        const quantity = Math.max(1, Math.min(upgradeQuantity, groupCount));
+        // upgrade.canUpgrade only ever reflects affordability for a single building (research/tier
+        // requirements are already guaranteed by `upgrade` existing at all) — re-check against the
+        // chosen quantity's scaled cost instead of trusting that flag once quantity > 1.
+        const missingForQuantity = Object.entries(upgrade?.cost || {})
+          .filter(([resource, amount]) => getStoredAmountForCostResource(String(resource)) < Math.max(0, Number(amount || 0)) * quantity)
+          .map(([resource]) => resource);
+        const canAffordQuantity = Boolean(upgrade) && missingForQuantity.length === 0;
+        const idsToUpgrade = groupIds.slice(0, quantity);
+        const upgradeBusyKey = `upgrade-batch-${idsToUpgrade.join(',')}`;
+
         return ReactDOM.createPortal(
           <div
             style={{
@@ -7000,6 +6976,47 @@ const KingdomTab: React.FC<Props> = ({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                {/* Quantity — only shown when there's more than one identical building to upgrade */}
+                {groupCount > 1 && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(96,165,250,0.1)', borderRadius: '0.5rem', border: '1px solid rgba(96,165,250,0.3)' }}>
+                    <div style={{ color: '#93c5fd', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>🔢 Quantity</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <button
+                        onClick={() => setUpgradeQuantity((q) => Math.max(1, Math.min(groupCount, q) - 1))}
+                        disabled={quantity <= 1}
+                        style={{ width: '2rem', height: '2rem', borderRadius: '0.4rem', border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(30,58,138,0.35)', color: '#93c5fd', cursor: quantity <= 1 ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: quantity <= 1 ? 0.5 : 1 }}
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={groupCount}
+                        value={quantity}
+                        onChange={(e) => setUpgradeQuantity(Math.max(1, Math.min(groupCount, Math.floor(Number(e.target.value) || 1))))}
+                        style={{ width: '4rem', textAlign: 'center', padding: '0.35rem', borderRadius: '0.4rem', border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(15,15,15,0.75)', color: 'var(--text-secondary)', fontWeight: 700 }}
+                      />
+                      <button
+                        onClick={() => setUpgradeQuantity((q) => Math.min(groupCount, Math.max(1, q) + 1))}
+                        disabled={quantity >= groupCount}
+                        style={{ width: '2rem', height: '2rem', borderRadius: '0.4rem', border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(30,58,138,0.35)', color: '#93c5fd', cursor: quantity >= groupCount ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: quantity >= groupCount ? 0.5 : 1 }}
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => setUpgradeQuantity(groupCount)}
+                        disabled={quantity === groupCount}
+                        style={{ marginLeft: 'auto', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(96,165,250,0.35)', background: 'transparent', color: quantity === groupCount ? 'var(--text-muted)' : '#93c5fd', cursor: quantity === groupCount ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                      >
+                        All ({groupCount})
+                      </button>
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.76rem', marginTop: '0.5rem' }}>
+                      {groupCount} of this building are completed and eligible — choose how many to upgrade at once. Cost scales per building; time does not stack.
+                    </div>
+                  </div>
+                )}
+
                 {/* Research Required */}
                 <div style={{ padding: '0.75rem', background: 'rgba(59,130,246,0.1)', borderRadius: '0.5rem', border: '1px solid rgba(59,130,246,0.25)' }}>
                   <div style={{ color: '#93c5fd', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem' }}>📖 Research Required</div>
@@ -7019,10 +7036,12 @@ const KingdomTab: React.FC<Props> = ({
                 {/* Cost */}
                 {upgrade?.cost && Object.keys(upgrade.cost).length > 0 && (
                   <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.1)', borderRadius: '0.5rem', border: '1px solid rgba(239,68,68,0.25)' }}>
-                    <div style={{ color: '#fca5a5', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>💰 Resource Cost</div>
+                    <div style={{ color: '#fca5a5', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>
+                      💰 Resource Cost{quantity > 1 ? ` (× ${quantity})` : ''}
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                       {Object.entries(upgrade.cost || {}).map(([resource, amount]) => {
-                        const needed = Math.max(0, Number(amount || 0));
+                        const needed = Math.max(0, Number(amount || 0)) * quantity;
                         const available = getStoredAmountForCostResource(String(resource));
                         const requirementColor = available < needed
                           ? '#ef4444'
@@ -7048,10 +7067,12 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
               </div>
 
-              {upgrade && !upgrade.canUpgrade && (
+              {upgrade && !canAffordQuantity && (
                 <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.15)', borderRadius: '0.5rem', border: '1px solid rgba(239,68,68,0.3)', marginBottom: '1.5rem' }}>
                   <div style={{ color: '#fca5a5', fontSize: '0.9rem', fontWeight: 600 }}>⚠️ Cannot Upgrade</div>
-                  <div style={{ color: '#fca5a5', fontSize: '0.8rem', marginTop: '0.25rem' }}>{upgrade.reason || 'Missing resources or requirements'}</div>
+                  <div style={{ color: '#fca5a5', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                    {missingForQuantity.length > 0 ? `Insufficient ${missingForQuantity.join(', ')} for ${quantity > 1 ? `× ${quantity}` : '1'}` : (upgrade.reason || 'Missing resources or requirements')}
+                  </div>
                 </div>
               )}
 
@@ -7074,21 +7095,21 @@ const KingdomTab: React.FC<Props> = ({
                 <button
                   onClick={() => {
                     setShowUpgradeModal(false);
-                    upgradeBuilding(selectedUpgradeBuildingId);
+                    upgradeBuildingsBatch(idsToUpgrade);
                   }}
-                  disabled={!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`}
+                  disabled={!canAffordQuantity || busy === upgradeBusyKey}
                   style={{
                     padding: '0.5rem 1rem',
                     borderRadius: '0.5rem',
                     border: '1px solid rgba(125,211,252,0.5)',
-                    background: (!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`) ? 'rgba(71,85,105,0.35)' : 'rgba(12,74,110,0.45)',
-                    color: (!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`) ? 'var(--text-muted)' : '#93c5fd',
-                    cursor: (!upgrade?.canUpgrade || busy === `upgrade-building-${selectedUpgradeBuildingId}`) ? 'not-allowed' : 'pointer',
+                    background: (!canAffordQuantity || busy === upgradeBusyKey) ? 'rgba(71,85,105,0.35)' : 'rgba(12,74,110,0.45)',
+                    color: (!canAffordQuantity || busy === upgradeBusyKey) ? 'var(--text-muted)' : '#93c5fd',
+                    cursor: (!canAffordQuantity || busy === upgradeBusyKey) ? 'not-allowed' : 'pointer',
                     fontWeight: 700,
                     fontSize: '0.9rem',
                   }}
                 >
-                  {busy === `upgrade-building-${selectedUpgradeBuildingId}` ? 'Upgrading...' : 'Start Upgrade'}
+                  {busy === upgradeBusyKey ? 'Upgrading...' : quantity > 1 ? `Start Upgrade (× ${quantity})` : 'Start Upgrade'}
                 </button>
               </div>
             </div>
