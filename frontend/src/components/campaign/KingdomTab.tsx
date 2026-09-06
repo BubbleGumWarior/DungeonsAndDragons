@@ -58,15 +58,23 @@ const MEAT_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = 
   { type: 'hunters_guild',          rate: 1.5,  capacity: 20 },
 ];
 const VEG_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
-  { type: 'hydroponic_conservatory', rate: 4.10, capacity: 20 },
-  { type: 'greenhouse_complex',      rate: 3.80, capacity: 20 },
-  { type: 'fertile_estates',         rate: 3.50, capacity: 20 },
-  { type: 'orchard_farms',           rate: 3.20, capacity: 20 },
-  { type: 'terrace_fields',          rate: 2.90, capacity: 20 },
-  { type: 'farm_advanced',  rate: 2.60, capacity: 20 },
-  { type: 'irrigated_farm', rate: 2.30, capacity: 20 },
-  { type: 'farm',           rate: 2.0,  capacity: 20 },
-  { type: 'granary',        rate: 2.0,  capacity: 20 },
+  { type: 'hydroponic_conservatory', rate: 2.05, capacity: 20 },
+  { type: 'greenhouse_complex',      rate: 1.90, capacity: 20 },
+  { type: 'fertile_estates',         rate: 1.75, capacity: 20 },
+  { type: 'orchard_farms',           rate: 1.60, capacity: 20 },
+  { type: 'terrace_fields',          rate: 1.45, capacity: 20 },
+  { type: 'farm_advanced',           rate: 1.30, capacity: 20 },
+  { type: 'irrigated_farm',          rate: 1.15, capacity: 20 },
+  { type: 'farm',                    rate: 1.0,  capacity: 20 },
+  { type: 'granary',                 rate: 1.0,  capacity: 20 },
+  { type: 'reinforced_granary',      rate: 1.0,  capacity: 20 },
+  { type: 'cold_cellar_granary',     rate: 1.0,  capacity: 20 },
+  { type: 'regional_granary',        rate: 1.0,  capacity: 20 },
+  { type: 'central_food_reserve',    rate: 1.0,  capacity: 20 },
+  { type: 'preservation_complex',    rate: 1.0,  capacity: 20 },
+  { type: 'nutrient_reserve_hall',   rate: 1.0,  capacity: 20 },
+  { type: 'strategic_food_vault',    rate: 1.0,  capacity: 20 },
+  { type: 'eternal_harvest_vault',   rate: 1.0,  capacity: 20 },
 ];
 // Must stay in sync with Campaign.TAVERN_BUILDING_CHAIN on the backend.
 const TAVERN_BUILDING_CHAIN: { type: string; rate: number; capacity: number }[] = [
@@ -1775,9 +1783,10 @@ const KingdomTab: React.FC<Props> = ({
         : {};
       for (const [resource, raw] of Object.entries(buildingOutput)) {
         const amount = Math.max(0, Number(raw || 0));
-        if (resource === 'vegetables') {
-          if (vegetablePhase === 'harvesting') vegetables += amount;
-        }
+        // Passive building vegetable/food output applies every day on the backend
+        // (see Campaign.computeBaseProduction) — it is independent of the worker
+        // harvest cycle, so it must not be gated on the 'harvesting' phase here.
+        if (resource === 'vegetables') vegetables += amount;
         else if (resource === 'meat') meat += amount;
         else if (resource === 'food') vegetables += amount;
         else if (resource === 'wood') output.wood += amount;
