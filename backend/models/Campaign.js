@@ -1152,17 +1152,21 @@ class Campaign {
     }
     const applied = {};
 
-    // How much of the *existing* stockpile already sits above its dedicated pool's cap —
-    // that portion is occupying general Warehouse space right now (e.g. from a previous
-    // day's overflow, or a Granary/Bank capacity that shrank). Stateless: derived fresh
-    // from current totals vs. caps each time, no separate "origin" tracking needed.
     const foodCap = Math.max(0, Number(foodCapacity ?? capacity) || 0);
     const bankCap = Math.max(0, Number(bankCapacity ?? 0));
+    // Only the true general-Warehouse resources (wood/stone/minerals/faith/…) count as
+    // occupying Warehouse space here. Food and gold live in their own dedicated pools
+    // (Granary / Bank); a large pre-existing food or gold reserve — which routinely
+    // grows past its cap via trade, military collection, prayers and DM adjustments —
+    // must NOT be charged against the Warehouse. Doing so let a rich kingdom's gold
+    // pile permanently fill the Warehouse, so every non-food lane produced each long
+    // rest was silently discarded ("kingdom produces nothing"). Only *this turn's*
+    // fresh food/gold overflow consumes Warehouse room, added to generalUsed by
+    // fillDedicatedThenOverflow below — matching the Storehouse panel projection in
+    // KingdomTab.tsx, which likewise excludes stored food/gold from Warehouse usage.
     let generalUsed = Object.entries(stored).reduce((sum, [resource, n]) => {
-      const amount = Math.max(0, Number(n) || 0);
-      if (resource === 'food') return sum + Math.max(0, amount - foodCap);
-      if (resource === 'gold') return sum + Math.max(0, amount - bankCap);
-      return sum + amount;
+      if (resource === 'food' || resource === 'gold') return sum;
+      return sum + Math.max(0, Number(n) || 0);
     }, 0);
 
     // Fills `stored[resource]` from `produced`, up to `dedicatedCap` first, then spills
@@ -2035,6 +2039,19 @@ class Campaign {
 
           for (const [resource, amount] of Object.entries(capacityApplied.applied)) {
             resourcesGained[fief.id][resource] = (Number(resourcesGained[fief.id][resource]) || 0) + amount;
+          }
+
+          // Diagnostic: a fief that produced a meaningful amount but banked ~none of it
+          // is storage-starved (Warehouse / Granary / Bank all full). Logs once per fief
+          // per advance so "my kingdom produces nothing after a long rest" is visible
+          // server-side instead of silent.
+          if (!fief._loggedStorageStall) {
+            const producedTotal = Object.values(modifiedProduction).reduce((s, v) => s + Math.max(0, Number(v) || 0), 0);
+            const appliedTotal = Object.values(capacityApplied.applied).reduce((s, v) => s + Math.max(0, Number(v) || 0), 0);
+            if (producedTotal > 1 && appliedTotal < producedTotal * 0.05) {
+              fief._loggedStorageStall = true;
+              console.warn(`⚠️  Fief "${fief.name}" (#${fief.id}) produced ${producedTotal.toFixed(1)} but stored ${appliedTotal.toFixed(1)} on day ${dayNumber} — storage full (warehouse ${fief.storageCapacity}, granary ${fief.foodStorageCapacity}, bank ${fief.bankCapacity}).`);
+            }
           }
 
           // ── Standing military: quartered in Barracks first, civilian housing

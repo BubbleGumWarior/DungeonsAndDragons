@@ -4106,8 +4106,9 @@ const KingdomTab: React.FC<Props> = ({
                 })()}
 
                 {/* ── Breakdown ── */}
-                {/* Core 3-column grid: Adults | Children | Slaves */}
-                <div style={{ display: 'grid', gridTemplateColumns: (hasPrisonInfrastructure || slaves > 0) ? '1fr 1fr 1fr' : '1fr 1fr', gap: '0.75rem', alignItems: 'start', textAlign: 'center', marginBottom: (sickInjuredPopulation > 0 || militaryPopulation > 0) ? '0.5rem' : '0.6rem' }}>
+                {/* Core grid: Adults | Children | Slaves? | Soldiers? */}
+                {(() => { const popGridCols = 2 + ((hasPrisonInfrastructure || slaves > 0) ? 1 : 0) + (militaryPopulation > 0 ? 1 : 0); return (
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${popGridCols}, 1fr)`, gap: '0.75rem', alignItems: 'start', textAlign: 'center', marginBottom: sickInjuredPopulation > 0 ? '0.5rem' : '0.6rem' }}>
                   {/* Adults */}
                   <div>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Adults</div>
@@ -4142,25 +4143,25 @@ const KingdomTab: React.FC<Props> = ({
                       </button>
                     </div>
                   )}
+                  {/* Soldiers */}
+                  {militaryPopulation > 0 && (
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Soldiers</div>
+                      <div style={{ color: '#93c5fd', fontWeight: 700, fontSize: '1rem', marginBottom: '0.1rem' }}>{militaryPopulation}</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                        {militaryHoused > 0 ? `${militaryHoused} in Barracks` : ''}{militaryHoused > 0 && militaryHousingOverflow > 0 ? ' · ' : ''}{militaryHousingOverflow > 0 ? `${militaryHousingOverflow} in housing` : ''}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {/* Secondary row: Sick/Injured + Soldiers (conditional) */}
-                {(sickInjuredPopulation > 0 || militaryPopulation > 0) && (
+                ); })()}
+                {/* Secondary row: Sick/Injured (conditional) */}
+                {sickInjuredPopulation > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem 1.5rem', marginBottom: '0.6rem' }}>
-                    {sickInjuredPopulation > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sick / Injured</span>
-                        <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '1rem' }}>{sickInjuredPopulation}</span>
-                      </div>
-                    )}
-                    {militaryPopulation > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Soldiers</span>
-                        <span style={{ color: '#93c5fd', fontWeight: 700, fontSize: '1rem' }}>{militaryPopulation}</span>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
-                          {militaryHoused > 0 ? `${militaryHoused} in Barracks` : ''}{militaryHoused > 0 && militaryHousingOverflow > 0 ? ' · ' : ''}{militaryHousingOverflow > 0 ? `${militaryHousingOverflow} in housing` : ''}
-                        </span>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sick / Injured</span>
+                      <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '1rem' }}>{sickInjuredPopulation}</span>
+                    </div>
                   </div>
                 )}
 
