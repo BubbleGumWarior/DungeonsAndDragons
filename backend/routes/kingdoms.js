@@ -229,6 +229,16 @@ const BUILDING_CATALOG = {
     resourceOutput: {},
     prerequisites: [{ type: 'housing', minCount: 2 }],
   },
+  barracks: {
+    key: 'barracks',
+    name: 'Barracks',
+    description: 'Adds +15 military housing capacity. Trained Militia and soldiers held in the fief are quartered here instead of competing with civilians for Tents and Lodges. Once your Barracks are full, extra soldiers fall back onto the normal population housing pool — and if that overflows too, they emigrate like any other resident. Soldiers still eat food and (from Tier 4) draw gold upkeep. Requires fief Tier 2.',
+    tierRequired: 2,
+    cost: { wood: 24, stone: 16 },
+    days: 3,
+    resourceOutput: {},
+    prerequisites: [],
+  },
   hunters_lodge_advanced: {
     key: 'hunters_lodge_advanced',
     name: 'Grand Hunting Lodge',
@@ -2687,6 +2697,34 @@ const calculateHousingCapacityFromBuildings = (buildings) => {
   return total;
 };
 
+// Barracks chain — dedicated military housing. Militia/soldiers held in a fief
+// fill this pool first; anything above it spills onto the civilian housing pool
+// (HOUSING_CAPACITY_BY_TYPE) and, failing that, emigrates. Mirrors
+// Campaign.BARRACKS_CAPACITY_BY_TYPE.
+const BARRACKS_CAPACITY_BY_TYPE = {
+  barracks: 15,
+};
+
+const calculateBarracksCapacityFromBuildings = (buildings) => {
+  let total = 0;
+  for (const building of (buildings || [])) {
+    if (!building?.is_complete) continue;
+    const type = String(building.building_type || '');
+    total += BARRACKS_CAPACITY_BY_TYPE[type] || 0;
+  }
+  return total;
+};
+
+// A fief's standing military headcount = every collected reserve unit. The
+// legacy `soldiers` column only mirrors Militia, so take whichever is larger to
+// also cover soldiers granted straight to the column (e.g. Mustering Anthem).
+const getMilitaryPopulation = (fief) => {
+  const reserves = normalizeUnitReserves(fief?.unit_reserves);
+  const reservesTotal = Object.values(reserves).reduce((sum, c) => sum + Math.max(0, Number(c) || 0), 0);
+  const soldiersColumn = Math.max(0, Number(fief?.soldiers || 0));
+  return Math.max(reservesTotal, soldiersColumn);
+};
+
 const PRISONER_CAP_BY_BUILDING = {
   prison: 20,
   dungeon: 40,
@@ -4240,6 +4278,10 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       capAdjusted.nextMaxWorkers.vegetables = 0;
     }
     const housingCapacity = calculateHousingCapacityFromBuildings(completedBuildings);
+    const barracksCapacity = calculateBarracksCapacityFromBuildings(completedBuildings);
+    const militaryPopulation = getMilitaryPopulation(fief);
+    const militaryHoused = Math.min(militaryPopulation, barracksCapacity);
+    const militaryOverflow = Math.max(0, militaryPopulation - barracksCapacity);
     const prisonerCapacity = calculatePrisonerCapacityFromBuildings(buildingsResult.rows);
     const legendaryBonuses = await getLegendaryBonusesForFief(fiefId);
     const currentCampaignDay = await getCampaignCurrentDay(fief.campaign_id);
@@ -4252,6 +4294,10 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       fief: {
         ...withPopulationBreakdown(fief),
         housing_capacity: housingCapacity,
+        barracks_capacity: barracksCapacity,
+        military_population: militaryPopulation,
+        military_housed: militaryHoused,
+        military_overflow: militaryOverflow,
         prisoner_capacity: prisonerCapacity,
         stored_resources: normalizeStoredResources(fief?.stored_resources),
         worker_assignments: normalizeWorkerAssignments(fief?.worker_assignments),

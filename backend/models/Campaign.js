@@ -623,6 +623,32 @@ class Campaign {
     return Math.max(Math.max(0, Number(floorPopulation) || 0), capacity);
   }
 
+  // Barracks chain — dedicated military housing. Standing soldiers fill this
+  // pool first; the overflow spills onto the civilian housing pool and then
+  // emigrates. Mirrors kingdoms.js BARRACKS_CAPACITY_BY_TYPE.
+  static BARRACKS_CAPACITY_BY_TYPE = {
+    barracks: 15,
+  };
+
+  static calculateBarracksCapacityFromCompletedBuildings(completedBuildings) {
+    let capacity = 0;
+    for (const building of (completedBuildings || [])) {
+      const type = String(building?.buildingType || building?.building_type || '');
+      capacity += Campaign.BARRACKS_CAPACITY_BY_TYPE[type] || 0;
+    }
+    return capacity;
+  }
+
+  // Standing military headcount for a fief state in the daily tick — every
+  // collected reserve unit, or the legacy `soldiers` mirror if it is somehow
+  // larger (e.g. soldiers granted straight to the column).
+  static getMilitaryPopulationForFief(fief) {
+    const reserves = (fief?.unitReserves && typeof fief.unitReserves === 'object') ? fief.unitReserves : {};
+    const reservesTotal = Object.values(reserves).reduce((sum, c) => sum + Math.max(0, Number(c) || 0), 0);
+    const soldiersColumn = Math.max(0, Number(fief?.soldiers || 0));
+    return Math.max(reservesTotal, soldiersColumn);
+  }
+
   static getPrisonerCapacityForBuildingType(type) {
     const caps = {
       prison: 20,
@@ -1595,6 +1621,7 @@ class Campaign {
                     ${hasCompletedResearchColumn ? "COALESCE(f.completed_research, '[]'::jsonb)" : "'[]'::jsonb"} AS completed_research,
                     ${hasVegetableHarvestStateColumn ? "COALESCE(f.vegetable_harvest_state, '{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb)" : "'{\"day_in_cycle\":0,\"accumulated_worker_days\":0}'::jsonb"} AS vegetable_harvest_state${hasConsecutiveStarvationDaysColumn ? ",\n                  COALESCE(f.consecutive_starvation_days, 0) AS consecutive_starvation_days" : ''}${hasConsecutiveGoldShortageDaysColumn ? ",\n                  COALESCE(f.consecutive_gold_shortage_days, 0) AS consecutive_gold_shortage_days" : ''},
                   COALESCE(f.slaves, 0) AS slaves,
+                  COALESCE(f.soldiers, 0) AS soldiers,
                   COALESCE(f.prisoners, 0) AS prisoners,
                     ${hasLocationModifiersColumn ? "COALESCE(f.location_modifiers, '{}'::jsonb)" : "'{}'::jsonb"} AS location_modifiers,
                     ${hasTravelDaysColumn ? 'COALESCE(f.travel_days_remaining, 0)' : '0'} AS travel_days_remaining,
@@ -1636,6 +1663,7 @@ class Campaign {
             consecutiveGoldShortageDays: Number(row.consecutive_gold_shortage_days || 0),
             completedResearch: Array.isArray(row.completed_research) ? row.completed_research : [],
             slaves: Math.max(0, Number(row.slaves || 0)),
+            soldiers: Math.max(0, Number(row.soldiers || 0)),
             prisoners: Math.max(0, Number(row.prisoners || 0)),
             locationModifiers: Campaign.toNumericResourceMap(row.location_modifiers),
             travelDaysRemaining: Number(row.travel_days_remaining || 0),
@@ -2009,10 +2037,17 @@ class Campaign {
             resourcesGained[fief.id][resource] = (Number(resourcesGained[fief.id][resource]) || 0) + amount;
           }
 
+          // ── Standing military: quartered in Barracks first, civilian housing
+          // pool for the overflow. Soldiers eat a full ration (same rate as an
+          // adult citizen) and are counted against housing like residents.
+          const barracksCapacity = Campaign.calculateBarracksCapacityFromCompletedBuildings(completed);
+          const militaryPopulation = Campaign.getMilitaryPopulationForFief(fief);
+          const militaryHousingOverflow = Math.max(0, militaryPopulation - barracksCapacity);
+
           // Negative values are intentional debuffs and increase consumption instead of reducing it.
           const foodConsumptionReductionPct = Number(legendaryBonuses.food_consumption_reduction_pct || 0);
           const consumptionMultiplier = Math.max(0, 1 - (foodConsumptionReductionPct / 100));
-          const dailyFoodNeeded = Campaign.getDailyFoodConsumption(fief.population, fief.tier)
+          const dailyFoodNeeded = Campaign.getDailyFoodConsumption(fief.population + militaryPopulation, fief.tier)
             + (fief.slaves + fief.prisoners) * 0.5;
           const adjustedDailyFoodNeeded = Math.max(0, dailyFoodNeeded * consumptionMultiplier);
           const currentFood = Math.max(0, Number(fief.storedResources.food || 0));
@@ -2099,7 +2134,7 @@ class Campaign {
               fief.completedResearch,
               fief.population
             );
-            const housingRoom = Math.max(0, housingCapacityForMigrants - (fief.population + fief.slaves));
+            const housingRoom = Math.max(0, housingCapacityForMigrants - (fief.population + fief.slaves + militaryHousingOverflow));
             const goldOnHand = Math.max(0, Number(fief.storedResources.gold || 0));
             const affordableByGold = migrantConfig.goldPerMigrant > 0
               ? Math.floor(goldOnHand / migrantConfig.goldPerMigrant)
@@ -2357,9 +2392,11 @@ class Campaign {
             populationGained[fief.id] = (Number(populationGained[fief.id]) || 0) + escaped;
           }
 
-          // Enforce housing cap: emigrants leave if population + slaves exceeds cap (slaves count as occupying housing)
+          // Enforce housing cap: emigrants leave if population + slaves + un-barracked
+          // soldiers exceed the civilian housing cap (slaves and overflow soldiers
+          // both count as occupying housing; soldiers quartered in Barracks do not).
           const slavesCount = Math.max(0, Number(fief.slaves || 0));
-          const effectiveOccupancy = fief.population + slavesCount;
+          const effectiveOccupancy = fief.population + slavesCount + militaryHousingOverflow;
           if (effectiveOccupancy > housingCapacity) {
             const emigrants = Math.min(fief.population, effectiveOccupancy - housingCapacity);
             if (emigrants > 0) {
@@ -2378,7 +2415,7 @@ class Campaign {
             }
           }
 
-          const birthsAllowedByHousing = Math.max(0, Math.floor(housingCapacity - fief.population - slavesCount));
+          const birthsAllowedByHousing = Math.max(0, Math.floor(housingCapacity - fief.population - slavesCount - militaryHousingOverflow));
           const birthsToApply = Math.min(birthsToday, birthsAllowedByHousing);
           if (birthsToApply > 0) {
             fief.population += birthsToApply;

@@ -477,7 +477,8 @@ const getBuildingCategory = (building: any): BuildTabId => {
   // Storage & Housing
   if (['housing', 'wood_lodge', 'reinforced_lodge', 'stone_lodge', 'longhouse_block', 'manor_house', 'townhouse_row', 'urban_residence', 'noble_residence', 'royal_estate', 'storage', 'storage_shack', 'advanced_storage_tent', 'storehouse', 'reinforced_storehouse', 'central_storehouse', 'storage_advanced', 'vaulted_warehouse', 'granary', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'bank', 'trade_bank', 'merchant_bank', 'royal_treasury', 'builders_hut', 'masons_workshop', 'engineers_lodge', 'construction_guildhall', 'master_builder_hall', 'grand_architect_hall'].includes(key)) return 'storage';
   // Military
-  if (['militia_camp', 'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
+  if (['barracks',
+       'militia_camp', 'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
        'stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables',
        'archer_range', 'bowyer_hall', 'master_fletcher_range', 'elite_fletching_hall', 'royal_marksman_range',
        'swordsmith_hall', 'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge',
@@ -1446,6 +1447,11 @@ const KingdomTab: React.FC<Props> = ({
   const totalPopulation = Math.max(0, Number(fiefDetails?.population || 0));
   const sickInjuredPopulation = Math.max(0, Number(fiefDetails?.sick_injured_population || 0));
   const soldiers = Math.max(0, Number(fiefDetails?.soldiers || 0));
+  // Standing military = every collected reserve unit (Militia + specialised soldiers),
+  // or the legacy `soldiers` mirror if larger. These now occupy housing and eat food.
+  const totalUnitReserves = Object.values((fiefDetails?.unit_reserves || {}) as Record<string, number>)
+    .reduce((sum, c) => sum + Math.max(0, Math.floor(Number(c || 0))), 0);
+  const militaryPopulation = Math.max(0, Number(fiefDetails?.military_population ?? Math.max(soldiers, totalUnitReserves)));
   const prisoners = Math.max(0, Number(fiefDetails?.prisoners || 0));
   const slaves = Math.max(0, Number(fiefDetails?.slaves || 0));
   const assignablePopulation = Math.max(
@@ -1466,7 +1472,7 @@ const KingdomTab: React.FC<Props> = ({
   );
   const directFoodReductionPct = Number((fiefDetails?.legendary_bonuses || {}).food_consumption_reduction_pct || 0);
   const directFoodConsumptionMultiplier = Math.max(0, 1 - (directFoodReductionPct / 100));
-  const baseDailyFoodConsumption = totalPopulation * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
+  const baseDailyFoodConsumption = (totalPopulation + militaryPopulation) * getFoodConsumptionRateForTier(Number(fiefDetails?.tier || 1))
     + (slaves + prisoners) * 0.5;
   const dailyFoodConsumption = Math.max(0, baseDailyFoodConsumption * directFoodConsumptionMultiplier);
   const foodDaysLeftIfNoProduction = dailyFoodConsumption > 0 ? (storedFood / dailyFoodConsumption) : Number.POSITIVE_INFINITY;
@@ -1509,6 +1515,22 @@ const KingdomTab: React.FC<Props> = ({
       return sum + (HOUSING_CAPACITY_BY_TYPE[t] || 0);
     }, 0);
   }, [fiefDetails?.housing_capacity, fiefDetails?.buildings, fiefDetails?.completed_research]);
+
+  // Barracks — dedicated military housing. Soldiers fill this pool first; the
+  // overflow spills onto the civilian housing pool (and emigrates if that is full too).
+  const barracksCapacity = useMemo(() => {
+    if (fiefDetails?.barracks_capacity != null) return Math.max(0, Number(fiefDetails.barracks_capacity));
+    const BARRACKS_CAPACITY_BY_TYPE: Record<string, number> = { barracks: 15 };
+    return (fiefDetails?.buildings || [])
+      .filter((b: any) => Boolean(b?.is_complete))
+      .reduce((sum: number, b: any) => sum + (BARRACKS_CAPACITY_BY_TYPE[String(b?.building_type || '')] || 0), 0);
+  }, [fiefDetails?.barracks_capacity, fiefDetails?.buildings]);
+  const militaryHoused = Math.min(militaryPopulation, barracksCapacity);
+  const militaryHousingOverflow = Math.max(
+    0,
+    Number(fiefDetails?.military_overflow ?? Math.max(0, militaryPopulation - barracksCapacity))
+  );
+
   const hasPrisonInfrastructure = Boolean(
     (fiefDetails?.buildings || []).some((b: any) => Boolean(b?.is_complete) && [
       'prison', 'dungeon', 'black_cells', 'deep_prison', 'high_security_prison', 'iron_keep', 'shadow_vault',
@@ -4020,11 +4042,11 @@ const KingdomTab: React.FC<Props> = ({
                   <span style={{
                     fontWeight: 700,
                     fontSize: '1.08rem',
-                    color: housingCapacity > 0 && (totalPopulation + slaves) >= housingCapacity ? '#ef4444'
-                      : housingCapacity > 0 && (totalPopulation + slaves) >= housingCapacity * 0.9 ? '#fbbf24'
+                    color: housingCapacity > 0 && (totalPopulation + slaves + militaryHousingOverflow) >= housingCapacity ? '#ef4444'
+                      : housingCapacity > 0 && (totalPopulation + slaves + militaryHousingOverflow) >= housingCapacity * 0.9 ? '#fbbf24'
                       : 'var(--text-secondary)',
                   }}>
-                    {totalPopulation + slaves}{housingCapacity > 0 ? ` / ${housingCapacity}` : ''}
+                    {totalPopulation + slaves + militaryHousingOverflow}{housingCapacity > 0 ? ` / ${housingCapacity}` : ''}
                     {isDungeonMaster && (
                       <span style={{ marginLeft: '0.5rem', display: 'inline-flex', gap: '0.25rem' }}>
                         <button onClick={() => dmAdjustPopulation(-1)} disabled={busy === 'dm-adjust'}
@@ -4039,13 +4061,19 @@ const KingdomTab: React.FC<Props> = ({
                 {/* ── Housing cap fill bar ── */}
                 {(() => {
                   if (housingCapacity <= 0) return null;
-                  const pct = Math.min(1, (totalPopulation + slaves) / housingCapacity);
+                  const occupancy = totalPopulation + slaves + militaryHousingOverflow;
+                  const pct = Math.min(1, occupancy / housingCapacity);
                   const barColor = pct >= 1 ? '#ef4444' : pct >= 0.9 ? '#fbbf24' : '#22c55e';
                   return (
                     <div style={{ marginBottom: '0.65rem' }}>
                       <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)' }}>
                         <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
                       </div>
+                      {militaryHousingOverflow > 0 && (
+                        <div style={{ marginTop: '0.35rem', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                          Includes {militaryHousingOverflow} soldier(s) with no Barracks space — build a Barracks to free civilian housing
+                        </div>
+                      )}
                       {pct >= 1 && (
                         <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
                           🏠 Housing capacity full — build more Tents to allow population growth
@@ -4055,9 +4083,31 @@ const KingdomTab: React.FC<Props> = ({
                   );
                 })()}
 
+                {/* ── Barracks (military housing) fill bar ── */}
+                {(barracksCapacity > 0 || militaryPopulation > 0) && (() => {
+                  const pct = barracksCapacity > 0 ? Math.min(1, militaryPopulation / barracksCapacity) : 1;
+                  const barColor = militaryHousingOverflow > 0 ? '#ef4444' : pct >= 0.9 ? '#fbbf24' : '#3b82f6';
+                  return (
+                    <div style={{ marginBottom: '0.65rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🛡️ Barracks (military housing)</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{militaryHoused} / {barracksCapacity} housed{militaryHousingOverflow > 0 ? ` · ${militaryHousingOverflow} overflow` : ''}</span>
+                      </div>
+                      <div className="kt-bar-track" style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)' }}>
+                        <div className="kt-bar-fill" style={{ height: '100%', width: `${(pct * 100).toFixed(1)}%`, color: barColor, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      {barracksCapacity <= 0 && militaryPopulation > 0 && (
+                        <div style={{ marginTop: '0.35rem', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                          No Barracks built — all {militaryPopulation} soldier(s) draw on the civilian housing pool
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* ── Breakdown ── */}
                 {/* Core 3-column grid: Adults | Children | Slaves */}
-                <div style={{ display: 'grid', gridTemplateColumns: (hasPrisonInfrastructure || slaves > 0) ? '1fr 1fr 1fr' : '1fr 1fr', gap: '0.75rem', alignItems: 'start', textAlign: 'center', marginBottom: (sickInjuredPopulation > 0 || soldiers > 0) ? '0.5rem' : '0.6rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: (hasPrisonInfrastructure || slaves > 0) ? '1fr 1fr 1fr' : '1fr 1fr', gap: '0.75rem', alignItems: 'start', textAlign: 'center', marginBottom: (sickInjuredPopulation > 0 || militaryPopulation > 0) ? '0.5rem' : '0.6rem' }}>
                   {/* Adults */}
                   <div>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Adults</div>
@@ -4094,7 +4144,7 @@ const KingdomTab: React.FC<Props> = ({
                   )}
                 </div>
                 {/* Secondary row: Sick/Injured + Soldiers (conditional) */}
-                {(sickInjuredPopulation > 0 || soldiers > 0) && (
+                {(sickInjuredPopulation > 0 || militaryPopulation > 0) && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem 1.5rem', marginBottom: '0.6rem' }}>
                     {sickInjuredPopulation > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
@@ -4102,10 +4152,13 @@ const KingdomTab: React.FC<Props> = ({
                         <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '1rem' }}>{sickInjuredPopulation}</span>
                       </div>
                     )}
-                    {soldiers > 0 && (
+                    {militaryPopulation > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem', minWidth: '100px' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Soldiers</span>
-                        <span style={{ color: '#93c5fd', fontWeight: 700, fontSize: '1rem' }}>{soldiers}</span>
+                        <span style={{ color: '#93c5fd', fontWeight: 700, fontSize: '1rem' }}>{militaryPopulation}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
+                          {militaryHoused > 0 ? `${militaryHoused} in Barracks` : ''}{militaryHoused > 0 && militaryHousingOverflow > 0 ? ' · ' : ''}{militaryHousingOverflow > 0 ? `${militaryHousingOverflow} in housing` : ''}
+                        </span>
                       </div>
                     )}
                   </div>

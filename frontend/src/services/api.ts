@@ -1415,6 +1415,10 @@ export interface KingdomFief {
   food_storage_capacity?: number;
   bank_capacity?: number;
   housing_capacity?: number;
+  barracks_capacity?: number;
+  military_population?: number;
+  military_housed?: number;
+  military_overflow?: number;
   prisoner_capacity?: number;
   worker_assignments?: Record<string, number>;
   slave_worker_assignments?: Record<string, number>;
