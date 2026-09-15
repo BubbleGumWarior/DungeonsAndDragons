@@ -606,20 +606,16 @@ p {
 
 /* ── Campaign Page Layout ──────────────────────────────────────────────────── */
 
-/* Full-width sticky top navbar — single row; overflowing tabs wrap inside .campaign-topnav-tab-group */
+/* Sticky top navbar — two fixed-height rows (identity+context, then view/tabs).
+   Flat surfaces throughout: no gradient fills, no glow halos — depth comes only
+   from real offset+blur elevation shadows and 1px borders. */
 .campaign-topnav {
   display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  min-height: 56px;
+  flex-direction: column;
   width: 100%;
-  background: linear-gradient(180deg, rgba(22, 17, 11, 0.98) 0%, rgba(14, 11, 7, 0.96) 100%);
+  background: rgba(15, 12, 8, 0.97);
   border-bottom: 1px solid rgba(var(--theme-accent-rgb), 0.2);
-  box-shadow:
-    0 4px 28px rgba(0, 0, 0, 0.7),
-    0 1px 0 rgba(var(--theme-accent-rgb), 0.05),
-    inset 0 -1px 0 rgba(var(--theme-accent-rgb), 0.08);
+  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: var(--radius-lg);
@@ -627,217 +623,89 @@ p {
   top: 0;
   z-index: 100;
   margin-bottom: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
-/* Gold shimmer accent line along the very top edge */
-.campaign-topnav::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 5%, rgba(var(--theme-accent-rgb), 0.55) 30%, rgba(var(--theme-accent-rgb), 0.75) 50%, rgba(var(--theme-accent-rgb), 0.55) 70%, transparent 95%);
-  pointer-events: none;
+/* Row 1: identity (back + campaign name) and context actions */
+.campaign-topnav-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid rgba(var(--theme-accent-rgb), 0.1);
 }
 
 .campaign-topnav-brand {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 1rem;
-  border-right: 1px solid rgba(var(--theme-accent-rgb), 0.12);
-  flex-shrink: 0;
+  gap: 0.6rem;
   min-width: 0;
-  align-self: center;
-  min-height: 56px;
 }
 
 .campaign-topnav-back {
-  background: rgba(var(--theme-accent-rgb), 0.05);
+  background: transparent;
   border: 1px solid rgba(var(--theme-accent-rgb), 0.18);
-  border-radius: 1.5rem;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   padding: 0.3rem 0.85rem;
   cursor: pointer;
   font-size: 0.82rem;
-  transition: all var(--transition-fast);
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .campaign-topnav-back:hover {
-  background: rgba(var(--theme-accent-rgb), 0.12);
+  background: rgba(var(--theme-accent-rgb), 0.08);
   color: var(--text-gold);
   border-color: rgba(var(--theme-accent-rgb), 0.45);
-  box-shadow: 0 0 10px rgba(var(--theme-accent-rgb), 0.1);
 }
 
 .campaign-topnav-name {
   font-family: var(--font-fantasy);
-  font-size: 1rem;
+  font-size: 0.98rem;
   color: var(--text-gold);
   letter-spacing: 0.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
-  text-shadow: 0 0 12px rgba(var(--theme-accent-rgb), 0.25);
+  max-width: 260px;
 }
 
-/* Tab group — fills remaining space; individual tabs wrap onto next line when they overflow */
-
-/* Legacy tabs container (kept for safety) */
-.campaign-topnav-tabs {
+/* Right side of the meta row: day/season badge, DM tools, backstory */
+.campaign-topnav-meta-right {
   display: flex;
-  align-items: stretch;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: visible;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  gap: 0;
-}
-
-.campaign-topnav-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.campaign-topnav-view-group {
-  display: flex;
-  align-items: center;
-  padding: 0 0.75rem;
-  gap: 0.35rem;
-  border-right: 1px solid rgba(var(--theme-accent-rgb), 0.12);
-  flex-shrink: 0;
-  min-height: 56px;
-  align-self: center;
-}
-
-.campaign-topnav-view-btn {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(var(--theme-accent-rgb), 0.18);
-  border-radius: 1.5rem;
-  color: var(--text-muted);
-  padding: 0.3rem 0.9rem;
-  cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 500;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.campaign-topnav-view-btn:hover {
-  background: rgba(var(--theme-accent-rgb), 0.08);
-  color: var(--text-secondary);
-  border-color: rgba(var(--theme-accent-rgb), 0.32);
-}
-
-.campaign-topnav-view-btn.active {
-  background: linear-gradient(135deg, rgba(var(--theme-accent-rgb), 0.2) 0%, rgba(var(--theme-accent-rgb), 0.12) 100%);
-  color: var(--text-gold);
-  border-color: rgba(var(--theme-accent-rgb), 0.5);
-  box-shadow: 0 0 14px rgba(var(--theme-accent-rgb), 0.15), inset 0 1px 0 rgba(var(--theme-accent-rgb), 0.12);
-}
-
-/* Individual tab items — wraps to next row when they don't fit */
-.campaign-topnav-tab-group {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  align-self: center;
-  flex-wrap: wrap;
-  padding: 0.25rem 0.4rem;
-  gap: 0.15rem;
-  row-gap: 0.15rem;
-  min-height: 56px;
-}
-
-.campaign-topnav-tab {
-  position: relative;
-  display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.45rem 0.85rem;
-  height: auto;
-  min-height: 38px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-lg);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
-  white-space: nowrap;
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
-  letter-spacing: 0.2px;
-}
-
-.campaign-topnav-tab:hover {
-  color: var(--text-secondary);
-  background: rgba(var(--theme-accent-rgb), 0.06);
-  border-color: rgba(var(--theme-accent-rgb), 0.12);
-}
-
-.campaign-topnav-tab.active {
-  color: var(--text-gold);
-  background: rgba(var(--theme-accent-rgb), 0.1);
-  border-color: rgba(var(--theme-accent-rgb), 0.3);
-  box-shadow: 0 0 12px rgba(var(--theme-accent-rgb), 0.12), inset 0 1px 0 rgba(var(--theme-accent-rgb), 0.1);
-}
-
-.campaign-topnav-tab-badge {
-  position: absolute;
-  top: 6px;
-  right: 4px;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
-  font-size: 0.6rem;
-  font-weight: bold;
-  padding: 0.15rem 0.35rem;
-  border-radius: 8px;
-  min-width: 16px;
-  text-align: center;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
-  line-height: 1.2;
-}
-
-/* Right actions section */
-.campaign-topnav-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0 1rem;
-  border-left: 1px solid rgba(var(--theme-accent-rgb), 0.12);
   flex-shrink: 0;
-  align-self: center;
-  min-height: 56px;
 }
 
 .campaign-topnav-day {
-  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid rgba(var(--theme-accent-rgb), 0.14);
+  border-radius: var(--radius-sm);
 }
 
 .campaign-topnav-action-btn {
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   border: 1px solid rgba(var(--theme-accent-rgb), 0.2);
-  border-radius: 1.5rem;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   padding: 0.3rem 0.8rem;
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
   white-space: nowrap;
   display: flex;
   align-items: center;
@@ -845,32 +713,229 @@ p {
 }
 
 .campaign-topnav-action-btn:hover {
-  background: rgba(var(--theme-accent-rgb), 0.1);
+  background: rgba(var(--theme-accent-rgb), 0.08);
   border-color: rgba(var(--theme-accent-rgb), 0.42);
   color: var(--text-gold);
-  box-shadow: 0 0 10px rgba(var(--theme-accent-rgb), 0.1);
 }
 
-.campaign-topnav-action-btn.exp-btn {
-  border-color: rgba(168, 85, 247, 0.35);
+/* Dropdown menus (DM tools, overflow tabs) share one flat, bordered panel style. */
+.campaign-topnav-dmtools,
+.campaign-topnav-more {
+  position: relative;
+}
+
+.campaign-topnav-dmtools > summary,
+.campaign-topnav-more > summary {
+  list-style: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.campaign-topnav-dmtools > summary::-webkit-details-marker,
+.campaign-topnav-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.campaign-topnav-dmtools > summary {
+  background: transparent;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-radius: var(--radius-sm);
   color: #c084fc;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.76rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
 }
 
-.campaign-topnav-action-btn.exp-btn:hover {
-  background: rgba(168, 85, 247, 0.12);
+.campaign-topnav-dmtools > summary:hover {
+  background: rgba(168, 85, 247, 0.1);
   border-color: rgba(168, 85, 247, 0.6);
-  box-shadow: 0 0 10px rgba(168, 85, 247, 0.15);
 }
 
-.campaign-topnav-action-btn.rest-btn {
-  border-color: rgba(56, 189, 248, 0.35);
-  color: #7dd3fc;
+.campaign-topnav-dmtools[open] > summary {
+  background: rgba(168, 85, 247, 0.14);
+  border-color: rgba(168, 85, 247, 0.6);
 }
 
-.campaign-topnav-action-btn.rest-btn:hover {
-  background: rgba(56, 189, 248, 0.1);
-  border-color: rgba(56, 189, 248, 0.6);
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);
+.campaign-topnav-dmtools-menu,
+.campaign-topnav-more-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  min-width: 190px;
+  background: rgb(20, 16, 11);
+  border: 1px solid rgba(var(--theme-accent-rgb), 0.22);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 300;
+}
+
+.campaign-topnav-dmtools-menu {
+  right: 0;
+}
+
+.campaign-topnav-dmtools-item,
+.campaign-topnav-more-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.campaign-topnav-dmtools-item:hover,
+.campaign-topnav-more-item:hover {
+  background: rgba(var(--theme-accent-rgb), 0.1);
+  color: var(--text-gold);
+}
+
+.campaign-topnav-more-item.active {
+  color: var(--text-gold);
+  background: rgba(var(--theme-accent-rgb), 0.08);
+}
+
+/* Row 2: Campaign/Character segmented toggle + primary tabs + overflow dropdown */
+.campaign-topnav-tabsbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 50px;
+  padding: 0.3rem 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.campaign-topnav-tabsbar::-webkit-scrollbar {
+  display: none;
+}
+
+.campaign-topnav-view-group {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid rgba(var(--theme-accent-rgb), 0.18);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.campaign-topnav-view-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.4rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.campaign-topnav-view-btn + .campaign-topnav-view-btn {
+  border-left: 1px solid rgba(var(--theme-accent-rgb), 0.18);
+}
+
+.campaign-topnav-view-btn.active {
+  color: var(--text-gold);
+  background: rgba(var(--theme-accent-rgb), 0.14);
+}
+
+.campaign-topnav-tab-group {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.campaign-topnav-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.8rem;
+  flex-shrink: 0;
+  min-height: 36px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  letter-spacing: 0.2px;
+}
+
+.campaign-topnav-tab:hover {
+  color: var(--text-secondary);
+}
+
+.campaign-topnav-tab.active {
+  color: var(--text-gold);
+  border-bottom-color: rgba(var(--theme-accent-rgb), 0.85);
+}
+
+.campaign-topnav-tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #dc2626;
+  color: white;
+  font-size: 0.6rem;
+  font-weight: bold;
+  padding: 0.15rem 0.35rem;
+  border-radius: 8px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.campaign-topnav-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.8rem;
+  min-height: 36px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+}
+
+.campaign-topnav-more > summary:hover {
+  color: var(--text-secondary);
+}
+
+.campaign-topnav-more.has-active > summary {
+  color: var(--text-gold);
+  border-bottom-color: rgba(var(--theme-accent-rgb), 0.85);
+}
+
+.campaign-topnav-more-menu {
+  right: 0;
+  min-width: 210px;
 }
 
 /* Campaign body: sidebar + content side by side */
@@ -1842,7 +1907,7 @@ label:has(input[type="checkbox"]:disabled) {
     font-size: 0.85rem;
   }
 
-  .campaign-topnav-actions {
+  .campaign-topnav-meta-right {
     display: none;
   }
 

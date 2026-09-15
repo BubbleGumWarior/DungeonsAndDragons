@@ -6786,6 +6786,21 @@ const CampaignView: React.FC = () => {
         : (['board'] as const))
     : ([] as const);
 
+  // Nav tabs: first few render inline, the rest collapse into a "More" dropdown
+  // so the bar stays a single tidy row instead of wrapping across screens.
+  const PRIMARY_TAB_COUNT = 4;
+  const currentNavTabs = mainView === 'campaign'
+    ? campaignTabs.map(tab => ({ key: tab.key as string, label: tab.label, icon: tab.icon, badge: tab.key === 'battlefield' ? pendingInvitations.length : 0 }))
+    : availableCharacterTabs.map(tab => ({ key: tab as string, label: characterTabConfig[tab].label, icon: characterTabConfig[tab].icon, badge: 0 }));
+  const primaryNavTabs = currentNavTabs.slice(0, PRIMARY_TAB_COUNT);
+  const moreNavTabs = currentNavTabs.slice(PRIMARY_TAB_COUNT);
+  const activeNavKey: string = mainView === 'campaign' ? campaignTab : activeTab;
+  const moreNavHasActive = moreNavTabs.some(tab => tab.key === activeNavKey);
+  const handleNavTabClick = (key: string) => {
+    if (mainView === 'campaign') setCampaignTab(key as typeof campaignTab);
+    else setActiveTab(key as typeof activeTab);
+  };
+
   const playerCharacters = currentCampaign.characters.filter(character => Boolean(character.player_id));
   const partyMembers = playerCharacters.filter(character => partyMemberIds.includes(character.id));
   const availablePartyCharacters = playerCharacters.filter(character => !partyMemberIds.includes(character.id));
@@ -7000,80 +7015,105 @@ const CampaignView: React.FC = () => {
 
         {/* ── Top Navigation Bar ───────────────────────────────────────────── */}
         <nav className="campaign-topnav campaign-desktop-header">
-          {/* Brand / Back */}
-          <div className="campaign-topnav-brand">
-            <button onClick={handleBackToDashboard} className="campaign-topnav-back">← Dashboard</button>
-            <span className="campaign-topnav-name">{campaign.name}</span>
-          </div>
+          {/* Row 1: identity + context actions */}
+          <div className="campaign-topnav-meta">
+            <div className="campaign-topnav-brand">
+              <button onClick={handleBackToDashboard} className="campaign-topnav-back">← Dashboard</button>
+              <span className="campaign-topnav-name">{campaign.name}</span>
+            </div>
 
-          {/* View toggle */}
-          <div className="campaign-topnav-view-group">
-            <button
-              onClick={() => setMainView('campaign')}
-              className={`campaign-topnav-view-btn${mainView === 'campaign' ? ' active' : ''}`}
-            >
-              🗺️ Campaign
-            </button>
-            <button
-              onClick={() => setMainView('character')}
-              className={`campaign-topnav-view-btn${mainView === 'character' ? ' active' : ''}`}
-            >
-              👤 Character
-            </button>
-          </div>
-
-          {/* Sub-tabs — flex-wrap so overflowing tabs drop to next line */}
-          <div className="campaign-topnav-tab-group">
-            {mainView === 'campaign' && campaignTabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setCampaignTab(tab.key as typeof campaignTab)}
-                className={`campaign-topnav-tab${campaignTab === tab.key ? ' active' : ''}`}
-              >
-                {tab.icon} {tab.label}
-                {tab.key === 'battlefield' && pendingInvitations.length > 0 && (
-                  <span className="campaign-topnav-tab-badge">{pendingInvitations.length}</span>
+            <div className="campaign-topnav-meta-right">
+              <span className="campaign-topnav-day">
+                📅 Day {currentDay} • <span title={getSeasonBenefits(currentSeason).text} style={{ cursor: 'help', textDecoration: 'underline dotted' }}>{getSeasonIcon(currentSeason)} {currentSeason}</span> (DoY {currentDayOfYear})
+                {user?.role === 'Dungeon Master' && (
+                  <button
+                    onClick={() => setPendingConfirm({ msg: 'Reset the campaign day back to Day 1? This cannot be undone.', onYes: async () => {
+                      try {
+                        const d = await campaignAPI.resetDay(currentCampaign!.campaign.id);
+                        setCurrentDay(d.current_day);
+                        const fallback = getSeasonInfoForDay(d.current_day);
+                        setCurrentDayOfYear(d.day_of_year ?? fallback.dayOfYear);
+                        setCurrentSeason(d.season ?? fallback.season);
+                      } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed to reset day'); setTimeout(() => setToastMessage(null), 3000); }
+                    }})}
+                    style={{ marginLeft: '0.4rem', padding: '1px 4px', fontSize: '0.6rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '3px', color: '#f87171', cursor: 'pointer' }}
+                  >↺</button>
                 )}
-              </button>
-            ))}
-            {mainView === 'character' && availableCharacterTabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`campaign-topnav-tab${activeTab === tab ? ' active' : ''}`}
-              >
-                {characterTabConfig[tab].icon} {characterTabConfig[tab].label}
-              </button>
-            ))}
+              </span>
+              {user?.role === 'Dungeon Master' && (
+                <details className="campaign-topnav-dmtools">
+                  <summary>🛠️ DM Tools</summary>
+                  <div className="campaign-topnav-dmtools-menu">
+                    <button
+                      className="campaign-topnav-dmtools-item"
+                      onClick={(e) => { setShowGrantExpModal(true); e.currentTarget.closest('details')?.removeAttribute('open'); }}
+                    >⭐ Grant EXP</button>
+                    <button
+                      className="campaign-topnav-dmtools-item"
+                      onClick={(e) => { setShowHealthModal(true); e.currentTarget.closest('details')?.removeAttribute('open'); }}
+                    >🩹 Adjust Health</button>
+                    <button
+                      className="campaign-topnav-dmtools-item"
+                      onClick={(e) => { setShowRestModal(true); e.currentTarget.closest('details')?.removeAttribute('open'); }}
+                    >💤 Rest</button>
+                  </div>
+                </details>
+              )}
+              <button onClick={() => setShowBackstoryModal(true)} className="campaign-topnav-action-btn">📜 Backstory</button>
+            </div>
           </div>
 
-          {/* Actions */}
-          <div className="campaign-topnav-actions">
-            <span className="campaign-topnav-day">
-              📅 Day {currentDay} • <span title={getSeasonBenefits(currentSeason).text} style={{ cursor: 'help', textDecoration: 'underline dotted' }}>{getSeasonIcon(currentSeason)} {currentSeason}</span> (DoY {currentDayOfYear})
-              {user?.role === 'Dungeon Master' && (
+          {/* Row 2: Campaign/Character segmented toggle + primary tabs + overflow dropdown */}
+          <div className="campaign-topnav-tabsbar">
+            <div className="campaign-topnav-view-group">
+              <button
+                onClick={() => setMainView('campaign')}
+                className={`campaign-topnav-view-btn${mainView === 'campaign' ? ' active' : ''}`}
+              >
+                🗺️ Campaign
+              </button>
+              <button
+                onClick={() => setMainView('character')}
+                className={`campaign-topnav-view-btn${mainView === 'character' ? ' active' : ''}`}
+              >
+                👤 Character
+              </button>
+            </div>
+
+            <div className="campaign-topnav-tab-group">
+              {primaryNavTabs.map((tab) => (
                 <button
-                  onClick={() => setPendingConfirm({ msg: 'Reset the campaign day back to Day 1? This cannot be undone.', onYes: async () => {
-                    try {
-                      const d = await campaignAPI.resetDay(currentCampaign!.campaign.id);
-                      setCurrentDay(d.current_day);
-                      const fallback = getSeasonInfoForDay(d.current_day);
-                      setCurrentDayOfYear(d.day_of_year ?? fallback.dayOfYear);
-                      setCurrentSeason(d.season ?? fallback.season);
-                    } catch(e: any) { setToastMessage(e?.response?.data?.error ?? 'Failed to reset day'); setTimeout(() => setToastMessage(null), 3000); }
-                  }})}
-                  style={{ marginLeft: '0.4rem', padding: '1px 4px', fontSize: '0.6rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '3px', color: '#f87171', cursor: 'pointer' }}
-                >↺</button>
-              )}
-            </span>
-            {user?.role === 'Dungeon Master' && (
-              <>
-                <button onClick={() => setShowGrantExpModal(true)} className="campaign-topnav-action-btn exp-btn">⭐ EXP</button>
-                <button onClick={() => setShowHealthModal(true)} className="campaign-topnav-action-btn">🩹 Health</button>
-                <button onClick={() => setShowRestModal(true)} className="campaign-topnav-action-btn rest-btn">💤 Rest</button>
-              </>
+                  key={tab.key}
+                  onClick={() => handleNavTabClick(tab.key)}
+                  className={`campaign-topnav-tab${activeNavKey === tab.key ? ' active' : ''}`}
+                >
+                  {tab.icon} {tab.label}
+                  {tab.badge > 0 && (
+                    <span className="campaign-topnav-tab-badge">{tab.badge}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {moreNavTabs.length > 0 && (
+              <details className={`campaign-topnav-more${moreNavHasActive ? ' has-active' : ''}`}>
+                <summary>⋯ More</summary>
+                <div className="campaign-topnav-more-menu">
+                  {moreNavTabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      className={`campaign-topnav-more-item${activeNavKey === tab.key ? ' active' : ''}`}
+                      onClick={(e) => { handleNavTabClick(tab.key); e.currentTarget.closest('details')?.removeAttribute('open'); }}
+                    >
+                      {tab.icon} {tab.label}
+                      {tab.badge > 0 && (
+                        <span className="campaign-topnav-tab-badge" style={{ position: 'static', marginLeft: 'auto' }}>{tab.badge}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </details>
             )}
-            <button onClick={() => setShowBackstoryModal(true)} className="campaign-topnav-action-btn">📜 Backstory</button>
           </div>
         </nav>
 
