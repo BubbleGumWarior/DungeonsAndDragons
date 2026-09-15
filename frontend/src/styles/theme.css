@@ -718,53 +718,26 @@ p {
   color: var(--text-gold);
 }
 
-/* Dropdown menus (DM tools, overflow tabs) share one flat, bordered panel style. */
-.campaign-topnav-dmtools,
-.campaign-topnav-more {
+/* Generic dropdown system (DM tools + the two nav groups below). State-driven
+   rather than native <details>, so both opening and closing can animate —
+   the panel stays mounted and toggles a `.open` class instead of appearing/
+   disappearing instantly, using the visibility-transition-delay trick so it
+   is untouchable by mouse/keyboard while closed. */
+.campaign-topnav-dropdown {
   position: relative;
 }
 
-.campaign-topnav-dmtools > summary,
-.campaign-topnav-more > summary {
-  list-style: none;
+.campaign-topnav-dropdown-trigger {
   cursor: pointer;
   white-space: nowrap;
+  font-family: inherit;
   transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
 }
 
-.campaign-topnav-dmtools > summary::-webkit-details-marker,
-.campaign-topnav-more > summary::-webkit-details-marker {
-  display: none;
-}
-
-.campaign-topnav-dmtools > summary {
-  background: transparent;
-  border: 1px solid rgba(168, 85, 247, 0.35);
-  border-radius: var(--radius-sm);
-  color: #c084fc;
-  padding: 0.3rem 0.8rem;
-  font-size: 0.76rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.campaign-topnav-dmtools > summary:hover {
-  background: rgba(168, 85, 247, 0.1);
-  border-color: rgba(168, 85, 247, 0.6);
-}
-
-.campaign-topnav-dmtools[open] > summary {
-  background: rgba(168, 85, 247, 0.14);
-  border-color: rgba(168, 85, 247, 0.6);
-}
-
-.campaign-topnav-dmtools-menu,
-.campaign-topnav-more-menu {
+.campaign-topnav-dropdown-menu {
   position: absolute;
   top: calc(100% + 8px);
-  min-width: 190px;
+  min-width: 210px;
   background: rgb(20, 16, 11);
   border: 1px solid rgba(var(--theme-accent-rgb), 0.22);
   border-radius: var(--radius-md);
@@ -774,14 +747,26 @@ p {
   flex-direction: column;
   gap: 1px;
   z-index: 300;
+  max-height: min(70vh, 480px);
+  overflow-y: auto;
+  transform-origin: top left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-6px) scale(0.98);
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.15s;
 }
 
-.campaign-topnav-dmtools-menu {
-  right: 0;
+.campaign-topnav-dropdown-menu.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.16s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
 }
 
-.campaign-topnav-dmtools-item,
-.campaign-topnav-more-item {
+.campaign-topnav-dropdown-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -799,143 +784,106 @@ p {
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.campaign-topnav-dmtools-item:hover,
-.campaign-topnav-more-item:hover {
+.campaign-topnav-dropdown-item:hover {
   background: rgba(var(--theme-accent-rgb), 0.1);
   color: var(--text-gold);
 }
 
-.campaign-topnav-more-item.active {
+.campaign-topnav-dropdown-item.active {
   color: var(--text-gold);
   background: rgba(var(--theme-accent-rgb), 0.08);
 }
 
-/* Row 2: Campaign/Character segmented toggle + primary tabs + overflow dropdown */
+/* DM tools trigger — purple accent, lives in row 1 */
+.campaign-topnav-dmtools .campaign-topnav-dropdown-trigger {
+  background: transparent;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-radius: var(--radius-sm);
+  color: #c084fc;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.76rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.campaign-topnav-dmtools .campaign-topnav-dropdown-trigger:hover {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.6);
+}
+
+.campaign-topnav-dmtools.open .campaign-topnav-dropdown-trigger {
+  background: rgba(168, 85, 247, 0.14);
+  border-color: rgba(168, 85, 247, 0.6);
+}
+
+.campaign-topnav-dmtools-menu {
+  right: 0;
+  transform-origin: top right;
+}
+
+/* Row 2: Campaign / Character — each a dropdown holding that view's full page list */
 .campaign-topnav-tabsbar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-height: 50px;
   padding: 0.3rem 0.5rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
 }
 
-.campaign-topnav-tabsbar::-webkit-scrollbar {
-  display: none;
-}
-
-.campaign-topnav-view-group {
-  display: inline-flex;
-  flex-shrink: 0;
-  border: 1px solid rgba(var(--theme-accent-rgb), 0.18);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.campaign-topnav-view-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  padding: 0.4rem 0.95rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color var(--transition-fast), background var(--transition-fast);
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.campaign-topnav-view-btn + .campaign-topnav-view-btn {
-  border-left: 1px solid rgba(var(--theme-accent-rgb), 0.18);
-}
-
-.campaign-topnav-view-btn.active {
-  color: var(--text-gold);
-  background: rgba(var(--theme-accent-rgb), 0.14);
-}
-
-.campaign-topnav-tab-group {
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-  flex-shrink: 0;
-}
-
-.campaign-topnav-tab {
-  position: relative;
+.campaign-topnav-navgroup .campaign-topnav-dropdown-trigger {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.42rem 0.8rem;
-  flex-shrink: 0;
-  min-height: 36px;
+  padding: 0.45rem 1rem;
+  border: 1px solid rgba(var(--theme-accent-rgb), 0.18);
+  border-radius: var(--radius-sm);
   background: transparent;
-  border: 1px solid transparent;
-  border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  cursor: pointer;
-  font-size: 0.84rem;
-  font-weight: 500;
-  white-space: nowrap;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
-  letter-spacing: 0.2px;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
-.campaign-topnav-tab:hover {
+.campaign-topnav-navgroup .campaign-topnav-dropdown-trigger:hover {
   color: var(--text-secondary);
+  border-color: rgba(var(--theme-accent-rgb), 0.35);
 }
 
-.campaign-topnav-tab.active {
+/* Short pop confirming a Campaign/Character switch — replays whenever the
+   .active class is freshly applied (i.e. mainView just changed to this one). */
+@keyframes campaignNavgroupActivate {
+  0% { transform: scale(0.94); }
+  55% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+.campaign-topnav-navgroup.active .campaign-topnav-dropdown-trigger {
   color: var(--text-gold);
-  border-bottom-color: rgba(var(--theme-accent-rgb), 0.85);
+  background: rgba(var(--theme-accent-rgb), 0.12);
+  border-color: rgba(var(--theme-accent-rgb), 0.4);
+  animation: campaignNavgroupActivate 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.campaign-topnav-tab-badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  background: #dc2626;
-  color: white;
-  font-size: 0.6rem;
-  font-weight: bold;
-  padding: 0.15rem 0.35rem;
-  border-radius: 8px;
-  min-width: 16px;
-  text-align: center;
-  line-height: 1.2;
-}
-
-.campaign-topnav-more > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.42rem 0.8rem;
-  min-height: 36px;
-  color: var(--text-muted);
-  font-size: 0.84rem;
+.campaign-topnav-navgroup-current {
+  opacity: 0.7;
   font-weight: 500;
-  border: 1px solid transparent;
-  border-bottom: 2px solid transparent;
 }
 
-.campaign-topnav-more > summary:hover {
-  color: var(--text-secondary);
+.campaign-topnav-navgroup-caret {
+  display: inline-block;
+  font-size: 0.7em;
+  opacity: 0.55;
+  transition: transform 0.18s ease;
 }
 
-.campaign-topnav-more.has-active > summary {
-  color: var(--text-gold);
-  border-bottom-color: rgba(var(--theme-accent-rgb), 0.85);
+.campaign-topnav-navgroup-caret.open {
+  transform: rotate(180deg);
 }
 
-.campaign-topnav-more-menu {
-  right: 0;
-  min-width: 210px;
+.campaign-topnav-navgroup-menu {
+  left: 0;
+  transform-origin: top left;
 }
 
 /* Campaign body: sidebar + content side by side */
@@ -1911,12 +1859,8 @@ label:has(input[type="checkbox"]:disabled) {
     display: none;
   }
 
-  .campaign-topnav-view-group {
-    padding: 0 0.4rem;
-  }
-
-  .campaign-topnav-tab {
-    padding: 0 0.7rem;
+  .campaign-topnav-navgroup .campaign-topnav-dropdown-trigger {
+    padding: 0.3rem 0.7rem;
     min-height: 48px;
     font-size: 0.78rem;
   }

@@ -575,6 +575,7 @@ const CampaignView: React.FC = () => {
   const [characterBeasts, setCharacterBeasts] = useState<{ [characterId: number]: Beast | null }>({});
   const [mainView, setMainView] = useState<'character' | 'campaign'>('character');
   const [campaignTab, setCampaignTab] = useState<'map' | 'kingdom' | 'scores' | 'combat' | 'battlefield' | 'news' | 'journal' | 'encyclopedia' | 'goals'>('map');
+  const [openNavMenu, setOpenNavMenu] = useState<'campaign' | 'character' | 'dmtools' | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileNavSection, setMobileNavSection] = useState<'campaign' | 'character'>('campaign');
   const [showMobileCharacters, setShowMobileCharacters] = useState(false);
@@ -6786,21 +6787,6 @@ const CampaignView: React.FC = () => {
         : (['board'] as const))
     : ([] as const);
 
-  // Nav tabs: first few render inline, the rest collapse into a "More" dropdown
-  // so the bar stays a single tidy row instead of wrapping across screens.
-  const PRIMARY_TAB_COUNT = 4;
-  const currentNavTabs = mainView === 'campaign'
-    ? campaignTabs.map(tab => ({ key: tab.key as string, label: tab.label, icon: tab.icon, badge: tab.key === 'battlefield' ? pendingInvitations.length : 0 }))
-    : availableCharacterTabs.map(tab => ({ key: tab as string, label: characterTabConfig[tab].label, icon: characterTabConfig[tab].icon, badge: 0 }));
-  const primaryNavTabs = currentNavTabs.slice(0, PRIMARY_TAB_COUNT);
-  const moreNavTabs = currentNavTabs.slice(PRIMARY_TAB_COUNT);
-  const activeNavKey: string = mainView === 'campaign' ? campaignTab : activeTab;
-  const moreNavHasActive = moreNavTabs.some(tab => tab.key === activeNavKey);
-  const handleNavTabClick = (key: string) => {
-    if (mainView === 'campaign') setCampaignTab(key as typeof campaignTab);
-    else setActiveTab(key as typeof activeTab);
-  };
-
   const playerCharacters = currentCampaign.characters.filter(character => Boolean(character.player_id));
   const partyMembers = playerCharacters.filter(character => partyMemberIds.includes(character.id));
   const availablePartyCharacters = playerCharacters.filter(character => !partyMemberIds.includes(character.id));
@@ -7041,79 +7027,86 @@ const CampaignView: React.FC = () => {
                 )}
               </span>
               {user?.role === 'Dungeon Master' && (
-                <details className="campaign-topnav-dmtools">
-                  <summary>🛠️ DM Tools</summary>
-                  <div className="campaign-topnav-dmtools-menu">
+                <div className={`campaign-topnav-dropdown campaign-topnav-dmtools${openNavMenu === 'dmtools' ? ' open' : ''}`}>
+                  <button
+                    type="button"
+                    className="campaign-topnav-dropdown-trigger"
+                    onClick={() => setOpenNavMenu(m => m === 'dmtools' ? null : 'dmtools')}
+                  >🛠️ DM Tools</button>
+                  <div className={`campaign-topnav-dropdown-menu campaign-topnav-dmtools-menu${openNavMenu === 'dmtools' ? ' open' : ''}`}>
                     <button
-                      className="campaign-topnav-dmtools-item"
-                      onClick={(e) => { setShowGrantExpModal(true); e.currentTarget.closest('details')?.removeAttribute('open'); }}
+                      className="campaign-topnav-dropdown-item"
+                      onClick={() => { setShowGrantExpModal(true); setOpenNavMenu(null); }}
                     >⭐ Grant EXP</button>
                     <button
-                      className="campaign-topnav-dmtools-item"
-                      onClick={(e) => { setShowHealthModal(true); e.currentTarget.closest('details')?.removeAttribute('open'); }}
+                      className="campaign-topnav-dropdown-item"
+                      onClick={() => { setShowHealthModal(true); setOpenNavMenu(null); }}
                     >🩹 Adjust Health</button>
                     <button
-                      className="campaign-topnav-dmtools-item"
-                      onClick={(e) => { setShowRestModal(true); e.currentTarget.closest('details')?.removeAttribute('open'); }}
+                      className="campaign-topnav-dropdown-item"
+                      onClick={() => { setShowRestModal(true); setOpenNavMenu(null); }}
                     >💤 Rest</button>
                   </div>
-                </details>
+                </div>
               )}
               <button onClick={() => setShowBackstoryModal(true)} className="campaign-topnav-action-btn">📜 Backstory</button>
             </div>
           </div>
 
-          {/* Row 2: Campaign/Character segmented toggle + primary tabs + overflow dropdown */}
+          {/* Row 2: Campaign and Character are themselves dropdowns — each opens
+              that view's full page list, so every page stays reachable without
+              a horizontal tab strip. State-driven (rather than native <details>)
+              so open AND close both animate. */}
           <div className="campaign-topnav-tabsbar">
-            <div className="campaign-topnav-view-group">
+            <div className={`campaign-topnav-dropdown campaign-topnav-navgroup${mainView === 'campaign' ? ' active' : ''}${openNavMenu === 'campaign' ? ' open' : ''}`}>
               <button
-                onClick={() => setMainView('campaign')}
-                className={`campaign-topnav-view-btn${mainView === 'campaign' ? ' active' : ''}`}
+                type="button"
+                className="campaign-topnav-dropdown-trigger"
+                onClick={() => setOpenNavMenu(m => m === 'campaign' ? null : 'campaign')}
               >
                 🗺️ Campaign
+                {mainView === 'campaign' && (
+                  <span className="campaign-topnav-navgroup-current">· {campaignTabs.find(t => t.key === campaignTab)?.label}</span>
+                )}
+                <span className={`campaign-topnav-navgroup-caret${openNavMenu === 'campaign' ? ' open' : ''}`}>▾</span>
               </button>
+              <div className={`campaign-topnav-dropdown-menu campaign-topnav-navgroup-menu${openNavMenu === 'campaign' ? ' open' : ''}`}>
+                {campaignTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={`campaign-topnav-dropdown-item${mainView === 'campaign' && campaignTab === tab.key ? ' active' : ''}`}
+                    onClick={() => { setMainView('campaign'); setCampaignTab(tab.key as typeof campaignTab); setOpenNavMenu(null); }}
+                  >
+                    {tab.icon} {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={`campaign-topnav-dropdown campaign-topnav-navgroup${mainView === 'character' ? ' active' : ''}${openNavMenu === 'character' ? ' open' : ''}`}>
               <button
-                onClick={() => setMainView('character')}
-                className={`campaign-topnav-view-btn${mainView === 'character' ? ' active' : ''}`}
+                type="button"
+                className="campaign-topnav-dropdown-trigger"
+                onClick={() => setOpenNavMenu(m => m === 'character' ? null : 'character')}
               >
                 👤 Character
+                {mainView === 'character' && (
+                  <span className="campaign-topnav-navgroup-current">· {characterTabConfig[activeTab]?.label}</span>
+                )}
+                <span className={`campaign-topnav-navgroup-caret${openNavMenu === 'character' ? ' open' : ''}`}>▾</span>
               </button>
+              <div className={`campaign-topnav-dropdown-menu campaign-topnav-navgroup-menu${openNavMenu === 'character' ? ' open' : ''}`}>
+                {availableCharacterTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    className={`campaign-topnav-dropdown-item${mainView === 'character' && activeTab === tab ? ' active' : ''}`}
+                    onClick={() => { setMainView('character'); setActiveTab(tab); setOpenNavMenu(null); }}
+                  >
+                    {characterTabConfig[tab].icon} {characterTabConfig[tab].label}
+                  </button>
+                ))}
+              </div>
             </div>
-
-            <div className="campaign-topnav-tab-group">
-              {primaryNavTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => handleNavTabClick(tab.key)}
-                  className={`campaign-topnav-tab${activeNavKey === tab.key ? ' active' : ''}`}
-                >
-                  {tab.icon} {tab.label}
-                  {tab.badge > 0 && (
-                    <span className="campaign-topnav-tab-badge">{tab.badge}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {moreNavTabs.length > 0 && (
-              <details className={`campaign-topnav-more${moreNavHasActive ? ' has-active' : ''}`}>
-                <summary>⋯ More</summary>
-                <div className="campaign-topnav-more-menu">
-                  {moreNavTabs.map((tab) => (
-                    <button
-                      key={tab.key}
-                      className={`campaign-topnav-more-item${activeNavKey === tab.key ? ' active' : ''}`}
-                      onClick={(e) => { handleNavTabClick(tab.key); e.currentTarget.closest('details')?.removeAttribute('open'); }}
-                    >
-                      {tab.icon} {tab.label}
-                      {tab.badge > 0 && (
-                        <span className="campaign-topnav-tab-badge" style={{ position: 'static', marginLeft: 'auto' }}>{tab.badge}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </details>
-            )}
           </div>
         </nav>
 
