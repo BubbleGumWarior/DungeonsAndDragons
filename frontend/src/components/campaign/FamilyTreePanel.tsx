@@ -43,7 +43,7 @@ const abilityModifier = (score: number): string => {
 };
 
 const memberAge = (member: FamilyMemberData, currentDay: number, race: string): number =>
-  member.characterId ? getCharacterAge(race, currentDay) : getFamilyMemberAge(member.baseAge, currentDay);
+  member.characterId ? getCharacterAge(race, currentDay, member.ageOverride) : getFamilyMemberAge(member.baseAge, currentDay);
 
 // ── Layout ──────────────────────────────────────────────────────────────────
 const NODE_W = 240;
@@ -52,6 +52,34 @@ const UNIT_GAP = 90;
 // Generous enough to clear a fully-grown unlinked-member card (portrait + name + age +
 // a two-row-wrapped button strip) without the next generation's cards touching it.
 const ROW_H = 360;
+
+// Propagates parent generation + 1 onto each child. Declared outside computeLayout's while loop
+// (rather than inline) so the closure doesn't capture a loop-reassigned variable — ESLint's
+// no-loop-func flags that pattern, and CI builds treat lint warnings as hard failures.
+function propagateParentToChild(parentEdges: FamilyRelationshipData[], generation: Map<number, number>): boolean {
+  let changed = false;
+  parentEdges.forEach(e => {
+    if (generation.has(e.memberAId)) {
+      const g = generation.get(e.memberAId)! + 1;
+      if (!generation.has(e.memberBId) || generation.get(e.memberBId)! < g) { generation.set(e.memberBId, g); changed = true; }
+    }
+  });
+  return changed;
+}
+
+// Shares the higher of the two generations across a spouse pair, so a married-in spouse's
+// initial "guess" (see computeLayout) gets corrected once their partner's real generation
+// is known — for the same no-loop-func reason, this is its own top-level function too.
+function propagateSpouseMax(spouseEdges: FamilyRelationshipData[], generation: Map<number, number>): boolean {
+  let changed = false;
+  spouseEdges.forEach(e => {
+    const ga = generation.get(e.memberAId);
+    const gb = generation.get(e.memberBId);
+    if (ga !== undefined && (gb === undefined || gb < ga)) { generation.set(e.memberBId, ga); changed = true; }
+    if (gb !== undefined && (ga === undefined || ga < gb)) { generation.set(e.memberAId, gb); changed = true; }
+  });
+  return changed;
+}
 
 function computeLayout(members: FamilyMemberData[], relationships: FamilyRelationshipData[]): Map<number, { x: number; y: number }> {
   const spouseEdges = relationships.filter(r => r.type === 'spouse');
@@ -85,20 +113,10 @@ function computeLayout(members: FamilyMemberData[], relationships: FamilyRelatio
   let changed = true;
   let guard = 0;
   while (changed && guard < members.length + 5) {
-    changed = false;
     guard++;
-    parentEdges.forEach(e => {
-      if (generation.has(e.memberAId)) {
-        const g = generation.get(e.memberAId)! + 1;
-        if (!generation.has(e.memberBId) || generation.get(e.memberBId)! < g) { generation.set(e.memberBId, g); changed = true; }
-      }
-    });
-    spouseEdges.forEach(e => {
-      const ga = generation.get(e.memberAId);
-      const gb = generation.get(e.memberBId);
-      if (ga !== undefined && (gb === undefined || gb < ga)) { generation.set(e.memberBId, ga); changed = true; }
-      if (gb !== undefined && (ga === undefined || ga < gb)) { generation.set(e.memberAId, gb); changed = true; }
-    });
+    const changedByParents = propagateParentToChild(parentEdges, generation);
+    const changedBySpouses = propagateSpouseMax(spouseEdges, generation);
+    changed = changedByParents || changedBySpouses;
   }
   members.forEach(m => { if (!generation.has(m.id)) generation.set(m.id, 0); });
 

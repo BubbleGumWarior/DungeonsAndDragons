@@ -118,6 +118,10 @@ export interface Character {
   subclass_name?: string | null;
   hit_dice_remaining?: number | null;
   hit_points_max?: number | null;
+  // Set only when this character was created by assigning a family-tree member to a player —
+  // their true age "as of day 1", used instead of the generic race-based guess. Null/undefined
+  // for every ordinary character.
+  age_override?: number | null;
 }
 
 export interface EquippedItems {
@@ -2113,6 +2117,9 @@ export interface FamilyMemberData {
   abilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
   skills: string[];
   baseAge: number;
+  // Only meaningful when characterId is set — the played character's true age-as-of-day-1,
+  // if it was set when they were assigned from the family tree. Null for everyone else.
+  ageOverride: number | null;
   isDead: boolean;
   imageUrl: string | null;
   createdAt: string;

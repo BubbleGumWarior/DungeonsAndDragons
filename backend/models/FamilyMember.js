@@ -40,6 +40,9 @@ class FamilyMember {
       abilities,
       skills: skills || [],
       baseAge: row.base_age,
+      // Only meaningful when linked — a played character's true age-as-of-day-1, if it was
+      // set when they were assigned from the family tree (see routes/familyTree.js).
+      ageOverride: linked ? (row.char_age_override ?? null) : null,
       isDead: row.is_dead,
       imageUrl,
       createdAt: row.created_at,
@@ -71,7 +74,8 @@ class FamilyMember {
 
     const membersResult = await pool.query(
       `SELECT fm.*, c.name AS char_name, c.race AS char_race, c.abilities AS char_abilities,
-              c.skills AS char_skills, c.image_data AS char_image_data, c.image_mime_type AS char_image_mime_type
+              c.skills AS char_skills, c.image_data AS char_image_data, c.image_mime_type AS char_image_mime_type,
+              c.age_override AS char_age_override
        FROM family_members fm
        LEFT JOIN characters c ON c.id = fm.character_id
        WHERE fm.campaign_id = $1

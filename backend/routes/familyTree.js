@@ -331,7 +331,7 @@ router.post('/family-tree/members/:memberId/assign-player', authenticateToken, a
         [
           stale.id, targetCharacter.name, targetCharacter.race,
           JSON.stringify(targetCharacter.abilities), JSON.stringify(targetCharacter.skills),
-          FamilyMember.raceBaseAge(targetCharacter.race),
+          targetCharacter.age_override != null ? targetCharacter.age_override : FamilyMember.raceBaseAge(targetCharacter.race),
           outgoingImage?.image_data || null, outgoingImage?.image_mime_type || null,
         ]
       );
@@ -345,7 +345,7 @@ router.post('/family-tree/members/:memberId/assign-player', authenticateToken, a
          abilities = $8, skills = $9, expertise = '[]',
          equipment = '[]', equipped_items = '{}', spells = '[]',
          backstory = '', personality_traits = '', ideals = '', bonds = '', flaws = '',
-         image_data = $10, image_mime_type = $11,
+         image_data = $10, image_mime_type = $11, age_override = $12,
          gold = 0, hit_dice_remaining = 1, limb_health = NULL,
          spell_slots_used = '{}', ki_points_remaining = NULL, concealed_class = NULL,
          resistances = '{"resistances":[],"immunities":[],"vulnerabilities":[]}',
@@ -357,7 +357,7 @@ router.post('/family-tree/members/:memberId/assign-player', authenticateToken, a
       [
         targetCharacter.id, member.name, member.race, String(className).trim(), background || null,
         hp, ac, JSON.stringify(abilities), JSON.stringify(skills),
-        member.image_data || null, member.image_mime_type || null,
+        member.image_data || null, member.image_mime_type || null, member.base_age,
       ]
     );
 

@@ -411,6 +411,7 @@ const startServer = async () => {
         { name: 'addFiefAnimalAutoSlaughter', fn: require('./migrations/add_fief_animal_auto_slaughter') },
         { name: 'addKingdomTaxation', fn: require('./migrations/add_kingdom_taxation') },
         { name: 'addFamilyTree', fn: require('./migrations/add_family_tree') },
+        { name: 'addCharacterAgeOverride', fn: require('./migrations/add_character_age_override') },
       ];
       
       const failedMigrations = [];

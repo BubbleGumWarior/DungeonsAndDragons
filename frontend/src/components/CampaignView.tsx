@@ -7270,7 +7270,7 @@ const CampaignView: React.FC = () => {
                       );
                     })()}
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Age: {getCharacterAge(character.race, currentDay)}
+                      Age: {getCharacterAge(character.race, currentDay, character.age_override)}
                     </div>
                     
                     {/* Health Bar and Status */}
@@ -12418,7 +12418,7 @@ const CampaignView: React.FC = () => {
                             );
                           })()}
                           <span className="char-pill char-pill-level">Lvl {selectedCharacterData.level}</span>
-                          <span className="char-pill">🎂 Age {getCharacterAge(selectedCharacterData.race, currentDay)}</span>
+                          <span className="char-pill">🎂 Age {getCharacterAge(selectedCharacterData.race, currentDay, selectedCharacterData.age_override)}</span>
                         </div>
                         <div className="char-title-row">
                           <span className="char-field-label-sm">Title</span>
