@@ -2104,4 +2104,70 @@ export const npcAPI = {
   },
 };
 
+export interface FamilyMemberData {
+  id: number;
+  campaignId: number;
+  characterId: number | null;
+  name: string;
+  race: string;
+  abilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  skills: string[];
+  baseAge: number;
+  isDead: boolean;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
+export interface FamilyRelationshipData {
+  id: number;
+  type: 'spouse' | 'parent_child';
+  memberAId: number;
+  memberBId: number;
+}
+
+export interface FamilyTree {
+  members: FamilyMemberData[];
+  relationships: FamilyRelationshipData[];
+}
+
+export const familyTreeAPI = {
+  getTree: async (campaignId: number): Promise<FamilyTree> => {
+    const response = await api.get(`/campaigns/${campaignId}/family-tree`);
+    return response.data;
+  },
+
+  addSpouse: async (memberId: number, formData: FormData): Promise<FamilyTree> => {
+    const response = await api.post(`/family-tree/members/${memberId}/spouse`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  addChild: async (memberId: number, formData: FormData): Promise<FamilyTree> => {
+    const response = await api.post(`/family-tree/members/${memberId}/child`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  updateMember: async (memberId: number, formData: FormData): Promise<FamilyTree> => {
+    const response = await api.patch(`/family-tree/members/${memberId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  deleteMember: async (memberId: number): Promise<FamilyTree> => {
+    const response = await api.delete(`/family-tree/members/${memberId}`);
+    return response.data;
+  },
+
+  assignPlayer: async (memberId: number, payload: {
+    targetPlayerId: number; className: string; background: string; hitPoints: number; armorClass: number;
+  }): Promise<FamilyTree> => {
+    const response = await api.post(`/family-tree/members/${memberId}/assign-player`, payload);
+    return response.data;
+  },
+};
+
 export default api;

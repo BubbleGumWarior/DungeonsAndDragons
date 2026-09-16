@@ -27,6 +27,7 @@ const petFoodRoutes = require('./routes/petFood');
 const companionArmorRoutes = require('./routes/companionArmor');
 const npcRoutes = require('./routes/npcs');
 const kingdomRoutes = require('./routes/kingdoms');
+const familyTreeRoutes = require('./routes/familyTree');
 const Character = require('./models/Character');
 const Campaign = require('./models/Campaign');
 const CombatSession = require('./models/CombatSession');
@@ -166,6 +167,7 @@ app.use('/api/pet-food', petFoodRoutes);
 app.use('/api/companion-armor', companionArmorRoutes);
 app.use('/api', npcRoutes);
 app.use('/api/kingdoms', kingdomRoutes);
+app.use('/api', familyTreeRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -408,6 +410,7 @@ const startServer = async () => {
         { name: 'addBankCapacity', fn: require('./migrations/add_bank_capacity') },
         { name: 'addFiefAnimalAutoSlaughter', fn: require('./migrations/add_fief_animal_auto_slaughter') },
         { name: 'addKingdomTaxation', fn: require('./migrations/add_kingdom_taxation') },
+        { name: 'addFamilyTree', fn: require('./migrations/add_family_tree') },
       ];
       
       const failedMigrations = [];

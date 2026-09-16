@@ -10,6 +10,8 @@ import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
 import { compressImageFile } from '../utils/imageCompression';
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
+import { getCharacterAge } from '../utils/age';
+import FamilyTreePanel from './campaign/FamilyTreePanel';
 import { classInfo } from '../data/classInfo';
 import { getChoiceOptions } from '../data/choiceOptions';
 import FigureImage from '../assets/images/Board/Figure.png';
@@ -563,7 +565,7 @@ const CampaignView: React.FC = () => {
 
   // Character panel state
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'companions' | 'npcs' | 'notes' | 'others'>('board');
+  const [activeTab, setActiveTab] = useState<'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'companions' | 'npcs' | 'notes' | 'others' | 'familyTree'>('board');
   const [characterNotes, setCharacterNotes] = useState<{ [charId: number]: { id: number; title: string; content: string; created_at: string }[] }>({});
   const [notesLoading, setNotesLoading] = useState<{ [charId: number]: boolean }>({});
   const [noteEditModal, setNoteEditModal] = useState<{ charId: number; note: { id: number; title: string; content: string } | null } | null>(null);
@@ -738,11 +740,6 @@ const CampaignView: React.FC = () => {
     const value = String(season || '').trim().toLowerCase();
     if (value === 'spring' || value === 'summer' || value === 'autumn' || value === 'winter') return value;
     return null;
-  };
-
-  const getCharacterAge = (race: string, day: number): number => {
-    const base = race?.toLowerCase().includes('thri-kreen') ? 3 : 13;
-    return base + Math.floor((day - 1) / 365);
   };
 
   useEffect(() => {
@@ -6745,7 +6742,7 @@ const CampaignView: React.FC = () => {
   ] as const;
 
   const characterTabConfig: Record<
-    'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'companions' | 'npcs' | 'notes' | 'others',
+    'board' | 'sheet' | 'inventory' | 'feats' | 'skills' | 'equip' | 'armies' | 'companion' | 'shadows' | 'levelup' | 'companions' | 'npcs' | 'notes' | 'others' | 'familyTree',
     { label: string; icon: string }
   > = {
     board: { label: 'Overview', icon: '📋' },
@@ -6761,7 +6758,8 @@ const CampaignView: React.FC = () => {
     companions: { label: 'Companions', icon: '🐾' },
     npcs: { label: 'Characters', icon: '👥' },
     notes: { label: 'Notes', icon: '📝' },
-    others: { label: 'Others', icon: '🎲' }
+    others: { label: 'Others', icon: '🎲' },
+    familyTree: { label: 'Family Tree', icon: '🌳' }
   };
 
   const isOwnCharacter = selectedCharacterData
@@ -6783,8 +6781,9 @@ const CampaignView: React.FC = () => {
             ...(shouldShowCompanionTab(selectedCharacterData) ? ['companion' as const] : []),
             ...(shouldShowShadowsTab(selectedCharacterData) ? ['shadows' as const] : []),
             ...(canLevelUp(selectedCharacterData.level, selectedCharacterData.experience_points || 0) ? ['levelup' as const] : []),
+            'familyTree' as const,
           ] as const)
-        : (['board'] as const))
+        : (['board', 'familyTree'] as const))
     : ([] as const);
 
   const playerCharacters = currentCampaign.characters.filter(character => Boolean(character.player_id));
@@ -15475,6 +15474,21 @@ const CampaignView: React.FC = () => {
                       </div>
                     )}
                   </div>
+                )}
+
+                {/* Family Tree Tab */}
+                {activeTab === 'familyTree' && currentCampaign && (
+                  <FamilyTreePanel
+                    campaignId={currentCampaign.campaign.id}
+                    players={currentCampaign.players}
+                    characters={currentCampaign.characters}
+                    currentDay={currentDay}
+                    isDM={user?.role === 'Dungeon Master'}
+                    socket={socket}
+                    userCharacterId={currentCampaign.userCharacter?.id ?? null}
+                    selectedCharacterId={selectedCharacterData?.id ?? null}
+                    onCharacterDataChanged={() => loadCampaign(currentCampaign.campaign.id)}
+                  />
                 )}
 
                 {/* Show access denied message for restricted tabs */}
