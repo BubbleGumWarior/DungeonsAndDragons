@@ -2961,8 +2961,34 @@ for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
   });
 }
 
-// A building-chain entry is normally a single building type, but some unit tiers (e.g. a
-// future "Horse Archer" needing both an archer range AND a stable) require more than one
+// Reverse lookup: building_type -> { chain, index } within whichever *_LINE_BUILDINGS
+// chain it belongs to. Buildings upgrade in place (one row mutates its building_type as
+// it advances), so a fief that has upgraded past a given tier no longer has a row with
+// that tier's exact type string. Registering every chain here lets us ask "has this fief
+// reached AT LEAST this tier" instead of "does this exact type string still exist",
+// so e.g. a fief sitting on 'imperial_siege_hall' still satisfies a requirement of
+// 'siege_foundry' (an earlier tier of the same chain) rather than showing it as locked.
+const BUILDING_CHAIN_LOOKUP = new Map();
+const registerBuildingChain = (chain) => {
+  chain.forEach((type, index) => {
+    if (!BUILDING_CHAIN_LOOKUP.has(type)) {
+      BUILDING_CHAIN_LOOKUP.set(type, { chain, index });
+    }
+  });
+};
+[
+  MILITIA_LINE_BUILDINGS,
+  ARCHER_LINE_BUILDINGS,
+  CAVALRY_LINE_BUILDINGS,
+  SWORDSMEN_LINE_BUILDINGS,
+  SPEARMEN_LINE_BUILDINGS,
+  SIEGE_LINE_BUILDINGS,
+  GUARD_LINE_BUILDINGS,
+  COVERT_LINE_BUILDINGS,
+].forEach(registerBuildingChain);
+
+// A building-chain entry is normally a single building type, but some unit tiers (e.g.
+// Horse Archer needing both an archer range AND a stable) require more than one
 // building at once — represent those as an array of types, all of which must be completed.
 const getRequiredBuildingsForTier = (buildingChain, tierIndex) => {
   const raw = buildingChain[tierIndex];
@@ -2970,10 +2996,24 @@ const getRequiredBuildingsForTier = (buildingChain, tierIndex) => {
   return types.filter(Boolean);
 };
 
+// Is `requiredType` satisfied by this fief's completed buildings? A completed building
+// counts if it's an exact match, OR if it sits at-or-past `requiredType`'s position in
+// the same master upgrade chain (see BUILDING_CHAIN_LOOKUP above).
+const isRequiredBuildingTypeMet = (requiredType, completedBuildings) => {
+  const requiredInfo = BUILDING_CHAIN_LOOKUP.get(requiredType);
+  return (completedBuildings || []).some((b) => {
+    const builtType = String(b?.building_type || '');
+    if (builtType === requiredType) return true;
+    if (!requiredInfo) return false;
+    const builtInfo = BUILDING_CHAIN_LOOKUP.get(builtType);
+    return Boolean(builtInfo) && builtInfo.chain === requiredInfo.chain && builtInfo.index >= requiredInfo.index;
+  });
+};
+
 const isTierBuildingRequirementMet = (buildingChain, tierIndex, completedBuildings) => {
   const types = getRequiredBuildingsForTier(buildingChain, tierIndex);
   if (types.length === 0) return false;
-  return types.every((type) => (completedBuildings || []).some((b) => String(b?.building_type || '') === type));
+  return types.every((type) => isRequiredBuildingTypeMet(type, completedBuildings));
 };
 
 // Human-readable label for whatever building(s) a tier requires, e.g. "Pike Yard" or "Pike Yard + War Stables".
@@ -6850,23 +6890,84 @@ const PRAYER_DEFINITIONS = [
   {
     key: 'scholar_communion',
     name: 'Scholar Communion',
-    description: 'Guide sages in their studies, granting immediate research progress reserves.',
+    description: 'Guide sages in their studies, instantly advancing your fief\'s active research project. Wasted if nothing is currently being researched.',
     minTier: 4,
     baseFaithCost: 42,
     buildEffects: (highestTier) => ({
       research: 16 + (Math.max(0, highestTier - 4) * 8),
     }),
-    apply: async ({ client, targetFiefId, highestTier }) => {
+    // NOTE: this must add directly to the active fief_research_queue entry's
+    // points_accumulated — stored_resources.research is not a real resource pool.
+    // It is deleted every daily tick (see Campaign.applyStorageCapacity) and never
+    // read back anywhere, so writing to it here was a silent no-op.
+    apply: async ({ client, targetFiefId, highestTier, currentDay }) => {
       const research = 16 + (Math.max(0, highestTier - 4) * 8);
-      await client.query(
-        `UPDATE fiefs
-         SET stored_resources = COALESCE(stored_resources, '{}'::jsonb)
-           || jsonb_build_object(
-             'research', GREATEST(0, COALESCE((stored_resources->>'research')::float, 0) + $2)
-           )
-         WHERE id = $1`,
-        [targetFiefId, research]
+
+      const activeResult = await client.query(
+        `SELECT id, research_id, points_accumulated, queue_position
+         FROM fief_research_queue
+         WHERE fief_id = $1 AND status = 'active'
+         LIMIT 1`,
+        [targetFiefId]
       );
+      const active = activeResult.rows[0];
+      if (!active) {
+        // No active research to receive the blessing — research is never stockpiled,
+        // so with nothing actively being researched the reserve is simply wasted.
+        return;
+      }
+
+      const researchConfig = getResearchConfig(active.research_id);
+      const pointsRequired = Number(researchConfig?.pointsRequired || 100);
+      const pointsAccumulated = Number(active.points_accumulated || 0) + research;
+
+      if (pointsAccumulated < pointsRequired) {
+        await client.query(
+          `UPDATE fief_research_queue SET points_accumulated = $2 WHERE id = $1`,
+          [active.id, pointsAccumulated]
+        );
+        return;
+      }
+
+      await client.query(
+        `UPDATE fief_research_queue
+         SET status = 'completed', points_accumulated = $2, queue_position = NULL, campaign_day_completed = $3
+         WHERE id = $1`,
+        [active.id, pointsAccumulated, currentDay]
+      );
+
+      await client.query(
+        `INSERT INTO fief_research_levels (fief_id, building_type, level)
+         VALUES ($1, $2, 1)
+         ON CONFLICT (fief_id, building_type)
+         DO UPDATE SET level = fief_research_levels.level + 1`,
+        [targetFiefId, active.research_id]
+      );
+
+      const nextQueuedResult = await client.query(
+        `SELECT id FROM fief_research_queue
+         WHERE fief_id = $1 AND status = 'queued'
+         ORDER BY queue_position ASC, id ASC
+         LIMIT 1`,
+        [targetFiefId]
+      );
+      const nextQueued = nextQueuedResult.rows[0];
+      if (nextQueued) {
+        await client.query(
+          `UPDATE fief_research_queue
+           SET status = 'active', campaign_day_started = COALESCE(campaign_day_started, $2)
+           WHERE id = $1`,
+          [nextQueued.id, currentDay]
+        );
+      }
+      if (active.queue_position != null) {
+        await client.query(
+          `UPDATE fief_research_queue
+           SET queue_position = queue_position - 1
+           WHERE fief_id = $1 AND status = 'queued' AND queue_position > $2`,
+          [targetFiefId, active.queue_position]
+        );
+      }
     },
   },
   {
