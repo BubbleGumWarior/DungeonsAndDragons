@@ -3922,8 +3922,13 @@ const KingdomTab: React.FC<Props> = ({
                   const goldOverflow = Math.min(Math.max(0, rawGoldStored - bankCap), roomForOverflow);
                   roomForOverflow -= goldOverflow;
 
-                  const foodStored = rawFoodStored > foodCap ? foodCap + foodOverflow : rawFoodStored;
-                  const goldStored = rawGoldStored > bankCap ? bankCap + goldOverflow : rawGoldStored;
+                  // The Granary/Bank bars themselves should never read above their own cap —
+                  // once full, the excess has moved into (and is now shown by) the Warehouse
+                  // bar below instead of double-counting on both bars. The one exception is a
+                  // fief with no Bank built (bankCap === 0): there's no dedicated pool to cap
+                  // against, so gold just passes straight through and is shown in full.
+                  const foodStored = Math.min(rawFoodStored, foodCap);
+                  const goldStored = bankCap > 0 ? Math.min(rawGoldStored, bankCap) : rawGoldStored;
                   const warehouseStored = nonOverflowStored + foodOverflow + goldOverflow;
 
                   const { output: prodOutput, foodBreakdown } = productionByLane;
