@@ -1923,7 +1923,7 @@ const CampaignView: React.FC = () => {
   const getSubcategoryOptions = (category: string) => {
     switch (category) {
       case 'Armor':
-        return ['Light Armor', 'Medium Armor', 'Heavy Armor', 'Shield', 'Helmet', 'Boots', 'Horse Head', 'Horse Feet', 'Horse Body'];
+        return ['Light Armor', 'Medium Armor', 'Heavy Armor', 'Shield', 'Helmet', 'Gloves', 'Boots', 'Horse Head', 'Horse Feet', 'Horse Body'];
       case 'Weapon':
         return ['Simple Melee', 'Martial Melee', 'Simple Ranged', 'Martial Ranged'];
       case 'Tool':
