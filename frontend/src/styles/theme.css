@@ -3375,13 +3375,42 @@ label:has(input[type="checkbox"]:disabled) {
   border-radius: 6px;
 }
 
-.equipment-slot.hands {
-  width: 16%;
+.equipment-slot.left-hand-glove {
+  width: 12%;
   height: 10%;
-  top: 47%;
-  left: 42%;
+  top: 35%;
+  left: 10%;
   border-radius: 8px;
   border-color: rgba(var(--theme-accent-rgb), 0.6);
+}
+
+.equipment-slot.right-hand-glove {
+  width: 12%;
+  height: 10%;
+  top: 35%;
+  right: 10%;
+  border-radius: 8px;
+  border-color: rgba(var(--theme-accent-rgb), 0.6);
+}
+
+.equipment-slot.lower-left-hand-glove {
+  width: 10%;
+  height: 9%;
+  top: 60%;
+  left: 24%;
+  border-radius: 8px;
+  border-color: rgba(168, 85, 247, 0.8);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.3), 0 0 15px rgba(168, 85, 247, 0.2);
+}
+
+.equipment-slot.lower-right-hand-glove {
+  width: 10%;
+  height: 9%;
+  top: 60%;
+  right: 24%;
+  border-radius: 8px;
+  border-color: rgba(168, 85, 247, 0.8);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.3), 0 0 15px rgba(168, 85, 247, 0.2);
 }
 
 /* Equipment slot tooltips */
@@ -3582,10 +3611,33 @@ label:has(input[type="checkbox"]:disabled) {
     top: 54%;
     right: 10%;
   }
-  
-  .equipment-slot.hands {
-    width: 18%;
+
+  .equipment-slot.left-hand-glove {
+    width: 16%;
     height: 12%;
+    top: 40%;
+    left: 8%;
+  }
+
+  .equipment-slot.right-hand-glove {
+    width: 16%;
+    height: 12%;
+    top: 40%;
+    right: 8%;
+  }
+
+  .equipment-slot.lower-left-hand-glove {
+    width: 14%;
+    height: 11%;
+    top: 66%;
+    left: 10%;
+  }
+
+  .equipment-slot.lower-right-hand-glove {
+    width: 14%;
+    height: 11%;
+    top: 66%;
+    right: 10%;
   }
 
   .equipment-slot.left-foot {
@@ -3593,13 +3645,13 @@ label:has(input[type="checkbox"]:disabled) {
     height: 10%;
     left: 24%;
   }
-  
+
   .equipment-slot.right-foot {
     width: 16%;
     height: 10%;
     right: 24%;
   }
-  
+
   /* Responsive icon sizing for tablets */
   .equipment-slot.head .equipment-icon {
     font-size: 2.7rem !important; /* Scaled down proportionally */
@@ -3663,10 +3715,19 @@ label:has(input[type="checkbox"]:disabled) {
     top: 24%;
     right: 8%;
   }
-  
-  .equipment-slot.hands {
+
+  .equipment-slot.left-hand-glove {
     width: 18%;
     height: 12%;
+    top: 38%;
+    left: 8%;
+  }
+
+  .equipment-slot.right-hand-glove {
+    width: 18%;
+    height: 12%;
+    top: 38%;
+    right: 8%;
   }
 
   .equipment-slot.left-foot {
@@ -3674,13 +3735,13 @@ label:has(input[type="checkbox"]:disabled) {
     height: 12%;
     left: 24%;
   }
-  
+
   .equipment-slot.right-foot {
     width: 16%;
     height: 12%;
     right: 24%;
   }
-  
+
   /* Responsive icon sizing for mobile */
   .equipment-slot.head .equipment-icon {
     font-size: 2.4rem !important; /* Scaled down for mobile */

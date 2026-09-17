@@ -1154,20 +1154,39 @@ class Campaign {
 
     const foodCap = Math.max(0, Number(foodCapacity ?? capacity) || 0);
     const bankCap = Math.max(0, Number(bankCapacity ?? 0));
-    // Only the true general-Warehouse resources (wood/stone/minerals/faith/…) count as
-    // occupying Warehouse space here. Food and gold live in their own dedicated pools
-    // (Granary / Bank); a large pre-existing food or gold reserve — which routinely
-    // grows past its cap via trade, military collection, prayers and DM adjustments —
-    // must NOT be charged against the Warehouse. Doing so let a rich kingdom's gold
-    // pile permanently fill the Warehouse, so every non-food lane produced each long
-    // rest was silently discarded ("kingdom produces nothing"). Only *this turn's*
-    // fresh food/gold overflow consumes Warehouse room, added to generalUsed by
-    // fillDedicatedThenOverflow below — matching the Storehouse panel projection in
-    // KingdomTab.tsx, which likewise excludes stored food/gold from Warehouse usage.
-    let generalUsed = Object.entries(stored).reduce((sum, [resource, n]) => {
+    // The true general-Warehouse resources (wood/stone/minerals/faith/…) always count as
+    // occupying Warehouse space. Food and gold live in their own dedicated pools
+    // (Granary / Bank) first, but any pre-existing overflow beyond those pools really is
+    // sitting in the Warehouse (that's where it spilled to), so it counts against the
+    // shared pool too — otherwise a Granary/Bank that's already over capacity keeps
+    // accepting unlimited new production forever (the overflow is invisible to next
+    // turn's capacity check) instead of actually filling up the Warehouse behind it.
+    const nonOverflowUsed = Object.entries(stored).reduce((sum, [resource, n]) => {
       if (resource === 'food' || resource === 'gold') return sum;
       return sum + Math.max(0, Number(n) || 0);
     }, 0);
+
+    // Reconcile any food/gold that has already drifted above its dedicated pool: fold as
+    // much of it as currently fits into the Warehouse tally, and drop anything beyond the
+    // combined Granary/Bank + Warehouse capacity so a stale pile can't grow unbounded.
+    // Only ever touches stored.food/gold when there actually IS overflow — a fief sitting
+    // below its cap must be left exactly as-is.
+    let roomForOverflow = Math.max(0, Number(capacity) - nonOverflowUsed);
+    const foodOverflowBefore = Math.max(0, Number(stored.food || 0) - foodCap);
+    const foodOverflowKept = Math.min(foodOverflowBefore, roomForOverflow);
+    if (foodOverflowBefore > 0) {
+      stored.food = foodCap + foodOverflowKept;
+    }
+    roomForOverflow -= foodOverflowKept;
+
+    const goldOverflowBefore = Math.max(0, Number(stored.gold || 0) - bankCap);
+    const goldOverflowKept = Math.min(goldOverflowBefore, roomForOverflow);
+    if (goldOverflowBefore > 0) {
+      stored.gold = bankCap + goldOverflowKept;
+    }
+    roomForOverflow -= goldOverflowKept;
+
+    let generalUsed = nonOverflowUsed + foodOverflowKept + goldOverflowKept;
 
     // Fills `stored[resource]` from `produced`, up to `dedicatedCap` first, then spills
     // any remainder into the shared general pool (tracked via the closured generalUsed).

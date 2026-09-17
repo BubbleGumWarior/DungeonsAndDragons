@@ -3902,15 +3902,29 @@ const KingdomTab: React.FC<Props> = ({
                   // the Warehouse if it has room, same priority order as Campaign.applyStorageCapacity
                   // (Granary/Bank filled first, then Warehouse absorbs the rest).
                   const storedResources = (fiefDetails.stored_resources || {}) as Record<string, number>;
-                  const foodStored = Math.max(0, Number(storedResources.food || 0));
-                  const goldStored = Math.max(0, Number(storedResources.gold || 0));
-                  const warehouseStored = Object.entries(storedResources)
+                  const rawFoodStored = Math.max(0, Number(storedResources.food || 0));
+                  const rawGoldStored = Math.max(0, Number(storedResources.gold || 0));
+                  const nonOverflowStored = Object.entries(storedResources)
                     .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research' && k !== 'food' && k !== 'gold')
                     .reduce((sum, [, amount]) => sum + Math.max(0, Number(amount || 0)), 0);
 
                   const foodCap = Number(fiefDetails.food_storage_capacity || 100);
                   const bankCap = Number(fiefDetails.bank_capacity || 0);
                   const warehouseCap = Number(fiefDetails.storage_capacity || 100);
+
+                  // Mirror Campaign.applyStorageCapacity: any food/gold beyond its dedicated
+                  // pool has already spilled into the Warehouse (up to whatever room is there),
+                  // and anything beyond the combined capacity is lost rather than sitting
+                  // invisibly on top of the Granary/Bank cap forever.
+                  let roomForOverflow = Math.max(0, warehouseCap - nonOverflowStored);
+                  const foodOverflow = Math.min(Math.max(0, rawFoodStored - foodCap), roomForOverflow);
+                  roomForOverflow -= foodOverflow;
+                  const goldOverflow = Math.min(Math.max(0, rawGoldStored - bankCap), roomForOverflow);
+                  roomForOverflow -= goldOverflow;
+
+                  const foodStored = rawFoodStored > foodCap ? foodCap + foodOverflow : rawFoodStored;
+                  const goldStored = rawGoldStored > bankCap ? bankCap + goldOverflow : rawGoldStored;
+                  const warehouseStored = nonOverflowStored + foodOverflow + goldOverflow;
 
                   const { output: prodOutput, foodBreakdown } = productionByLane;
                   const grossFood = Math.max(0, foodBreakdown.total);

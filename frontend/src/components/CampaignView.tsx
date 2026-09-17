@@ -5584,12 +5584,17 @@ const CampaignView: React.FC = () => {
     const equipmentSlots = [
       { id: 'head', name: 'Helmet/Hat', className: 'head', icon: '🛡️' },
       { id: 'chest', name: 'Armor/Clothing', className: 'chest', icon: '🛡️' },
-      { id: 'hands', name: 'Gloves/Gauntlets', className: 'hands', icon: '🧤' },
       { id: 'main_hand', name: 'Main Hand', className: 'left-hand', icon: '⚔️' },
       { id: 'off_hand', name: 'Off Hand', className: 'right-hand', icon: '⚔️' },
       ...(isFourArmed ? [
         { id: 'lower_left_hand', name: 'Lower Left Hand', className: 'lower-left-hand', icon: '⚔️' },
         { id: 'lower_right_hand', name: 'Lower Right Hand', className: 'lower-right-hand', icon: '⚔️' },
+      ] : []),
+      { id: 'hands', name: 'Left Glove', className: 'left-hand-glove', icon: '🧤' },
+      { id: 'hands_right', name: 'Right Glove', className: 'right-hand-glove', icon: '🧤', syncWith: 'hands' },
+      ...(isFourArmed ? [
+        { id: 'hands_lower_left', name: 'Lower Left Glove', className: 'lower-left-hand-glove', icon: '🧤', syncWith: 'hands' },
+        { id: 'hands_lower_right', name: 'Lower Right Glove', className: 'lower-right-hand-glove', icon: '🧤', syncWith: 'hands' },
       ] : []),
       { id: 'feet', name: 'Left Boot', className: 'left-foot', icon: '🥾' },
       { id: 'feet_right', name: 'Right Boot', className: 'right-foot', icon: '🥾', syncWith: 'feet' }
