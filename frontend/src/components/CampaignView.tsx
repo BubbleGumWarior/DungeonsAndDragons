@@ -158,8 +158,15 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
 // Extra images for player cities (in addition to the default .jpg)
 const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
   'Yllwyn': [
-    '/images/CityImages/YllwynRiverBlockade.jpg',
     '/images/CityImages/YllwynWesternBlockade.jpg',
+    '/images/CityImages/YllwynRiverBlockade.jpg',
+    '/images/CityImages/YllwynNorthRiverBlockade.jpg',
+    '/images/CityImages/YllwynNorthRiverBlockadeFront.jpg',
+    '/images/CityImages/YllwynSouthRiverBlockade.jpg',
+    '/images/CityImages/YllwynSouthRiverBlockadeFront.jpg',
+    '/images/CityImages/YllwynFarmingGrounds.jpg',
+    '/images/CityImages/YllwynStableGrounds.jpg',
+    '/images/CityImages/YllwynTrainingGrounds.jpg',
     '/images/CityImages/YllwynBottom.jpg',
     '/images/CityImages/YllwynCenter.jpg',
     '/images/CityImages/YllwynTemple.jpg',
