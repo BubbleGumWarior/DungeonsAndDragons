@@ -12810,7 +12810,7 @@ const CampaignView: React.FC = () => {
                           const characterLimbAC = {
                             head:      Math.round(baseAC * 1.50) + helmAC,
                             chest:     Math.round(baseAC * 1.00) + chestAC,
-                            hands:     Math.round(baseAC * 0.25) + Math.max(mainHandAC, offHandAC),
+                            hands:     Math.round(baseAC * 0.25) + mainHandAC + offHandAC,
                             main_hand: Math.round(baseAC * 0.25) + mainHandAC,
                             off_hand:  Math.round(baseAC * 0.25) + offHandAC,
                             feet:      Math.round(baseAC * 0.50) + feetAC
@@ -13124,7 +13124,7 @@ const CampaignView: React.FC = () => {
                         position: 'relative',
                         cursor: 'help'
                       }}
-                      title={`Limb-Specific Armor Class (Base AC = ${selectedCharacterData.armor_class || 10}):\n\n• Head:  100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Helmet bonus (${limbAC[selectedCharacterData.id]?.head ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.head ?? 0)}\n• Torso: 100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Chestpiece bonus (${limbAC[selectedCharacterData.id]?.chest ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.chest ?? 0)}\n• Arms:   25% AC (${Math.round((selectedCharacterData.armor_class||10)*0.25)}) + Gloves/Shield bonus (${Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}) = ${Math.round((selectedCharacterData.armor_class||10)*0.25) + Math.max(limbAC[selectedCharacterData.id]?.main_hand??0, limbAC[selectedCharacterData.id]?.off_hand??0)}\n• Legs:   50% AC (${Math.round((selectedCharacterData.armor_class||10)*0.50)}) + Leggings bonus (${limbAC[selectedCharacterData.id]?.feet ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*0.50) + (limbAC[selectedCharacterData.id]?.feet ?? 0)}`}
+                      title={`Limb-Specific Armor Class (Base AC = ${selectedCharacterData.armor_class || 10}):\n\n• Head:  100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Helmet bonus (${limbAC[selectedCharacterData.id]?.head ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.head ?? 0)}\n• Torso: 100% AC (${Math.round((selectedCharacterData.armor_class||10)*1.00)}) + Chestpiece bonus (${limbAC[selectedCharacterData.id]?.chest ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*1.00) + (limbAC[selectedCharacterData.id]?.chest ?? 0)}\n• Arms:   25% AC (${Math.round((selectedCharacterData.armor_class||10)*0.25)}) + Gloves/Shield bonus (${(limbAC[selectedCharacterData.id]?.main_hand??0) + (limbAC[selectedCharacterData.id]?.off_hand??0)}) = ${Math.round((selectedCharacterData.armor_class||10)*0.25) + (limbAC[selectedCharacterData.id]?.main_hand??0) + (limbAC[selectedCharacterData.id]?.off_hand??0)}\n• Legs:   50% AC (${Math.round((selectedCharacterData.armor_class||10)*0.50)}) + Leggings bonus (${limbAC[selectedCharacterData.id]?.feet ?? 0}) = ${Math.round((selectedCharacterData.armor_class||10)*0.50) + (limbAC[selectedCharacterData.id]?.feet ?? 0)}`}
                       >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Armor Class

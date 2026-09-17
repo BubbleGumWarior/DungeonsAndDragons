@@ -738,7 +738,7 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
     const displayLimbAC = {
       head: limbAC.head,
       chest: limbAC.chest,
-      hands: Math.max(limbAC.main_hand, limbAC.off_hand), // Show the higher AC for display
+      hands: limbAC.main_hand + limbAC.off_hand, // Gloves and shield/off-hand bonuses stack
       main_hand: limbAC.main_hand,
       off_hand: limbAC.off_hand,
       feet: limbAC.feet
