@@ -42,6 +42,9 @@ const abilityModifier = (score: number): string => {
   return mod >= 0 ? `+${mod}` : String(mod);
 };
 
+const isThriKreen = (race?: string | null): boolean => !!race && race.toLowerCase().includes('thri-kreen');
+const MAX_CHILDREN_AT_ONCE = 20;
+
 const memberAge = (member: FamilyMemberData, currentDay: number, race: string): number =>
   member.characterId ? getCharacterAge(race, currentDay, member.ageOverride) : getFamilyMemberAge(member.baseAge, currentDay);
 
@@ -409,10 +412,16 @@ function MemberFormModal({
   reference: D5eReferenceData | null;
   currentDay: number;
   onClose: () => void;
-  onSubmit: (fields: { name: string; race: string; age: number; abilities: Abilities; skills: string[]; imageFile: File | null; isDead?: boolean; includeCoParent: boolean }) => Promise<void>;
+  onSubmit: (fields: { name: string; race: string; age: number; abilities: Abilities; skills: string[]; imageFile: File | null; isDead?: boolean; includeCoParent: boolean; extraNames: string[]; rerollPerChild: boolean }) => Promise<void>;
 }) {
   const editing = mode.kind === 'edit' ? mode.member : null;
   const [name, setName] = useState(editing?.name || '');
+  // Some races (Thri-kreen) have large broods, so let the DM add several children in one go.
+  const canAddMultiple = mode.kind === 'child' && [mode.of, mode.coParent].some(p => isThriKreen(p?.race));
+  const [addMultiple, setAddMultiple] = useState(false);
+  // Kept as raw text while typing (so "10" doesn't get clamped to 2 on the way through "1"),
+  // then clamped for use via `childCount` below.
+  const [childCountInput, setChildCountInput] = useState('2');
   const [race, setRace] = useState(editing?.race || 'Human');
   const [age, setAge] = useState<number>(
     editing ? memberAge(editing, currentDay, editing.race) : (mode.kind === 'spouse' ? memberAge(mode.of, currentDay, mode.of.race) : 0)
@@ -451,11 +460,24 @@ function MemberFormModal({
     setImagePreview(URL.createObjectURL(file));
   };
 
+  const childCount = Math.max(2, Math.min(MAX_CHILDREN_AT_ONCE, parseInt(childCountInput, 10) || 2));
+  const multiActive = mode.kind === 'child' && canAddMultiple && addMultiple;
+  // With several children the Name field is a base name — "Klik" becomes Klik 1, Klik 2, … (rename later with Edit).
+  const childNames = multiActive
+    ? Array.from({ length: childCount }, (_, i) => `${name.trim()} ${i + 1}`)
+    : [name.trim()];
+  const namesComplete = !!name.trim();
+  const totalChildren = childNames.length;
+
   const handleSubmit = async () => {
-    if (!name.trim() || submitting) return;
+    if (!namesComplete || submitting) return;
     setSubmitting(true);
     try {
-      await onSubmit({ name: name.trim(), race, age, abilities, skills, imageFile, isDead: editing ? isDead : undefined, includeCoParent });
+      await onSubmit({
+        name: childNames[0], race, age, abilities, skills, imageFile, isDead: editing ? isDead : undefined, includeCoParent,
+        extraNames: childNames.slice(1),
+        rerollPerChild: randomized && !!canRandomize,
+      });
       onClose();
     } finally {
       setSubmitting(false);
@@ -477,8 +499,8 @@ function MemberFormModal({
           <input id="family-member-image-input" type="file" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" style={{ display: 'none' }} onChange={handleImageSelect} />
           <div style={{ flex: 1, display: 'grid', gridTemplateColumns: showAgeField ? '2fr 1fr' : '1fr', gap: '0.6rem', alignContent: 'start' }}>
             <div>
-              <label style={fieldLabel}>Name *</label>
-              <input style={fieldInput} value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
+              <label style={fieldLabel}>{multiActive ? 'Base name *' : 'Name *'}</label>
+              <input style={fieldInput} value={name} onChange={e => setName(e.target.value)} placeholder={multiActive ? 'e.g. Klik' : 'Full name'} />
             </div>
             {showAgeField && (
               <div>
@@ -494,6 +516,39 @@ function MemberFormModal({
             </div>
           </div>
         </div>
+
+        {canAddMultiple && (
+          <div style={{ marginBottom: '1rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#e5e7eb', cursor: 'pointer' }}>
+              <input
+                type="checkbox" checked={addMultiple}
+                onChange={e => setAddMultiple(e.target.checked)}
+              />
+              Add multiple children at once
+            </label>
+            {addMultiple && (
+              <div style={{ marginTop: '0.7rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem' }}>
+                  <label style={{ ...fieldLabel, margin: 0 }}>Number of children</label>
+                  <input
+                    type="number" min={2} max={MAX_CHILDREN_AT_ONCE} value={childCountInput}
+                    onChange={e => setChildCountInput(e.target.value)}
+                    onBlur={() => setChildCountInput(String(childCount))}
+                    style={{ ...fieldInput, width: 70, padding: '0.35rem 0.5rem' }}
+                  />
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.78rem', lineHeight: 1.5 }}>
+                  {name.trim()
+                    ? <>Will be named: <strong style={{ color: 'var(--text-gold)' }}>{childNames.length > 4 ? `${childNames.slice(0, 3).join(', ')} … ${childNames[childNames.length - 1]}` : childNames.join(', ')}</strong></>
+                    : 'Enter a base name above — children are numbered automatically (e.g. Klik 1, Klik 2, …).'}
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem', marginTop: '0.5rem' }}>
+                  Race, age, stats and skills apply to every child{canRandomize ? ' — with “Inherit from parents” each child gets their own roll' : ''}. The portrait is used for the first child only.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {mode.kind === 'child' && mode.coParent && (
           <div style={{ marginBottom: '1rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: 8 }}>
@@ -552,8 +607,8 @@ function MemberFormModal({
 
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <button style={secondaryBtn} onClick={onClose}>Cancel</button>
-          <button style={primaryBtn(!name.trim() || submitting)} disabled={!name.trim() || submitting} onClick={handleSubmit}>
-            {submitting ? 'Saving…' : editing ? 'Save Changes' : 'Add to Family Tree'}
+          <button style={primaryBtn(!namesComplete || submitting)} disabled={!namesComplete || submitting} onClick={handleSubmit}>
+            {submitting ? 'Saving…' : editing ? 'Save Changes' : totalChildren > 1 ? `Add ${totalChildren} Children` : 'Add to Family Tree'}
           </button>
         </div>
       </div>
@@ -814,17 +869,25 @@ export default function FamilyTreePanel({ campaignId, players, characters, curre
     setTree(updated);
   };
 
-  const handleAddChild = async (of: FamilyMemberData, coParent: FamilyMemberData | null, fields: { name: string; race: string; age: number; abilities: Abilities; skills: string[]; imageFile: File | null; includeCoParent: boolean }) => {
-    const formData = new FormData();
-    formData.append('name', fields.name);
-    formData.append('race', fields.race);
-    formData.append('baseAge', String(fields.age - Math.floor((currentDay - 1) / 365)));
-    formData.append('abilities', JSON.stringify(fields.abilities));
-    formData.append('skills', JSON.stringify(fields.skills));
-    if (coParent && fields.includeCoParent) formData.append('secondParentMemberId', String(coParent.id));
-    if (fields.imageFile) formData.append('image', fields.imageFile);
-    const updated = await familyTreeAPI.addChild(of.id, formData);
-    setTree(updated);
+  const handleAddChild = async (of: FamilyMemberData, coParent: FamilyMemberData | null, fields: { name: string; race: string; age: number; abilities: Abilities; skills: string[]; imageFile: File | null; includeCoParent: boolean; extraNames: string[]; rerollPerChild: boolean }) => {
+    const childNames = [fields.name, ...fields.extraNames];
+    // Sequential on purpose: each call creates one member, and the DM sees the tree grow child by child.
+    for (let i = 0; i < childNames.length; i++) {
+      // The first child keeps whatever was on the form (which may already be a roll); the rest each
+      // get a fresh roll when the DM chose "Inherit from parents", so siblings don't come out identical.
+      const rolled = i > 0 && fields.rerollPerChild && coParent
+        ? inheritFromParents(of.abilities, coParent.abilities, of.skills, coParent.skills)
+        : { abilities: fields.abilities, skills: fields.skills };
+      const formData = new FormData();
+      formData.append('name', childNames[i]);
+      formData.append('race', fields.race);
+      formData.append('baseAge', String(fields.age - Math.floor((currentDay - 1) / 365)));
+      formData.append('abilities', JSON.stringify(rolled.abilities));
+      formData.append('skills', JSON.stringify(rolled.skills));
+      if (coParent && fields.includeCoParent) formData.append('secondParentMemberId', String(coParent.id));
+      if (i === 0 && fields.imageFile) formData.append('image', fields.imageFile);
+      setTree(await familyTreeAPI.addChild(of.id, formData));
+    }
   };
 
   const handleEdit = async (member: FamilyMemberData, fields: { name: string; race: string; age: number; abilities: Abilities; skills: string[]; imageFile: File | null; isDead?: boolean }) => {
