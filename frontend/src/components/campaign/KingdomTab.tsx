@@ -1431,7 +1431,7 @@ const KingdomTab: React.FC<Props> = ({
     const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold', 'tavern']);
     return keys
       .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
-      .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] || 10)) }));
+      .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] ?? 10)) }));
   }, [fiefDetails]);
 
   const slaveResourceRows = useMemo(() => {
@@ -1447,7 +1447,7 @@ const KingdomTab: React.FC<Props> = ({
     const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold', 'tavern']);
     return keys
       .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
-      .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] || 10)) }));
+      .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] ?? 10)) }));
   }, [fiefDetails]);
 
   const totalAssigned = resourceRows.reduce((sum, r) => sum + r.assigned, 0);
@@ -1932,7 +1932,7 @@ const KingdomTab: React.FC<Props> = ({
     if (!fiefDetails) return;
     const current = { ...((fiefDetails.worker_assignments || {}) as Record<string, number>) };
     const maxMap = (fiefDetails.max_workers_per_resource || {}) as Record<string, number>;
-    const laneMax = Math.max(0, Number(maxMap[resource] || 10));
+    const laneMax = Math.max(0, Number(maxMap[resource] ?? 10));
     const before = Math.max(0, Number(current[resource] || 0));
 
     const otherAssigned = Object.entries(current)
@@ -1974,7 +1974,7 @@ const KingdomTab: React.FC<Props> = ({
     if (!fiefDetails) return;
     const current = { ...((fiefDetails.slave_worker_assignments || {}) as Record<string, number>) };
     const maxMap = (fiefDetails.max_workers_per_resource || {}) as Record<string, number>;
-    const laneMax = Math.max(0, Number(maxMap[resource] || 10));
+    const laneMax = Math.max(0, Number(maxMap[resource] ?? 10));
     const before = Math.max(0, Number(current[resource] || 0));
 
     const otherAssigned = Object.entries(current)

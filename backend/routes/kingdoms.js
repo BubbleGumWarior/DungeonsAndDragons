@@ -4416,6 +4416,13 @@ router.patch('/fiefs/:id/workers', authenticateToken, async (req, res) => {
     let totalAssigned = 0;
     for (const [resource, value] of Object.entries(normalizedInput)) {
       const num = Math.max(0, Math.floor(Number(value) || 0));
+      // While farming is locked the tick stores the vegetables cap as 0 (lane "closed"), but the
+      // locked workers must stay put — the check above already guarantees the count is unchanged.
+      if (isVegetableLaneLocked && resource === 'vegetables') {
+        normalized[resource] = num;
+        totalAssigned += normalized[resource];
+        continue;
+      }
       const maxForLane = Number(maxByResource[resource]);
       normalized[resource] = Number.isFinite(maxForLane) ? Math.min(num, Math.max(0, maxForLane)) : num;
       totalAssigned += normalized[resource];
@@ -4479,7 +4486,8 @@ router.patch('/fiefs/:id/slave-workers', authenticateToken, async (req, res) => 
     const effectiveVegetablePhase = (vegetablePhase && vegetablePhase !== 'assigning' && lockedVegetableWorkers <= 0)
       ? 'assigning'
       : (vegetablePhase || 'assigning');
-    if (effectiveVegetablePhase !== 'assigning') {
+    const isVegetableLaneLocked = effectiveVegetablePhase !== 'assigning';
+    if (isVegetableLaneLocked) {
       const requestedSlaveVegetableWorkers = Math.max(0, Math.floor(Number(normalizedSlaveInput.vegetables || 0)));
       if (requestedSlaveVegetableWorkers !== currentSlaveVegetableWorkers) {
         return res.status(400).json({ error: 'Vegetable workers are locked for the current farming phase and cannot be changed yet' });
@@ -4490,6 +4498,12 @@ router.patch('/fiefs/:id/slave-workers', authenticateToken, async (req, res) => 
     let totalAssigned = 0;
     for (const [resource, value] of Object.entries(normalizedSlaveInput)) {
       const num = Math.max(0, Math.floor(Number(value) || 0));
+      // Locked farming lane: keep the locked slaves (see the citizen endpoint above).
+      if (isVegetableLaneLocked && resource === 'vegetables') {
+        normalized[resource] = num;
+        totalAssigned += normalized[resource];
+        continue;
+      }
       const maxForLane = Number(maxByResource[resource]);
       normalized[resource] = Number.isFinite(maxForLane) ? Math.min(num, Math.max(0, maxForLane)) : num;
       totalAssigned += normalized[resource];
