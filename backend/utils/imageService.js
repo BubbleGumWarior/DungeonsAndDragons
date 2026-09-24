@@ -15,8 +15,10 @@ const crypto = require('crypto');
 let sharp = null;
 try {
   sharp = require('sharp');
-} catch (_err) {
+  console.log(`[images] sharp ${sharp.versions.sharp} loaded: thumbnails enabled`);
+} catch (err) {
   sharp = null;
+  console.warn(`[images] sharp unavailable (${err.message.split('\n')[0]}): serving original images without thumbnails`);
 }
 
 // kind -> table holding image_data / image_mime_type columns

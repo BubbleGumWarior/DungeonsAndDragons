@@ -31,17 +31,34 @@ export const toWebpArt = (path: string): string =>
   OPTIMISED_STATIC_ART.test(path) ? path.replace(/\.(?:png|jpe?g)$/i, '.webp') : path;
 
 /**
+ * Origin of the backend that serves `/api/...` and `/uploads/...` files, mirroring how the API
+ * client (services/api.ts) picks its base URL: an absolute REACT_APP_API_URL wins (frontend and
+ * API on different hosts), production otherwise uses the page's own origin, and local
+ * development talks to the backend on port 5000.
+ */
+const backendOrigin = (): string => {
+  const explicit = process.env.REACT_APP_API_URL;
+  if (explicit && /^https?:\/\//i.test(explicit)) {
+    try {
+      return new URL(explicit).origin;
+    } catch {
+      // malformed value: fall through to the defaults below
+    }
+  }
+  return process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000';
+};
+
+/**
  * Resolves an image reference from the API to a loadable URL:
- * data URLs and absolute URLs pass through, built-in art maps to its WebP twin, and uploaded files
- * (`/api/...`, `/uploads/...`) are served by the backend (a different origin in development).
+ * data URLs and absolute URLs pass through, built-in art maps to its WebP twin (it ships with the
+ * frontend), and uploaded/database images (`/api/...`, `/uploads/...`) are served by the backend.
  */
 export const resolveImageUrl = (imageUrl?: string | null): string | undefined => {
   if (!imageUrl) return undefined;
   if (imageUrl.startsWith('data:')) return imageUrl;
   if (imageUrl.startsWith('http')) return imageUrl;
   if (imageUrl.startsWith('/images/')) return toWebpArt(imageUrl);
-  if (process.env.NODE_ENV === 'production') return imageUrl;
-  return `http://localhost:5000${imageUrl}`;
+  return `${backendOrigin()}${imageUrl}`;
 };
 
 /**

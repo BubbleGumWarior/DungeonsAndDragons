@@ -139,15 +139,14 @@ app.use('/uploads', (req, res, next) => {
 if (process.env.NODE_ENV === 'production') {
   const frontendBuild = path.join(__dirname, '../frontend/build');
   // Files under /static are content-hashed by the React build, so they never change under the same
-  // name and can be cached for a year. Everything else (index.html, /images/...) gets a short/shorter
-  // lifetime so browsers stop re-downloading the same art on every visit but updates still show up.
+  // name and can be cached for a year. Everything else (index.html, /images/...) gets a short
+  // lifetime: browsers stop re-downloading the same art on every visit, but replaced art (same file
+  // name) still shows up within a day, and even then it is revalidated cheaply via ETag (a 304).
   app.use('/static', express.static(path.join(frontendBuild, 'static'), { maxAge: '1y', immutable: true }));
   app.use(express.static(frontendBuild, {
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-cache');
-      } else if (/[\\/]images[\\/]/.test(filePath)) {
-        res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30 days
       } else {
         res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
       }
