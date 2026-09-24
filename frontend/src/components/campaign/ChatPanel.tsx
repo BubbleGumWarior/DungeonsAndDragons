@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Socket } from 'socket.io-client';
 import { ChatMessage, OutOfCombatRollRequest, DiceGroup, CampaignNPC } from '../../types/campaignTypes';
@@ -75,29 +75,291 @@ const OTHER_ROLLS: RollOption[] = [
   { label: 'Custom Roll', purpose: 'ability_check', purposeDetail: 'Custom Roll', modifier: 'none', defaultDice: 'd20' },
 ];
 
+const PICKER_TABS: { id: PickerTab; label: string }[] = [
+  { id: 'skills', label: 'Skills' },
+  { id: 'saves', label: 'Saves' },
+  { id: 'other', label: 'Other' },
+];
+
 const ABILITY_BADGE: Record<string, string> = {
-  str: '#ef4444', dex: '#22d3ee', con: '#f97316',
-  int: '#818cf8', wis: '#4ade80', cha: '#f472b6', none: '#6b7280',
+  str: '#f87171', dex: '#22d3ee', con: '#fb923c',
+  int: '#a5b4fc', wis: '#4ade80', cha: '#f472b6', none: '#9ca3af',
 };
 
 const DICE_TYPES = ['d2', 'd3', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
-const MESSAGE_STYLES: Record<string, React.CSSProperties> = {
-  player: { background: 'rgba(255,255,255,0.04)', borderLeft: '3px solid rgba(255,255,255,0.15)' },
-  dm:     { background: 'rgba(251,191,36,0.07)',  borderLeft: '3px solid var(--text-gold)' },
-  server: { background: 'rgba(167,139,250,0.07)', borderLeft: '3px solid #7c3aed' },
-  roll_result: { background: 'rgba(74,222,128,0.07)', borderLeft: '3px solid #4ade80' },
-  npc_reveal: { background: 'rgba(var(--theme-accent-rgb),0.08)', borderLeft: '3px solid var(--primary-gold)' },
-};
-
-const SENDER_COLORS: Record<string, string> = {
-  player: '#e2e8f0', dm: 'var(--text-gold)', server: '#a78bfa', roll_result: '#4ade80',
-};
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
+const MAX_LENGTH = 2000;
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
+
+/** Stable, readable name colour per sender so players are tellable apart at a glance. */
+function nameColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return `hsl(${h} 58% 74%)`;
+}
+
+/* ───────────────────────── Icons (one stroke weight, one family) ───────────────────────── */
+
+const Svg: React.FC<{ size?: number; children: React.ReactNode }> = ({ size = 18, children }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    {children}
+  </svg>
+);
+
+export const IconChat: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z" /></Svg>
+);
+const IconClose: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}><path d="M6 6l12 12M18 6L6 18" /></Svg>
+);
+const IconSend: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}><path d="M21.5 2.5L10.5 13.5M21.5 2.5l-7 19-4-8.5-8.5-4 19.5-6.5z" /></Svg>
+);
+const IconD20: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}>
+    <path d="M12 2l8.5 5v10L12 22l-8.5-5V7z" />
+    <path d="M12 6.5l5 8.5H7z" />
+    <path d="M12 2v4.5M17 15l3.5 2M7 15l-3.5 2M12 6.5l8.5 .5M12 6.5L3.5 7M7 15l5 7 5-7" />
+  </Svg>
+);
+const IconUser: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" /></Svg>
+);
+const IconArrowDown: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}><path d="M12 5v14M6 13l6 6 6-6" /></Svg>
+);
+const IconPlus: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}><path d="M12 5v14M5 12h14" /></Svg>
+);
+const IconCheck: React.FC<{ size?: number }> = ({ size }) => (
+  <Svg size={size}><path d="M5 12.5l4.5 4.5L19 7.5" /></Svg>
+);
+
+/* ───────────────────────── Styles ───────────────────────── */
+
+const CHAT_CSS = `
+.cp-root {
+  --cp-acc: var(--theme-accent-rgb, 212, 193, 156);
+  --cp-bg: #141312;
+  --cp-surface: #1d1c1a;
+  --cp-surface-2: #262421;
+  --cp-line: rgba(255,255,255,0.08);
+  --cp-text: #ece8df;
+  --cp-muted: rgba(236,232,223,0.62);
+  --cp-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  position: fixed; top: 12px; right: 12px; bottom: 12px;
+  width: min(440px, calc(100vw - 24px));
+  z-index: 1200;
+  display: flex; flex-direction: column;
+  background: var(--cp-bg);
+  border: 1px solid rgba(var(--cp-acc), 0.24);
+  border-radius: 18px;
+  box-shadow: 0 28px 64px -16px rgba(0,0,0,0.75), 0 0 0 1px rgba(0,0,0,0.4);
+  color: var(--cp-text);
+  font-family: var(--font-primary, 'Segoe UI', sans-serif);
+  overflow: hidden;
+  color-scheme: dark;
+  transform-origin: 100% 100%;
+  transform: translateX(32px) scale(0.96);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: transform 0.22s var(--cp-ease), opacity 0.18s ease, visibility 0s linear 0.22s;
+}
+.cp-root.cp-open {
+  transform: none; opacity: 1; visibility: visible; pointer-events: auto;
+  transition: transform 0.45s var(--cp-ease), opacity 0.25s ease, visibility 0s;
+}
+.cp-root *, .cp-root *::before, .cp-root *::after { box-sizing: border-box; }
+.cp-root ::selection { background: rgba(var(--cp-acc), 0.45); color: #fff; }
+.cp-root button:focus-visible, .cp-root textarea:focus-visible, .cp-root select:focus-visible, .cp-root input:focus-visible {
+  outline: 2px solid rgba(var(--cp-acc), 0.9); outline-offset: 2px;
+}
+
+/* Header */
+.cp-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 14px 12px 18px; border-bottom: 1px solid var(--cp-line); }
+.cp-title { margin: 0; font-family: var(--font-fantasy, serif); font-size: 1.08rem; letter-spacing: 0.05em; color: var(--text-gold, #d4c19c); line-height: 1.2; }
+.cp-sub { display: flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 0.75rem; color: var(--cp-muted); }
+.cp-dot { width: 7px; height: 7px; border-radius: 50%; background: #5ec27b; flex: none; }
+.cp-iconbtn { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 11px; border: 1px solid transparent; background: transparent; color: var(--cp-muted); cursor: pointer; transition: background 0.15s ease, color 0.15s ease, transform 0.2s var(--cp-ease); }
+.cp-iconbtn:hover { background: rgba(255,255,255,0.07); color: var(--cp-text); }
+.cp-iconbtn:active { transform: scale(0.9); }
+
+/* Message list */
+.cp-listwrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cp-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 14px 10px; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: rgba(var(--cp-acc), 0.35) transparent; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px); mask-image: linear-gradient(to bottom, transparent 0, #000 16px); }
+.cp-list::-webkit-scrollbar { width: 8px; }
+.cp-list::-webkit-scrollbar-thumb { background: rgba(var(--cp-acc), 0.3); border-radius: 8px; border: 2px solid var(--cp-bg); }
+.cp-empty { margin: auto; text-align: center; max-width: 250px; color: var(--cp-muted); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 0; }
+.cp-empty svg { color: rgba(var(--cp-acc), 0.7); }
+.cp-empty strong { color: var(--cp-text); font-weight: 600; font-size: 0.98rem; }
+.cp-empty span { font-size: 0.84rem; line-height: 1.5; }
+
+.cp-row { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; margin-top: 12px; }
+.cp-row.cp-own { align-items: flex-end; }
+.cp-row.cp-cont { margin-top: 3px; }
+.cp-meta { display: flex; align-items: center; gap: 8px; margin: 0 6px 4px; font-size: 0.76rem; }
+.cp-name { font-weight: 600; }
+.cp-time { color: var(--cp-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.cp-dmtag { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em; padding: 1px 6px; border-radius: 999px; color: var(--text-gold, #d4c19c); background: rgba(var(--cp-acc), 0.14); border: 1px solid rgba(var(--cp-acc), 0.4); }
+.cp-bubble { max-width: 88%; padding: 8px 13px; border-radius: 16px; background: var(--cp-surface); border: 1px solid var(--cp-line); font-size: 0.92rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cp-row:not(.cp-own) .cp-bubble { border-bottom-left-radius: 5px; }
+.cp-row.cp-own .cp-bubble { border-bottom-right-radius: 5px; background: rgba(var(--cp-acc), 0.2); border-color: rgba(var(--cp-acc), 0.36); color: #f7f2e7; }
+.cp-row.cp-cont:not(.cp-own) .cp-bubble { border-top-left-radius: 5px; }
+.cp-row.cp-cont.cp-own .cp-bubble { border-top-right-radius: 5px; }
+.cp-row.cp-dm:not(.cp-own) .cp-bubble { background: rgba(var(--cp-acc), 0.08); border-color: rgba(var(--cp-acc), 0.42); }
+
+/* Server line */
+.cp-sys { align-self: center; display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 6px 14px; max-width: 94%; border-radius: 999px; background: rgba(255,255,255,0.045); font-size: 0.78rem; line-height: 1.35; color: var(--cp-muted); text-align: center; }
+.cp-sys svg { flex: none; color: rgba(var(--cp-acc), 0.85); }
+
+/* Roll result */
+.cp-roll { align-self: stretch; display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; background: linear-gradient(160deg, var(--cp-surface-2), var(--cp-surface)); border: 1px solid var(--cp-line); }
+.cp-roll-total { position: relative; flex: none; width: 66px; height: 66px; display: grid; place-items: center; border-radius: 15px; background: rgba(var(--cp-acc), 0.14); border: 1px solid rgba(var(--cp-acc), 0.45); color: var(--text-gold, #d4c19c); font-size: 1.95rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.cp-roll-total.nat20 { background: rgba(94,194,123,0.15); border-color: rgba(94,194,123,0.65); color: #8fe3a8; }
+.cp-roll-total.nat1 { background: rgba(239,84,84,0.14); border-color: rgba(239,84,84,0.6); color: #ff9494; }
+.cp-roll-total.nat20::after { content: ''; position: absolute; inset: -1px; border-radius: 15px; border: 2px solid rgba(94,194,123,0.75); pointer-events: none; opacity: 0; }
+.cp-roll-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.cp-roll-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-weight: 600; font-size: 0.96rem; line-height: 1.2; }
+.cp-flag { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
+.cp-flag.nat20 { color: #8fe3a8; background: rgba(94,194,123,0.16); }
+.cp-flag.nat1 { color: #ff9494; background: rgba(239,84,84,0.16); }
+.cp-roll-by { font-size: 0.75rem; color: var(--cp-muted); }
+.cp-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.cp-glabel { font-size: 0.72rem; color: var(--cp-muted); margin-right: 1px; }
+.cp-die { min-width: 27px; height: 27px; padding: 0 7px; display: inline-grid; place-items: center; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--cp-line); font-size: 0.82rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cp-die.mod { color: var(--text-gold, #d4c19c); border-color: rgba(var(--cp-acc), 0.3); background: rgba(var(--cp-acc), 0.08); }
+.cp-plain-roll { font-size: 0.86rem; color: var(--cp-text); }
+
+/* NPC reveal */
+.cp-npc { align-self: stretch; display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 12px; border-radius: 16px; background: linear-gradient(160deg, rgba(var(--cp-acc), 0.15), rgba(var(--cp-acc), 0.04)); border: 1px solid rgba(var(--cp-acc), 0.38); }
+.cp-npc img { width: 68px; height: 68px; flex: none; border-radius: 16px; object-fit: cover; border: 1px solid rgba(var(--cp-acc), 0.55); cursor: zoom-in; transition: transform 0.3s var(--cp-ease); }
+.cp-npc img:hover { transform: scale(1.04); }
+.cp-npc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.cp-npc-name { font-family: var(--font-fantasy, serif); font-size: 1.05rem; color: var(--text-gold, #d4c19c); line-height: 1.2; }
+.cp-npc-sub { font-size: 0.75rem; color: var(--cp-muted); margin-bottom: 5px; }
+
+/* Buttons */
+.cp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 14px; border-radius: 12px; border: 1px solid rgba(var(--cp-acc), 0.55); background: rgba(var(--cp-acc), 0.16); color: var(--cp-text); font: inherit; font-size: 0.86rem; font-weight: 600; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, transform 0.2s var(--cp-ease), filter 0.15s ease; }
+.cp-btn:hover:not(:disabled) { background: rgba(var(--cp-acc), 0.26); }
+.cp-btn:active:not(:disabled) { transform: scale(0.97); }
+.cp-btn:disabled { opacity: 0.4; cursor: default; }
+.cp-btn.primary { background: rgb(var(--cp-acc)); border-color: transparent; color: #141312; }
+.cp-btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: rgb(var(--cp-acc)); }
+.cp-btn.ghost { background: transparent; border-color: var(--cp-line); color: var(--cp-muted); }
+.cp-btn.ghost:hover:not(:disabled) { background: rgba(255,255,255,0.06); color: var(--cp-text); }
+.cp-btn.sm { padding: 5px 11px; font-size: 0.78rem; border-radius: 9px; }
+.cp-btn.saved { background: rgba(94,194,123,0.14); border-color: rgba(94,194,123,0.5); color: #8fe3a8; opacity: 1; }
+
+/* New message pill */
+.cp-jump { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px 7px 12px; border-radius: 999px; border: 1px solid rgba(var(--cp-acc), 0.6); background: var(--cp-surface-2); color: var(--cp-text); font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; box-shadow: 0 10px 24px -8px rgba(0,0,0,0.8); animation: cp-jump-in 0.4s var(--cp-ease) both; }
+.cp-jump:hover { background: rgba(var(--cp-acc), 0.22); }
+
+/* Roll drawer */
+.cp-drawer { flex: none; display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.38s var(--cp-ease); }
+.cp-drawer.open { grid-template-rows: 1fr; }
+.cp-drawer-clip { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear 0.38s; }
+.cp-drawer.open .cp-drawer-clip { visibility: visible; transition: visibility 0s; }
+.cp-picker { max-height: calc(100vh - 300px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(var(--cp-acc), 0.35) transparent; padding: 14px 14px 12px; border-top: 1px solid var(--cp-line); background: linear-gradient(to bottom, rgba(var(--cp-acc), 0.05), transparent 60%); }
+.cp-ph { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cp-ptitle { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; color: var(--text-gold, #d4c19c); }
+.cp-ph .cp-iconbtn { width: 30px; height: 30px; }
+.cp-plabel { font-size: 0.72rem; color: var(--cp-muted); margin-bottom: 6px; }
+.cp-players { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.cp-pill { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--cp-line); background: var(--cp-surface); color: var(--cp-text); font: inherit; font-size: 0.82rem; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, transform 0.2s var(--cp-ease); }
+.cp-pill:hover { border-color: rgba(var(--cp-acc), 0.5); }
+.cp-pill:active { transform: scale(0.95); }
+.cp-pill.on { background: rgba(var(--cp-acc), 0.22); border-color: rgba(var(--cp-acc), 0.8); color: #fff; }
+.cp-none { font-size: 0.82rem; color: var(--cp-muted); margin-bottom: 12px; }
+.cp-seg { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; margin-bottom: 8px; border-radius: 13px; background: var(--cp-surface); border: 1px solid var(--cp-line); }
+.cp-seg-ind { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 10px; background: rgba(var(--cp-acc), 0.22); border: 1px solid rgba(var(--cp-acc), 0.5); transition: transform 0.38s var(--cp-ease); }
+.cp-seg button { position: relative; z-index: 1; padding: 7px 0; border: 0; background: transparent; color: var(--cp-muted); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: color 0.2s ease; }
+.cp-seg button.on { color: #fff; }
+.cp-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: min(22vh, 190px); overflow-y: auto; padding: 2px 3px 2px 0; scrollbar-width: thin; scrollbar-color: rgba(var(--cp-acc), 0.35) transparent; }
+.cp-opt { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 11px; background: var(--cp-surface); border: 1px solid var(--cp-line); color: var(--cp-text); font: inherit; font-size: 0.83rem; text-align: left; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, transform 0.2s var(--cp-ease); }
+.cp-opt:hover { border-color: rgba(var(--cp-acc), 0.5); }
+.cp-opt:active { transform: scale(0.97); }
+.cp-opt.on { background: rgba(var(--cp-acc), 0.2); border-color: rgba(var(--cp-acc), 0.8); color: #fff; }
+.cp-abil { flex: none; min-width: 32px; padding: 2px 0; text-align: center; border-radius: 6px; background: rgba(0,0,0,0.38); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.05em; }
+.cp-build { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--cp-line); display: flex; flex-direction: column; gap: 8px; }
+.cp-hint { font-size: 0.82rem; color: var(--cp-muted); }
+.cp-drow { display: flex; align-items: center; gap: 7px; }
+.cp-times { color: var(--cp-muted); font-size: 0.8rem; }
+.cp-field { background: var(--cp-surface-2); border: 1px solid var(--cp-line); border-radius: 9px; color: var(--cp-text); padding: 7px 9px; font: inherit; font-size: 0.86rem; }
+.cp-field.num { width: 54px; text-align: center; }
+.cp-field.die { width: 76px; text-align: center; }
+.cp-add { align-self: flex-start; }
+.cp-actions { display: flex; gap: 8px; margin-top: 4px; }
+.cp-actions .cp-btn.primary { flex: 1; }
+
+/* Composer */
+.cp-composer { flex: none; padding: 10px 12px 12px; border-top: 1px solid var(--cp-line); }
+.cp-inputwrap { display: flex; align-items: flex-end; gap: 4px; padding: 5px; border-radius: 18px; background: var(--cp-surface); border: 1px solid var(--cp-line); transition: border-color 0.2s ease, box-shadow 0.25s ease; }
+.cp-inputwrap:focus-within { border-color: rgba(var(--cp-acc), 0.65); box-shadow: 0 0 0 4px rgba(var(--cp-acc), 0.13); }
+.cp-tool { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 13px; border: 0; background: transparent; color: var(--cp-muted); cursor: pointer; transition: background 0.15s ease, color 0.15s ease, transform 0.2s var(--cp-ease); }
+.cp-tool:hover { background: rgba(var(--cp-acc), 0.14); color: var(--text-gold, #d4c19c); }
+.cp-tool:active { transform: scale(0.9); }
+.cp-tool.on { background: rgba(var(--cp-acc), 0.22); color: var(--text-gold, #d4c19c); }
+.cp-textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0 !important; background: transparent; color: var(--cp-text); font: inherit; font-size: 0.93rem; line-height: 1.4; padding: 9px 6px; max-height: 120px; }
+.cp-textarea::placeholder { color: rgba(236,232,223,0.6); }
+.cp-send { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 13px; border: 0; background: rgb(var(--cp-acc)); color: #141312; cursor: pointer; transition: transform 0.25s var(--cp-ease), opacity 0.2s ease, filter 0.15s ease; }
+.cp-send:hover:not(:disabled) { filter: brightness(1.08); }
+.cp-send:active:not(:disabled) { transform: scale(0.88); }
+.cp-send:disabled { opacity: 0.28; cursor: default; }
+.cp-count { margin: 5px 8px 0; text-align: right; font-size: 0.7rem; color: var(--cp-muted); font-variant-numeric: tabular-nums; }
+
+/* Motion — entrances only for messages that arrive live */
+.cp-fresh { animation: cp-in 0.42s var(--cp-ease) both; }
+.cp-row.cp-own.cp-fresh { transform-origin: 100% 100%; }
+.cp-row:not(.cp-own).cp-fresh { transform-origin: 0 100%; }
+.cp-roll.cp-fresh .cp-roll-total { animation: cp-pop 0.6s var(--cp-ease) 0.08s both; }
+.cp-roll.cp-fresh .cp-roll-total.nat20::after { animation: cp-ring 1s var(--cp-ease) 0.3s both; }
+@keyframes cp-in { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes cp-pop { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes cp-ring { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.55); } }
+@keyframes cp-jump-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+@media (max-width: 560px) {
+  .cp-root { top: 0; right: 0; bottom: 0; width: 100vw; border-radius: 0; border-width: 0; transform-origin: 100% 100%; }
+  .cp-opts { max-height: 24vh; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-root, .cp-root *, .cp-root *::before, .cp-root *::after, .cp-fab, .cp-fab * {
+    animation-duration: 0.01ms !important; animation-delay: 0s !important;
+    transition-duration: 0.01ms !important; transition-delay: 0s !important;
+  }
+}
+`;
+
+const FAB_CSS = `
+.cp-fab { position: fixed; right: 1.5rem; bottom: 1.5rem; width: 54px; height: 54px; z-index: 1201; display: grid; place-items: center; border-radius: 17px; background: #1a1917; border: 1px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.55); color: var(--text-gold, #d4c19c); cursor: pointer; box-shadow: 0 12px 28px -8px rgba(0,0,0,0.75); transition: transform 0.4s cubic-bezier(0.16,1,0.3,1), opacity 0.2s ease, box-shadow 0.25s ease, background 0.2s ease, visibility 0s; }
+.cp-fab:hover { transform: translateY(-3px); background: #232120; box-shadow: 0 16px 30px -8px rgba(0,0,0,0.8), 0 0 0 4px rgba(var(--theme-accent-rgb, 212, 193, 156), 0.14); }
+.cp-fab:active { transform: scale(0.93); }
+.cp-fab:focus-visible { outline: 2px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.9); outline-offset: 3px; }
+.cp-fab.hide { transform: scale(0.55) translateY(10px); opacity: 0; pointer-events: none; visibility: hidden; transition: transform 0.2s ease, opacity 0.15s ease, visibility 0s linear 0.2s; }
+.cp-fab-badge { position: absolute; top: -7px; right: -7px; min-width: 21px; height: 21px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: #e5484d; color: #fff; border: 2px solid #141312; font-size: 0.68rem; font-weight: 700; font-variant-numeric: tabular-nums; animation: cp-fab-pop 0.5s cubic-bezier(0.16,1,0.3,1) both; }
+@keyframes cp-fab-pop { 0% { transform: scale(0.4); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .cp-fab, .cp-fab * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; transition-delay: 0s !important; } }
+`;
+
+/** Floating launcher for the chat panel. It steps aside while the panel is open. */
+export const ChatToggleButton: React.FC<{ open: boolean; unread: number; onClick: () => void }> = ({ open, unread, onClick }) => (
+  <>
+    <style>{FAB_CSS}</style>
+    <button className={`cp-fab${open ? ' hide' : ''}`} onClick={onClick} aria-label={unread > 0 ? `Open campaign chat, ${unread} unread` : 'Open campaign chat'} title="Campaign chat" tabIndex={open ? -1 : 0}>
+      <IconChat size={24} />
+      {unread > 0 && !open && (
+        <span key={unread} className="cp-fab-badge">{unread > 99 ? '99+' : unread}</span>
+      )}
+    </button>
+  </>
+);
+
+/* ───────────────────────── Panel ───────────────────────── */
 
 const ChatPanel: React.FC<Props> = ({
   isOpen, onClose, messages, socket, campaignId,
@@ -110,6 +372,7 @@ const ChatPanel: React.FC<Props> = ({
   const [rollTargetId, setRollTargetId] = useState<number | ''>('');
   const [selectedOption, setSelectedOption] = useState<RollOption | null>(null);
   const [rollDiceGroups, setRollDiceGroups] = useState<DiceGroup[]>([{ count: 1, diceType: 'd20' }]);
+  const [newBelow, setNewBelow] = useState(0);
 
   // NPC modal state
   type NpcStep = 'form' | 'crop';
@@ -130,17 +393,68 @@ const ChatPanel: React.FC<Props> = ({
   const [npcViewImage, setNpcViewImage] = useState<{ url: string; name: string } | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const atBottomRef = useRef(true);
+  const prevLenRef = useRef(messages.length);
+  const prevIdsRef = useRef<Set<number> | null>(null);
 
-  useEffect(() => {
-    if (isOpen && listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
+  // Messages that arrived live since the last render animate in; a bulk history load does not.
+  const freshIds = new Set<number>();
+  if (prevIdsRef.current) {
+    const added = messages.filter(m => !prevIdsRef.current!.has(m.id));
+    if (added.length <= 3) added.forEach(m => freshIds.add(m.id));
+  }
+  useEffect(() => { prevIdsRef.current = new Set(messages.map(m => m.id)); }, [messages]);
+
+  const scrollToBottom = (smooth: boolean) => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  // Follow new messages when the reader is at the bottom (or wrote the message); otherwise surface a jump pill.
+  useLayoutEffect(() => {
+    const added = messages.length - prevLenRef.current;
+    prevLenRef.current = messages.length;
+    if (added <= 0) return;
+    const last = messages[messages.length - 1];
+    const own = !!last && last.sender_id !== null && Number(last.sender_id) === Number(currentUserId);
+    if (!isOpen) { scrollToBottom(false); return; }
+    if (atBottomRef.current || own) scrollToBottom(true);
+    else setNewBelow(n => n + added);
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLayoutEffect(() => {
+    if (isOpen) {
+      atBottomRef.current = true;
+      setNewBelow(0);
+      scrollToBottom(false);
     }
-  }, [messages, isOpen]);
+  }, [isOpen]);
+
+  // Keep the latest message in view when the list is resized (roll drawer, composer growth).
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { if (atBottomRef.current) scrollToBottom(false); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
-    if (isOpen) setTimeout(() => inputRef.current?.focus(), 150);
+    if (isOpen) {
+      const t = setTimeout(() => inputRef.current?.focus(), 200);
+      return () => clearTimeout(t);
+    }
   }, [isOpen]);
+
+  // Grow the composer with its content, up to a cap
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [inputText]);
 
   // Listen for NPC reveals via socket
   useEffect(() => {
@@ -149,6 +463,13 @@ const ChatPanel: React.FC<Props> = ({
     socket.on('npcRevealed', handler);
     return () => { socket.off('npcRevealed', handler); };
   }, [socket, onNPCRevealed]);
+
+  const handleListScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (atBottomRef.current && newBelow) setNewBelow(0);
+  };
 
   const closeNpcModal = () => {
     setShowNPCModal(false);
@@ -254,12 +575,13 @@ const ChatPanel: React.FC<Props> = ({
   const sendMessage = () => {
     const text = inputText.trim();
     if (!text || !socket) return;
-    socket.emit('chatMessage', { campaignId, content: text.slice(0, 2000) });
+    socket.emit('chatMessage', { campaignId, content: text.slice(0, MAX_LENGTH) });
     setInputText('');
+    inputRef.current?.focus();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendMessage(); }
   };
 
   const sendRollRequest = () => {
@@ -285,280 +607,302 @@ const ChatPanel: React.FC<Props> = ({
     setRollDiceGroups([{ count: 1, diceType: 'd20' }]);
   };
 
-  const tabOptions = pickerTab === 'skills' ? SKILLS : pickerTab === 'saves' ? SAVING_THROWS : OTHER_ROLLS;
-
-  const selectStyle: React.CSSProperties = {
-    background: '#2d2540', border: '1px solid rgba(255,255,255,0.15)',
-    borderRadius: '4px', color: '#e2e8f0', padding: '4px 6px', fontSize: '0.8rem', flex: 1,
+  const handleRootKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Escape' || showNPCModal || npcViewImage) return;
+    if (showRollPicker) setShowRollPicker(false);
+    else onClose();
   };
 
+  const tabOptions = pickerTab === 'skills' ? SKILLS : pickerTab === 'saves' ? SAVING_THROWS : OTHER_ROLLS;
+  const tabIndex = PICKER_TABS.findIndex(t => t.id === pickerTab);
+  const selectablePlayers = onlinePlayers.filter(p => p.userId !== currentUserId);
+  const targetPlayer = selectablePlayers.find(p => p.userId === rollTargetId);
+  const canSendRoll = rollTargetId !== '' && !!selectedOption;
+
+  /* ── Message renderers ── */
+
+  const renderRoll = (msg: ChatMessage, fresh: boolean) => {
+    const rd = msg.roll_data;
+    if (!rd) return null;
+    const groups = rd.diceGroups && rd.diceGroups.length > 0
+      ? rd.diceGroups
+      : [{ diceType: rd.diceType, rolls: rd.rolls }];
+    const isSingleD20 = groups.length === 1 && groups[0].diceType === 'd20' && groups[0].rolls.length === 1;
+    const nat20 = isSingleD20 && groups[0].rolls[0] === 20;
+    const nat1 = isSingleD20 && groups[0].rolls[0] === 1;
+    const purpose = (rd as any).purpose || rd.purposeDetail || 'Roll';
+    const tone = nat20 ? ' nat20' : nat1 ? ' nat1' : '';
+    return (
+      <div key={msg.id} className={`cp-roll${fresh ? ' cp-fresh' : ''}`}>
+        <div className={`cp-roll-total${tone}`} aria-label={`Total ${rd.total}`}>{rd.total}</div>
+        <div className="cp-roll-body">
+          <div>
+            <div className="cp-roll-title">
+              <span>{purpose}</span>
+              {nat20 && <span className="cp-flag nat20">Natural 20</span>}
+              {nat1 && <span className="cp-flag nat1">Natural 1</span>}
+            </div>
+            <div className="cp-roll-by">{msg.sender_name} · {formatTime(msg.created_at)}</div>
+          </div>
+          <div className="cp-chips">
+            {groups.map((grp, gi) => (
+              <React.Fragment key={gi}>
+                <span className="cp-glabel">{grp.rolls.length}{grp.diceType}</span>
+                {grp.rolls.map((r, ri) => <span key={ri} className="cp-die">{r}</span>)}
+              </React.Fragment>
+            ))}
+            {rd.modifier !== 0 && (
+              <span className="cp-die mod" title="Modifier">{rd.modifier >= 0 ? '+' : '−'}{Math.abs(rd.modifier)}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNpc = (msg: ChatMessage, fresh: boolean) => {
+    let npcId: number | null = null;
+    try { npcId = JSON.parse(msg.content).npcId; } catch {}
+    const npc = npcId !== null ? campaignNPCs.find(n => n.id === npcId) : null;
+    const alreadySaved = npcId !== null && savedNPCIds.has(npcId);
+    return (
+      <div key={msg.id} className={`cp-npc${fresh ? ' cp-fresh' : ''}`}>
+        {npc ? (
+          <>
+            {npc.image_url ? (
+              <img src={npc.image_url} alt={npc.name}
+                onClick={() => npc.image_url && setNpcViewImage({ url: npc.image_url, name: npc.name })} />
+            ) : null}
+            <div className="cp-npc-body">
+              <div className="cp-npc-name">{npc.name}</div>
+              <div className="cp-npc-sub">Revealed to the table · {formatTime(msg.created_at)}</div>
+              {!isDM && (
+                <button
+                  className={`cp-btn sm${alreadySaved ? ' saved' : ''}`}
+                  onClick={() => npcId !== null && handleSaveNPC(npcId)}
+                  disabled={alreadySaved || savingNPCId === npcId}>
+                  {alreadySaved ? <><IconCheck size={14} /> Saved</> : savingNPCId === npcId ? 'Saving…' : 'Save to characters'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="cp-npc-sub" style={{ margin: 0 }}>Loading NPC…</div>
+        )}
+      </div>
+    );
+  };
+
+  const renderMessages = () => messages.map((msg, i) => {
+    const fresh = freshIds.has(msg.id);
+
+    if (msg.message_type === 'npc_reveal') return renderNpc(msg, fresh);
+    if (msg.message_type === 'roll_result' && msg.roll_data) return renderRoll(msg, fresh);
+    if (msg.message_type === 'server') {
+      return (
+        <div key={msg.id} className={`cp-sys${fresh ? ' cp-fresh' : ''}`}>
+          <IconD20 size={14} />
+          <span>{msg.content}</span>
+        </div>
+      );
+    }
+
+    // Chat message (player / dm, or a roll_result that lost its data)
+    const isOwn = msg.sender_id !== null && Number(msg.sender_id) === Number(currentUserId);
+    const prev = messages[i - 1];
+    const continues = !!prev
+      && (prev.message_type === 'player' || prev.message_type === 'dm')
+      && (msg.message_type === 'player' || msg.message_type === 'dm')
+      && prev.sender_id === msg.sender_id
+      && new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() < GROUP_WINDOW_MS;
+    const isDmMsg = msg.message_type === 'dm';
+
+    return (
+      <div key={msg.id}
+        className={`cp-row${isOwn ? ' cp-own' : ''}${isDmMsg ? ' cp-dm' : ''}${continues ? ' cp-cont' : ''}${fresh ? ' cp-fresh' : ''}`}>
+        {!continues && (
+          <div className="cp-meta">
+            <span className="cp-name" style={{ color: isDmMsg ? 'var(--text-gold)' : nameColor(msg.sender_name) }}>
+              {isOwn ? 'You' : msg.sender_name}
+            </span>
+            {isDmMsg && <span className="cp-dmtag">DM</span>}
+            <span className="cp-time">{formatTime(msg.created_at)}</span>
+          </div>
+        )}
+        <div className="cp-bubble">{msg.content}</div>
+      </div>
+    );
+  });
+
   return (
-    <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: '340px',
-      background: '#1a1625', borderLeft: '1px solid rgba(255,255,255,0.1)',
-      display: 'flex', flexDirection: 'column', zIndex: 1200,
-      transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
-      transition: 'transform 0.25s ease',
-      boxShadow: isOpen ? '-4px 0 24px rgba(0,0,0,0.6)' : 'none',
-    }}>
+    <div className={`cp-root${isOpen ? ' cp-open' : ''}`} onKeyDown={handleRootKeyDown} role="complementary" aria-label="Campaign chat" aria-hidden={!isOpen}>
+      <style>{CHAT_CSS}</style>
+
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', background: '#13111e', flexShrink: 0 }}>
-        <span style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.95rem' }}>💬 Campaign Chat</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>✕</button>
+      <div className="cp-head">
+        <div>
+          <h2 className="cp-title">Campaign Chat</h2>
+          <div className="cp-sub">
+            <span className="cp-dot" />
+            {onlinePlayers.length === 0 ? 'No adventurers online' : `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'adventurer' : 'adventurers'} at the table`}
+          </div>
+        </div>
+        <button className="cp-iconbtn" onClick={onClose} aria-label="Close chat" title="Close (Esc)"><IconClose /></button>
       </div>
 
       {/* Message list */}
-      <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {messages.length === 0 && (
-          <div style={{ color: '#6b7280', fontStyle: 'italic', fontSize: '0.85rem', textAlign: 'center', marginTop: '2rem' }}>
-            No messages yet. Start the conversation!
-          </div>
+      <div className="cp-listwrap">
+        <div className="cp-list" ref={listRef} onScroll={handleListScroll} role="log" aria-live="polite">
+          {messages.length === 0 ? (
+            <div className="cp-empty">
+              <IconChat size={30} />
+              <strong>The table is quiet</strong>
+              <span>Messages, dice rolls and NPC reveals will gather here.</span>
+            </div>
+          ) : renderMessages()}
+        </div>
+        {newBelow > 0 && (
+          <button className="cp-jump" onClick={() => { scrollToBottom(true); setNewBelow(0); }}>
+            <IconArrowDown size={15} />
+            {newBelow === 1 ? '1 new message' : `${newBelow} new messages`}
+          </button>
         )}
-        {messages.map(msg => (
-          <div key={msg.id} style={{ ...(MESSAGE_STYLES[msg.message_type] ?? MESSAGE_STYLES.player), borderRadius: '4px', padding: '6px 10px' }}>
-            {msg.message_type === 'npc_reveal' ? (() => {
-              let npcId: number | null = null;
-              try { npcId = JSON.parse(msg.content).npcId; } catch {}
-              const npc = npcId !== null ? campaignNPCs.find(n => n.id === npcId) : null;
-              const alreadySaved = npcId !== null && savedNPCIds.has(npcId);
-              return (
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ color: 'var(--primary-gold)', fontWeight: 600, fontSize: '0.78rem' }}>👤 NPC Revealed</span>
-                    <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>{formatTime(msg.created_at)}</span>
-                  </div>
-                  {npc ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      {npc.image_url && (
-                        <img src={npc.image_url} alt={npc.name}
-                          onClick={() => npc.image_url && setNpcViewImage({ url: npc.image_url, name: npc.name })}
-                          style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(var(--theme-accent-rgb),0.4)', flexShrink: 0, cursor: 'pointer' }} />
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: 'var(--primary-gold)', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '4px' }}>{npc.name}</div>
-                        {!isDM && (
-                          <button
-                            onClick={() => npcId !== null && handleSaveNPC(npcId)}
-                            disabled={alreadySaved || savingNPCId === npcId}
-                            style={{
-                              padding: '3px 10px', fontSize: '0.75rem', fontWeight: 'bold',
-                              background: alreadySaved ? 'rgba(74,222,128,0.1)' : 'rgba(var(--theme-accent-rgb),0.15)',
-                              border: `1px solid ${alreadySaved ? '#4ade80' : 'rgba(var(--theme-accent-rgb),0.4)'}`,
-                              borderRadius: '4px', cursor: alreadySaved ? 'default' : 'pointer',
-                              color: alreadySaved ? '#4ade80' : 'var(--primary-gold)',
-                            }}>
-                            {alreadySaved ? '✓ Saved' : savingNPCId === npcId ? 'Saving…' : 'Save to Characters'}
+      </div>
+
+      {/* DM roll request drawer */}
+      {isDM && (
+        <div className={`cp-drawer${showRollPicker ? ' open' : ''}`}>
+          <div className="cp-drawer-clip">
+            <div className="cp-picker">
+              <div className="cp-ph">
+                <div className="cp-ptitle"><IconD20 size={18} /> Request a roll</div>
+                <button className="cp-iconbtn" onClick={() => { setShowRollPicker(false); setSelectedOption(null); }} aria-label="Close roll request"><IconClose size={16} /></button>
+              </div>
+
+              <div className="cp-plabel">Who rolls?</div>
+              {selectablePlayers.length === 0 ? (
+                <div className="cp-none">No players are online right now.</div>
+              ) : (
+                <div className="cp-players">
+                  {selectablePlayers.map(p => (
+                    <button key={p.userId} className={`cp-pill${rollTargetId === p.userId ? ' on' : ''}`}
+                      aria-pressed={rollTargetId === p.userId}
+                      onClick={() => setRollTargetId(prev => prev === p.userId ? '' : p.userId)}>
+                      {p.characterName}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="cp-seg" role="tablist">
+                <span className="cp-seg-ind" style={{ transform: `translateX(${tabIndex * 100}%)` }} />
+                {PICKER_TABS.map(tab => (
+                  <button key={tab.id} role="tab" aria-selected={pickerTab === tab.id} className={pickerTab === tab.id ? 'on' : ''}
+                    onClick={() => { setPickerTab(tab.id); setSelectedOption(null); }}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="cp-opts">
+                {tabOptions.map(opt => {
+                  const active = selectedOption?.purposeDetail === opt.purposeDetail;
+                  return (
+                    <button key={opt.purposeDetail} className={`cp-opt${active ? ' on' : ''}`} onClick={() => selectRollOption(opt)} aria-pressed={active}>
+                      <span className="cp-abil" style={{ color: ABILITY_BADGE[opt.modifier] ?? '#9ca3af' }}>
+                        {opt.modifier === 'none' ? '—' : opt.modifier.toUpperCase()}
+                      </span>
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="cp-build">
+                {selectedOption ? (
+                  <>
+                    {rollDiceGroups.map((grp, idx) => (
+                      <div key={idx} className="cp-drow">
+                        <input className="cp-field num" type="number" min={1} max={10} value={grp.count} aria-label="Number of dice"
+                          onChange={e => {
+                            const v = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+                            setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: v } : g));
+                          }} />
+                        <span className="cp-times">×</span>
+                        {selectedOption.purposeDetail === 'Custom Roll' ? (
+                          <input className="cp-field die" type="text" value={grp.diceType} placeholder="d20" aria-label="Die type"
+                            onChange={e => {
+                              const v = e.target.value.trim() || 'd20';
+                              setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: v } : g));
+                            }} />
+                        ) : (
+                          <select className="cp-field die" value={grp.diceType} aria-label="Die type"
+                            onChange={e => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: e.target.value } : g))}>
+                            {DICE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        )}
+                        <span className="cp-hint" style={{ flex: 1, minWidth: 0 }}>
+                          {idx === 0 ? selectedOption.purposeDetail : 'extra dice'}
+                        </span>
+                        {rollDiceGroups.length > 1 && (
+                          <button className="cp-iconbtn" style={{ width: 30, height: 30 }} aria-label="Remove dice group"
+                            onClick={() => setRollDiceGroups(prev => prev.filter((_, i) => i !== idx))}>
+                            <IconClose size={15} />
                           </button>
                         )}
                       </div>
-                    </div>
-                  ) : (
-                    <div style={{ color: '#9ca3af', fontSize: '0.82rem' }}>Loading NPC data…</div>
-                  )}
-                </div>
-              );
-            })() : (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                  <span style={{ color: SENDER_COLORS[msg.message_type] ?? '#e2e8f0', fontWeight: 600, fontSize: '0.78rem' }}>
-                    {msg.message_type === 'server' ? '⚙ Server' : msg.sender_name}
-                    {msg.message_type === 'dm' && ' (DM)'}
-                  </span>
-                  <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>{formatTime(msg.created_at)}</span>
-                </div>
-                {msg.message_type === 'roll_result' && msg.roll_data ? (
-                  <div>
-                    <div style={{ color: '#d1d5db', fontSize: '0.85rem', marginBottom: '4px' }}>{msg.content}</div>
-                    {msg.roll_data.diceGroups && msg.roll_data.diceGroups.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        {msg.roll_data.diceGroups.map((grp, gi) => {
-                          const groupSum = grp.rolls.reduce((a, b) => a + b, 0);
-                          return (
-                            <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '4px', padding: '1px 7px', color: '#4ade80', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                                {grp.rolls.length}{grp.diceType}
-                              </span>
-                              <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>
-                                [{grp.rolls.join(', ')}] = {groupSum}
-                              </span>
-                            </div>
-                          );
-                        })}
-                        {msg.roll_data.modifier !== 0 && (
-                          <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>
-                            modifier: {msg.roll_data.modifier >= 0 ? '+' : ''}{msg.roll_data.modifier}
-                          </span>
-                        )}
-                        <span style={{ background: 'rgba(74,222,128,0.2)', border: '1px solid #4ade80', borderRadius: '4px', padding: '2px 8px', color: '#4ade80', fontWeight: 'bold', fontSize: '0.9rem', alignSelf: 'flex-start' }}>
-                          Total: {msg.roll_data.total}
-                        </span>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid #4ade80', borderRadius: '4px', padding: '2px 8px', color: '#4ade80', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                          {msg.roll_data.diceType}: {msg.roll_data.total}
-                        </span>
-                        {msg.roll_data.modifier !== 0 && (
-                          <span style={{ color: '#9ca3af', fontSize: '0.78rem', alignSelf: 'center' }}>
-                            (rolls: [{msg.roll_data.rolls.join(', ')}] {msg.roll_data.modifier >= 0 ? '+' : ''}{msg.roll_data.modifier})
-                          </span>
-                        )}
-                      </div>
+                    ))}
+                    {rollDiceGroups.length < 6 && (
+                      <button className="cp-btn ghost sm cp-add" onClick={() => setRollDiceGroups(prev => [...prev, { count: 1, diceType: 'd6' }])}>
+                        <IconPlus size={14} /> Add dice
+                      </button>
                     )}
-                  </div>
+                  </>
                 ) : (
-                  <div style={{ color: '#d1d5db', fontSize: '0.85rem', wordBreak: 'break-word' }}>{msg.content}</div>
+                  <div className="cp-hint">Pick a skill, save or roll type above.</div>
                 )}
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* DM Roll Request Picker */}
-      {isDM && showRollPicker && (
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', background: '#1e1930', flexShrink: 0, display: 'flex', flexDirection: 'column', maxHeight: '55vh' }}>
-          <div style={{ padding: '0.6rem 0.75rem 0', flexShrink: 0 }}>
-            <div style={{ color: 'var(--text-gold)', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '6px' }}>🎲 Request Roll</div>
-
-            {/* Target player */}
-            <select style={{ ...selectStyle, width: '100%', marginBottom: '6px' }} value={rollTargetId} onChange={e => setRollTargetId(Number(e.target.value))}>
-              <option value="">— Select player —</option>
-              {onlinePlayers.filter(p => p.userId !== currentUserId).map(p => (
-                <option key={p.userId} value={p.userId}>{p.characterName}</option>
-              ))}
-            </select>
-
-            {/* Tab bar */}
-            <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-              {(['skills', 'saves', 'other'] as PickerTab[]).map(tab => (
-                <button key={tab} onClick={() => { setPickerTab(tab); setSelectedOption(null); }}
-                  style={{ flex: 1, padding: '4px', background: pickerTab === tab ? '#7c3aed' : '#2d2540', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: pickerTab === tab ? 'white' : '#9ca3af', cursor: 'pointer', fontSize: '0.75rem', fontWeight: pickerTab === tab ? 'bold' : 'normal', textTransform: 'capitalize' }}>
-                  {tab === 'skills' ? 'Skills' : tab === 'saves' ? 'Saves' : 'Other'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Scrollable option grid */}
-          <div style={{ overflowY: 'auto', padding: '0 0.75rem', flexShrink: 1 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', paddingBottom: '6px' }}>
-              {tabOptions.map(opt => {
-                const active = selectedOption?.purposeDetail === opt.purposeDetail;
-                return (
-                  <button key={opt.purposeDetail} onClick={() => selectRollOption(opt)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 6px', background: active ? 'rgba(124,58,237,0.3)' : '#2d2540', border: `1px solid ${active ? '#7c3aed' : 'rgba(255,255,255,0.1)'}`, borderRadius: '4px', cursor: 'pointer', textAlign: 'left' }}>
-                    <span style={{ width: '26px', textAlign: 'center', fontSize: '0.65rem', fontWeight: 'bold', color: ABILITY_BADGE[opt.modifier] ?? '#6b7280', background: 'rgba(0,0,0,0.3)', borderRadius: '3px', padding: '1px 2px', flexShrink: 0 }}>
-                      {opt.modifier === 'none' ? '—' : opt.modifier.toUpperCase()}
-                    </span>
-                    <span style={{ color: active ? '#e9d5ff' : '#d1d5db', fontSize: '0.78rem', lineHeight: 1.2 }}>{opt.label}</span>
+                <div className="cp-actions">
+                  <button className="cp-btn primary" onClick={sendRollRequest} disabled={!canSendRoll}>
+                    {targetPlayer && selectedOption ? `Ask ${targetPlayer.characterName} to roll` : 'Send request'}
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Selected option summary + DiceGroupBuilder + send */}
-          <div style={{ padding: '6px 0.75rem 0.75rem', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-            {selectedOption ? (
-              <div style={{ marginBottom: '6px' }}>
-                {/* Roll type label */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', padding: '4px 8px', background: 'rgba(124,58,237,0.15)', borderRadius: '4px', border: '1px solid rgba(124,58,237,0.3)' }}>
-                  <span style={{ color: ABILITY_BADGE[selectedOption.modifier] ?? '#6b7280', fontWeight: 'bold', fontSize: '0.75rem', minWidth: '28px' }}>
-                    {selectedOption.modifier === 'none' ? '—' : selectedOption.modifier.toUpperCase()}
-                  </span>
-                  <span style={{ color: '#e9d5ff', fontSize: '0.82rem', flex: 1 }}>{selectedOption.purposeDetail}</span>
-                </div>
-                {/* Dice group builder */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {rollDiceGroups.map((grp, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <input
-                        type="number" min={1} max={10} value={grp.count}
-                        onChange={e => {
-                          const v = Math.max(1, Math.min(10, Number(e.target.value) || 1));
-                          setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, count: v } : g));
-                        }}
-                        style={{ ...selectStyle, width: '42px', flex: 'unset', textAlign: 'center', padding: '3px 4px' }}
-                      />
-                      <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>×</span>
-                      {selectedOption?.purposeDetail === 'Custom Roll' ? (
-                        <input
-                          type="text"
-                          value={grp.diceType}
-                          onChange={e => {
-                            const v = e.target.value.trim() || 'd20';
-                            setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: v } : g));
-                          }}
-                          placeholder="d20"
-                          style={{ ...selectStyle, width: '62px', flex: 'unset', textAlign: 'center' }}
-                        />
-                      ) : (
-                        <select value={grp.diceType}
-                          onChange={e => setRollDiceGroups(prev => prev.map((g, i) => i === idx ? { ...g, diceType: e.target.value } : g))}
-                          style={{ ...selectStyle, width: '62px', flex: 'unset' }}>
-                          {DICE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                      )}
-                      {rollDiceGroups.length > 1 && (
-                        <button onClick={() => setRollDiceGroups(prev => prev.filter((_, i) => i !== idx))}
-                          style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '3px', color: '#f87171', cursor: 'pointer', fontSize: '0.7rem', padding: '2px 6px', lineHeight: 1 }}>
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {rollDiceGroups.length < 6 && (
-                    <button onClick={() => setRollDiceGroups(prev => [...prev, { count: 1, diceType: 'd6' }])}
-                      style={{ alignSelf: 'flex-start', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '3px', color: '#4ade80', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 8px', marginTop: '2px' }}>
-                      + Add Die
-                    </button>
-                  )}
+                  <button className="cp-btn ghost" onClick={() => { setShowRollPicker(false); setSelectedOption(null); }}>Cancel</button>
                 </div>
               </div>
-            ) : (
-              <div style={{ color: '#6b7280', fontSize: '0.78rem', marginBottom: '6px', fontStyle: 'italic' }}>Select a roll type above</div>
-            )}
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button onClick={sendRollRequest} disabled={rollTargetId === '' || !selectedOption}
-                style={{ flex: 1, background: rollTargetId !== '' && selectedOption ? '#7c3aed' : '#3d3651', border: 'none', borderRadius: '4px', color: 'white', padding: '6px', cursor: rollTargetId !== '' && selectedOption ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 'bold' }}>
-                Send Request
-              </button>
-              <button onClick={() => { setShowRollPicker(false); setSelectedOption(null); }}
-                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', color: '#9ca3af', padding: '6px 10px', cursor: 'pointer', fontSize: '0.82rem' }}>
-                Cancel
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Input row */}
-      <div style={{ display: 'flex', gap: '6px', padding: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.1)', background: '#13111e', flexShrink: 0 }}>
-        {isDM && !showRollPicker && (
-          <button onClick={() => setShowRollPicker(true)} title="Request a dice roll"
-            style={{ background: '#3d2c6e', border: '1px solid #7c3aed', borderRadius: '4px', color: '#a78bfa', cursor: 'pointer', padding: '0 10px', fontSize: '1rem', flexShrink: 0 }}>
-            🎲
+      {/* Composer */}
+      <div className="cp-composer">
+        <div className="cp-inputwrap">
+          {isDM && (
+            <button className={`cp-tool${showRollPicker ? ' on' : ''}`} onClick={() => setShowRollPicker(v => !v)}
+              aria-label="Request a dice roll" aria-expanded={showRollPicker} title="Request a dice roll">
+              <IconD20 size={20} />
+            </button>
+          )}
+          {isDM && (
+            <button className="cp-tool" onClick={() => { setShowNPCModal(true); setNpcStep('form'); }}
+              aria-label="Reveal an NPC to the players" title="Reveal an NPC to the players">
+              <IconUser size={20} />
+            </button>
+          )}
+          <textarea ref={inputRef} className="cp-textarea" rows={1}
+            placeholder="Say something to the table…"
+            aria-label="Message"
+            value={inputText}
+            onChange={e => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            maxLength={MAX_LENGTH}
+          />
+          <button className="cp-send" onClick={sendMessage} disabled={!inputText.trim()} aria-label="Send message" title="Send (Enter)">
+            <IconSend size={19} />
           </button>
+        </div>
+        {inputText.length > MAX_LENGTH - 300 && (
+          <div className="cp-count">{inputText.length} / {MAX_LENGTH}</div>
         )}
-        {isDM && (
-          <button onClick={() => { setShowNPCModal(true); setNpcStep('form'); }} title="Show NPC to players"
-            style={{ background: '#2c3a1e', border: '1px solid #4ade80', borderRadius: '4px', color: '#86efac', cursor: 'pointer', padding: '0 10px', fontSize: '1rem', flexShrink: 0 }}>
-            👤
-          </button>
-        )}
-        <input ref={inputRef}
-          style={{ flex: 1, background: '#2d2540', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', color: '#e2e8f0', padding: '6px 10px', fontSize: '0.88rem', outline: 'none' }}
-          placeholder="Type a message…"
-          value={inputText}
-          onChange={e => setInputText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          maxLength={2000}
-        />
-        <button onClick={sendMessage} disabled={!inputText.trim()}
-          style={{ background: inputText.trim() ? '#7c3aed' : '#3d3651', border: 'none', borderRadius: '4px', color: 'white', cursor: inputText.trim() ? 'pointer' : 'default', padding: '0 12px', fontSize: '0.88rem', fontWeight: 'bold', flexShrink: 0 }}>
-          Send
-        </button>
       </div>
 
       {/* NPC Creation Modal — rendered via portal so it escapes ChatPanel's CSS transform stacking context */}

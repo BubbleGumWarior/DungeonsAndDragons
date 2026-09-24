@@ -23,7 +23,7 @@ import { AttackModal } from './campaign/AttackModal';
 import { DiceRollModal } from './campaign/DiceRollModal';
 import { CombatLog } from './campaign/CombatLog';
 import { CombatActionsPanel } from './campaign/CombatActionsPanel';
-import ChatPanel from './campaign/ChatPanel';
+import ChatPanel, { ChatToggleButton } from './campaign/ChatPanel';
 import ScoresTab from './campaign/ScoresTab';
 import GoalsTab from './campaign/GoalsTab';
 import KingdomTab from './campaign/KingdomTab';
@@ -24172,40 +24172,16 @@ const CampaignView: React.FC = () => {
             onNPCSaved={(npc) => setSavedNPCsForCharacter(prev => prev.find(n => n.id === npc.id) ? prev : [...prev, npc])}
           />
           {/* Floating chat toggle button */}
-          <button
+          <ChatToggleButton
+            open={chatOpen}
+            unread={unreadCount}
             onClick={() => { setChatOpen(prev => !prev); if (!chatOpen) setUnreadCount(0); }}
-            style={{
-              position: 'fixed',
-              bottom: '1.5rem',
-              right: chatOpen ? '356px' : '1.5rem',
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-              border: 'none',
-              color: 'white',
-              fontSize: '1.3rem',
-              cursor: 'pointer',
-              zIndex: 1201,
-              boxShadow: '0 4px 16px rgba(124,58,237,0.5)',
-              transition: 'right 0.25s ease',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            title="Toggle campaign chat"
-          >
-            {unreadCount > 0 && !chatOpen ? (
-              <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', borderRadius: '50%', minWidth: '18px', height: '18px', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            ) : null}
-            💬
-          </button>
+          />
 
           {/* OOC Dice Roll Modal — shown to players when DM requests an out-of-combat roll */}
           {pendingOOCRoll && socket && (
             <DiceRollModal
+              key={pendingOOCRoll.requestId}
               request={{
                 requestId: pendingOOCRoll.requestId,
                 requesterName: pendingOOCRoll.requesterName,
@@ -24222,7 +24198,9 @@ const CampaignView: React.FC = () => {
                 ...currentCampaign.userCharacter,
                 ...( characterDataOverrides[currentCampaign.userCharacter.id] ?? {} )
               } : null}
-              onConfirm={(rawRoll, total, modifierValue, modifier, allRolls) => {
+              onConfirm={() => setPendingOOCRoll(null)}
+              onRollComplete={(rawRoll, total, modifierValue, modifier, allRolls) => {
+                // Result goes to chat the moment the roll is revealed; the OK button only closes the modal
                 socket.emit('submitOutOfCombatRoll', {
                   campaignId: currentCampaign.campaign.id,
                   requestId: pendingOOCRoll.requestId,
@@ -24236,7 +24214,6 @@ const CampaignView: React.FC = () => {
                   total,
                   allRolls,
                 });
-                setPendingOOCRoll(null);
               }}
               onClose={() => setPendingOOCRoll(null)}
             />

@@ -7,6 +7,9 @@ interface Props {
   rollerName: string;
   character?: Character | null;
   onConfirm: (rawRoll: number, total: number, modifierValue: number, modifier: string, allRolls?: { diceType: string; rolls: number[] }[]) => void;
+  /** When provided, the result is submitted automatically the moment all dice settle,
+   *  and the confirm button only closes the modal (via onClose). */
+  onRollComplete?: (rawRoll: number, total: number, modifierValue: number, modifier: string, allRolls?: { diceType: string; rolls: number[] }[]) => void;
   onRequestReroll?: (diceType: string) => void;
   rerollApproved?: boolean;
   previousRollResult?: { label: string; total: number; color: string };
@@ -84,7 +87,7 @@ function flattenDice(groups: DiceGroup[]): { diceType: string; groupIdx: number 
   return flat;
 }
 
-export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character, onConfirm, onRequestReroll, rerollApproved, previousRollResult, onClose, precomputedModifier }) => {
+export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character, onConfirm, onRollComplete, onRequestReroll, rerollApproved, previousRollResult, onClose, precomputedModifier }) => {
   // Derive dice groups — fall back to single die from request.diceType
   const diceGroups: DiceGroup[] = request.diceGroups && request.diceGroups.length > 0
     ? request.diceGroups
@@ -206,6 +209,17 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
       return { diceType: g.diceType, rolls };
     });
   };
+
+  // Auto-submit as soon as the roll is revealed so a bad roll can't be discarded
+  const autoSubmitted = useRef(false);
+  useEffect(() => {
+    if (!onRollComplete) return;
+    if (rerollApproved) autoSubmitted.current = false;
+    if (allDiceRolled && total !== null && rawSum !== null && !autoSubmitted.current) {
+      autoSubmitted.current = true;
+      onRollComplete(rawSum, total, mod.value, modifier ?? 'none', buildAllRolls());
+    }
+  }, [allDiceRolled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const overlay: React.CSSProperties = {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
@@ -412,13 +426,13 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
             )}
 
             {allDiceRolled && total !== null && (
-              <button onClick={() => onConfirm(rawSum!, total, mod.value, modifier ?? 'none', buildAllRolls())}
+              <button onClick={() => onRollComplete ? onClose() : onConfirm(rawSum!, total, mod.value, modifier ?? 'none', buildAllRolls())}
                 style={{
                   flex: 1, padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
                   background: 'linear-gradient(135deg,#4ade80cc,#22c55e)',
                   border: '2px solid #22c55e', color: '#000', fontWeight: 'bold', fontSize: '1rem',
                 }}>
-                ✅ Confirm {total}
+                {onRollComplete ? '✅ OK' : `✅ Confirm ${total}`}
               </button>
             )}
           </div>
