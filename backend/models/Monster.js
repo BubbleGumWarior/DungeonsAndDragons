@@ -1,4 +1,5 @@
 const { pool } = require('./database');
+const { buildImageUrl } = require('../utils/imageService');
 
 class Monster {
   static async create(monsterData) {
@@ -23,7 +24,7 @@ class Monster {
       [campaign_id, name, description, image_url, JSON.stringify(limb_health), JSON.stringify(limb_ac), JSON.stringify(abilities), cr, visible_to_players, JSON.stringify(resistances)]
     );
 
-    return Monster.convertImageToDataUrl(result.rows[0]);
+    return Monster.attachImageUrl(result.rows[0]);
   }
 
   static async findById(id) {
@@ -31,7 +32,7 @@ class Monster {
       'SELECT * FROM monsters WHERE id = $1',
       [id]
     );
-    return Monster.convertImageToDataUrl(result.rows[0]);
+    return Monster.attachImageUrl(result.rows[0]);
   }
 
   static async findByCampaignId(campaignId) {
@@ -43,7 +44,7 @@ class Monster {
        ORDER BY (campaign_id IS NULL) ASC, name ASC`,
       [campaignId]
     );
-    return result.rows.map(m => Monster.convertImageToDataUrl(m));
+    return result.rows.map(m => Monster.attachImageUrl(m));
   }
 
   static async update(id, updates) {
@@ -76,7 +77,7 @@ class Monster {
       values
     );
 
-    return Monster.convertImageToDataUrl(result.rows[0]);
+    return Monster.attachImageUrl(result.rows[0]);
   }
 
   static async delete(id) {
@@ -84,7 +85,7 @@ class Monster {
       'DELETE FROM monsters WHERE id = $1 RETURNING *',
       [id]
     );
-    return Monster.convertImageToDataUrl(result.rows[0]);
+    return Monster.attachImageUrl(result.rows[0]);
   }
 
   static async toggleVisibility(id) {
@@ -92,7 +93,7 @@ class Monster {
       'UPDATE monsters SET visible_to_players = NOT visible_to_players, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
     );
-    return Monster.convertImageToDataUrl(result.rows[0]);
+    return Monster.attachImageUrl(result.rows[0]);
   }
 
   static async storeImage(id, buffer, mimeType) {
@@ -100,7 +101,7 @@ class Monster {
       'UPDATE monsters SET image_data = $1, image_mime_type = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
       [buffer, mimeType, id]
     );
-    return Monster.convertImageToDataUrl(result.rows[0]);
+    return Monster.attachImageUrl(result.rows[0]);
   }
 
   static async deleteImage(id) {
@@ -108,14 +109,14 @@ class Monster {
       'UPDATE monsters SET image_data = NULL, image_mime_type = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
     );
-    return Monster.convertImageToDataUrl(result.rows[0]);
+    return Monster.attachImageUrl(result.rows[0]);
   }
 
-  static convertImageToDataUrl(monster) {
+  // Swap the stored image bytes for a small cacheable URL instead of inlining base64 in the JSON.
+  static attachImageUrl(monster) {
     if (!monster) return monster;
     if (monster.image_data) {
-      const base64 = Buffer.from(monster.image_data).toString('base64');
-      monster.image_url = `data:${monster.image_mime_type};base64,${base64}`;
+      monster.image_url = buildImageUrl('monsters', monster.id, monster.image_data);
     }
     delete monster.image_data;
     delete monster.image_mime_type;

@@ -9,14 +9,15 @@ import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
 import { compressImageFile } from '../utils/imageCompression';
+import { IMAGE_WIDTH, resolveImageUrl, sizedImageUrl, toWebpArt } from '../utils/imageUrls';
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
 import { getCharacterAge } from '../utils/age';
 import FamilyTreePanel from './campaign/FamilyTreePanel';
 import { classInfo } from '../data/classInfo';
 import { getChoiceOptions } from '../data/choiceOptions';
-import FigureImage from '../assets/images/Board/Figure.png';
-import Figure4ArmsImage from '../assets/images/Board/Figure-4Arms.png';
-import WorldMapImage from '../assets/images/Campaign/WorldMap.jpg';
+import FigureImage from '../assets/images/Board/Figure.webp';
+import Figure4ArmsImage from '../assets/images/Board/Figure-4Arms.webp';
+import WorldMapImage from '../assets/images/Campaign/WorldMap.webp';
 // BattleMapImage replaced by dynamic battle maps
 import io from 'socket.io-client';
 import { AttackModal } from './campaign/AttackModal';
@@ -24,6 +25,7 @@ import { DiceRollModal } from './campaign/DiceRollModal';
 import { CombatLog } from './campaign/CombatLog';
 import { CombatActionsPanel } from './campaign/CombatActionsPanel';
 import ChatPanel, { ChatToggleButton } from './campaign/ChatPanel';
+import CharacterRoster, { RosterEntry, RosterTrack } from './campaign/CharacterRoster';
 import ScoresTab from './campaign/ScoresTab';
 import GoalsTab from './campaign/GoalsTab';
 import KingdomTab from './campaign/KingdomTab';
@@ -157,30 +159,34 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
 // Extra images for player cities (in addition to the default .jpg)
 const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
   'Yllwyn': [
-    '/images/CityImages/YllwynWesternBlockade.jpg',
-    '/images/CityImages/YllwynRiverBlockade.jpg',
-    '/images/CityImages/YllwynNorthRiverBlockade.jpg',
-    '/images/CityImages/YllwynNorthRiverBlockadeFront.jpg',
-    '/images/CityImages/YllwynSouthRiverBlockade.jpg',
-    '/images/CityImages/YllwynSouthRiverBlockadeFront.jpg',
-    '/images/CityImages/YllwynFarmingGrounds.jpg',
-    '/images/CityImages/YllwynStableGrounds.jpg',
-    '/images/CityImages/YllwynTrainingGrounds.jpg',
-    '/images/CityImages/YllwynBottom.jpg',
-    '/images/CityImages/YllwynCenter.jpg',
-    '/images/CityImages/YllwynTemple.jpg',
-    '/images/CityImages/YllwynTop.jpg',
-    '/images/CityImages/YllwynTerrain.png',
+    '/images/CityImages/YllwynWesternBlockade.webp',
+    '/images/CityImages/YllwynRiverBlockade.webp',
+    '/images/CityImages/YllwynNorthRiverBlockade.webp',
+    '/images/CityImages/YllwynNorthRiverBlockadeFront.webp',
+    '/images/CityImages/YllwynSouthRiverBlockade.webp',
+    '/images/CityImages/YllwynSouthRiverBlockadeFront.webp',
+    '/images/CityImages/YllwynFarmingGrounds.webp',
+    '/images/CityImages/YllwynStableGrounds.webp',
+    '/images/CityImages/YllwynTrainingGrounds.webp',
+    '/images/CityImages/YllwynBottom.webp',
+    '/images/CityImages/YllwynCenter.webp',
+    '/images/CityImages/YllwynTemple.webp',
+    '/images/CityImages/YllwynTop.webp',
+    '/images/CityImages/YllwynTerrain.webp',
   ],
-  'Silva Umbra': ['/images/CityImages/SilvaUmbraTerrain.png'],
+  'Silva Umbra': ['/images/CityImages/SilvaUmbraTerrain.webp'],
   'Castellum in Montibus': [
-    '/images/CityImages/CastellumInMontibusInner.png',
-    '/images/CityImages/CastellumInMontibusTerrain.png',
+    '/images/CityImages/CastellumInMontibusInner.webp',
+    '/images/CityImages/CastellumInMontibusTerrain.webp',
   ],
 };
 
 const getCityImageFilename = (cityName: string): string =>
   cityName.replace(/'/g, '').replace(/\s+/g, '_');
+
+// City pictures are shipped as optimised WebP (see frontend/scripts/optimize-images.js).
+const getCityImagePath = (cityName: string): string =>
+  `/images/CityImages/${getCityImageFilename(cityName)}.webp`;
 
 
 
@@ -1039,19 +1045,9 @@ const CampaignView: React.FC = () => {
   const [newParticipantTeamMode, setNewParticipantTeamMode] = useState<'existing' | 'new'>('existing');
   const [newParticipantTeamSelection, setNewParticipantTeamSelection] = useState<string>('');
 
-  // Helper function to get correct image URL (handles both data URLs from DB and file paths)
-  const getImageUrl = (imageUrl: string | undefined): string | undefined => {
-    if (!imageUrl) return undefined;
-    // Data URLs — return as-is
-    if (imageUrl.startsWith('data:')) return imageUrl;
-    // Already absolute (http/https) — return as-is
-    if (imageUrl.startsWith('http')) return imageUrl;
-    // Public-folder images (/images/...) — served by the frontend, no prefix needed
-    if (imageUrl.startsWith('/images/')) return imageUrl;
-    // Uploaded files (/uploads/...) — served by the Express backend
-    if (process.env.NODE_ENV === 'production') return imageUrl;
-    return `http://localhost:5000${imageUrl}`;
-  };
+  // Helper function to get correct image URL (data URLs, built-in art, and images served by the backend).
+  // For small displays prefer sizedImageUrl(url, IMAGE_WIDTH.*) so the server sends a thumbnail.
+  const getImageUrl = (imageUrl: string | undefined): string | undefined => resolveImageUrl(imageUrl);
 
   // Shared hunger/diet/feeding-mode widget for pet & mount cards (Companions tab)
   const hungerColor = (hunger: number) => hunger <= 0 ? '#ef4444' : hunger < 35 ? '#f87171' : hunger < 70 ? 'var(--text-gold)' : '#4ade80';
@@ -7134,560 +7130,182 @@ const CampaignView: React.FC = () => {
 
           {/* Character List Sidebar */}
           <div className={`campaign-sidebar ${showMobileCharacters ? 'mobile-open' : ''}`}>
-            <div className="glass-panel" style={{ position: 'sticky', top: '1rem', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-              {/* Collapse Button - Inside Panel */}
-              <button
-                onClick={() => setCharacterListCollapsed(!characterListCollapsed)}
-                className="character-list-collapse-btn"
-                title={characterListCollapsed ? "Expand character list" : "Collapse character list"}
-                style={{
-                  alignSelf: 'center',
-                  marginBottom: '0.75rem',
-                  padding: '0.4rem 0.8rem',
-                  background: 'rgba(var(--theme-accent-rgb), 0.15)',
-                  border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
-                  borderRadius: '0.375rem',
-                  color: 'var(--text-gold)',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  transition: 'all 0.2s ease',
-                  width: 'auto',
-                  minWidth: '80px',
-                  fontWeight: 'bold'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(var(--theme-accent-rgb), 0.25)';
-                  e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.5)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(var(--theme-accent-rgb), 0.15)';
-                  e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.3)';
-                }}
-              >
-                {characterListCollapsed ? '▼ Show' : '▲ Hide'}
-              </button>
+            <CharacterRoster
+              collapsed={characterListCollapsed}
+              onToggleCollapsed={() => setCharacterListCollapsed(prev => !prev)}
+              selectedId={selectedCharacter}
+              keyboardNav={isKeyboardNavigating}
+              onSelect={(id) => {
+                setSelectedCharacter(id);
+                if (mainView !== 'character') {
+                  setMainView('character');
+                }
+              }}
+              entries={characters.map((character): RosterEntry => {
+                const isDMView = user?.role === 'Dungeon Master';
+                const shownClass = !isDMView && character.concealed_class ? character.concealed_class : character.class;
+                const campaignId = currentCampaign?.campaign.id;
 
-              {/* Character List Content - Full List */}
-              {!characterListCollapsed && (
-                <>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <h6 style={{ margin: 0, marginBottom: '0.5rem' }}>👥 Characters ({characters.length})</h6>
-                    {characters.length > 1 && (
-                      <div style={{ 
-                        fontSize: '0.65rem', 
-                        color: 'var(--text-muted)', 
-                        fontStyle: 'italic'
-                      }}>
-                        Use ↑ ↓ arrow keys to navigate
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {characters.map((character) => (
-                  <button
-                    key={character.id}
-                    onClick={() => {
-                      setSelectedCharacter(character.id);
-                      if (mainView !== 'character') {
-                        setMainView('character');
-                      }
-                    }}
-                    style={{
-                      padding: '0.75rem',
-                      background: selectedCharacter === character.id 
-                        ? 'rgba(var(--theme-accent-rgb), 0.2)' 
-                        : 'rgba(255, 255, 255, 0.08)',
-                      border: selectedCharacter === character.id 
-                        ? '2px solid var(--primary-gold)' 
-                        : '1px solid rgba(var(--theme-accent-rgb), 0.2)',
-                      borderRadius: '0.5rem',
-                      cursor: 'pointer',
-                      transition: 'all var(--transition-normal)',
-                      boxShadow: selectedCharacter === character.id && isKeyboardNavigating
-                        ? '0 0 20px rgba(var(--theme-accent-rgb), 0.6)'
-                        : selectedCharacter === character.id
-                        ? '0 0 10px rgba(var(--theme-accent-rgb), 0.3)'
-                        : 'none',
-                      textAlign: 'left',
-                      width: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.25rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selectedCharacter !== character.id) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                        e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.4)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedCharacter !== character.id) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                        e.currentTarget.style.borderColor = 'rgba(var(--theme-accent-rgb), 0.2)';
-                      }
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: onlineUserIds.has(character.player_id) ? 'var(--text-gold)' : 'white' }}>
-                        {character.name}
-                      </div>
-                      {characters.length > 1 && selectedCharacter === character.id && (
-                        <div style={{ 
-                          fontSize: '0.65rem', 
-                          color: 'var(--text-muted)',
-                          backgroundColor: 'rgba(var(--theme-accent-rgb), 0.1)',
-                          padding: '0.2rem 0.4rem',
-                          borderRadius: '10px',
-                          border: '1px solid rgba(var(--theme-accent-rgb), 0.2)'
-                        }}>
-                          {characters.findIndex(c => c.id === character.id) + 1}/{characters.length}
-                        </div>
-                      )}
-                    </div>
-                    {character.background && (
-                      <div style={{ fontSize: '0.8rem', fontStyle: 'italic', color: onlineUserIds.has(character.player_id) ? 'var(--text-gold)' : 'var(--text-secondary)' }}>
-                        {character.background}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Lvl {character.level} {character.race} {user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class}
-                    </div>
-                    {/* Subclass sanity-check indicator */}
-                    {(() => {
-                      const unlockLevel = SUBCLASS_UNLOCK_LEVELS[character.class];
-                      if (!unlockLevel || character.level < unlockLevel) return null;
-                      if (character.subclass_name) {
-                        return (
-                          <div style={{ fontSize: '0.68rem', color: 'var(--accent-highlight)', marginTop: '0.1rem' }}>
-                            ✦ {character.subclass_name}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div
-                          onClick={user?.role === 'Dungeon Master' ? (e) => { e.stopPropagation(); handleOpenRetroSubclass(character.id); } : undefined}
-                          title={user?.role === 'Dungeon Master' ? `Click to assign ${character.class} subclass (missed at level ${unlockLevel})` : 'No subclass chosen'}
-                          style={{
-                            fontSize: '0.68rem',
-                            color: '#6b7280',
-                            marginTop: '0.1rem',
-                            cursor: user?.role === 'Dungeon Master' ? 'pointer' : 'default',
-                            textDecoration: user?.role === 'Dungeon Master' ? 'underline dotted' : 'none',
-                          }}
-                        >
-                          ⚫ No subclass
-                        </div>
-                      );
-                    })()}
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Age: {getCharacterAge(character.race, currentDay, character.age_override)}
-                    </div>
-                    
-                    {/* Health Bar and Status */}
-                    {(() => {
-                      const override = characterDataOverrides[character.id];
-                      const effectiveCharacter = override ? { ...character, ...override } : character;
-                      const tracked = combatCharacterHp[character.id];
-                      const baseHP = Math.max(1, tracked?.max || (effectiveCharacter as any).hit_points_max || effectiveCharacter.hit_points);
-                      const limbMaxValues = calcCharacterLimbHealthMax(baseHP, effectiveCharacter.abilities?.con ?? 10);
-                      const maxHP = Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
-                      const trackedLimbs = characterLimbHealth[character.id];
-                      const currentHP = trackedLimbs
-                        ? Object.values(trackedLimbs).reduce((s: number, v: any) => s + Number(v || 0), 0)
-                        : tracked && tracked.max > 0
-                          ? Math.round((tracked.current / tracked.max) * maxHP)
-                          : maxHP;
-                      const percentage = maxHP > 0 ? Math.min(100, (currentHP / maxHP) * 100) : 0;
-                      const isDead = currentHP <= 0;
-                      const healthColor = isDead
-                        ? '#dc3545'
-                        : percentage > 50
-                        ? '#28a745'
-                        : percentage > 25
-                        ? '#ffc107'
-                        : '#dc3545';
-                      const health = { current: currentHP, max: maxHP, percentage, isDead };
-                      
-                      return (
-                        <div style={{ marginTop: '0.5rem' }}>
-                          {/* Health Bar */}
-                          <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '0.5rem',
-                            marginBottom: '0.25rem'
-                          }}>
-                            {/* Status Icon */}
-                            <div style={{ 
-                              fontSize: '1rem',
-                              filter: health.isDead ? 'none' : 'drop-shadow(0 0 4px rgba(40, 167, 69, 0.6))'
-                            }} title={health.isDead ? 'Dead' : 'Alive'}>
-                              {health.isDead ? '💀' : '❤️'}
-                            </div>
-                            
-                            {/* Health Bar Background */}
-                            <div style={{
-                              flex: 1,
-                              height: '12px',
-                              background: 'rgba(0, 0, 0, 0.4)',
-                              borderRadius: '6px',
-                              overflow: 'hidden',
-                              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
-                              position: 'relative'
-                            }}>
-                              {/* Health Bar Fill */}
-                              <div style={{
-                                width: `${health.percentage}%`,
-                                height: '100%',
-                                background: `linear-gradient(90deg, ${healthColor} 0%, ${healthColor}dd 100%)`,
-                                transition: 'width 0.3s ease',
-                                boxShadow: `0 0 8px ${healthColor}88`
-                              }} />
-                              
-                              {/* Health Text Overlay */}
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.65rem',
-                                fontWeight: 'bold',
-                                color: '#fff',
-                                textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
-                                pointerEvents: 'none'
-                              }}>
-                                {health.current}/{health.max}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Health Percentage */}
-                          <div style={{
-                            fontSize: '0.65rem',
-                            color: healthColor,
-                            textAlign: 'right',
-                            fontWeight: 'bold',
-                            marginBottom: '0.5rem'
-                          }}>
-                            {health.percentage.toFixed(0)}% HP
-                          </div>
+                // Health: same limb-derived total the rest of the sheet uses
+                const override = characterDataOverrides[character.id];
+                const effectiveCharacter = override ? { ...character, ...override } : character;
+                const tracked = combatCharacterHp[character.id];
+                const baseHP = Math.max(1, tracked?.max || (effectiveCharacter as any).hit_points_max || effectiveCharacter.hit_points);
+                const limbMaxValues = calcCharacterLimbHealthMax(baseHP, effectiveCharacter.abilities?.con ?? 10);
+                const maxHP = Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
+                const trackedLimbs = characterLimbHealth[character.id];
+                const currentHP = trackedLimbs
+                  ? Object.values(trackedLimbs).reduce((s: number, v: any) => s + Number(v || 0), 0)
+                  : tracked && tracked.max > 0
+                    ? Math.round((tracked.current / tracked.max) * maxHP)
+                    : maxHP;
 
-                          {/* Experience Bar */}
-                          <div style={{ marginTop: '0.5rem' }}>
-                            <div style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: '0.5rem',
-                              marginBottom: '0.25rem'
-                            }}>
-                              {/* EXP Icon */}
-                              <div style={{ 
-                                fontSize: '0.9rem',
-                                filter: 'drop-shadow(0 0 4px rgba(15, 76, 92, 0.6))'
-                              }} title="Experience">
-                                ⭐
-                              </div>
-                              
-                              {/* EXP Bar Background */}
-                              <div style={{
-                                flex: 1,
-                                height: '10px',
-                                background: 'rgba(0, 0, 0, 0.4)',
-                                borderRadius: '5px',
-                                overflow: 'hidden',
-                                border: '1px solid rgba(var(--accent-highlight), 0.5)',
-                                position: 'relative'
-                              }}>
-                                {/* EXP Bar Fill */}
-                                <div style={{
-                                  width: `${getLevelProgress(character.level, character.experience_points || 0)}%`,
-                                  height: '100%',
-                                  background: `linear-gradient(90deg, var(--accent-highlight) 0%, var(--accent-highlight) 100%)`,
-                                  transition: 'width 0.3s ease',
-                                  boxShadow: '0 0 8px var(--accent-highlight)'
-                                }} />
-                                
-                                {/* EXP Text Overlay */}
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '0.6rem',
-                                  fontWeight: 'bold',
-                                  color: '#fff',
-                                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
-                                  pointerEvents: 'none'
-                                }}>
-                                  {character.experience_points || 0}/{getRequiredExpForNextLevel(character.level)}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            {/* EXP Percentage or Level Cap */}
-                            <div style={{
-                              fontSize: '0.65rem',
-                              color: character.level >= 20 ? 'var(--text-gold)' : 'var(--accent-highlight)',
-                              textAlign: 'right',
-                              fontWeight: 'bold'
-                            }}>
-                              {character.level >= 20 
-                                ? 'MAX LEVEL' 
-                                : canLevelUp(character.level, character.experience_points || 0)
-                                ? '⬆️ READY TO LEVEL UP!'
-                                : `${getLevelProgress(character.level, character.experience_points || 0).toFixed(0)}% to Level ${character.level + 1}`
-                              }
-                            </div>
+                // Subclass sanity-check indicator
+                const unlockLevel = SUBCLASS_UNLOCK_LEVELS[character.class];
+                let subclass: RosterEntry['subclass'];
+                if (unlockLevel && character.level >= unlockLevel) {
+                  subclass = character.subclass_name
+                    ? { name: character.subclass_name }
+                    : {
+                        missing: true,
+                        assignTitle: isDMView ? `Click to assign ${character.class} subclass (missed at level ${unlockLevel})` : 'No subclass chosen',
+                        onAssign: isDMView ? () => handleOpenRetroSubclass(character.id) : undefined,
+                      };
+                }
 
-                            {/* Spell Slot Indicator */}
-                            {isSpellcaster(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class) && (() => {
-                              const slotInfo = getSpellSlots(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class, character.level);
-                              if (!slotInfo) return null;
-                              const isDMView = user?.role === 'Dungeon Master';
-                              const slotsUsed: Record<string, number> = characterSpellSlotsUsed[character.id] || {};
+                // Resource tracks (spell slots, class features)
+                const tracks: RosterTrack[] = [];
 
-                              const handleMiniUseSlot = (e: React.MouseEvent, level: number) => {
-                                e.stopPropagation();
-                                if (!isDMView) return;
-                                socket?.emit('useSpellSlot', { campaignId: currentCampaign?.campaign.id, characterId: character.id, slotLevel: level });
-                              };
+                if (isSpellcaster(shownClass)) {
+                  const slotInfo = getSpellSlots(shownClass, character.level);
+                  if (slotInfo) {
+                    const slotsUsed: Record<string, number> = characterSpellSlotsUsed[character.id] || {};
+                    const slotGroup = (slotLevel: number, totalCount: number) => ({
+                      label: toRoman(slotLevel),
+                      pips: Array.from({ length: totalCount }, (_, idx) => {
+                        const isUsed = idx < (slotsUsed[String(slotLevel)] || 0);
+                        return {
+                          on: !isUsed,
+                          title: isUsed ? 'Used' : (isDMView ? 'Click to use' : 'Available'),
+                          onClick: isDMView && !isUsed
+                            ? () => socket?.emit('useSpellSlot', { campaignId, characterId: character.id, slotLevel })
+                            : undefined,
+                        };
+                      }),
+                    });
+                    if (slotInfo.type === 'pact') {
+                      tracks.push({ key: 'slots', label: 'Pact', tone: 'pact', groups: [slotGroup(slotInfo.slotLevel, slotInfo.slots)] });
+                    } else {
+                      tracks.push({
+                        key: 'slots', label: 'Slots', tone: 'arcane',
+                        groups: slotInfo.slots.map((count, i) => count > 0 ? slotGroup(i + 1, count) : null).filter((g): g is NonNullable<typeof g> => g !== null),
+                      });
+                    }
+                  }
+                }
 
-                              const MiniSlotRow = ({ slotLevel, totalCount, isPact }: { slotLevel: number; totalCount: number; isPact?: boolean }) => {
-                                const used = slotsUsed[String(slotLevel)] || 0;
-                                return (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                    <span style={{ fontSize: '0.5rem', color: isPact ? '#c084fc' : '#7dd3fc', fontFamily: 'serif', minWidth: '10px' }}>{toRoman(slotLevel)}</span>
-                                    {Array.from({ length: totalCount }).map((_, idx) => {
-                                      const isUsed = idx < used;
-                                      return (
-                                        <div key={idx} onClick={(e) => { if (!isUsed) handleMiniUseSlot(e, slotLevel); else e.stopPropagation(); }}
-                                          title={isUsed ? 'Used' : (isDMView ? 'Click to use' : 'Available')}
-                                          style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : (isPact ? 'rgba(168,85,247,0.7)' : 'rgba(99,202,255,0.7)'), border: `1px solid ${isPact ? 'rgba(168,85,247,0.8)' : 'rgba(99,202,255,0.8)'}`, opacity: isUsed ? 0.35 : 1, cursor: isDMView && !isUsed ? 'pointer' : 'default' }} />
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              };
+                if (shownClass === 'Charlatan') {
+                  const lvl = character.level;
+                  const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
+                  const used = characterTricksUsed[character.id] ?? 0;
+                  tracks.push({
+                    key: 'tricks', label: 'Tricks', tone: 'trick',
+                    groups: [{
+                      pips: Array.from({ length: maxTricks }, (_, idx) => {
+                        const isUsed = idx < used;
+                        return {
+                          on: !isUsed,
+                          title: isUsed ? 'Used' : (isDMView ? 'Click to use' : 'Available'),
+                          onClick: isDMView
+                            ? () => socket?.emit(isUsed ? 'restoreTrick' : 'useTrick', { campaignId, characterId: character.id })
+                            : undefined,
+                        };
+                      }),
+                    }],
+                  });
+                }
 
-                              if (slotInfo.type === 'pact') {
-                                return (
-                                  <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.55rem', color: '#c084fc' }}>✨</span>
-                                    <MiniSlotRow slotLevel={slotInfo.slotLevel} totalCount={slotInfo.slots} isPact />
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '0.55rem', color: '#7dd3fc' }}>✨</span>
-                                  {slotInfo.slots.map((count, i) => count > 0 ? <MiniSlotRow key={i} slotLevel={i + 1} totalCount={count} /> : null)}
-                                </div>
-                              );
-                            })()}
+                if (shownClass === 'Shadow Sovereign') {
+                  const res = characterShadowResources[character.id] ?? { shadow_reap_used: 0, shadow_step_used: 0 };
+                  // Merge ability overrides so stat changes emit and reflect immediately
+                  const abilityOverrides = characterDataOverrides[character.id]?.abilities as Record<string, number> | undefined;
+                  const abilities = { ...(character.abilities || {}), ...(abilityOverrides || {}) } as Record<string, number>;
+                  const dexMod = Math.max(0, Math.floor(((abilities.dex ?? 10) - 10) / 2));
+                  const conMod = Math.max(0, Math.floor(((abilities.con ?? 10) - 10) / 2));
+                  const lvl = character.level;
+                  const maxReap = lvl >= 12 ? 2 : 1;
+                  const maxStep = dexMod + (lvl >= 11 ? 4 : lvl >= 7 ? 2 : 0);
+                  const activeCount = (characterShadows[character.id] ?? []).filter(s => s.is_active).length;
 
-                            {/* Charlatan Tricks indicator */}
-                            {(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class) === 'Charlatan' && (() => {
-                              const lvl = character.level;
-                              const maxTricks = lvl >= 20 ? 8 : lvl >= 18 ? 7 : lvl >= 14 ? 6 : lvl >= 10 ? 5 : lvl >= 6 ? 4 : lvl >= 3 ? 3 : 2;
-                              const used = characterTricksUsed[character.id] ?? 0;
-                              const isDMView = user?.role === 'Dungeon Master';
-                              return (
-                                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '0.55rem', color: '#fb923c' }}>🃏</span>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                    <span style={{ fontSize: '0.5rem', color: '#fb923c', minWidth: '10px' }}>T</span>
-                                    {Array.from({ length: maxTricks }).map((_, idx) => {
-                                      const isUsed = idx < used;
-                                      return (
-                                        <div key={idx}
-                                          onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreTrick' : 'useTrick', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }}
-                                          title={isUsed ? 'Used' : (isDMView ? 'Click to use' : 'Available')}
-                                          style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(251,146,60,0.7)', border: '1px solid rgba(251,146,60,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              );
-                            })()}
+                  if (lvl >= 6) {
+                    tracks.push({
+                      key: 'reap', label: 'Reap', tone: 'reap',
+                      groups: [{
+                        pips: Array.from({ length: maxReap }, (_, idx) => {
+                          const isUsed = idx < res.shadow_reap_used;
+                          return {
+                            on: !isUsed,
+                            title: isUsed ? 'Shadow Reap used' : 'Shadow Reap available',
+                            onClick: isDMView
+                              ? () => socket?.emit(isUsed ? 'restoreShadowReap' : 'useShadowReap', { campaignId, characterId: character.id })
+                              : undefined,
+                          };
+                        }),
+                      }],
+                    });
+                  }
+                  if (maxStep > 0) {
+                    tracks.push({
+                      key: 'step', label: 'Step', tone: 'step',
+                      groups: [{
+                        pips: Array.from({ length: maxStep }, (_, idx) => {
+                          const isUsed = idx < res.shadow_step_used;
+                          return {
+                            on: !isUsed,
+                            title: isUsed ? 'Shadow Step used' : 'Shadow Step available',
+                            onClick: isDMView
+                              ? () => socket?.emit(isUsed ? 'restoreShadowStep' : 'useShadowStep', { campaignId, characterId: character.id })
+                              : undefined,
+                          };
+                        }),
+                      }],
+                    });
+                  }
+                  if (conMod > 0) {
+                    tracks.push({
+                      key: 'shadows', label: 'Shadows', tone: 'shadow',
+                      groups: [{
+                        pips: Array.from({ length: conMod }, (_, idx) => {
+                          const isActive = idx < activeCount;
+                          return { on: isActive, title: isActive ? 'Shadow active' : 'Shadow slot empty' };
+                        }),
+                      }],
+                    });
+                  }
+                }
 
-                            {/* Shadow Sovereign resource indicators */}
-                            {(user?.role !== 'Dungeon Master' && character.concealed_class ? character.concealed_class : character.class) === 'Shadow Sovereign' && (() => {
-                              const isDMView = user?.role === 'Dungeon Master';
-                              const res = characterShadowResources[character.id] ?? { shadow_reap_used: 0, shadow_step_used: 0 };
-                              // Merge ability overrides so stat changes emit and reflect immediately
-                              const abilityOverrides = characterDataOverrides[character.id]?.abilities as Record<string, number> | undefined;
-                              const abilities = { ...(character.abilities || {}), ...(abilityOverrides || {}) };
-                              const dex = abilities.dex ?? 10;
-                              const dexMod = Math.max(0, Math.floor((dex - 10) / 2));
-                              const con = abilities.con ?? 10;
-                              const conMod = Math.max(0, Math.floor((con - 10) / 2));
-                              const lvl = character.level;
-                              const maxReap = lvl >= 12 ? 2 : 1;
-                              const maxStep = dexMod + (lvl >= 11 ? 4 : lvl >= 7 ? 2 : 0);
-                              const shadows = characterShadows[character.id] ?? [];
-                              const activeCount = shadows.filter(s => s.is_active).length;
-                              return (
-                                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                  {lvl >= 6 && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      <span style={{ fontSize: '0.5rem', color: '#a78bfa', minWidth: '12px' }}>☽</span>
-                                      {Array.from({ length: maxReap }).map((_, idx) => {
-                                        const isUsed = idx < res.shadow_reap_used;
-                                        return <div key={idx} onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreShadowReap' : 'useShadowReap', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }} title={isUsed ? 'Shadow Reap used' : 'Shadow Reap available'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(139,92,246,0.7)', border: '1px solid rgba(139,92,246,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />;
-                                      })}
-                                    </div>
-                                  )}
-                                  {maxStep > 0 && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      <span style={{ fontSize: '0.5rem', color: '#818cf8', minWidth: '12px' }}>👣</span>
-                                      {Array.from({ length: maxStep }).map((_, idx) => {
-                                        const isUsed = idx < res.shadow_step_used;
-                                        return <div key={idx} onClick={(e) => { e.stopPropagation(); if (isDMView) socket?.emit(isUsed ? 'restoreShadowStep' : 'useShadowStep', { campaignId: currentCampaign?.campaign.id, characterId: character.id }); }} title={isUsed ? 'Shadow Step used' : 'Shadow Step available'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isUsed ? 'rgba(0,0,0,0.3)' : 'rgba(99,102,241,0.7)', border: '1px solid rgba(99,102,241,0.8)', opacity: isUsed ? 0.35 : 1, cursor: isDMView ? 'pointer' : 'default' }} />;
-                                      })}
-                                    </div>
-                                  )}
-                                  {conMod > 0 && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                      <span style={{ fontSize: '0.5rem', color: '#f87171', minWidth: '12px' }}>◈</span>
-                                      {Array.from({ length: conMod }).map((_, idx) => {
-                                        const isActive = idx < activeCount;
-                                        return <div key={idx} title={isActive ? 'Shadow active' : 'Shadow slot empty'} style={{ width: '10px', height: '10px', borderRadius: '50%', background: isActive ? 'rgba(239,68,68,0.7)' : 'rgba(0,0,0,0.2)', border: '1px solid rgba(239,68,68,0.6)', opacity: isActive ? 1 : 0.4 }} />;
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </button>
-                ))}
-                    </div>
-                </>
-              )}
-
-              {/* Collapsed State - Show User's Own Character Health/Exp or DM Controls */}
-              {characterListCollapsed && selectedCharacter && (
-                <>
-                  {user?.role === 'Dungeon Master' ? (
-                    /* DM sees Add EXP and Rest buttons when collapsed */
-                    <div style={{ marginTop: '0.5rem' }}>
-                      <div style={{ 
-                        fontSize: '0.75rem', 
-                        color: 'var(--text-muted)', 
-                        marginBottom: '0.5rem',
-                        textAlign: 'center',
-                        fontWeight: 'bold'
-                      }}>
-                        👥 DM Controls
-                      </div>
-                    </div>
-                  ) : (
-                    /* Players see their own character's health/exp summary when collapsed */
-                    (() => {
-                      const character = characters.find(c => c.id === selectedCharacter);
-                      if (!character) return null;
-
-                      const override = characterDataOverrides[character.id];
-                      const effectiveCharacter = override ? { ...character, ...override } : character;
-                      const tracked = combatCharacterHp[character.id];
-                      const baseHP = Math.max(1, tracked?.max || (effectiveCharacter as any).hit_points_max || effectiveCharacter.hit_points);
-                      const limbMaxValues = calcCharacterLimbHealthMax(baseHP, effectiveCharacter.abilities?.con ?? 10);
-                      const maxHP = Object.values(limbMaxValues).reduce((s, v) => s + v, 0);
-                      const trackedLimbs = characterLimbHealth[character.id];
-                      const currentHP = trackedLimbs
-                        ? Object.values(trackedLimbs).reduce((s: number, v: any) => s + Number(v || 0), 0)
-                        : tracked && tracked.max > 0
-                          ? Math.round((tracked.current / tracked.max) * maxHP)
-                          : maxHP;
-                      const percentage = maxHP > 0 ? Math.min(100, (currentHP / maxHP) * 100) : 0;
-                      const isDead = currentHP <= 0;
-                      const health = { current: currentHP, max: maxHP, percentage, isDead };
-                      const healthColor = health.isDead 
-                        ? '#dc3545' 
-                        : health.percentage > 50 
-                        ? '#28a745' 
-                        : health.percentage > 25 
-                        ? '#ffc107' 
-                        : '#dc3545';
-
-                      return (
-                        <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {/* Character Name */}
-                          <div style={{ 
-                            textAlign: 'center',
-                            fontSize: '0.75rem',
-                            color: 'var(--text-gold)',
-                            fontWeight: 'bold',
-                            marginBottom: '0.25rem'
-                          }}>
-                            {character.name}
-                          </div>
-
-                          {/* Health Bar - Compact */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <div style={{ fontSize: '0.8rem' }}>❤️</div>
-                            <div style={{
-                              flex: 1,
-                              height: '8px',
-                              background: 'rgba(0, 0, 0, 0.4)',
-                              borderRadius: '4px',
-                              overflow: 'hidden',
-                              border: '1px solid rgba(var(--theme-accent-rgb), 0.3)',
-                              position: 'relative'
-                            }}>
-                              <div style={{
-                                width: `${health.percentage}%`,
-                                height: '100%',
-                                background: `linear-gradient(90deg, ${healthColor} 0%, ${healthColor}dd 100%)`,
-                                boxShadow: `0 0 4px ${healthColor}88`
-                              }} />
-                            </div>
-                            <div style={{ fontSize: '0.6rem', color: healthColor, fontWeight: 'bold', minWidth: '20px' }}>
-                              {health.percentage.toFixed(0)}%
-                            </div>
-                          </div>
-
-                          {/* EXP Bar - Compact */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <div style={{ fontSize: '0.8rem' }}>⭐</div>
-                            <div style={{
-                              flex: 1,
-                              height: '8px',
-                              background: 'rgba(0, 0, 0, 0.4)',
-                              borderRadius: '4px',
-                              overflow: 'hidden',
-                              border: '1px solid rgba(var(--accent-highlight), 0.5)',
-                              position: 'relative'
-                            }}>
-                              <div style={{
-                                width: `${getLevelProgress(character.level, character.experience_points || 0)}%`,
-                                height: '100%',
-                                background: 'linear-gradient(90deg, var(--accent-highlight) 0%, var(--accent-highlight) 100%)',
-                                boxShadow: '0 0 4px var(--accent-highlight)'
-                              }} />
-                            </div>
-                            <div style={{ fontSize: '0.6rem', color: 'var(--accent-highlight)', fontWeight: 'bold', minWidth: '20px' }}>
-                              {getLevelProgress(character.level, character.experience_points || 0).toFixed(0)}%
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()
-                  )}
-                </>
-              )}
-            </div>
+                const exp = character.experience_points || 0;
+                return {
+                  id: character.id,
+                  name: character.name,
+                  imageUrl: sizedImageUrl(character.image_url, IMAGE_WIDTH.avatar),
+                  online: onlineUserIds.has(character.player_id),
+                  classLine: `Lvl ${character.level} ${character.race} ${shownClass}`,
+                  classKey: shownClass,
+                  subclass,
+                  detail: '',
+                  hp: { current: currentHP, max: maxHP },
+                  xp: {
+                    current: exp,
+                    required: getRequiredExpForNextLevel(character.level),
+                    pct: getLevelProgress(character.level, exp),
+                    maxed: character.level >= 20,
+                    ready: character.level < 20 && canLevelUp(character.level, exp),
+                  },
+                  tracks,
+                };
+              })}
+            />
           </div>
 
           {mainView === 'campaign' && (
@@ -7821,8 +7439,10 @@ const CampaignView: React.FC = () => {
                       >
                         {city.outline && (
                           <img
-                            src={`/images/CityImages/${getCityImageFilename(city.name)}.jpg`}
+                            src={getCityImagePath(city.name)}
                             alt={city.name}
+                            loading="lazy"
+                            decoding="async"
                             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
                           />
                         )}
@@ -7869,7 +7489,7 @@ const CampaignView: React.FC = () => {
                             background: 'rgba(0, 0, 0, 0.3)'
                           }}>
                             <img 
-                              src={getImageUrl(character.image_url)}
+                              src={sizedImageUrl(character.image_url, IMAGE_WIDTH.avatar)}
                               alt={character.name}
                               style={{
                                 width: '100%',
@@ -8138,7 +7758,7 @@ const CampaignView: React.FC = () => {
                 {selectedCity && (() => {
                   const cityData = CITY_LOCATIONS.find(c => c.name === selectedCity);
                   const isPlayerCity = cityData?.playerCity === true;
-                  const defaultImage = `/images/CityImages/${getCityImageFilename(selectedCity)}.jpg`;
+                  const defaultImage = getCityImagePath(selectedCity);
                   const extraImages = PLAYER_CITY_EXTRA_IMAGES[selectedCity] || [];
                   const allImages = isPlayerCity ? [defaultImage, ...extraImages] : [defaultImage];
                   const currentImage = allImages[cityImageIndex] ?? defaultImage;
@@ -8187,15 +7807,12 @@ const CampaignView: React.FC = () => {
                             key={currentImage}
                             src={currentImage}
                             alt={selectedCity}
+                            decoding="async"
                             onError={(e) => {
                               const target = e.currentTarget;
-                              if (!target.src.endsWith('.png')) {
-                                target.src = `/images/CityImages/${getCityImageFilename(selectedCity)}.png`;
-                              } else {
-                                target.style.display = 'none';
-                                const msg = target.nextSibling as HTMLElement;
-                                if (msg) msg.style.display = 'block';
-                              }
+                              target.style.display = 'none';
+                              const msg = target.nextSibling as HTMLElement;
+                              if (msg) msg.style.display = 'block';
                             }}
                             style={{
                               maxWidth: '100%',
@@ -9476,7 +9093,7 @@ const CampaignView: React.FC = () => {
                       ? (Object.values(characterShadows) as Shadow[][]).flat().find((s: Shadow) => s.id === combatant.shadowId)
                       : null;
                     const shadowImageSrc = combatant.isShadow ? (shadowTemplate?.image_url || '/images/ShadowBase.jpg') : undefined;
-                    const imageUrl = getImageUrl(character?.image_url || monsterTemplate?.image_url || petTemplate?.image_url || shadowImageSrc);
+                    const imageUrl = sizedImageUrl(character?.image_url || monsterTemplate?.image_url || petTemplate?.image_url || shadowImageSrc, IMAGE_WIDTH.avatar);
                     
                     // Invisibility — monsters hide entirely from non-DMs; players show faded
                     const tokenConditions = combatConditions[String(combatant.characterId)] ?? [];
@@ -12082,7 +11699,8 @@ const CampaignView: React.FC = () => {
                   return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
                     {sorted.map((monster: Monster) => {
-                      const imageUrl = getImageUrl(monster.image_url);
+                      const imageUrl = sizedImageUrl(monster.image_url, IMAGE_WIDTH.card);
+                      const fullImageUrl = sizedImageUrl(monster.image_url, IMAGE_WIDTH.large);
 
                       return (
                         <div
@@ -12097,13 +11715,18 @@ const CampaignView: React.FC = () => {
                           }}
                         >
                           {imageUrl && (
-                            <div
-                              onClick={() => setViewImageModal({ imageUrl, name: monster.name, description: monster.description || undefined })}
+                            <img
+                              src={imageUrl}
+                              alt={monster.name}
+                              loading="lazy"
+                              decoding="async"
+                              onClick={() => setViewImageModal({ imageUrl: fullImageUrl || imageUrl, name: monster.name, description: monster.description || undefined })}
                               style={{
+                                display: 'block',
+                                width: '100%',
                                 height: '160px',
-                                backgroundImage: `url(${imageUrl})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center',
+                                objectFit: 'cover',
+                                objectPosition: 'center',
                                 cursor: 'pointer'
                               }}
                             />
@@ -12315,7 +11938,7 @@ const CampaignView: React.FC = () => {
                         {selectedCharacterData.image_url && !imageLoadError[selectedCharacterData.id] ? (
                           <div className="char-portrait-img-wrap">
                             <img
-                              src={getImageUrl(selectedCharacterData.image_url)}
+                              src={sizedImageUrl(selectedCharacterData.image_url, IMAGE_WIDTH.detail)}
                               alt={selectedCharacterData.name}
                               className="char-portrait-img"
                               onError={() => setImageLoadError(prev => ({ ...prev, [selectedCharacterData.id]: true }))}
@@ -14058,12 +13681,12 @@ const CampaignView: React.FC = () => {
 
                       // Determine beast image based on type
                       const beastImageMap: Record<string, string> = {
-                        'Cheetah': '/images/Beasts/Cheetah.jpg',
-                        'Leopard': '/images/Beasts/Leopard.jpg',
-                        'AlphaWolf': '/images/Beasts/AlphaWolf.jpg',
-                        'OmegaWolf': '/images/Beasts/OmegaWolf.jpg',
-                        'Elephant': '/images/Beasts/Elephant.jpg',
-                        'Owlbear': '/images/Beasts/Owlbear.jpg'
+                        'Cheetah': '/images/Beasts/Cheetah.webp',
+                        'Leopard': '/images/Beasts/Leopard.webp',
+                        'AlphaWolf': '/images/Beasts/AlphaWolf.webp',
+                        'OmegaWolf': '/images/Beasts/OmegaWolf.webp',
+                        'Elephant': '/images/Beasts/Elephant.webp',
+                        'Owlbear': '/images/Beasts/Owlbear.webp'
                       };
 
                       const beastImage = beastImageMap[beast.beast_type];
@@ -14367,7 +13990,7 @@ const CampaignView: React.FC = () => {
                                 {/* Shadow portrait */}
                                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
                                   <img
-                                    src={getImageUrl(shadow.image_url ?? undefined) || '/images/ShadowBase.jpg'}
+                                    src={sizedImageUrl(shadow.image_url, IMAGE_WIDTH.small) || '/images/ShadowBase.jpg'}
                                     alt={shadow.shadow_name}
                                     style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${shadow.is_active ? 'rgba(239,68,68,0.5)' : 'rgba(139,92,246,0.4)'}` }}
                                     onError={(e) => { (e.target as HTMLImageElement).src = '/images/ShadowBase.jpg'; }}
@@ -15470,7 +15093,7 @@ const CampaignView: React.FC = () => {
                         {savedNPCsForCharacter.map(npc => (
                           <div key={npc.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--theme-accent-rgb),0.25)', borderRadius: '10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             {npc.image_url ? (
-                              <img src={npc.image_url} alt={npc.name} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }} />
+                              <img src={sizedImageUrl(npc.image_url, IMAGE_WIDTH.card)} alt={npc.name} loading="lazy" decoding="async" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }} />
                             ) : (
                               <div style={{ width: '100%', aspectRatio: '1', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem' }}>👤</div>
                             )}
@@ -18684,7 +18307,7 @@ const CampaignView: React.FC = () => {
                         return 0;
                       })
                       .map((monster: Monster) => {
-                      const imageUrl = getImageUrl(monster.image_url) ?? null;
+                      const imageUrl = sizedImageUrl(monster.image_url, IMAGE_WIDTH.avatar) ?? null;
                       const isAlly = combatMonsterAlly[monster.id] ?? false;
                       
                       return (
@@ -19022,7 +18645,7 @@ const CampaignView: React.FC = () => {
                         {/* Portrait */}
                         <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(var(--theme-accent-rgb),0.3)', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           {detailCharacter.image_url && !imageLoadError[detailCharacter.id] ? (
-                            <img src={getImageUrl(detailCharacter.image_url)} alt={detailCharacter.name} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }} onError={() => setImageLoadError(prev => ({ ...prev, [detailCharacter.id]: true }))} />
+                            <img src={sizedImageUrl(detailCharacter.image_url, IMAGE_WIDTH.card)} alt={detailCharacter.name} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }} onError={() => setImageLoadError(prev => ({ ...prev, [detailCharacter.id]: true }))} />
                           ) : (
                             <div style={{ width: '180px', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '4rem', color: 'rgba(var(--theme-accent-rgb),0.3)' }}>{detailCharacter.name.charAt(0)}</div>
                           )}
@@ -19151,7 +18774,7 @@ const CampaignView: React.FC = () => {
                       {/* Portrait */}
                       <div style={{ width: '180px', borderRadius: '0.5rem', overflow: 'hidden', border: '2px solid rgba(248,113,113,0.4)', background: 'rgba(0,0,0,0.4)', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {detailMonster.image_url ? (
-                          <img src={getImageUrl(detailMonster.image_url)} alt={detailMonster.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <img src={sizedImageUrl(detailMonster.image_url, IMAGE_WIDTH.card)} alt={detailMonster.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
                           <div style={{ fontSize: '4rem', color: 'rgba(248,113,113,0.4)' }}>{detailMonster.name.charAt(0)}</div>
                         )}
@@ -19295,7 +18918,7 @@ const CampaignView: React.FC = () => {
                   const abilityMod = (v: number) => { const m = Math.floor((v - 10) / 2); return m >= 0 ? `+${m}` : `${m}`; };
                   const hpPct = shadowData.hit_points_max > 0 ? Math.min(100, (shadowData.hit_points_current / shadowData.hit_points_max) * 100) : 0;
                   const shadowHealthColor = (pct: number) => pct > 66 ? '#4ade80' : pct > 33 ? 'var(--text-gold)' : '#ef4444';
-                  const shadowImgSrc = shadowData.image_url ? getImageUrl(shadowData.image_url) : '/images/ShadowBase.jpg';
+                  const shadowImgSrc = shadowData.image_url ? sizedImageUrl(shadowData.image_url, IMAGE_WIDTH.card) : '/images/ShadowBase.jpg';
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
                       {/* Portrait */}
@@ -19910,7 +19533,7 @@ const CampaignView: React.FC = () => {
                         {tpl.image ? (
                           <div style={{
                             height: '120px',
-                            backgroundImage: `url(${tpl.image})`,
+                            backgroundImage: `url(${toWebpArt(tpl.image)})`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center'
                           }} />
@@ -22914,7 +22537,7 @@ const CampaignView: React.FC = () => {
                         backgroundColor: '#000'
                       }}>
                         <img 
-                          src={`/images/Beasts/${beast.type}.jpg`}
+                          src={`/images/Beasts/${beast.type}.webp`}
                           alt={beast.name}
                           style={{ 
                             width: '100%', 
@@ -24351,7 +23974,7 @@ const CampaignView: React.FC = () => {
                       setShowBattlefieldMapPickerModal(false);
                     }}
                   >
-                    <img src={battleMapsAPI.getMapImageUrl(bm.id)} alt={bm.display_name} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
+                    <img src={battleMapsAPI.getMapImageUrl(bm.id, IMAGE_WIDTH.card)} alt={bm.display_name} loading="lazy" style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
                     <div style={{ padding: '0.4rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: 'var(--text-gold)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
                       <button
@@ -24437,7 +24060,7 @@ const CampaignView: React.FC = () => {
                       setShowMapPickerModal(false);
                     }}
                   >
-                    <img src={battleMapsAPI.getMapImageUrl(bm.id)} alt={bm.display_name} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
+                    <img src={battleMapsAPI.getMapImageUrl(bm.id, IMAGE_WIDTH.card)} alt={bm.display_name} loading="lazy" style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
                     <div style={{ padding: '0.4rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: 'var(--text-gold)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.display_name}</span>
                       <button

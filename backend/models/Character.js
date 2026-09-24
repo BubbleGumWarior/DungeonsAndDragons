@@ -1,4 +1,5 @@
 const { pool } = require('./database');
+const { buildImageUrl } = require('../utils/imageService');
 
 class Character {
   // Helper function to safely parse JSON or return the object if it's already parsed
@@ -14,16 +15,18 @@ class Character {
     return field;
   }
 
-  // Convert image binary data to base64 data URL
-  static convertImageToDataUrl(character) {
+  // Replace the raw image bytes on a character row with a small cacheable URL (see utils/imageService).
+  // Inlining the image as a base64 data URL made every character payload carry the whole picture.
+  static attachImageUrl(character) {
     if (character && character.image_data) {
-      const base64 = character.image_data.toString('base64');
-      character.image_url = `data:${character.image_mime_type};base64,${base64}`;
+      character.image_url = buildImageUrl('characters', character.id, character.image_data);
       // Remove the raw binary data from the response to reduce payload size
       delete character.image_data;
       delete character.image_mime_type;
-    } else if (character && character.image_url && character.image_url.startsWith('/uploads/')) {
-      // Old filesystem path with no image_data - clear it to avoid 404 errors
+    } else if (character && character.image_url &&
+      (character.image_url.startsWith('/uploads/') || character.image_url.startsWith('/api/images/'))) {
+      // Stale link (old filesystem path, or an image URL for bytes that have since been deleted)
+      // with no image_data behind it - clear it to avoid 404 errors
       character.image_url = null;
     }
     return character;
@@ -109,7 +112,7 @@ class Character {
       character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
       
       // Convert image data to data URL
-      this.convertImageToDataUrl(character);
+      this.attachImageUrl(character);
       
       return character;
     } catch (error) {
@@ -142,7 +145,7 @@ class Character {
       character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
       
       // Convert image data to data URL
-      this.convertImageToDataUrl(character);
+      this.attachImageUrl(character);
       
       return character;
     } catch (error) {
@@ -170,7 +173,7 @@ class Character {
         character.spells = this.parseJsonField(character.spells);
         character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
         character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
-        this.convertImageToDataUrl(character);
+        this.attachImageUrl(character);
         return character;
       });
     } catch (error) {
@@ -200,7 +203,7 @@ class Character {
         character.spells = this.parseJsonField(character.spells);
         character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
         character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
-        this.convertImageToDataUrl(character);
+        this.attachImageUrl(character);
         return character;
       });
     } catch (error) {
@@ -278,13 +281,16 @@ class Character {
       character.spells = this.parseJsonField(character.spells);
       character.resistances = this.parseJsonField(character.resistances) || { resistances: [], immunities: [], vulnerabilities: [] };
       character.proficiencies = this.parseJsonField(character.proficiencies) || { weapons: [], armor: [], tools: [], languages: [] };
-      
+      // RETURNING * includes the raw image bytes, which Express would serialise as a JSON array of
+      // numbers (several times the image size) on every equip/unequip/edit response.
+      this.attachImageUrl(character);
+
       return character;
     } catch (error) {
       throw error;
     }
   }
-  
+
   // Delete character
   static async delete(id) {
     try {

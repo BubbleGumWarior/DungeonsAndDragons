@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const { pool } = require('../models/database');
 const { authenticateToken } = require('../middleware/auth');
+const { buildImageUrl } = require('../utils/imageService');
 
 // ── Image upload config ────────────────────────────────────────────────────
 // Images are kept in memory just long enough to be written into the database
@@ -24,8 +25,7 @@ const parseShadow = (s) => {
     abilities: typeof s.abilities === 'string' ? JSON.parse(s.abilities) : s.abilities,
   };
   if (parsed.image_data) {
-    const base64 = parsed.image_data.toString('base64');
-    parsed.image_url = `data:${parsed.image_mime_type};base64,${base64}`;
+    parsed.image_url = buildImageUrl('shadows', parsed.id, parsed.image_data);
   } else if (parsed.image_url && parsed.image_url.startsWith('/uploads/')) {
     // Stale filesystem path from before images were stored in the database -
     // the file is gone after a redeploy, so don't send a link that 404s.

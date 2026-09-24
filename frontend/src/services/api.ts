@@ -96,7 +96,7 @@ export interface Character {
   ideals: string;
   bonds: string;
   flaws: string;
-  image_url?: string; // Base64 data URL if image exists in database, or file path for legacy images
+  image_url?: string; // URL of the image (an /api/images/... URL for pictures stored in the database, or a built-in art path)
   image_data?: Uint8Array; // Binary image data (removed before returning to client)
   image_mime_type?: string; // Image MIME type (removed before returning to client)
   map_position_x?: number;
@@ -1316,9 +1316,10 @@ export const battleMapsAPI = {
     return response.data;
   },
 
-  getMapImageUrl: (mapId: number): string => {
+  // `width` asks the server for a smaller WebP copy (use IMAGE_WIDTH); omit it for the full-size map.
+  getMapImageUrl: (mapId: number, width?: number): string => {
     const base = api.defaults.baseURL ?? '';
-    return `${base}/battle-maps/${mapId}/image`;
+    return `${base}/battle-maps/${mapId}/image${width ? `?w=${width}` : ''}`;
   },
 
   deleteMap: async (mapId: number): Promise<{ message: string }> => {

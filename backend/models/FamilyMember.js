@@ -1,4 +1,5 @@
 const { pool } = require('./database');
+const { buildImageUrl } = require('../utils/imageService');
 
 class FamilyMember {
   static parseJsonField(field) {
@@ -24,12 +25,10 @@ class FamilyMember {
       ? (this.parseJsonField(row.char_skills) || this.parseJsonField(row.skills))
       : this.parseJsonField(row.skills);
 
-    let imageUrl = null;
-    const imageData = linked ? row.char_image_data : row.image_data;
-    const imageMime = linked ? row.char_image_mime_type : row.image_mime_type;
-    if (imageData) {
-      imageUrl = `data:${imageMime || 'image/jpeg'};base64,${Buffer.from(imageData).toString('base64')}`;
-    }
+    // A linked member shows the played character's portrait; otherwise the member's own image.
+    const imageUrl = linked
+      ? buildImageUrl('characters', row.character_id, row.char_image_data)
+      : buildImageUrl('family', row.id, row.image_data);
 
     return {
       id: row.id,

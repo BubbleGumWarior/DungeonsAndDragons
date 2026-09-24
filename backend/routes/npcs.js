@@ -6,6 +6,7 @@ const { pool } = require('../models/database');
 const Campaign = require('../models/Campaign');
 const Character = require('../models/Character');
 const { authenticateToken } = require('../middleware/auth');
+const { buildImageUrl } = require('../utils/imageService');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -20,14 +21,6 @@ const upload = multer({
   }
 });
 
-function buildImageUrl(npc) {
-  if (npc.image_data) {
-    const b64 = Buffer.from(npc.image_data).toString('base64');
-    return `data:${npc.image_mime_type || 'image/jpeg'};base64,${b64}`;
-  }
-  return null;
-}
-
 function formatNpc(npc) {
   return {
     id: npc.id,
@@ -35,7 +28,7 @@ function formatNpc(npc) {
     name: npc.name,
     age: npc.age || '',
     description: npc.description || '',
-    image_url: buildImageUrl(npc),
+    image_url: buildImageUrl('npcs', npc.id, npc.image_data),
     created_by: npc.created_by,
     created_at: npc.created_at,
   };

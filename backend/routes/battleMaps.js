@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const { pool } = require('../models/database');
 const { authenticateToken: auth } = require('../middleware/auth');
+const { CACHE_CONTROL, renderVariant, parseWidth, cacheGet, cacheSet } = require('../utils/imageService');
 
 // Store map images in memory (will be saved to DB as BYTEA)
 const upload = multer({
@@ -67,23 +68,31 @@ router.post('/campaign/:campaignId', auth, upload.single('image'), async (req, r
 });
 
 // ──────────────────────────────────────────────
-// GET /api/battle-maps/:id/image
-// Stream the raw image data
+// GET /api/battle-maps/:id/image[?w=384]
+// Stream the raw image data (optionally a smaller WebP copy for map pickers/thumbnails).
+// A map's image never changes once uploaded (a new upload is a new row), so it can be cached hard.
 // ──────────────────────────────────────────────
 router.get('/:id/image', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query(
-      `SELECT image_data, image_mime_type FROM campaign_battle_maps WHERE id = $1`,
-      [id]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Map not found' });
+    const width = parseWidth(req.query.w);
+    const cacheKey = `battlemap:${id}:${width || 0}`;
+    let variant = cacheGet(cacheKey);
+    if (!variant) {
+      const result = await pool.query(
+        `SELECT image_data, image_mime_type FROM campaign_battle_maps WHERE id = $1`,
+        [id]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: 'Map not found' });
+      }
+      const { image_data, image_mime_type } = result.rows[0];
+      variant = await renderVariant(image_data, image_mime_type, width);
+      cacheSet(cacheKey, variant);
     }
-    const { image_data, image_mime_type } = result.rows[0];
-    res.set('Content-Type', image_mime_type || 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=3600');
-    res.send(image_data);
+    res.set('Content-Type', variant.type);
+    res.set('Cache-Control', CACHE_CONTROL);
+    res.send(variant.buffer);
   } catch (error) {
     console.error('Error serving battle map image:', error);
     res.status(500).json({ message: 'Server error' });

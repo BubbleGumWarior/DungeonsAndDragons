@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Socket } from 'socket.io-client';
 import { ChatMessage, OutOfCombatRollRequest, DiceGroup, CampaignNPC } from '../../types/campaignTypes';
 import { npcAPI } from '../../services/api';
+import { IMAGE_WIDTH, sizedImageUrl } from '../../utils/imageUrls';
 
 interface OnlinePlayer {
   userId: number;
@@ -670,8 +671,8 @@ const ChatPanel: React.FC<Props> = ({
         {npc ? (
           <>
             {npc.image_url ? (
-              <img src={npc.image_url} alt={npc.name}
-                onClick={() => npc.image_url && setNpcViewImage({ url: npc.image_url, name: npc.name })} />
+              <img src={sizedImageUrl(npc.image_url, IMAGE_WIDTH.small)} alt={npc.name} loading="lazy"
+                onClick={() => npc.image_url && setNpcViewImage({ url: sizedImageUrl(npc.image_url, IMAGE_WIDTH.large) || npc.image_url, name: npc.name })} />
             ) : null}
             <div className="cp-npc-body">
               <div className="cp-npc-name">{npc.name}</div>

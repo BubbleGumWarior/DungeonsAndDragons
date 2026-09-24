@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCampaign } from '../contexts/CampaignContext';
 import { Campaign, Character, campaignAPI } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
-import FigureImage from '../assets/images/Board/Figure.png';
+import FigureImage from '../assets/images/Board/Figure.webp';
+import { IMAGE_WIDTH, sizedImageUrl } from '../utils/imageUrls';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -282,7 +283,7 @@ const Dashboard: React.FC = () => {
                           {campaignCharacters[campaign.id]?.map((character) => (
                             <div key={character.id} className="campaign-member">
                               <img 
-                                src={character.image_url || FigureImage} 
+                                src={sizedImageUrl(character.image_url, IMAGE_WIDTH.avatar) || FigureImage} 
                                 alt={character.name}
                                 className="campaign-member-avatar"
                               />
@@ -381,7 +382,7 @@ const Dashboard: React.FC = () => {
                           {campaignCharacters[campaign.id]?.map((character) => (
                             <div key={character.id} className="campaign-member">
                               <img 
-                                src={character.image_url || FigureImage} 
+                                src={sizedImageUrl(character.image_url, IMAGE_WIDTH.avatar) || FigureImage} 
                                 alt={character.name}
                                 className="campaign-member-avatar"
                               />

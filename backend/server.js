@@ -26,6 +26,7 @@ const petRoutes = require('./routes/pets');
 const petFoodRoutes = require('./routes/petFood');
 const companionArmorRoutes = require('./routes/companionArmor');
 const npcRoutes = require('./routes/npcs');
+const imageRoutes = require('./routes/images');
 const kingdomRoutes = require('./routes/kingdoms');
 const familyTreeRoutes = require('./routes/familyTree');
 const Character = require('./models/Character');
@@ -132,11 +133,26 @@ app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(path.join(__dirname, 'uploads')));
+}, express.static(path.join(__dirname, 'uploads'), { maxAge: '30d' })); // file names are unique (timestamped)
 
 // Serve static frontend files in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/build')));
+  const frontendBuild = path.join(__dirname, '../frontend/build');
+  // Files under /static are content-hashed by the React build, so they never change under the same
+  // name and can be cached for a year. Everything else (index.html, /images/...) gets a short/shorter
+  // lifetime so browsers stop re-downloading the same art on every visit but updates still show up.
+  app.use('/static', express.static(path.join(frontendBuild, 'static'), { maxAge: '1y', immutable: true }));
+  app.use(express.static(frontendBuild, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      } else if (/[\\/]images[\\/]/.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30 days
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+      }
+    },
+  }));
 }
 
 // Placeholder for Socket.IO - will be attached after server initialization
@@ -162,6 +178,7 @@ app.use('/api/beasts', beastRoutes);
 app.use('/api/shadows', shadowRoutes);
 app.use('/api/mounts', mountRoutes);
 app.use('/api/battle-maps', battleMapsRoutes);
+app.use('/api/images', imageRoutes);
 app.use('/api/pets', petRoutes);
 app.use('/api/pet-food', petFoodRoutes);
 app.use('/api/companion-armor', companionArmorRoutes);

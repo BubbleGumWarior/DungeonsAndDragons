@@ -82,7 +82,7 @@
 }
 
 :root[data-season='spring'] .campaign-container {
-  background-image: url('../assets/images/backgrounds/GreenBackground.jpg');
+  background-image: url('../assets/images/backgrounds/GreenBackground.webp');
 }
 
 :root[data-season='summer'] {
@@ -110,7 +110,7 @@
 }
 
 :root[data-season='autumn'] .campaign-container {
-  background-image: url('../assets/images/backgrounds/RedBackground.jpg');
+  background-image: url('../assets/images/backgrounds/RedBackground.webp');
 }
 
 :root[data-season='winter'] {
@@ -134,7 +134,7 @@
 }
 
 :root[data-season='winter'] .campaign-container {
-  background-image: url('../assets/images/backgrounds/BlueBackground.jpg');
+  background-image: url('../assets/images/backgrounds/BlueBackground.webp');
 }
 
 /* Day of Silence: every 11th day uses a muted variant of the active season accent set. */
@@ -324,7 +324,7 @@ p {
 }
 
 .dashboard-container {
-  background-image: url('../assets/images/backgrounds/BlackBackground.avif');
+  background-image: url('../assets/images/backgrounds/BlackBackground.webp');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -914,8 +914,8 @@ p {
 }
 
 .campaign-sidebar {
-  flex: 0 0 280px;
-  min-width: 280px;
+  flex: 0 0 320px;
+  min-width: 320px;
   transition: flex 0.4s cubic-bezier(0.4, 0, 0.2, 1),
               min-width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.3s ease,
@@ -938,7 +938,7 @@ p {
 
 /* Legacy collapse support */
 .campaign-layout.layout-collapsed .campaign-sidebar {
-  flex: 0 0 280px;
+  flex: 0 0 320px;
 }
 
 .campaign-sidebar.collapsed .glass-panel {

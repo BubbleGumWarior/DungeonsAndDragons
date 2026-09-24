@@ -7,6 +7,7 @@ const Character = require('../models/Character');
 const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
 const { authenticateToken } = require('../middleware/auth');
+const { buildImageUrl } = require('../utils/imageService');
 
 // Configure multer for in-memory character image uploads (stored in database)
 const upload = multer({
@@ -1257,7 +1258,7 @@ router.post('/:id/create-custom-item', authenticateToken, async (req, res) => {
   }
 });
 
-// Get character image as base64 data URL
+// Get the character image URL (the bytes themselves are served by /api/images, cacheable)
 router.get('/:id/image', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1267,12 +1268,8 @@ router.get('/:id/image', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'No image found for this character' });
     }
 
-    // Convert binary data to base64 data URL
-    const base64Image = imageData.image_data.toString('base64');
-    const dataUrl = `data:${imageData.image_mime_type};base64,${base64Image}`;
-
     res.json({
-      image_url: dataUrl,
+      image_url: buildImageUrl('characters', id, imageData.image_data),
       mime_type: imageData.image_mime_type
     });
   } catch (error) {
@@ -1308,13 +1305,9 @@ router.post('/:id/upload-image', authenticateToken, upload.single('image'), asyn
     const mimeType = req.file.mimetype;
     await Character.storeImage(id, req.file.buffer, mimeType);
 
-    // Create data URL for client-side display
-    const base64Image = req.file.buffer.toString('base64');
-    const dataUrl = `data:${mimeType};base64,${base64Image}`;
-
     res.json({
       message: 'Character image uploaded successfully',
-      image_url: dataUrl,
+      image_url: buildImageUrl('characters', id, req.file.buffer),
       character: { id, image_mime_type: mimeType }
     });
   } catch (error) {

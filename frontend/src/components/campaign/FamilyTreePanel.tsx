@@ -12,6 +12,7 @@ import {
 } from '../../services/api';
 import { getCharacterAge, getFamilyMemberAge } from '../../utils/age';
 import ConfirmationModal from '../ConfirmationModal';
+import { IMAGE_WIDTH, sizedImageUrl } from '../../utils/imageUrls';
 
 interface Props {
   campaignId: number;
@@ -327,7 +328,7 @@ function FamilyCardNode({ data }: NodeProps) {
 
       <div style={{ position: 'relative', width: '100%', aspectRatio: '4 / 3', background: '#000' }}>
         {member.imageUrl ? (
-          <img src={member.imageUrl} alt={member.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} draggable={false} />
+          <img src={sizedImageUrl(member.imageUrl, IMAGE_WIDTH.card)} alt={member.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }} draggable={false} />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.4rem', color: 'rgba(255,255,255,0.25)' }}>
             👤
@@ -432,7 +433,7 @@ function MemberFormModal({
   const [includeCoParent, setIncludeCoParent] = useState<boolean>(mode.kind === 'child' && !!mode.coParent);
   const [randomized, setRandomized] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(editing?.imageUrl || null);
+  const [imagePreview, setImagePreview] = useState<string | null>(sizedImageUrl(editing?.imageUrl, IMAGE_WIDTH.small) || null);
   const [submitting, setSubmitting] = useState(false);
 
   const title = mode.kind === 'spouse' ? `💍 Marry into ${mode.of.name}'s family`
