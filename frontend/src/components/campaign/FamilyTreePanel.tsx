@@ -543,7 +543,7 @@ function MemberFormModal({
                     : 'Enter a base name above — children are numbered automatically (e.g. Klik 1, Klik 2, …).'}
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem', marginTop: '0.5rem' }}>
-                  Race, age, stats and skills apply to every child{canRandomize ? ' — with “Inherit from parents” each child gets their own roll' : ''}. The portrait is used for the first child only.
+                  Race, age, portrait, stats and skills apply to every child{canRandomize ? ' — except with “Inherit from parents”, where each child gets their own stat roll' : ''}.
                 </div>
               </div>
             )}
@@ -885,7 +885,7 @@ export default function FamilyTreePanel({ campaignId, players, characters, curre
       formData.append('abilities', JSON.stringify(rolled.abilities));
       formData.append('skills', JSON.stringify(rolled.skills));
       if (coParent && fields.includeCoParent) formData.append('secondParentMemberId', String(coParent.id));
-      if (i === 0 && fields.imageFile) formData.append('image', fields.imageFile);
+      if (fields.imageFile) formData.append('image', fields.imageFile);
       setTree(await familyTreeAPI.addChild(of.id, formData));
     }
   };
