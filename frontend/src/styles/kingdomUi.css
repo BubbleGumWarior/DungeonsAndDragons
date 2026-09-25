@@ -1,0 +1,232 @@
+/* -- Kingdom tab shared controls (.kt-ui) ---------------------------------
+   Buttons, chips, steppers, segmented controls, progress bars and empty
+   states shared by the Militia and Construction panels (and the Build modal,
+   which renders in a portal outside .kingdom-tab, hence the token fallbacks).
+   Colour comes from --kt-tone-rgb (set by .kt-panel) or the app accent. */
+
+.kt-ui {
+  --kt-tone-rgb: var(--theme-accent-rgb);
+  --kt-radius-lg: 1.15rem;
+  --kt-radius-md: 0.85rem;
+  --kt-radius-pill: 999px;
+}
+.kt-panel.kt-ui { --kt-tone-rgb: var(--theme-accent-rgb); }
+.kt-panel.kt-ui[data-tone='blue'] { --kt-tone-rgb: 96, 165, 250; }
+.kt-panel.kt-ui[data-tone='purple'] { --kt-tone-rgb: 167, 139, 250; }
+.kt-panel.kt-ui[data-tone='green'] { --kt-tone-rgb: 16, 185, 129; }
+
+/* ── Militia & Unit Training panel (.kt-ui) ──────────────────────────────────
+   Every unit starts as Militia and is trained up a line, so the panel reads as
+   one flow: recruit -> queue -> train up. Controls are steppers and chips
+   rather than bare number fields; guards move by click. Radii follow the
+   Kingdom tab scale (panel lg, blocks md, controls pill) and all colour comes
+   from the tab tokens (--kt-tone-rgb / --theme-accent-rgb), so it follows the
+   active app theme. Depends on kingdomTab.css for .kt-panel and the radius
+   tokens. */
+
+.kt-ui {
+  --ui-line: rgba(var(--kt-tone-rgb), 0.16);
+  --ui-line-strong: rgba(var(--kt-tone-rgb), 0.34);
+  --ui-fill: rgba(255, 255, 255, 0.035);
+  --ui-good-rgb: 74, 222, 128;
+  --ui-bad-rgb: 248, 113, 113;
+  font-variant-numeric: tabular-nums;
+}
+.kt-ui :focus-visible {
+  outline: 2px solid rgba(var(--kt-tone-rgb), 0.95);
+  outline-offset: 2px;
+}
+
+.kt-ui-icon { flex-shrink: 0; }
+.kt-ui-good { color: rgb(var(--ui-good-rgb)); }
+.kt-ui-bad { color: rgb(var(--ui-bad-rgb)); }
+/* ── Buttons ── */
+.kt-ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.95rem;
+  border-radius: var(--kt-radius-pill);
+  border: 1px solid rgba(var(--kt-tone-rgb), 0.5);
+  background: rgba(var(--kt-tone-rgb), 0.16);
+  color: var(--text-gold);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.kt-ui-btn[data-variant='primary'] {
+  background: rgba(var(--kt-tone-rgb), 0.92);
+  border-color: rgb(var(--kt-tone-rgb));
+  color: #16120a;
+}
+.kt-ui-btn[data-variant='success'] {
+  border-color: rgba(var(--ui-good-rgb), 0.5);
+  background: rgba(var(--ui-good-rgb), 0.14);
+  color: rgb(var(--ui-good-rgb));
+}
+.kt-ui-btn[data-variant='danger'] {
+  border-color: rgba(var(--ui-bad-rgb), 0.5);
+  background: rgba(var(--ui-bad-rgb), 0.14);
+  color: rgb(var(--ui-bad-rgb));
+}
+.kt-ui-btn[data-variant='info'] {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+.kt-ui-btn[data-variant='ghost'] {
+  background: transparent;
+  border-color: var(--ui-line-strong);
+  color: var(--text-secondary);
+}
+.kt-ui-btn:disabled,
+.kt-ui-chip:disabled,
+.kt-ui-stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* ── Chips (quick amounts, "All") ── */
+.kt-ui-chip {
+  min-height: 2rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--kt-radius-pill);
+  border: 1px solid var(--ui-line-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.kt-ui-chip[aria-pressed='true'] {
+  background: rgba(var(--kt-tone-rgb), 0.22);
+  border-color: rgba(var(--kt-tone-rgb), 0.7);
+  color: var(--text-gold);
+}
+/* ── Stepper: - [n] + ── */
+.kt-ui-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--kt-radius-pill);
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.kt-ui-stepper-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-gold);
+  cursor: pointer;
+}
+.kt-ui-stepper-btn:not(:disabled):hover { background: rgba(var(--kt-tone-rgb), 0.16); }
+.kt-ui-stepper[data-size='sm'] .kt-ui-stepper-btn { width: 2.25rem; height: 2.25rem; }
+.kt-ui-stepper-input,
+.kt-ui-stepper-readout {
+  width: 3.2rem;
+  height: 2.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: center;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.kt-ui-stepper[data-size='sm'] .kt-ui-stepper-input,
+.kt-ui-stepper[data-size='sm'] .kt-ui-stepper-readout {
+  width: 2.6rem;
+  height: 2.25rem;
+  font-size: 0.92rem;
+}
+.kt-ui-stepper-readout { display: inline-flex; align-items: center; justify-content: center; }
+.kt-ui-stepper-input::-webkit-outer-spin-button,
+.kt-ui-stepper-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.kt-ui-stepper-input:focus-visible { outline-offset: -3px; }
+.kt-ui-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--kt-radius-pill);
+  background: rgba(var(--kt-tone-rgb), 0.16);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.kt-ui-badge[data-tone='ready'] {
+  background: rgba(var(--ui-good-rgb), 0.18);
+  color: rgb(var(--ui-good-rgb));
+}
+.kt-ui-h {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--font-fantasy);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-gold);
+}
+.kt-ui-count {
+  padding: 0.05rem 0.5rem;
+  border-radius: var(--kt-radius-pill);
+  background: rgba(var(--kt-tone-rgb), 0.16);
+  font-family: var(--font-primary);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+.kt-ui-note { margin: 0; font-size: 0.8rem; color: var(--text-muted); }
+.kt-ui-hint { flex-basis: 100%; margin: 0; font-size: 0.78rem; color: rgb(var(--ui-bad-rgb)); }
+/* ── Empty ── */
+.kt-ui-empty {
+  padding: 1.1rem 1rem;
+  border: 1px dashed var(--ui-line-strong);
+  border-radius: var(--kt-radius-md);
+  text-align: center;
+}
+.kt-ui-empty-title { font-size: 0.88rem; font-weight: 700; color: var(--text-secondary); }
+.kt-ui-empty-sub { margin-top: 0.2rem; font-size: 0.8rem; color: var(--text-muted); }
+.kt-ui-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+.kt-ui-progress-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  background: rgb(var(--kt-tone-rgb));
+  transform-origin: left center;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.kt-ui-progress[data-level='ok'] .kt-ui-progress-fill { background: rgb(var(--ui-good-rgb)); }
+.kt-ui-progress[data-level='high'] .kt-ui-progress-fill { background: #fbbf24; }
+.kt-ui-progress[data-level='full'] .kt-ui-progress-fill { background: rgb(var(--ui-bad-rgb)); }
+.kt-ui-seg { display: inline-flex; border: 1px solid var(--ui-line-strong); border-radius: var(--kt-radius-pill); overflow: hidden; }
+.kt-ui-seg-btn {
+  min-width: 2.6rem;
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.kt-ui-seg-btn[aria-pressed='true'] { background: rgba(var(--kt-tone-rgb), 0.24); color: var(--text-gold); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kt-ui-progress-fill { transition: none; }
+}

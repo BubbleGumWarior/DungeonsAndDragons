@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { KingdomFief } from '../../services/api';
 import '../../styles/militiaPanel.css';
+import { clampInt, EmptyNote, Icon, Stepper, toCount } from './kingdomUi';
 
 type TabKey = 'train' | 'guards' | 'dm';
 
@@ -20,106 +22,9 @@ interface MilitiaTrainingPanelProps {
   onDmAdjust: (deltas: Record<string, number>) => Promise<boolean>;
 }
 
-const toCount = (value: unknown): number => Math.max(0, Math.floor(Number(value) || 0));
-
-const clampInt = (value: string | number, min: number, max: number): number => {
-  const n = Math.floor(Number(value));
-  if (!Number.isFinite(n)) return min;
-  return Math.min(Math.max(n, min), Math.max(min, max));
-};
-
 // Mirrors the server: training time is base days reduced by the legendary speed bonus, rounded up, never below 1.
 const effectiveDays = (baseDays: number, speedPct: number): number =>
   Math.max(1, Math.ceil(baseDays * (1 - speedPct / 100)));
-
-/* ── Icons (drawn, one stroke weight) ─────────────────────────────────────── */
-
-const ICON_PATHS: Record<string, string> = {
-  book: 'M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15ZM4 20.5A2.5 2.5 0 0 0 6.5 23H20M9 7.5h6',
-  lock: 'M6 11h12v9H6v-9ZM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
-  arrow: 'M4 12h15m-5-5 5 5-5 5',
-  check: 'm5 12.5 4.5 4.5L19 7.5',
-  minus: 'M6 12h12',
-  plus: 'M12 6v12M6 12h12',
-  shield: 'M12 3 5 6v5.5c0 4.4 2.9 7.7 7 9.5 4.1-1.8 7-5.1 7-9.5V6l-7-3Z',
-};
-
-const Icon: React.FC<{ name: keyof typeof ICON_PATHS; size?: number }> = ({ name, size = 14 }) => (
-  <svg
-    className="kt-mt-icon"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    focusable="false"
-  >
-    <path d={ICON_PATHS[name]} />
-  </svg>
-);
-
-/* ── Quantity stepper: −  [n]  +  ─────────────────────────────────────────── */
-
-interface StepperProps {
-  value: string;
-  onChange: (next: string) => void;
-  min?: number;
-  max?: number;
-  disabled?: boolean;
-  label: string;
-  size?: 'md' | 'sm';
-}
-
-const Stepper: React.FC<StepperProps> = ({ value, onChange, min = 0, max = 9999, disabled, label, size = 'md' }) => {
-  const current = Number.isFinite(Number(value)) && value !== '' ? Math.floor(Number(value)) : min;
-  const step = (delta: number) => onChange(String(clampInt(current + delta, min, max)));
-  return (
-    <div className="kt-mt-stepper" data-size={size} data-disabled={disabled ? 'true' : undefined}>
-      <button
-        type="button"
-        className="kt-mt-stepper-btn"
-        onClick={() => step(-1)}
-        disabled={disabled || current <= min}
-        aria-label={`Decrease ${label}`}
-      >
-        <Icon name="minus" size={13} />
-      </button>
-      <input
-        type="number"
-        inputMode="numeric"
-        className="kt-mt-stepper-input"
-        min={min}
-        max={max}
-        value={value}
-        disabled={disabled}
-        aria-label={label}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={() => onChange(String(clampInt(value === '' ? min : value, min, max)))}
-        onFocus={(e) => e.target.select()}
-      />
-      <button
-        type="button"
-        className="kt-mt-stepper-btn"
-        onClick={() => step(1)}
-        disabled={disabled || current >= max}
-        aria-label={`Increase ${label}`}
-      >
-        <Icon name="plus" size={13} />
-      </button>
-    </div>
-  );
-};
-
-const EmptyNote: React.FC<{ title: string; children?: React.ReactNode }> = ({ title, children }) => (
-  <div className="kt-mt-empty">
-    <div className="kt-mt-empty-title">{title}</div>
-    {children ? <div className="kt-mt-empty-sub">{children}</div> : null}
-  </div>
-);
 
 /* ── Panel ────────────────────────────────────────────────────────────────── */
 
@@ -143,6 +48,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   const [guardStep, setGuardStep] = useState(1);
   const [dmEdit, setDmEdit] = useState<{ unit: string; value: string } | null>(null);
   const [dmPickerOpen, setDmPickerOpen] = useState(false);
+  const [queueRef] = useAutoAnimate<HTMLUListElement>({ duration: 180 });
 
   const progression = useMemo(() => fief.unit_progression || [], [fief.unit_progression]);
   const trainable = useMemo(() => fief.trainable_unit_types || [], [fief.trainable_unit_types]);
@@ -259,7 +165,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                   <span className="kt-mt-recruit-meta">
                     From unassigned adults · {recruitDays} day{recruitDays === 1 ? '' : 's'}
                     {speedPct !== 0 && (
-                      <span className={speedPct > 0 ? 'kt-mt-good' : 'kt-mt-bad'}>
+                      <span className={speedPct > 0 ? 'kt-ui-good' : 'kt-ui-bad'}>
                         {' · '}{speedPct > 0 ? `${speedPct.toFixed(1)}% faster` : `${Math.abs(speedPct).toFixed(1)}% slower`}
                       </span>
                     )}
@@ -280,13 +186,13 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                 />
                 <div className="kt-mt-quick" role="group" aria-label="Quick amounts">
                   {quickAmounts.map((n) => (
-                    <button key={n} type="button" className="kt-mt-chip" onClick={() => setTrainAmount(String(n))} aria-pressed={trainAmountNum === n}>
+                    <button key={n} type="button" className="kt-ui-chip" onClick={() => setTrainAmount(String(n))} aria-pressed={trainAmountNum === n}>
                       {n}
                     </button>
                   ))}
                   <button
                     type="button"
-                    className="kt-mt-chip"
+                    className="kt-ui-chip"
                     onClick={() => setTrainAmount(String(unassignedAdults))}
                     disabled={unassignedAdults <= 0}
                     aria-pressed={unassignedAdults > 0 && trainAmountNum === unassignedAdults}
@@ -295,12 +201,12 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                   </button>
                 </div>
               </div>
-              <button type="button" className="kt-mt-btn" data-variant="primary" onClick={submitTrain} disabled={trainDisabled}>
+              <button type="button" className="kt-ui-btn" data-variant="primary" onClick={submitTrain} disabled={trainDisabled}>
                 {busy === 'train-soldiers'
                   ? 'Queueing…'
                   : trainAmountNum > 0 ? `Recruit ${trainAmountNum}` : 'Recruit'}
               </button>
-              {trainHint && <p className="kt-mt-hint" role="status">{trainHint}</p>}
+              {trainHint && <p className="kt-ui-hint" role="status">{trainHint}</p>}
             </div>
           </>
         )}
@@ -308,13 +214,13 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
 
       <section className="kt-mt-section" aria-label="Training queue">
         <div className="kt-mt-section-head">
-          <h4 className="kt-mt-h">
+          <h4 className="kt-ui-h">
             In training
-            {trainingTotal > 0 && <span className="kt-mt-count">{trainingTotal}</span>}
+            {trainingTotal > 0 && <span className="kt-ui-count">{trainingTotal}</span>}
           </h4>
           <button
             type="button"
-            className="kt-mt-btn"
+            className="kt-ui-btn"
             data-variant="success"
             onClick={onCollect}
             disabled={busy === 'collect-units' || readyCount <= 0}
@@ -327,7 +233,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
         {sortedQueue.length === 0 ? (
           <EmptyNote title="No units in training">Queue recruits above and they will appear here.</EmptyNote>
         ) : (
-          <ul className="kt-mt-queue">
+          <ul className="kt-mt-queue" ref={queueRef}>
             {sortedQueue.map((row) => {
               const isReady = String(row.status || '').toLowerCase() === 'ready';
               const count = Math.max(1, toCount(row.count));
@@ -342,8 +248,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                     {row.source_unit_type ? <span className="kt-mt-queue-from">from {row.source_unit_type}</span> : null}
                   </div>
                   <div className="kt-mt-queue-when">{isReady ? 'Ready to collect' : `${remaining} day${remaining === 1 ? '' : 's'} left`}</div>
-                  <div className="kt-mt-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-label={`${row.unit_type} training progress`}>
-                    <div className="kt-mt-progress-fill" style={{ transform: `scaleX(${(pct / 100).toFixed(3)})` }} />
+                  <div className="kt-ui-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-label={`${row.unit_type} training progress`}>
+                    <div className="kt-ui-progress-fill" style={{ transform: `scaleX(${(pct / 100).toFixed(3)})` }} />
                   </div>
                 </li>
               );
@@ -400,7 +306,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
           <span className="kt-mt-tier-held" data-empty={tier.held === 0 ? 'true' : undefined}>{tier.held}</span>
         </div>
         {!tier.unlocked ? (
-          <span className="kt-mt-tier-note kt-mt-bad">
+          <span className="kt-mt-tier-note kt-ui-bad">
             <Icon name="lock" size={12} />
             {tier.missing.length > 0 ? `Requires ${tier.missing.join(' + ')}` : 'Locked'}
           </span>
@@ -420,14 +326,14 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             />
             <button
               type="button"
-              className="kt-mt-chip"
+              className="kt-ui-chip"
               onClick={() => setUpgradeAmounts((prev) => ({ ...prev, [amountKey]: String(tier.available) }))}
               disabled={isBusy}
               aria-label={`Train all ${tier.available} ${tier.source} into ${tier.unit}`}
             >
               All
             </button>
-            <button type="button" className="kt-mt-btn" data-variant="primary" onClick={() => onUpgrade(tier.source, amount, tier.unit)} disabled={isBusy}>
+            <button type="button" className="kt-ui-btn" data-variant="primary" onClick={() => onUpgrade(tier.source, amount, tier.unit)} disabled={isBusy}>
               {isBusy ? 'Queueing…' : `Train ${amount}`}
             </button>
           </div>
@@ -439,7 +345,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   const renderLadders = () => (
     <section className="kt-mt-section" aria-label="Train up">
       <div className="kt-mt-section-head">
-        <h4 className="kt-mt-h">Train up</h4>
+        <h4 className="kt-ui-h">Train up</h4>
         <span className="kt-mt-pool">
           <b>{militiaHeld}</b> Militia in reserve
         </span>
@@ -490,9 +396,9 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
       <div className="kt-mt-stack">
         <div className="kt-mt-guard-bar">
           <span className="kt-mt-guard-bar-label" id="kt-mt-step-label">Troops moved per click</span>
-          <div className="kt-mt-seg" role="group" aria-labelledby="kt-mt-step-label">
+          <div className="kt-ui-seg" role="group" aria-labelledby="kt-mt-step-label">
             {[1, 5, 10].map((n) => (
-              <button key={n} type="button" className="kt-mt-seg-btn" aria-pressed={guardStep === n} onClick={() => setGuardStep(n)}>
+              <button key={n} type="button" className="kt-ui-seg-btn" aria-pressed={guardStep === n} onClick={() => setGuardStep(n)}>
                 {n}
               </button>
             ))}
@@ -514,14 +420,14 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             return (
               <section key={g.building_type} className="kt-mt-post" aria-label={g.building_name}>
                 <div className="kt-mt-post-head">
-                  <h4 className="kt-mt-h">{g.building_name}</h4>
+                  <h4 className="kt-ui-h">{g.building_name}</h4>
                   <span className="kt-mt-post-cap" data-level={level}>{assigned} / {capacity}</span>
                 </div>
-                <div className="kt-mt-progress" data-level={level} role="progressbar" aria-valuemin={0} aria-valuemax={capacity} aria-valuenow={assigned} aria-label={`${g.building_name} guard capacity`}>
-                  <div className="kt-mt-progress-fill" style={{ transform: `scaleX(${pct.toFixed(3)})` }} />
+                <div className="kt-ui-progress" data-level={level} role="progressbar" aria-valuemin={0} aria-valuemax={capacity} aria-valuenow={assigned} aria-label={`${g.building_name} guard capacity`}>
+                  <div className="kt-ui-progress-fill" style={{ transform: `scaleX(${pct.toFixed(3)})` }} />
                 </div>
                 {units.length === 0 ? (
-                  <p className="kt-mt-note">No troops in reserve or posted here.</p>
+                  <p className="kt-ui-note">No troops in reserve or posted here.</p>
                 ) : (
                   <ul className="kt-mt-guards">
                     <li className="kt-mt-guards-cols" aria-hidden="true">
@@ -536,20 +442,20 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                         <li key={unit} className="kt-mt-guard">
                           <span className="kt-mt-guard-name">{unit}</span>
                           <span className="kt-mt-guard-free">{free}</span>
-                          <div className="kt-mt-stepper kt-mt-stepper-static" data-size="sm">
+                          <div className="kt-ui-stepper kt-mt-stepper-static" data-size="sm">
                             <button
                               type="button"
-                              className="kt-mt-stepper-btn"
+                              className="kt-ui-stepper-btn"
                               onClick={() => onAdjustGuards(g.building_type, unit, -removeBy)}
                               disabled={isBusy || removeBy <= 0}
                               aria-label={`Recall ${removeBy || guardStep} ${unit} from ${g.building_name}`}
                             >
                               <Icon name="minus" size={13} />
                             </button>
-                            <span className="kt-mt-stepper-readout" aria-live="polite">{posted}</span>
+                            <span className="kt-ui-stepper-readout" aria-live="polite">{posted}</span>
                             <button
                               type="button"
-                              className="kt-mt-stepper-btn"
+                              className="kt-ui-stepper-btn"
                               onClick={() => onAdjustGuards(g.building_type, unit, addBy)}
                               disabled={isBusy || addBy <= 0}
                               aria-label={remaining <= 0 ? `${g.building_name} is at capacity` : `Post ${addBy || guardStep} ${unit} to ${g.building_name}`}
@@ -625,7 +531,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
           <span className="kt-mt-dm-unit">{row.unit}</span>
           <span className="kt-mt-dm-split">{row.reserve} in reserve · {row.posted} posted</span>
           <span className="kt-mt-dm-total" aria-label={`${row.total} total`}>{row.total}</span>
-          <button type="button" className="kt-mt-btn" data-variant="ghost" onClick={() => startDmEdit(row.unit, row.total)} disabled={busy === 'dm-adjust-units'}>
+          <button type="button" className="kt-ui-btn" data-variant="ghost" onClick={() => startDmEdit(row.unit, row.total)} disabled={busy === 'dm-adjust-units'}>
             Edit
           </button>
         </li>
@@ -655,14 +561,14 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             label={`Total ${row.unit}`}
             disabled={busy === 'dm-adjust-units'}
           />
-          <button type="button" className="kt-mt-btn" data-variant="primary" onClick={() => saveDmEdit(row.total)} disabled={busy === 'dm-adjust-units' || delta === 0}>
+          <button type="button" className="kt-ui-btn" data-variant="primary" onClick={() => saveDmEdit(row.total)} disabled={busy === 'dm-adjust-units' || delta === 0}>
             {busy === 'dm-adjust-units' ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" className="kt-mt-btn" data-variant="ghost" onClick={() => setDmEdit(null)} disabled={busy === 'dm-adjust-units'}>
+          <button type="button" className="kt-ui-btn" data-variant="ghost" onClick={() => setDmEdit(null)} disabled={busy === 'dm-adjust-units'}>
             Cancel
           </button>
         </div>
-        <p className={`kt-mt-dm-preview${fromPosts > 0 ? ' kt-mt-bad' : ''}`} role="status">{preview}</p>
+        <p className={`kt-mt-dm-preview${fromPosts > 0 ? ' kt-ui-bad' : ''}`} role="status">{preview}</p>
       </li>
     );
   };
@@ -670,8 +576,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   const renderDm = () => (
     <div className="kt-mt-stack">
       <div className="kt-mt-section-head">
-        <p className="kt-mt-note">Totals include troops posted as guards. Lowering a total takes from reserve first, then unassigns from posts.</p>
-        <button type="button" className="kt-mt-btn" data-variant="ghost" onClick={() => setDmPickerOpen((o) => !o)} aria-expanded={dmPickerOpen}>
+        <p className="kt-ui-note">Totals include troops posted as guards. Lowering a total takes from reserve first, then unassigns from posts.</p>
+        <button type="button" className="kt-ui-btn" data-variant="ghost" onClick={() => setDmPickerOpen((o) => !o)} aria-expanded={dmPickerOpen}>
           <Icon name="plus" size={14} />
           Add unit type
         </button>
@@ -687,7 +593,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                   <button
                     key={t.unit_type}
                     type="button"
-                    className="kt-mt-chip"
+                    className="kt-ui-chip"
                     onClick={() => startDmEdit(t.unit_type, toCount(reserves[t.unit_type]) + (postedByUnit.get(t.unit_type) || 0))}
                   >
                     {t.unit_type}
@@ -718,7 +624,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   );
 
   return (
-    <div className="kt-panel kt-mt" data-tone="gold">
+    <div className="kt-panel kt-mt kt-ui" data-tone="gold">
       <div className="kt-mt-top">
         <div className="kt-panel-header" style={{ marginBottom: 0 }}>
           <div className="kt-panel-icon" aria-hidden="true">⚔️</div>
@@ -727,7 +633,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             <div className="kt-panel-sub">Recruit, upgrade and post your troops</div>
           </div>
         </div>
-        <button type="button" className="kt-mt-btn" data-variant="ghost" onClick={onOpenProgression}>
+        <button type="button" className="kt-ui-btn" data-variant="ghost" onClick={onOpenProgression}>
           <Icon name="book" size={14} />
           Troop progression
         </button>
@@ -736,7 +642,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
       <dl className="kt-mt-stats">
         <div className="kt-mt-stat"><dt>Unassigned adults</dt><dd>{unassignedAdults}</dd></div>
         <div className="kt-mt-stat"><dt>In reserve</dt><dd>{reserveTotal}</dd></div>
-        <div className="kt-mt-stat"><dt>In training</dt><dd>{trainingTotal}{readyCount > 0 && <span className="kt-mt-good"> · {readyCount} ready</span>}</dd></div>
+        <div className="kt-mt-stat"><dt>In training</dt><dd>{trainingTotal}{readyCount > 0 && <span className="kt-ui-good"> · {readyCount} ready</span>}</dd></div>
         <div className="kt-mt-stat"><dt>Posted as guards</dt><dd>{guardsPosted}</dd></div>
       </dl>
 
@@ -754,7 +660,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            {t.badge && <span className="kt-mt-badge" data-tone={t.tone} title={t.badgeTitle} aria-label={t.badgeTitle}>{t.badge}</span>}
+            {t.badge && <span className="kt-ui-badge" data-tone={t.tone} title={t.badgeTitle} aria-label={t.badgeTitle}>{t.badge}</span>}
           </button>
         ))}
       </div>

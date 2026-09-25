@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import '../../styles/kingdomTab.css';
 import MilitiaTrainingPanel from './MilitiaTrainingPanel';
+import ConstructionPanel from './ConstructionPanel';
+import BuildStructuresModal from './BuildStructuresModal';
+import { getBuildingCategory, getBuildingDisplayName, RESEARCH_BUILDING_CHAIN } from './kingdomBuildings';
 import {
   campaignAPI,
   kingdomAPI,
@@ -423,11 +426,6 @@ const LOGISTICS_BUILDING_TYPES = new Set([
   'trade_route_office',
 ]);
 
-const RESEARCH_BUILDING_CHAIN = ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'];
-
-const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'animals', 'civic'] as const;
-type BuildTabId = typeof BUILD_TABS[number];
-
 const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'tavern', 'research', 'faith'];
 const SLAVE_RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables'];
 
@@ -440,80 +438,6 @@ const sortByCanonicalOrder = (keys: string[], order: string[]) =>
     if (ib === -1) return -1;
     return ia - ib;
   });
-
-const BUILD_TAB_LABELS: Record<BuildTabId, string> = {
-  all: 'All',
-  food: 'Food',
-  wood: 'Wood',
-  stone: 'Stone & Mining',
-  research: 'Research',
-  faith: 'Faith',
-  storage: 'Storage & Housing',
-  military: 'Military',
-  defense: 'Defense',
-  trade: 'Trade & Logistics',
-  animals: 'Animals',
-  civic: 'Civic',
-};
-
-const BUILD_TAB_COLORS: Record<BuildTabId, { text: string; border: string; background: string }> = {
-  all:      { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.4)',   background: 'rgba(26,26,26,0.35)' },
-  food:     { text: '#86efac', border: 'rgba(34,197,94,0.45)',    background: 'rgba(20,83,45,0.3)' },
-  wood:     { text: '#d6bc9a', border: 'rgba(180,136,90,0.45)',   background: 'rgba(92,58,34,0.35)' },
-  stone:    { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.45)',  background: 'rgba(51,65,85,0.35)' },
-  research: { text: '#93c5fd', border: 'rgba(59,130,246,0.45)',   background: 'rgba(30,58,138,0.28)' },
-  faith:    { text: '#c4b5fd', border: 'rgba(139,92,246,0.45)',   background: 'rgba(76,29,149,0.25)' },
-  storage:  { text: '#fde68a', border: 'rgba(234,179,8,0.45)',    background: 'rgba(113,63,18,0.28)' },
-  military: { text: '#fca5a5', border: 'rgba(239,68,68,0.45)',    background: 'rgba(127,29,29,0.28)' },
-  defense:  { text: 'var(--text-muted)', border: 'rgba(100,116,139,0.45)',  background: 'rgba(26,26,26,0.35)' },
-  trade:    { text: '#6ee7b7', border: 'rgba(16,185,129,0.45)',   background: 'rgba(6,78,59,0.28)' },
-  animals:  { text: '#fbbf24', border: 'rgba(217,119,6,0.45)',    background: 'rgba(120,53,15,0.28)' },
-  civic:    { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
-};
-
-const getBuildingCategory = (building: any): BuildTabId => {
-  const key = String(building?.key || building?.building_type || '').trim();
-  // Food
-  if (['farm', 'irrigated_farm', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'].includes(key)) return 'food';
-  // Wood
-  if (['lumber_mill', 'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works'].includes(key)) return 'wood';
-  // Stone & Mining (includes smithy/forge chain)
-  if (['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry', 'mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine', 'smithy', 'forge', 'master_smithy', 'royal_forge', 'grand_forge', 'war_smithy', 'imperial_forge'].includes(key)) return 'stone';
-  // Research
-  if (RESEARCH_BUILDING_CHAIN.includes(key)) return 'research';
-  // Faith
-  if (['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'].includes(key)) return 'faith';
-  // Storage & Housing
-  if (['housing', 'wood_lodge', 'reinforced_lodge', 'stone_lodge', 'longhouse_block', 'manor_house', 'townhouse_row', 'urban_residence', 'noble_residence', 'royal_estate', 'storage', 'storage_shack', 'advanced_storage_tent', 'storehouse', 'reinforced_storehouse', 'central_storehouse', 'storage_advanced', 'vaulted_warehouse', 'granary', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'bank', 'trade_bank', 'merchant_bank', 'royal_treasury', 'builders_hut', 'masons_workshop', 'engineers_lodge', 'construction_guildhall', 'master_builder_hall', 'grand_architect_hall'].includes(key)) return 'storage';
-  // Military
-  if (['barracks',
-       'militia_camp', 'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
-       'stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables',
-       'archer_range', 'bowyer_hall', 'master_fletcher_range', 'elite_fletching_hall', 'royal_marksman_range',
-       'swordsmith_hall', 'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge',
-       'spear_drill_yard', 'pike_yard', 'formation_citadel', 'shieldwall_hall', 'phalanx_command',
-       'armory', 'expanded_armory', 'royal_armory', 'grand_armory', 'war_arsenal',
-       'drill_yard', 'training_grounds', 'elite_drill_grounds', 'veteran_training_grounds', 'war_college',
-       'command_post', 'war_room', 'strategic_command', 'advanced_command_center', 'high_command_citadel',
-       'siege_engine_workshop', 'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall',
-  ].includes(key)) return 'military';
-  // Defense
-  if (['watchtower', 'signal_tower', 'sentinel_tower', 'border_tower', 'high_watch', 'beacon_tower', 'watch_bastion',
-       'palisades', 'fortified_palisades', 'wooden_ramparts', 'stone_walls', 'reinforced_walls', 'fortified_walls', 'bastion_walls', 'citadel_walls', 'fortress_walls',
-       'prison', 'dungeon', 'black_cells', 'deep_prison', 'high_security_prison', 'iron_keep', 'shadow_vault',
-  ].includes(key)) return 'defense';
-  // Trade & Logistics
-  if (['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum',
-       'logistics_depot', 'supply_depot', 'roadworks', 'quartermaster_depot', 'supply_network', 'imperial_logistics_hub', 'trade_route_office',
-  ].includes(key)) return 'trade';
-  // Animals — Animal Management panel capacity/breeding buildings
-  if (['animal_stable', 'grand_stable', 'royal_stud_farm', 'imperial_stud_farm',
-       'animal_farm', 'grand_pasture', 'livestock_ranch', 'grand_stockyards',
-       'breeding_pen', 'nursery',
-  ].includes(key)) return 'animals';
-  // Civic (diplomacy, welfare)
-  return 'civic';
-};
 
 const RESEARCH_TABS = ['all', 'economy', 'military', 'civic'] as const;
 type ResearchTabId = typeof RESEARCH_TABS[number];
@@ -619,7 +543,6 @@ const KingdomTab: React.FC<Props> = ({
   // lets the Upgrade modal offer "how many of these N" instead of just one-or-all.
   const [selectedUpgradeBuildingIds, setSelectedUpgradeBuildingIds] = useState<number[]>([]);
   const [upgradeQuantity, setUpgradeQuantity] = useState(1);
-  const [buildTab, setBuildTab] = useState<BuildTabId>('all');
   const [researchTab, setResearchTab] = useState<ResearchTabId>('all');
   const [selectedGrantPlayerIds, setSelectedGrantPlayerIds] = useState<number[]>([]);
   const [grantLocationModifiers, setGrantLocationModifiers] = useState<Record<string, number>>({});
@@ -708,7 +631,6 @@ const KingdomTab: React.FC<Props> = ({
     food_consumption_reduction_pct: 0,
     unit_training_speed_reduction_pct: 0,
   });
-  const [buildCountByKey, setBuildCountByKey] = useState<Record<string, string>>({});
   const [showProgressionModal, setShowProgressionModal] = useState(false);
   const [legendaryAssignFief, setLegendaryAssignFief] = useState<Record<number, number>>({});
   const [prayerTargetFiefId, setPrayerTargetFiefId] = useState<number | null>(null);
@@ -1095,6 +1017,15 @@ const KingdomTab: React.FC<Props> = ({
     return map;
   }, [players]);
 
+  // Buildable catalogue names, used to give structures that were stored under their key a proper display name.
+  const buildingNameByType = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const b of fiefDetails?.availableBuildings || []) {
+      if (b?.key && b?.name) map.set(String(b.key), String(b.name));
+    }
+    return map;
+  }, [fiefDetails?.availableBuildings]);
+
   const buildOptions = useMemo(() => {
     const currentTier = Number(fiefDetails?.tier || 1);
     return (fiefDetails?.availableBuildings || [])
@@ -1104,11 +1035,6 @@ const KingdomTab: React.FC<Props> = ({
       __category: getBuildingCategory(b),
     }));
   }, [fiefDetails?.availableBuildings, fiefDetails?.tier]);
-
-  const filteredBuildOptions = useMemo(() => {
-    if (buildTab === 'all') return buildOptions;
-    return buildOptions.filter((b: any) => b.__category === buildTab);
-  }, [buildOptions, buildTab]);
 
   const grantRows = useMemo(() => {
     const rows: Array<{
@@ -2195,14 +2121,15 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const queueBuilding = async (buildingType: string, count: number = 1) => {
+  const queueBuilding = async (buildingType: string, count: number = 1, opts: { keepOpen?: boolean; label?: string } = {}) => {
     if (!fiefDetails) return;
     setBusy(`build-${buildingType}`);
     try {
       const result = await kingdomAPI.queueBuilding(Number(fiefDetails.id), buildingType, count);
       const queued = result.buildings?.length || 1;
-      if (queued > 1) pushToast(`Queued ${queued}× ${buildingType.replace(/_/g, ' ')}`, 'success');
-      setShowBuildModal(false);
+      const label = opts.label || buildingType.replace(/_/g, ' ');
+      if (opts.keepOpen || queued > 1) pushToast(`Queued ${queued > 1 ? `${queued}× ` : ''}${label}`, 'success');
+      if (!opts.keepOpen) setShowBuildModal(false);
       await fetchFief(Number(fiefDetails.id));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to queue building');
@@ -2715,7 +2642,7 @@ const KingdomTab: React.FC<Props> = ({
                 gap: '0.4rem',
               }}
             >
-              <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
+              <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.95rem' }}>{getBuildingDisplayName(b, buildingNameByType)}</div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '-0.2rem' }}>{b.building_type}</div>
               {b.description && (
                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: '1.45', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.4rem' }}>
@@ -4578,184 +4505,27 @@ const KingdomTab: React.FC<Props> = ({
                 );
               })()}
 
-              <div className="kt-panel" data-tone="gold">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.9rem', flexWrap: 'wrap' }}>
-                  <div className="kt-panel-header" style={{ marginBottom: 0 }}>
-                    <div className="kt-panel-icon">🏗️</div>
-                    <div className="kt-panel-titles">
-                      <div className="kt-panel-title">Construction</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => {
-                        setBuildTab('all');
-                        setShowBuildModal(true);
-                      }}
-                      style={{
-                        padding: '0.38rem 0.7rem',
-                        borderRadius: '0.45rem',
-                        border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
-                        background: 'rgba(120,53,15,0.35)',
-                        color: 'var(--text-gold)',
-                        cursor: 'pointer',
-                        fontWeight: 700,
-                      }}
-                    >
-                      Build
-                    </button>
-                    <button
-                      onClick={() => setShowBuildQueueModal(true)}
-                      style={{
-                        padding: '0.38rem 0.7rem',
-                        borderRadius: '0.45rem',
-                        border: '1px solid rgba(var(--theme-accent-rgb),0.45)',
-                        background: 'rgba(26,26,26,0.5)',
-                        color: 'var(--text-secondary)',
-                        cursor: 'pointer',
-                        fontWeight: 700,
-                      }}
-                    >
-                      📋 Build Queue{buildQueueOrder.length > 0 ? ` (${buildQueueOrder.length})` : ''}
-                    </button>
-                    {hasCompletedResearchLab && (
-                      <button
-                        onClick={() => {
-                          setResearchTab('all');
-                          setShowResearchModal(true);
-                        }}
-                        style={{
-                          padding: '0.38rem 0.7rem',
-                          borderRadius: '0.45rem',
-                          border: '1px solid rgba(59,130,246,0.45)',
-                          background: 'rgba(30,58,138,0.35)',
-                          color: '#93c5fd',
-                          cursor: 'pointer',
-                          fontWeight: 700,
-                        }}
-                      >
-                        📘 Research
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.76rem', marginBottom: '0.6rem' }}>Built and in-progress structures</div>
-                {BUILD_TABS.map((category) => {
-                  if (category === 'all') return null;
-                  const buildingsInCategory = (fiefDetails.buildings || []).filter((b: any) => getBuildingCategory(b) === category);
-                  if (buildingsInCategory.length === 0) return null;
-
-                  const categoryColors = BUILD_TAB_COLORS[category];
-                  return (
-                    <div key={category} style={{ marginBottom: '0.8rem' }}>
-                      <div style={{ color: categoryColors.text, fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        {BUILD_TAB_LABELS[category]}
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '0.6rem' }}>
-                        {(() => {
-                          // Group identical tiles (same type, tier/level and construction status) and show a count badge instead of one tile per building.
-                          const groupsByKey = new Map<string, { rep: any; ids: number[] }>();
-                          for (const b of buildingsInCategory) {
-                            const groupKey = [
-                              String(b.building_type),
-                              Number(b.level || 1),
-                              b.is_complete ? 'done' : `building:${Number(b.days_remaining || 0)}`,
-                            ].join('|');
-                            const existing = groupsByKey.get(groupKey);
-                            if (existing) {
-                              existing.ids.push(Number(b.id));
-                            } else {
-                              groupsByKey.set(groupKey, { rep: b, ids: [Number(b.id)] });
-                            }
-                          }
-                          const groups = Array.from(groupsByKey.values()).sort((a, b) => String(a.rep.name || '').localeCompare(String(b.rep.name || '')));
-
-                          return groups.map(({ rep: b, ids }) => {
-                            const upgrade = upgradeByBuildingId.get(Number(b.id));
-                            const count = ids.length;
-
-                            return (
-                              <div
-                                key={ids.join(',')}
-                                className={b.is_complete ? 'kt-card' : undefined}
-                                onMouseEnter={b.is_complete ? (e) => {
-                                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                  setHoveredBuilding({ building: b, x: rect.left, y: rect.bottom + 6 });
-                                } : undefined}
-                                onMouseLeave={b.is_complete ? () => setHoveredBuilding(null) : undefined}
-                                style={{
-                                  borderRadius: '0.55rem',
-                                  border: `1px solid ${categoryColors.border}`,
-                                  background: categoryColors.background,
-                                  opacity: b.is_complete ? 1 : 0.75,
-                                  padding: '0.5rem 0.6rem',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '0.16rem',
-                                  cursor: b.is_complete ? 'default' : undefined,
-                                  position: 'relative',
-                                }}
-                              >
-                                {count > 1 && (
-                                  <span style={{
-                                    position: 'absolute',
-                                    top: '-0.4rem',
-                                    right: '-0.4rem',
-                                    background: 'var(--text-gold)',
-                                    color: '#1c1206',
-                                    borderRadius: '999px',
-                                    minWidth: '1.3rem',
-                                    height: '1.3rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 800,
-                                    padding: '0 0.3rem',
-                                    boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-                                  }}>
-                                    ×{count}
-                                  </span>
-                                )}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 700 }}>{b.name}</span>
-                                  {upgrade && (
-                                    <button
-                                      onClick={() => {
-                                        setSelectedUpgradeBuildingId(Number(b.id));
-                                        setSelectedUpgradeBuildingIds(ids);
-                                        setUpgradeQuantity(1);
-                                        setShowUpgradeModal(true);
-                                      }}
-                                      title={count > 1 ? `Choose how many of these ${count} to upgrade` : undefined}
-                                      style={{
-                                        padding: '0.14rem 0.4rem',
-                                        borderRadius: '0.34rem',
-                                        border: upgrade.canUpgrade ? '1px solid rgba(34,197,94,0.6)' : '1px solid rgba(239,68,68,0.55)',
-                                        background: upgrade.canUpgrade ? 'rgba(20,83,45,0.38)' : 'rgba(127,29,29,0.34)',
-                                        color: upgrade.canUpgrade ? '#86efac' : '#fca5a5',
-                                        cursor: 'pointer',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 700,
-                                      }}
-                                    >
-                                      ↑ Upgrade
-                                    </button>
-                                  )}
-                                </div>
-                                <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', textTransform: 'uppercase' }}>{b.building_type}</span>
-                                <span style={{ fontSize: '0.8rem', color: b.is_complete ? '#86efac' : 'var(--text-gold)' }}>
-                                  {b.is_complete ? 'Completed' : `${Number(b.days_remaining || 0)} day(s) remaining`}
-                                </span>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <ConstructionPanel
+                buildings={fiefDetails.buildings || []}
+                nameByType={buildingNameByType}
+                buildQueueCount={buildQueueOrder.length}
+                hasResearchLab={hasCompletedResearchLab}
+                upgradeByBuildingId={upgradeByBuildingId}
+                onOpenBuild={() => setShowBuildModal(true)}
+                onOpenQueue={() => setShowBuildQueueModal(true)}
+                onOpenResearch={() => {
+                  setResearchTab('all');
+                  setShowResearchModal(true);
+                }}
+                onOpenUpgrade={(buildingId, ids) => {
+                  setSelectedUpgradeBuildingId(buildingId);
+                  setSelectedUpgradeBuildingIds(ids);
+                  setUpgradeQuantity(1);
+                  setShowUpgradeModal(true);
+                }}
+                onHoverBuilding={(building, rect) => setHoveredBuilding({ building, x: rect.left, y: rect.bottom + 6 })}
+                onLeaveBuilding={() => setHoveredBuilding(null)}
+              />
               {hasMilitiaBuilding && fiefDetails && (
                 <MilitiaTrainingPanel
                   fief={fiefDetails}
@@ -5875,156 +5645,16 @@ const KingdomTab: React.FC<Props> = ({
         document.body
       )}
 
-      {showBuildModal && ReactDOM.createPortal(
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.72)',
-            zIndex: 10010,
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'center',
-            padding: '2rem 1rem',
-            overflowY: 'auto',
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowBuildModal(false);
-          }}
-        >
-          <div
-            style={{
-              background: 'rgba(18, 18, 18, 0.96)',
-              border: '1px solid rgba(var(--theme-accent-rgb),0.3)',
-              borderRadius: '12px',
-              boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
-              width: '100%',
-              maxWidth: '920px',
-              maxHeight: '90vh',
-              overflow: 'hidden',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h3 className="modal-title">Build Structures (Tier {Number(fiefDetails?.tier || 1)})</h3>
-              <button className="modal-close" onClick={() => setShowBuildModal(false)} aria-label="Close">×</button>
-            </div>
-            <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem', maxHeight: 'calc(90vh - 90px)', overflowY: 'auto' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                Buildings are filtered by your current fief tier and prerequisite completion.
-              </div>
-              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                {BUILD_TABS.map((tab) => {
-                  const active = buildTab === tab;
-                  const style = BUILD_TAB_COLORS[tab];
-                  return (
-                    <button
-                      key={tab}
-                      onClick={() => setBuildTab(tab)}
-                      style={{
-                        padding: '0.33rem 0.62rem',
-                        borderRadius: '999px',
-                        border: `1px solid ${style.border}`,
-                        background: active ? style.background : 'rgba(15,15,15,0.28)',
-                        color: style.text,
-                        cursor: 'pointer',
-                        fontWeight: active ? 700 : 500,
-                      }}
-                    >
-                      {BUILD_TAB_LABELS[tab]}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {filteredBuildOptions.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>No buildings available in this category.</div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.6rem' }}>
-                  {filteredBuildOptions.map((b: any) => {
-                    const category = (b.__category || 'civic') as BuildTabId;
-                    const c = BUILD_TAB_COLORS[category] || BUILD_TAB_COLORS.civic;
-                    const locked = Boolean(b?.isLocked);
-                    const lockReason = String(b?.lockReason || '').trim();
-                    return (
-                      <div
-                        key={String(b.key)}
-                        style={{
-                          borderRadius: '0.6rem',
-                          border: `1px solid ${c.border}`,
-                          background: c.background,
-                          padding: '0.55rem 0.65rem',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.35rem',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{b.name}</span>
-                          <span style={{ color: c.text, fontSize: '0.75rem', textTransform: 'uppercase' }}>{BUILD_TAB_LABELS[category]}</span>
-                        </div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
-                          Tier {Number(b.tierRequired || 1)} • {Number(b.days || 0)} day(s)
-                        </div>
-                        {b.description && (
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: '1.4' }}>{b.description}</div>
-                        )}
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>
-                          Cost:{' '}
-                          {Object.entries((b.cost || {}) as Record<string, number>).length === 0 ? (
-                            <span style={{ color: 'var(--text-muted)' }}>None</span>
-                          ) : (
-                            Object.entries((b.cost || {}) as Record<string, number>).map(([k, v], idx, arr) => {
-                              const needed = Math.max(0, Number(v || 0));
-                              const available = getStoredAmountForCostResource(k);
-                              const enough = available >= needed;
-                              return (
-                                <span key={`${String(b.key)}-cost-${k}`} style={{ color: enough ? '#86efac' : '#fca5a5', fontWeight: 600 }}>
-                                  {k} {needed}
-                                  {idx < arr.length - 1 ? ', ' : ''}
-                                </span>
-                              );
-                            })
-                          )}
-                        </div>
-                        {locked && (
-                          <div style={{ color: '#fca5a5', fontSize: '0.74rem' }}>{lockReason || 'Locked'}</div>
-                        )}
-                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                          <input
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={buildCountByKey[String(b.key)] ?? '1'}
-                            onChange={(e) => setBuildCountByKey((prev) => ({ ...prev, [String(b.key)]: e.target.value }))}
-                            disabled={locked}
-                            title="How many to queue at once"
-                            style={{ width: '52px', padding: '0.3rem 0.35rem', borderRadius: '0.4rem', border: `1px solid ${c.border}`, background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)', fontSize: '0.78rem' }}
-                          />
-                          <button
-                            onClick={() => queueBuilding(String(b.key), Math.max(1, Math.min(100, Math.floor(Number(buildCountByKey[String(b.key)] || '1') || 1))))}
-                            disabled={locked || busy === `build-${String(b.key)}`}
-                            style={{
-                              padding: '0.34rem 0.62rem',
-                              borderRadius: '0.4rem',
-                              border: `1px solid ${c.border}`,
-                              background: (locked || busy === `build-${String(b.key)}`) ? 'rgba(71,85,105,0.35)' : 'rgba(8,8,8,0.55)',
-                              color: (locked || busy === `build-${String(b.key)}`) ? 'var(--text-muted)' : c.text,
-                              cursor: (locked || busy === `build-${String(b.key)}`) ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            {locked ? 'Locked' : busy === `build-${String(b.key)}` ? 'Queueing...' : 'Build'}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body
+      {showBuildModal && (
+        <BuildStructuresModal
+          tier={Number(fiefDetails?.tier || 1)}
+          options={buildOptions}
+          busy={busy}
+          getStoredAmount={getStoredAmountForCostResource}
+          getResourceLabel={getResourceLabel}
+          onQueue={(buildingType, count, label) => queueBuilding(buildingType, count, { keepOpen: true, label })}
+          onClose={() => setShowBuildModal(false)}
+        />
       )}
 
       {showBuildQueueModal && fiefDetails && ReactDOM.createPortal(
@@ -6145,7 +5775,7 @@ const KingdomTab: React.FC<Props> = ({
                           <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }} title="Drag to reorder">⠿</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              <span style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem' }}>{b.name}</span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem' }}>{getBuildingDisplayName(b, buildingNameByType)}</span>
                               {isUpgrade && (
                                 <span style={{ color: '#93c5fd', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>
                                   Upgrade
