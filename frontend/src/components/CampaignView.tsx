@@ -653,6 +653,7 @@ const CampaignView: React.FC = () => {
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [editingBaseHp, setEditingBaseHp] = useState<{ characterId: number; value: string } | null>(null);
   const toast = (msg: string, ms = 3000) => { setToastMessage(msg); setTimeout(() => setToastMessage(null), ms); };
 
   // Confirm modal (replaces all window.confirm dialogs)
@@ -2994,27 +2995,29 @@ const CampaignView: React.FC = () => {
   };
 
   // Armor Class Management (for dungeonmaster to adjust AC)
-  const handleUpdateBaseHp = async (characterId: number, increment: number) => {
+  const handleUpdateBaseHp = (characterId: number, increment: number) => handleSetBaseHp(characterId, undefined, increment);
+
+  const handleSetBaseHp = async (characterId: number, absoluteHp?: number, increment: number = 0) => {
     try {
       const currentCharacter = currentCampaign?.characters.find(c => c.id === characterId);
       if (!currentCharacter || !socket || !currentCampaign) return;
 
       const characterOverride = characterDataOverrides[characterId];
-      const currentHp = (characterOverride?.hit_points ?? currentCharacter.hit_points) as number;
-      const newHp = currentHp + increment;
+      const currentHp = (characterOverride?.hit_points_max ?? (currentCharacter as any).hit_points_max ?? currentCharacter.hit_points) as number;
+      const newHp = absoluteHp !== undefined ? absoluteHp : currentHp + increment;
 
-      if (newHp < 1 || newHp > 999) {
+      if (!Number.isInteger(newHp) || newHp < 1 || newHp > 999) {
         toast('Base HP must be between 1 and 999');
         return;
       }
 
-      await characterAPI.update(characterId, { hit_points: newHp });
+      await characterAPI.update(characterId, { hit_points_max: newHp });
 
       setCharacterDataOverrides(prev => ({
         ...prev,
         [characterId]: {
           ...prev[characterId],
-          hit_points: newHp
+          hit_points_max: newHp
         }
       }));
 
@@ -5196,7 +5199,6 @@ const CampaignView: React.FC = () => {
             ...prev,
             [data.characterId]: {
               ...prev[data.characterId],
-              hit_points: data.newBaseHp,
               hit_points_max: data.newBaseHp
             }
           }));
@@ -6734,6 +6736,10 @@ const CampaignView: React.FC = () => {
         skills: characterDataOverrides[selectedCharacter]?.skills || baseCharacterData.skills
       }
     : baseCharacterData;
+  // Base HP stat lives in hit_points_max; hit_points is current HP (sum of limbs) once combat/healing has happened
+  const selectedBaseHp: number = selectedCharacterData
+    ? ((selectedCharacterData as any).hit_points_max ?? selectedCharacterData.hit_points)
+    : 0;
 
   const campaignTabs = [
     { key: 'map', label: 'Map', icon: '🗺️' },
@@ -12692,7 +12698,7 @@ const CampaignView: React.FC = () => {
                         position: 'relative',
                         cursor: 'help'
                       }}
-                      title={`Limb Health System:\n\n• Head: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.25 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (25% base + CON bonus, max 100%)\n• Torso: ${Math.floor(selectedCharacterData.hit_points * Math.min(2.0, 1.0 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (100% base + CON bonus, max 200%)\n• Hands: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.15 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (15% base + CON bonus, max 100%)\n• Legs: ${Math.floor(selectedCharacterData.hit_points * Math.min(1.0, 0.4 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (40% base + CON bonus, max 100%)\n\nCON Modifier: ${Math.floor((selectedCharacterData.abilities.con - 10) / 2) >= 0 ? '+' : ''}${Math.floor((selectedCharacterData.abilities.con - 10) / 2)}\nEach +1 CON adds 10% more HP to all limbs\nTorso can reach up to 200% of base HP!`}
+                      title={`Limb Health System:\n\n• Head: ${Math.floor(selectedBaseHp * Math.min(1.0, 0.25 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (25% base + CON bonus, max 100%)\n• Torso: ${Math.floor(selectedBaseHp * Math.min(2.0, 1.0 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (100% base + CON bonus, max 200%)\n• Hands: ${Math.floor(selectedBaseHp * Math.min(1.0, 0.15 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (15% base + CON bonus, max 100%)\n• Legs: ${Math.floor(selectedBaseHp * Math.min(1.0, 0.4 + Math.max(0, Math.floor((selectedCharacterData.abilities.con - 10) / 2) * 0.1)))} HP (40% base + CON bonus, max 100%)\n\nCON Modifier: ${Math.floor((selectedCharacterData.abilities.con - 10) / 2) >= 0 ? '+' : ''}${Math.floor((selectedCharacterData.abilities.con - 10) / 2)}\nEach +1 CON adds 10% more HP to all limbs\nTorso can reach up to 200% of base HP!`}
                       >
                         <div style={{ color: 'var(--text-gold)', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Hit Points Base
@@ -12701,14 +12707,14 @@ const CampaignView: React.FC = () => {
                           {user?.role === 'Dungeon Master' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleUpdateBaseHp(selectedCharacterData.id, -1); }}
-                              disabled={selectedCharacterData.hit_points <= 1}
+                              disabled={selectedBaseHp <= 1}
                               style={{
                                 background: 'rgba(239, 68, 68, 0.3)',
                                 border: '1px solid rgba(239, 68, 68, 0.5)',
-                                color: selectedCharacterData.hit_points <= 1 ? 'rgba(255,255,255,0.3)' : '#fca5a5',
+                                color: selectedBaseHp <= 1 ? 'rgba(255,255,255,0.3)' : '#fca5a5',
                                 borderRadius: '4px',
                                 padding: '0.25rem 0.4rem',
-                                cursor: selectedCharacterData.hit_points <= 1 ? 'not-allowed' : 'pointer',
+                                cursor: selectedBaseHp <= 1 ? 'not-allowed' : 'pointer',
                                 fontSize: '0.85rem',
                                 fontWeight: 'bold',
                                 flex: '0 0 auto'
@@ -12717,18 +12723,38 @@ const CampaignView: React.FC = () => {
                               −
                             </button>
                           )}
-                          {selectedCharacterData.hit_points}
+                          {editingBaseHp?.characterId === selectedCharacterData.id ? (
+                            <input
+                              type="number"
+                              min={1}
+                              max={999}
+                              autoFocus
+                              value={editingBaseHp.value}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setEditingBaseHp({ characterId: selectedCharacterData.id, value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSetBaseHp(selectedCharacterData.id, parseInt(editingBaseHp.value, 10));
+                                  setEditingBaseHp(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingBaseHp(null);
+                                }
+                              }}
+                              onBlur={() => setEditingBaseHp(null)}
+                              style={{ width: '5rem', textAlign: 'center', fontSize: '1.2rem', fontWeight: 'bold', color: 'white', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '4px', padding: '0.1rem 0.25rem' }}
+                            />
+                          ) : selectedBaseHp}
                           {user?.role === 'Dungeon Master' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleUpdateBaseHp(selectedCharacterData.id, 1); }}
-                              disabled={selectedCharacterData.hit_points >= 999}
+                              disabled={selectedBaseHp >= 999}
                               style={{
                                 background: 'rgba(34, 197, 94, 0.3)',
                                 border: '1px solid rgba(34, 197, 94, 0.5)',
-                                color: selectedCharacterData.hit_points >= 999 ? 'rgba(255,255,255,0.3)' : '#86efac',
+                                color: selectedBaseHp >= 999 ? 'rgba(255,255,255,0.3)' : '#86efac',
                                 borderRadius: '4px',
                                 padding: '0.25rem 0.4rem',
-                                cursor: selectedCharacterData.hit_points >= 999 ? 'not-allowed' : 'pointer',
+                                cursor: selectedBaseHp >= 999 ? 'not-allowed' : 'pointer',
                                 fontSize: '0.85rem',
                                 fontWeight: 'bold',
                                 flex: '0 0 auto'
@@ -12738,6 +12764,14 @@ const CampaignView: React.FC = () => {
                             </button>
                           )}
                         </div>
+                        {user?.role === 'Dungeon Master' && editingBaseHp?.characterId !== selectedCharacterData.id && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingBaseHp({ characterId: selectedCharacterData.id, value: String(selectedBaseHp) }); }}
+                            style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#fca5a5', borderRadius: '6px', padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.5rem' }}
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
                         <div style={{ color: 'var(--text-gold)', fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
                           Limb HP: Head (25%+CON), Torso (100%+CON), Hands (15%+CON), Legs (40%+CON). Each +1 CON adds 10% HP to all limbs. Torso can reach up to 200% of base HP.
                         </div>

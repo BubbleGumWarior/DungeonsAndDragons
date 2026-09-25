@@ -2582,7 +2582,7 @@ const applyBuildingBasedWorkerCaps = (unlockedResources, maxWorkersPerResource, 
   return { nextUnlocked, nextMaxWorkers };
 };
 
-// General warehouse capacity — wood/stone/minerals/gold/faith only. Food has its own
+// General warehouse capacity — wood/stone/minerals only (plus food/gold overflow). Faith is abstract and never takes storage. Food has its own
 // separate pool (see FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE below) so an unspent woodpile
 // can never crowd out food storage and starve a population that's actually producing
 // plenty of food. Mirrors Campaign.STORAGE_CAPACITY_BONUS_BY_TYPE exactly.

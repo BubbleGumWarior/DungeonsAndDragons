@@ -3858,7 +3858,7 @@ const KingdomTab: React.FC<Props> = ({
                   const rawFoodStored = Math.max(0, Number(storedResources.food || 0));
                   const rawGoldStored = Math.max(0, Number(storedResources.gold || 0));
                   const nonOverflowStored = Object.entries(storedResources)
-                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research' && k !== 'food' && k !== 'gold')
+                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research' && k !== 'faith' && k !== 'food' && k !== 'gold')
                     .reduce((sum, [, amount]) => sum + Math.max(0, Number(amount || 0)), 0);
 
                   const foodCap = Number(fiefDetails.food_storage_capacity || 100);
@@ -3891,7 +3891,6 @@ const KingdomTab: React.FC<Props> = ({
                     { label: 'Wood',     amount: Math.max(0, Number(prodOutput.wood  || 0)) },
                     { label: 'Stone',    amount: Math.max(0, Number(prodOutput.stone || 0)) },
                     { label: 'Minerals', amount: Math.max(0, Number(prodOutput.iron  || 0)) },
-                    { label: 'Faith',    amount: Math.max(0, Number(prodOutput.faith || 0)) },
                   ];
 
                   // Same fill-dedicated-then-overflow order as the backend: food, then gold,

@@ -695,7 +695,7 @@ class Campaign {
     return Campaign.STORAGE_CAPACITY_BONUS_BY_TYPE[key] || 0;
   }
 
-  // General warehouse capacity — wood/stone/minerals/gold/faith only. Food has its own
+  // General warehouse capacity — wood/stone/minerals only (plus food/gold overflow). Faith is abstract and never takes storage. Food has its own
   // separate pool (see FOOD_STORAGE_CAPACITY_BONUS_BY_TYPE below) so an unspent woodpile
   // can never crowd out food storage and starve a population that's actually producing
   // plenty of food.
@@ -1147,7 +1147,7 @@ class Campaign {
     return output;
   }
 
-  // `capacity` caps the general Warehouse (wood/stone/minerals/faith, plus any food/gold
+  // `capacity` caps the general Warehouse (wood/stone/minerals, plus any food/gold
   // overflow — see below). `foodCapacity` is the Granary pool, `bankCapacity` is the Bank
   // pool. Food and gold each fill their own dedicated pool first; anything that doesn't
   // fit there overflows into the general Warehouse instead of being wasted outright —
@@ -1177,15 +1177,16 @@ class Campaign {
 
     const foodCap = Math.max(0, Number(foodCapacity ?? capacity) || 0);
     const bankCap = Math.max(0, Number(bankCapacity ?? 0));
-    // The true general-Warehouse resources (wood/stone/minerals/faith/…) always count as
+    // The true general-Warehouse resources (wood/stone/minerals/…) always count as
     // occupying Warehouse space. Food and gold live in their own dedicated pools
     // (Granary / Bank) first, but any pre-existing overflow beyond those pools really is
     // sitting in the Warehouse (that's where it spilled to), so it counts against the
     // shared pool too — otherwise a Granary/Bank that's already over capacity keeps
     // accepting unlimited new production forever (the overflow is invisible to next
     // turn's capacity check) instead of actually filling up the Warehouse behind it.
+    // Faith is an abstract resource, not a physical good — it takes no Warehouse space.
     const nonOverflowUsed = Object.entries(stored).reduce((sum, [resource, n]) => {
-      if (resource === 'food' || resource === 'gold') return sum;
+      if (resource === 'food' || resource === 'gold' || resource === 'faith') return sum;
       return sum + Math.max(0, Number(n) || 0);
     }, 0);
 
@@ -1247,6 +1248,12 @@ class Campaign {
     for (const [resource, amountRaw] of Object.entries(normalizedProduced)) {
       if (resource === 'food' || resource === 'gold') continue;
       const amount = Math.max(0, Number(amountRaw) || 0);
+      if (resource === 'faith') {
+        // Uncapped: faith never occupies Warehouse space.
+        if (amount > 0) stored.faith = (Number(stored.faith) || 0) + amount;
+        applied.faith = amount;
+        continue;
+      }
       if (amount <= 0) {
         applied[resource] = 0;
         continue;

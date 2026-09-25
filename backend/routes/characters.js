@@ -8,6 +8,7 @@ const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
 const { authenticateToken } = require('../middleware/auth');
 const { buildImageUrl } = require('../utils/imageService');
+const { calcLimbHealthMax } = require('../utils/limbHealth');
 
 // Configure multer for in-memory character image uploads (stored in database)
 const upload = multer({
@@ -208,6 +209,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       background,
       level,
       hit_points,
+      hit_points_max,
       armor_class,
       abilities,
       skills,
@@ -248,6 +250,32 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (background !== undefined) updateData.background = background;
     if (level !== undefined) updateData.level = level;
     if (hit_points !== undefined) { updateData.hit_points = hit_points; updateData.hit_points_max = hit_points; }
+
+    // Base HP stat change only (hit_points_max): hit_points is *current* HP (sum of limbs) and must not be overwritten
+    // with the base. Rescale each limb so it keeps the same fraction of its (new) max.
+    let baseHpChange = null;
+    if (hit_points === undefined && hit_points_max !== undefined) {
+      const newBase = Math.max(1, Math.min(999, parseInt(hit_points_max, 10) || 1));
+      const oldBase = Math.max(1, Number(character.hit_points_max ?? character.hit_points) || 1);
+      const con = (abilities ?? character.abilities)?.con ?? 10;
+      const oldMax = calcLimbHealthMax(oldBase, con);
+      const newMax = calcLimbHealthMax(newBase, con);
+      updateData.hit_points_max = newBase;
+      let limbHealth = null;
+      if (character.limb_health) {
+        const cur = typeof character.limb_health === 'string' ? JSON.parse(character.limb_health) : character.limb_health;
+        limbHealth = {};
+        for (const k of Object.keys(newMax)) {
+          const ratio = oldMax[k] > 0 ? Math.min(1, Number(cur[k] ?? oldMax[k]) / oldMax[k]) : 1;
+          limbHealth[k] = Math.round(newMax[k] * ratio);
+        }
+        updateData.hit_points = Object.values(limbHealth).reduce((s, v) => s + v, 0);
+      } else {
+        // No limb tracking yet = never damaged, so current HP is simply the new base
+        updateData.hit_points = newBase;
+      }
+      baseHpChange = { newBase, limbHealth, newHP: updateData.hit_points };
+    }
     if (armor_class !== undefined) updateData.armor_class = armor_class;
     if (abilities !== undefined) updateData.abilities = abilities;
     if (skills !== undefined) updateData.skills = skills;
@@ -265,6 +293,26 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (gold !== undefined) updateData.gold = Math.max(0, parseInt(gold, 10) || 0);
     
     const updatedCharacter = await Character.update(id, updateData);
+
+    if (baseHpChange) {
+      if (baseHpChange.limbHealth) {
+        await pool.query('UPDATE characters SET limb_health = $1 WHERE id = $2', [JSON.stringify(baseHpChange.limbHealth), id]);
+        updatedCharacter.limb_health = baseHpChange.limbHealth;
+      }
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`campaign_${character.campaign_id}`).emit('healthAdjusted', {
+          type: 'character',
+          characterId: Number(id),
+          newHP: baseHpChange.newHP,
+          maxHP: baseHpChange.newBase,
+          limbHealth: baseHpChange.limbHealth,
+          isDead: baseHpChange.newHP <= 0,
+          campaignId: character.campaign_id,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
 
     // Gold changes need to reach every connected client (not just the editor) — the market panel,
     // other players' views, and the DM's own screen all show this character's gold live.
