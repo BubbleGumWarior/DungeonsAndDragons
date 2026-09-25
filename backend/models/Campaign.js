@@ -2213,27 +2213,25 @@ class Campaign {
           }
 
           // Animal Management: every 10 animals in this fief need 1 worker assigned to the
-          // Farming lane (the vegetables key) or the herd starts dying/escaping. Understaffed
-          // fiefs lose a small, escalating fraction of their animals each day. Slave-assigned
-          // farmers count too (see effectiveAssignments above), same as they do for production.
+          // Farming lane (the vegetables key). An understaffed herd never dies — it just can't
+          // breed or give birth (pregnancies stay overdue) until enough farmers are allocated.
+          // Slave-assigned farmers count too (see effectiveAssignments above), same as they do
+          // for production, and so do farmers locked into a growing/harvesting cycle (the lane
+          // reads as closed while locked, but those workers are still tending the herd).
           let fiefAnimals = animalsByFief.get(fief.id) || [];
+          let herdUnderstaffed = false;
           if (fiefAnimals.length > 0) {
             const requiredFarmingWorkers = Math.ceil(fiefAnimals.length / 10);
-            const assignedFarmingWorkers = Math.max(0, Number(effectiveAssignments.vegetables || 0));
-            if (assignedFarmingWorkers < requiredFarmingWorkers) {
-              const shortfallRatio = (requiredFarmingWorkers - assignedFarmingWorkers) / requiredFarmingWorkers;
-              const lossChancePerAnimal = Math.min(0.15, shortfallRatio * 0.10);
-              const lostIdSet = new Set(fiefAnimals.filter(() => Math.random() < lossChancePerAnimal).map((a) => a.id));
-              if (lostIdSet.size > 0) {
-                await client.query(`DELETE FROM fief_animals WHERE id = ANY($1::int[])`, [Array.from(lostIdSet)]);
-                animalsLost[fief.id] = (Number(animalsLost[fief.id]) || 0) + lostIdSet.size;
-                fiefAnimals = fiefAnimals.filter((a) => !lostIdSet.has(a.id));
-                // Write the trimmed list back — a multi-day advance re-reads this same map
-                // entry on the next day, so without this it would "revive" already-deleted
-                // animals for the rest of the advance.
-                animalsByFief.set(fief.id, fiefAnimals);
-              }
-            }
+            const vegState = fief.vegetableHarvestState || {};
+            const lockedFarmingWorkers = vegState.phase && vegState.phase !== 'assigning'
+              ? Math.max(0, Number(vegState.lockedWorkers || 0))
+              : 0;
+            const assignedFarmingWorkers = Math.max(
+              0,
+              Number(effectiveAssignments.vegetables || 0),
+              lockedFarmingWorkers
+            );
+            herdUnderstaffed = assignedFarmingWorkers < requiredFarmingWorkers;
           }
 
           // Animal Management — long-rest breeding cycle:
@@ -2260,6 +2258,7 @@ class Campaign {
               .filter((a) => ageOf(a.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS)
               .reduce((sum, a) => sum + Campaign.getNurseryWeight(a.animalType), 0);
             for (const mother of fiefAnimals) {
+              if (herdUnderstaffed) break; // no farmers: births are put on hold, pregnancies stay overdue
               if (mother.sex !== 'female' || mother.pregnantDueDay == null || mother.pregnantDueDay > dayNumber) continue;
               const avgQuality = Number.isFinite(mother.pregnancyAvgQuality) ? mother.pregnancyAvgQuality : mother.quality;
               const litterSize = Campaign.getAnimalLitterSize(mother.animalType, avgQuality);
@@ -2294,6 +2293,7 @@ class Campaign {
             for (const pair of fiefPairs) {
               pairedIds.add(pair.maleAnimalId);
               pairedIds.add(pair.femaleAnimalId);
+              if (herdUnderstaffed) continue; // no farmers: no new pregnancies
               const male = animalById.get(pair.maleAnimalId);
               const female = animalById.get(pair.femaleAnimalId);
               if (!male || !female || female.pregnantDueDay != null) continue;
@@ -2325,6 +2325,7 @@ class Campaign {
               else if (a.sex === 'female') bucket.females.push(a);
             }
             for (const bucket of byType.values()) {
+              if (herdUnderstaffed) break; // no farmers: no new pregnancies
               const eligibleFemales = bucket.females.filter((f) => f.pregnantDueDay == null && (f.cooldownUntilDay == null || f.cooldownUntilDay <= dayNumber));
               if (bucket.males.length === 0 || eligibleFemales.length === 0) continue;
               const male = bucket.males[Math.floor(Math.random() * bucket.males.length)];

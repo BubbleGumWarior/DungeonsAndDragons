@@ -3640,6 +3640,12 @@ const clampWorkersToAssignablePopulation = (assignments, maxByResource, assignab
   for (const [resource, value] of Object.entries(normalized)) {
     const num = Math.max(0, Math.floor(Number(value) || 0));
     const maxForLane = Number(maxByResource?.[resource]);
+    // While farming is locked the tick stores the vegetables cap as 0 (lane "closed") — that
+    // must not wipe the locked farmers, so a closed cap on vegetables is not applied here.
+    if (resource === 'vegetables' && maxForLane === 0) {
+      clampedByLane[resource] = num;
+      continue;
+    }
     clampedByLane[resource] = Number.isFinite(maxForLane) ? Math.min(num, Math.max(0, maxForLane)) : num;
   }
 

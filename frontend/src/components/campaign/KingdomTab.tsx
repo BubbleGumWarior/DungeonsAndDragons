@@ -739,7 +739,7 @@ const KingdomTab: React.FC<Props> = ({
         })
         .catch(() => {});
       // A long rest/time skip runs the animal tick server-side (pregnancies progressing,
-      // births, natural breeding, aging, understaffed losses) — refresh so due dates and
+      // births, natural breeding, aging, understaffed breeding halts) — refresh so due dates and
       // the herd list reflect it immediately instead of only on next manual open.
       fetchAnimalsDataRef.current();
 
@@ -3320,10 +3320,18 @@ const KingdomTab: React.FC<Props> = ({
                     const juvenileUsed = Math.round(juvenileUsedUnitsRaw * 100) / 100;
 
                     // Every 10 animals (any stage) need 1 worker on the Farming lane or the
-                    // herd starts dying/escaping each long rest (see Campaign.advanceDays).
+                    // herd can't breed or give birth (see Campaign.advanceDays).
                     const rawFiefForFarmers = (selectedKingdom?.fiefs || []).find((f) => Number(f.id) === fief.fief_id);
-                    const assignedFarmers = Math.max(0, Number(rawFiefForFarmers?.worker_assignments?.vegetables || 0))
-                      + Math.max(0, Number(rawFiefForFarmers?.slave_worker_assignments?.vegetables || 0));
+                    // Farmers locked into a growing/harvesting cycle still count, even while the lane reads as closed.
+                    const farmerState = (rawFiefForFarmers as any)?.vegetable_harvest_state;
+                    const lockedFarmers = farmerState && String(farmerState.phase || 'assigning').toLowerCase() !== 'assigning'
+                      ? Math.max(0, Number(farmerState.locked_workers || 0))
+                      : 0;
+                    const assignedFarmers = Math.max(
+                      Math.max(0, Number(rawFiefForFarmers?.worker_assignments?.vegetables || 0))
+                        + Math.max(0, Number(rawFiefForFarmers?.slave_worker_assignments?.vegetables || 0)),
+                      lockedFarmers
+                    );
                     const requiredFarmers = Math.ceil(fief.animals.length / 10);
                     const farmerCoveragePct = requiredFarmers > 0 ? Math.min(1, assignedFarmers / requiredFarmers) : 1;
                     const farmersUnderstaffed = requiredFarmers > 0 && assignedFarmers < requiredFarmers;
@@ -3388,7 +3396,7 @@ const KingdomTab: React.FC<Props> = ({
                             </div>
                             {farmersUnderstaffed && (
                               <div style={{ fontSize: '0.72rem', color: '#fca5a5', fontStyle: 'italic', marginTop: '0.25rem' }}>
-                                ⚠️ Understaffed — animals will start dying or escaping each long rest until enough workers are assigned to the Farming lane.
+                                ⚠️ Understaffed — animals can't breed or give birth until enough workers are assigned to the Farming lane (1 per 10 animals).
                               </div>
                             )}
                           </div>
