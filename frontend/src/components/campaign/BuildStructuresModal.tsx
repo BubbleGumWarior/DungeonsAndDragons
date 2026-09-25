@@ -4,8 +4,9 @@ import * as Select from '@radix-ui/react-select';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { Check, ChevronDown } from 'lucide-react';
 import '../../styles/constructionPanel.css';
-import { BUILD_TAB_LABELS, BUILD_TABS, BuildTabId, catStyle, getBuildingDisplayName } from './kingdomBuildings';
+import { BUILD_TAB_LABELS, BUILD_TABS, BuildTabId, catStyle, getBuildingDisplayName, getLaneEffects } from './kingdomBuildings';
 import { clampInt, EmptyNote, Icon, Stepper } from './kingdomUi';
+import LaneEffectChips from './LaneEffectChips';
 
 interface BuildStructuresModalProps {
   tier: number;
@@ -78,9 +79,11 @@ const BuildStructuresModal: React.FC<BuildStructuresModalProps> = ({
             <span>{name}</span>
             <span className="kt-cs-opt-meta">
               Tier {Number(b.tierRequired || 1)} · {Number(b.days || 0)} day{Number(b.days || 0) === 1 ? '' : 's'}
+              {b.isCustom && Number(b.maxPerFief || 0) > 0 ? ` · limit ${Number(b.maxPerFief)} per fief` : ''}
             </span>
           </div>
           {b.description && <p className="kt-cs-opt-desc">{b.description}</p>}
+          {b.isCustom && <LaneEffectChips effects={getLaneEffects(b)} />}
           <div className="kt-cs-costs" aria-label="Cost">
             {cost.length === 0 ? (
               <span className="kt-cs-cost" data-ok="true">Free</span>

@@ -3722,6 +3722,134 @@ const requireDM = (req, res) => {
   return true;
 };
 
+// ── Kingdom unique (custom) buildings ───────────────────────────────────────
+// Authored by the DM for ONE kingdom (kingdom_custom_buildings). Each copy that gets built is
+// a normal fief_buildings row with building_type 'custom_<id>'. Flat per-day output is stored in
+// resource_output (already summed into production by Campaign.computeBaseProduction); percentage
+// lane bonuses are stored in production_bonus_pct using the same *_bonus_pct keys as legendary
+// characters, and are folded into the same lane multiplier when production is computed.
+const CUSTOM_BUILDING_PREFIX = 'custom_';
+const CUSTOM_FLAT_KEYS = ['vegetables', 'meat', 'wood', 'stone', 'minerals', 'gold', 'faith', 'research'];
+const CUSTOM_PCT_KEYS = [
+  'vegetables_bonus_pct', 'meat_bonus_pct', 'wood_bonus_pct', 'stone_bonus_pct',
+  'iron_bonus_pct', 'gold_bonus_pct', 'faith_bonus_pct', 'research_bonus_pct',
+];
+const CUSTOM_COST_KEYS = ['wood', 'stone', 'iron', 'gold'];
+
+const parseCustomBuildingKey = (type) => {
+  const text = String(type || '');
+  if (!text.startsWith(CUSTOM_BUILDING_PREFIX)) return null;
+  const id = Number(text.slice(CUSTOM_BUILDING_PREFIX.length));
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+const roundTo = (value, places) => {
+  const factor = 10 ** places;
+  return Math.round(value * factor) / factor;
+};
+
+const sanitizeCustomFlat = (raw) => {
+  const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const result = {};
+  for (const key of CUSTOM_FLAT_KEYS) {
+    const alias = key === 'minerals' ? (source.minerals ?? source.iron) : source[key];
+    const value = roundTo(Number(alias || 0), 2);
+    if (Number.isFinite(value) && value > 0) result[key] = Math.min(value, 10000);
+  }
+  return result;
+};
+
+const sanitizeCustomPct = (raw) => {
+  const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const result = {};
+  for (const key of CUSTOM_PCT_KEYS) {
+    const value = roundTo(Number(source[key] || 0), 2);
+    if (Number.isFinite(value) && value !== 0) result[key] = Math.max(-100, Math.min(1000, value));
+  }
+  return result;
+};
+
+const sanitizeCustomCost = (raw) => {
+  const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const result = {};
+  for (const key of CUSTOM_COST_KEYS) {
+    const value = Math.floor(Number(source[key] || 0));
+    if (Number.isFinite(value) && value > 0) result[key] = Math.min(value, 1000000);
+  }
+  return result;
+};
+
+// Reads + validates the editable fields shared by create and update. Returns { error } or { value }.
+const readCustomBuildingPayload = (body) => {
+  const name = String(body?.name || '').trim().slice(0, 120);
+  if (!name) return { error: 'Give the building a name' };
+  const clampInt = (raw, min, max, fallback) => {
+    const n = Math.floor(Number(raw));
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+  };
+  return {
+    value: {
+      name,
+      description: String(body?.description || '').trim().slice(0, 1000),
+      tierRequired: clampInt(body?.tierRequired, 1, 10, 1),
+      days: clampInt(body?.days, 1, 365, 1),
+      maxPerFief: clampInt(body?.maxPerFief, 0, 100, 0),
+      cost: sanitizeCustomCost(body?.cost),
+      resourceOutput: sanitizeCustomFlat(body?.resourceOutput),
+      bonusPct: sanitizeCustomPct(body?.bonusPct),
+    },
+  };
+};
+
+// Same shape as a BUILDING_CATALOG entry, so the queue/availability code treats it uniformly.
+const customBuildingBlueprint = (row) => ({
+  key: `${CUSTOM_BUILDING_PREFIX}${row.id}`,
+  customId: Number(row.id),
+  isCustom: true,
+  name: String(row.name || 'Unique building'),
+  description: String(row.description || ''),
+  tierRequired: Math.max(1, Number(row.tier_required || 1)),
+  days: Math.max(1, Number(row.days || 1)),
+  maxPerFief: Math.max(0, Number(row.max_per_fief || 0)),
+  cost: (row.cost && typeof row.cost === 'object') ? row.cost : {},
+  resourceOutput: (row.resource_output && typeof row.resource_output === 'object') ? row.resource_output : {},
+  bonusPct: (row.bonus_pct && typeof row.bonus_pct === 'object') ? row.bonus_pct : {},
+  prerequisites: [],
+});
+
+const toCustomBuildingView = (row) => ({
+  id: Number(row.id),
+  kingdom_id: Number(row.kingdom_id),
+  key: `${CUSTOM_BUILDING_PREFIX}${row.id}`,
+  name: row.name,
+  description: row.description || '',
+  tier_required: Number(row.tier_required || 1),
+  days: Number(row.days || 1),
+  max_per_fief: Number(row.max_per_fief || 0),
+  cost: row.cost || {},
+  resource_output: row.resource_output || {},
+  bonus_pct: row.bonus_pct || {},
+});
+
+// DM-only write guard for a kingdom (same rule the legendary-character routes use).
+const loadKingdomForDmWrite = async (req, res, kingdomId) => {
+  if (!requireDM(req, res)) return null;
+  if (!Number.isFinite(kingdomId)) {
+    res.status(400).json({ error: 'Invalid kingdom ID' });
+    return null;
+  }
+  const kingdom = await getKingdomContext(kingdomId);
+  if (!kingdom) {
+    res.status(404).json({ error: 'Kingdom not found' });
+    return null;
+  }
+  if (Number(kingdom.dungeon_master_id) !== Number(req.user.id)) {
+    res.status(403).json({ error: 'Not authorized' });
+    return null;
+  }
+  return kingdom;
+};
+
 router.get('/campaign/:id', authenticateToken, async (req, res) => {
   try {
     const campaignId = Number(req.params.id);
@@ -4192,9 +4320,31 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     const completedBuildings = buildingsResult.rows.filter((b) => Boolean(b?.is_complete));
     const fiefTier = getNumber(fief.tier || 1);
     const storedForCostChecks = normalizeStoredResources(fief?.stored_resources);
-    const availableBuildings = Object.values(BUILDING_CATALOG)
-      .filter((entry) => !UPGRADE_ONLY_BUILDING_TYPES.has(String(entry.key || '')))
+    // Kingdom-unique buildings the DM authored for this fief's kingdom (never visible to other kingdoms).
+    const customBuildingRows = await pool.query(
+      `SELECT * FROM kingdom_custom_buildings WHERE kingdom_id = $1 ORDER BY id ASC`,
+      [fief.kingdom_id]
+    );
+    const customBlueprints = customBuildingRows.rows.map(customBuildingBlueprint);
+    const countByBuildingType = {};
+    for (const b of buildingsResult.rows) {
+      const t = String(b.building_type || '');
+      countByBuildingType[t] = (countByBuildingType[t] || 0) + 1;
+    }
+
+    const availableBuildings = [
+      ...customBlueprints,
+      ...Object.values(BUILDING_CATALOG).filter((entry) => !UPGRADE_ONLY_BUILDING_TYPES.has(String(entry.key || ''))),
+    ]
       .map((entry) => {
+      if (entry.isCustom && entry.maxPerFief > 0 && (countByBuildingType[entry.key] || 0) >= entry.maxPerFief) {
+        return {
+          ...entry,
+          isLocked: true,
+          lockReason: entry.maxPerFief === 1 ? 'Only one allowed per fief' : `Limit of ${entry.maxPerFief} per fief reached`,
+        };
+      }
+
       if (fiefTier < Number(entry.tierRequired || 1)) {
         return {
           ...entry,
@@ -5443,8 +5593,9 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'fief id and buildingType are required' });
     }
 
-    const blueprint = BUILDING_CATALOG[buildingType];
-    if (!blueprint) {
+    const customBuildingId = parseCustomBuildingKey(buildingType);
+    let blueprint = BUILDING_CATALOG[buildingType];
+    if (!blueprint && customBuildingId == null) {
       return res.status(400).json({ error: 'Unknown building type' });
     }
 
@@ -5467,6 +5618,31 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
     if (!canManageFief(req.user, fief)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Not authorized to build on this fief' });
+    }
+
+    if (customBuildingId != null) {
+      // Only the fief's own kingdom can build its unique buildings.
+      const customResult = await client.query(
+        `SELECT * FROM kingdom_custom_buildings WHERE id = $1 AND kingdom_id = $2`,
+        [customBuildingId, fief.kingdom_id]
+      );
+      if (!customResult.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'That building does not belong to this kingdom' });
+      }
+      blueprint = customBuildingBlueprint(customResult.rows[0]);
+
+      if (blueprint.maxPerFief > 0) {
+        const existing = await client.query(
+          `SELECT COUNT(*) AS c FROM fief_buildings WHERE fief_id = $1 AND building_type = $2`,
+          [fiefId, blueprint.key]
+        );
+        const have = getNumber(existing.rows[0]?.c);
+        if (have + count > blueprint.maxPerFief) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: `${blueprint.name} is limited to ${blueprint.maxPerFief} per fief (${have} already built or queued)` });
+        }
+      }
     }
 
     const fiefTier = getNumber(fief.tier || 1);
@@ -5517,23 +5693,24 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
     const values = [];
     let p = 1;
     for (let i = 0; i < count; i += 1) {
-      valueRows.push(`($${p}, $${p + 1}, $${p + 2}, 1, $${p + 3}, $${p + 4}, $${p + 4}, false, $${p + 5}, $${p + 6}::jsonb, $${p + 7}::jsonb)`);
+      valueRows.push(`($${p}, $${p + 1}, $${p + 2}, 1, $${p + 3}, $${p + 4}, $${p + 4}, false, $${p + 5}, $${p + 6}::jsonb, $${p + 7}::jsonb, $${p + 8}::jsonb)`);
       values.push(
         fiefId,
         blueprint.name,
         blueprint.key,
-        `Tier ${blueprint.tierRequired} construction`,
+        blueprint.isCustom ? blueprint.description : `Tier ${blueprint.tierRequired} construction`,
         blueprint.days,
         startQueuePosition + i,
         JSON.stringify(blueprint.resourceOutput || {}),
         JSON.stringify(blueprint.cost || {}),
+        JSON.stringify(blueprint.bonusPct || {}),
       );
-      p += 8;
+      p += 9;
     }
 
     const buildingInsert = await client.query(
       `INSERT INTO fief_buildings
-       (fief_id, name, building_type, level, description, construction_days_required, days_remaining, is_complete, queue_position, resource_output, resource_cost)
+       (fief_id, name, building_type, level, description, construction_days_required, days_remaining, is_complete, queue_position, resource_output, resource_cost, production_bonus_pct)
        VALUES ${valueRows.join(', ')}
        RETURNING *`,
       values
@@ -7459,6 +7636,260 @@ router.delete('/fiefs/:id/legendary-assignments/:legendaryId', authenticateToken
   } catch (error) {
     console.error('Error unassigning legendary character:', error);
     res.status(500).json({ error: 'Failed to unassign legendary character' });
+  }
+});
+
+// ── Kingdom unique buildings (DM authored, one kingdom only) ────────────────
+
+router.get('/:id/custom-buildings', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const defs = await pool.query(
+      `SELECT * FROM kingdom_custom_buildings WHERE kingdom_id = $1 ORDER BY id ASC`,
+      [kingdomId]
+    );
+    const counts = await pool.query(
+      `SELECT fb.building_type, fb.fief_id,
+              COUNT(*) FILTER (WHERE fb.is_complete) AS built,
+              COUNT(*) FILTER (WHERE NOT fb.is_complete) AS queued
+       FROM fief_buildings fb
+       JOIN fiefs f ON f.id = fb.fief_id
+       WHERE f.kingdom_id = $1 AND fb.building_type LIKE 'custom\\_%'
+       GROUP BY fb.building_type, fb.fief_id`,
+      [kingdomId]
+    );
+
+    const byType = {};
+    for (const row of counts.rows) {
+      if (!byType[row.building_type]) byType[row.building_type] = {};
+      byType[row.building_type][Number(row.fief_id)] = { built: getNumber(row.built), queued: getNumber(row.queued) };
+    }
+
+    const buildings = defs.rows.map((row) => {
+      const view = toCustomBuildingView(row);
+      const byFief = byType[view.key] || {};
+      return {
+        ...view,
+        by_fief: byFief,
+        built_total: Object.values(byFief).reduce((sum, c) => sum + c.built, 0),
+        queued_total: Object.values(byFief).reduce((sum, c) => sum + c.queued, 0),
+      };
+    });
+
+    res.json({ buildings });
+  } catch (error) {
+    console.error('Error loading kingdom custom buildings:', error);
+    res.status(500).json({ error: 'Failed to load unique buildings' });
+  }
+});
+
+router.post('/:id/custom-buildings', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    const kingdom = await loadKingdomForDmWrite(req, res, kingdomId);
+    if (!kingdom) return;
+
+    const parsed = readCustomBuildingPayload(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const v = parsed.value;
+
+    const result = await pool.query(
+      `INSERT INTO kingdom_custom_buildings
+       (kingdom_id, name, description, tier_required, days, max_per_fief, cost, resource_output, bonus_pct, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10)
+       RETURNING *`,
+      [kingdomId, v.name, v.description, v.tierRequired, v.days, v.maxPerFief,
+        JSON.stringify(v.cost), JSON.stringify(v.resourceOutput), JSON.stringify(v.bonusPct), req.user.id]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+    res.status(201).json({ building: toCustomBuildingView(result.rows[0]) });
+  } catch (error) {
+    console.error('Error creating unique building:', error);
+    res.status(500).json({ error: 'Failed to create unique building' });
+  }
+});
+
+router.put('/:id/custom-buildings/:buildingId', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const buildingId = Number(req.params.buildingId);
+    const kingdom = await loadKingdomForDmWrite(req, res, kingdomId);
+    if (!kingdom) return;
+    if (!Number.isFinite(buildingId)) return res.status(400).json({ error: 'Invalid building ID' });
+
+    const parsed = readCustomBuildingPayload(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const v = parsed.value;
+
+    await client.query('BEGIN');
+    const result = await client.query(
+      `UPDATE kingdom_custom_buildings
+       SET name = $3, description = $4, tier_required = $5, days = $6, max_per_fief = $7,
+           cost = $8::jsonb, resource_output = $9::jsonb, bonus_pct = $10::jsonb, updated_at = NOW()
+       WHERE id = $1 AND kingdom_id = $2
+       RETURNING *`,
+      [buildingId, kingdomId, v.name, v.description, v.tierRequired, v.days, v.maxPerFief,
+        JSON.stringify(v.cost), JSON.stringify(v.resourceOutput), JSON.stringify(v.bonusPct)]
+    );
+    if (!result.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Unique building not found' });
+    }
+
+    // Copies already standing (or being built) pick up the new numbers, so editing a building
+    // changes what it does everywhere in the kingdom rather than only for future builds.
+    await client.query(
+      `UPDATE fief_buildings
+       SET name = $2, description = $3, resource_output = $4::jsonb, production_bonus_pct = $5::jsonb
+       WHERE building_type = $1
+         AND fief_id IN (SELECT id FROM fiefs WHERE kingdom_id = $6)`,
+      [`${CUSTOM_BUILDING_PREFIX}${buildingId}`, v.name, v.description,
+        JSON.stringify(v.resourceOutput), JSON.stringify(v.bonusPct), kingdomId]
+    );
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+    res.json({ building: toCustomBuildingView(result.rows[0]) });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error updating unique building:', error);
+    res.status(500).json({ error: 'Failed to update unique building' });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete('/:id/custom-buildings/:buildingId', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const buildingId = Number(req.params.buildingId);
+    const kingdom = await loadKingdomForDmWrite(req, res, kingdomId);
+    if (!kingdom) return;
+    if (!Number.isFinite(buildingId)) return res.status(400).json({ error: 'Invalid building ID' });
+
+    await client.query('BEGIN');
+    const existing = await client.query(
+      `SELECT id FROM kingdom_custom_buildings WHERE id = $1 AND kingdom_id = $2 FOR UPDATE`,
+      [buildingId, kingdomId]
+    );
+    if (!existing.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Unique building not found' });
+    }
+
+    // Removing the definition removes every copy in the kingdom (built and queued).
+    const removed = await client.query(
+      `DELETE FROM fief_buildings
+       WHERE building_type = $1
+         AND fief_id IN (SELECT id FROM fiefs WHERE kingdom_id = $2)`,
+      [`${CUSTOM_BUILDING_PREFIX}${buildingId}`, kingdomId]
+    );
+    await client.query(`DELETE FROM kingdom_custom_buildings WHERE id = $1`, [buildingId]);
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+    res.json({ message: 'Unique building removed', removedCopies: removed.rowCount || 0 });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error deleting unique building:', error);
+    res.status(500).json({ error: 'Failed to delete unique building' });
+  } finally {
+    client.release();
+  }
+});
+
+// DM grants finished copies straight onto a fief, skipping cost, tier and construction time.
+router.post('/fiefs/:id/custom-buildings/:buildingId/grant', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!requireDM(req, res)) return;
+    const fiefId = Number(req.params.id);
+    const buildingId = Number(req.params.buildingId);
+    const count = Math.max(1, Math.min(100, Math.floor(Number(req.body?.count) || 1)));
+    if (!Number.isFinite(fiefId) || !Number.isFinite(buildingId)) {
+      return res.status(400).json({ error: 'Invalid fief or building ID' });
+    }
+
+    await client.query('BEGIN');
+    const fiefResult = await client.query(
+      `SELECT f.id, f.kingdom_id, k.campaign_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE OF f`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+    if (Number(fief.dungeon_master_id) !== Number(req.user.id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const defResult = await client.query(
+      `SELECT * FROM kingdom_custom_buildings WHERE id = $1 AND kingdom_id = $2`,
+      [buildingId, fief.kingdom_id]
+    );
+    if (!defResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'That building does not belong to this fief\'s kingdom' });
+    }
+    const blueprint = customBuildingBlueprint(defResult.rows[0]);
+
+    if (blueprint.maxPerFief > 0) {
+      const existing = await client.query(
+        `SELECT COUNT(*) AS c FROM fief_buildings WHERE fief_id = $1 AND building_type = $2`,
+        [fiefId, blueprint.key]
+      );
+      const have = getNumber(existing.rows[0]?.c);
+      if (have + count > blueprint.maxPerFief) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `${blueprint.name} is limited to ${blueprint.maxPerFief} per fief (${have} already there)` });
+      }
+    }
+
+    const inserted = await client.query(
+      `INSERT INTO fief_buildings
+       (fief_id, name, building_type, level, description, construction_days_required, days_remaining,
+        is_complete, resource_output, resource_cost, built_at, production_bonus_pct)
+       SELECT $1, $2, $3, 1, $4, 0, 0, true, $5::jsonb, $6::jsonb, NOW(), $7::jsonb
+       FROM generate_series(1, $8::int)
+       RETURNING id`,
+      [fiefId, blueprint.name, blueprint.key, blueprint.description,
+        JSON.stringify(blueprint.resourceOutput), JSON.stringify(blueprint.cost),
+        JSON.stringify(blueprint.bonusPct), count]
+    );
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+    res.status(201).json({ granted: inserted.rowCount || count });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error granting unique building:', error);
+    res.status(500).json({ error: 'Failed to grant unique building' });
+  } finally {
+    client.release();
   }
 });
 

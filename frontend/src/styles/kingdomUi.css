@@ -230,3 +230,14 @@
 @media (prefers-reduced-motion: reduce) {
   .kt-ui-progress-fill { transition: none; }
 }
+
+/* Unit shown after a stepper's number ("%"): the number hugs it instead of centring in the field. */
+.kt-ui-stepper-suffix {
+  margin-right: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.kt-ui-stepper:has(.kt-ui-stepper-suffix) .kt-ui-stepper-input { width: 2.2rem; text-align: right; padding: 0 0.1rem 0 0; }
+.kt-ui-stepper[data-size='sm']:has(.kt-ui-stepper-suffix) .kt-ui-stepper-input { width: 2rem; }

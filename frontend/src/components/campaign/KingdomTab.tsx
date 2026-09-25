@@ -4,7 +4,9 @@ import '../../styles/kingdomTab.css';
 import MilitiaTrainingPanel from './MilitiaTrainingPanel';
 import ConstructionPanel from './ConstructionPanel';
 import BuildStructuresModal from './BuildStructuresModal';
-import { getBuildingCategory, getBuildingDisplayName, RESEARCH_BUILDING_CHAIN } from './kingdomBuildings';
+import CustomBuildingsPanel from './CustomBuildingsPanel';
+import LaneEffectChips from './LaneEffectChips';
+import { getBuildingCategory, getBuildingDisplayName, getLaneEffects, isCustomBuildingType, RESEARCH_BUILDING_CHAIN } from './kingdomBuildings';
 import {
   campaignAPI,
   kingdomAPI,
@@ -1557,6 +1559,21 @@ const KingdomTab: React.FC<Props> = ({
     return totals;
   }, [fiefDetails?.id, fiefDetails?.legendary_bonuses, legendaryCharacters]);
 
+  // Percentage lane bonuses carried by the fief's finished Kingdom Unique buildings. The server folds
+  // these into the same *_bonus_pct lane multiplier as legendary bonuses (Campaign.sumBuildingBonusPct).
+  const customBuildingBonuses = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const b of (fiefDetails?.buildings || [])) {
+      if (!b?.is_complete) continue;
+      const source = (b.production_bonus_pct && typeof b.production_bonus_pct === 'object') ? b.production_bonus_pct as Record<string, number> : {};
+      for (const [key, raw] of Object.entries(source)) {
+        const value = Number(raw || 0);
+        if (Number.isFinite(value) && value !== 0) totals[key] = (totals[key] || 0) + value;
+      }
+    }
+    return totals;
+  }, [fiefDetails?.buildings]);
+
   const productionByLane = useMemo(() => {
     const output: Record<string, number> = {
       meat: 0,
@@ -1617,7 +1634,7 @@ const KingdomTab: React.FC<Props> = ({
     const applyLegendaryBonus = (resourceKey: string, amount: number) => {
       const bonusKey = LEGENDARY_BONUS_KEY_BY_RESOURCE[resourceKey];
       if (!bonusKey) return amount;
-      const pct = Number(fiefLegendaryBonuses[bonusKey] || 0);
+      const pct = Number(fiefLegendaryBonuses[bonusKey] || 0) + Number(customBuildingBonuses[bonusKey] || 0);
       if (!Number.isFinite(pct) || pct === 0) return amount;
       return Math.max(0, amount * (1 + (pct / 100)));
     };
@@ -1759,7 +1776,7 @@ const KingdomTab: React.FC<Props> = ({
         logisticsLevel,
       },
     };
-  }, [fiefDetails, totalPopulation, currentSeasonEffects, slaves, prisoners, fiefLegendaryBonuses]);
+  }, [fiefDetails, totalPopulation, currentSeasonEffects, slaves, prisoners, fiefLegendaryBonuses, customBuildingBonuses]);
 
   const researchQueue = useMemo(() => {
     return [...(fiefDetails?.researchQueue || [])].sort((a, b) => {
@@ -2643,7 +2660,7 @@ const KingdomTab: React.FC<Props> = ({
               }}
             >
               <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.95rem' }}>{getBuildingDisplayName(b, buildingNameByType)}</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '-0.2rem' }}>{b.building_type}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '-0.2rem' }}>{isCustomBuildingType(b.building_type) ? 'Kingdom unique' : b.building_type}</div>
               {b.description && (
                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: '1.45', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.4rem' }}>
                   {b.description}
@@ -2662,6 +2679,16 @@ const KingdomTab: React.FC<Props> = ({
                   </div>
                 </div>
               )}
+              {(() => {
+                const bonusEffects = getLaneEffects({ production_bonus_pct: b.production_bonus_pct }).filter((e) => e.pct !== 0);
+                if (bonusEffects.length === 0) return null;
+                return (
+                  <div style={{ borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.4rem' }}>
+                    <div style={{ color: '#f9a8d4', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Lane bonus</div>
+                    <LaneEffectChips effects={bonusEffects} label="Lane bonuses" />
+                  </div>
+                );
+              })()}
               {b.level > 1 && (
                 <div style={{ color: '#fde68a', fontSize: '0.75rem', borderTop: '1px solid rgba(var(--theme-accent-rgb),0.15)', paddingTop: '0.4rem' }}>
                   Level {b.level}
@@ -4300,6 +4327,14 @@ const KingdomTab: React.FC<Props> = ({
                       </span>
                     );
                   }
+                  const uniquePct = legendaryBonusKey ? Number(customBuildingBonuses[legendaryBonusKey] || 0) : 0;
+                  if (uniquePct !== 0) {
+                    badges.push(
+                      <span key="unique" style={{ color: '#f9a8d4', fontSize: '0.72rem', fontWeight: 600 }}>
+                        {uniquePct > 0 ? '+' : '−'}{Math.abs(Math.round(uniquePct * 10) / 10)}% unique buildings
+                      </span>
+                    );
+                  }
 
                   if (badges.length === 0) return null;
                   if (badges.length === 1) return badges[0];
@@ -4526,6 +4561,20 @@ const KingdomTab: React.FC<Props> = ({
                 onHoverBuilding={(building, rect) => setHoveredBuilding({ building, x: rect.left, y: rect.bottom + 6 })}
                 onLeaveBuilding={() => setHoveredBuilding(null)}
               />
+              {isDungeonMaster && selectedKingdom && (
+                <CustomBuildingsPanel
+                  kingdomId={Number(selectedKingdom.id)}
+                  kingdomName={selectedKingdom.name || `${selectedKingdom.player_username || 'this player'}'s kingdom`}
+                  fiefs={(selectedKingdom.fiefs || []).map((f) => ({ id: Number(f.id), name: f.name, tier: Number(f.tier || 1) }))}
+                  currentFiefId={Number(fiefDetails.id)}
+                  reloadKey={fiefDetails.availableBuildings}
+                  onChanged={async () => {
+                    await fetchFief(Number(fiefDetails.id));
+                    await fetchKingdoms();
+                  }}
+                  pushToast={pushToast}
+                />
+              )}
               {hasMilitiaBuilding && fiefDetails && (
                 <MilitiaTrainingPanel
                   fief={fiefDetails}

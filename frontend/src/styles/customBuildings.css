@@ -1,0 +1,209 @@
+/* ── Kingdom Unique buildings (.kt-cb) ──────────────────────────────────────
+   DM panel that authors a building for one kingdom, the editor/place dialogs,
+   and the lane-effect chips reused by the Build modal and building tooltip.
+   Kingdom Unique carries its own hue (--cat-rgb, rose) so these buildings read
+   apart from the catalogue; every production lane carries its own (--lane-rgb).
+   Shared controls and tokens come from kingdomUi.css / constructionPanel.css. */
+
+/* ── Lane effect chips ── */
+.kt-cb-fxlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.kt-cb-fx {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.65rem 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--lane-rgb), 0.5);
+  background: rgba(var(--lane-rgb), 0.13);
+  font-size: 0.76rem;
+  line-height: 1.2;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.kt-cb-fx > svg { color: rgb(var(--lane-rgb)); }
+.kt-cb-fx-name { font-weight: 600; color: color-mix(in srgb, rgb(var(--lane-rgb)) 55%, #fff); }
+.kt-cb-fx-val { font-weight: 800; }
+.kt-cb-fx-val + .kt-cb-fx-val { padding-left: 0.4rem; border-left: 1px solid rgba(var(--lane-rgb), 0.45); }
+.kt-cb-fx-val[data-neg='true'] { color: rgb(var(--ui-bad-rgb, 248, 113, 113)); }
+
+/* ── Panel list ── */
+.kt-cb { container-type: inline-size; container-name: kt-cb; text-align: left; }
+.kt-cb-list { list-style: none; margin: 0; padding: 0; }
+.kt-cb-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--ui-line);
+}
+.kt-cb-item:first-child { border-top: 0; padding-top: 0.2rem; }
+.kt-cb-item:last-child { padding-bottom: 0.1rem; }
+.kt-cb-item-main { flex: 1; min-width: 0; }
+.kt-cb-item-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem 0.75rem;
+  flex-wrap: wrap;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.kt-cb-item-name > span:first-child { overflow-wrap: anywhere; }
+.kt-cb-item-meta { font-size: 0.76rem; font-weight: 500; color: var(--text-muted); }
+.kt-cb-item-desc {
+  margin: 0.25rem 0 0;
+  max-width: 68ch;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.kt-cb-item-plain { margin: 0.5rem 0 0; font-size: 0.78rem; color: var(--text-muted); }
+.kt-cb-item-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.6rem; flex-shrink: 0; }
+.kt-cb-item-count { font-size: 0.78rem; color: var(--text-muted); }
+.kt-cb-item-count strong { color: var(--text-primary); font-weight: 700; }
+.kt-cb-item-actions { display: flex; gap: 0.4rem; }
+.kt-cb-act { min-height: 2rem; padding: 0.3rem 0.75rem; font-size: 0.76rem; }
+.kt-cb-act-icon { padding: 0.3rem 0.6rem; }
+
+/* ── Dialogs ── */
+.kt-cb-modal { width: min(46rem, calc(100vw - 1.5rem)); }
+.kt-cb-modal-sm { width: min(30rem, calc(100vw - 1.5rem)); }
+.kt-cb-modal ::selection { background: rgba(var(--kt-tone-rgb), 0.38); color: #fff; }
+.kt-cb-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.kt-cb-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1.4rem;
+  border-top: 1px solid var(--ui-line);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--kt-tone-rgb), 0.4) transparent;
+}
+.kt-cb-sec { margin-top: 1.7rem; }
+.kt-cb-sec:first-child { margin-top: 0; }
+.kt-cb-sec-head { margin-bottom: 0.7rem; }
+.kt-cb-sec-note { margin: 0.3rem 0 0; max-width: 62ch; font-size: 0.78rem; line-height: 1.5; color: var(--text-muted); }
+.kt-cb-sec > .kt-cb-sec-note { margin-top: 0.8rem; }
+
+.kt-cb-field { display: flex; flex-direction: column; align-items: flex-start; gap: 0.32rem; min-width: 0; }
+.kt-cb-field + .kt-cb-field { margin-top: 0.9rem; }
+.kt-cb-terms .kt-cb-field + .kt-cb-field,
+.kt-cb-costs .kt-cb-field + .kt-cb-field { margin-top: 0; }
+.kt-cb-label { font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); }
+.kt-cb-hint { font-size: 0.74rem; color: var(--text-muted); }
+.kt-cb-input {
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--kt-radius-md);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.92rem;
+  caret-color: rgb(var(--kt-tone-rgb));
+}
+.kt-cb-input::placeholder { color: var(--text-muted); }
+.kt-cb-input:focus-visible { outline: none; border-color: rgba(var(--kt-tone-rgb), 0.9); }
+.kt-cb-textarea { resize: vertical; min-height: 4.5rem; line-height: 1.5; }
+
+.kt-cb-terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 1rem; }
+.kt-cb-costs { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 1rem; margin-top: 1rem; }
+
+/* ── Production lane table ── */
+.kt-cb-lanes {
+  border: 1px solid var(--ui-line);
+  border-radius: var(--kt-radius-md);
+  overflow: hidden;
+}
+.kt-cb-lanes-head,
+.kt-cb-lane {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 1fr) 8.5rem 8.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.85rem;
+}
+.kt-cb-lanes-head {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  background: var(--ui-fill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.kt-cb-lane {
+  border-top: 1px solid var(--ui-line);
+  transition: background-color 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.kt-cb-lane[data-active='true'] { background: rgba(var(--lane-rgb), 0.11); }
+.kt-cb-lane-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.kt-cb-lane-name > svg { color: var(--text-muted); transition: color 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+.kt-cb-lane[data-active='true'] .kt-cb-lane-name { color: var(--text-primary); font-weight: 700; }
+.kt-cb-lane[data-active='true'] .kt-cb-lane-name > svg { color: rgb(var(--lane-rgb)); }
+.kt-cb-cell::before { content: attr(data-label); display: none; }
+
+.kt-cb-preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.9rem;
+  min-height: 2rem;
+}
+.kt-cb-preview .kt-cb-fxlist { margin: 0; }
+.kt-cb-preview-label { font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); }
+.kt-cb-preview-none { font-size: 0.8rem; color: var(--text-muted); }
+
+.kt-cb-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--ui-line);
+}
+.kt-cb-foot-actions { display: flex; gap: 0.5rem; margin-left: auto; }
+.kt-cb-error { margin: 0; max-width: 32rem; font-size: 0.82rem; color: rgb(var(--ui-bad-rgb, 248, 113, 113)); }
+
+.kt-cb-grant { display: flex; flex-direction: column; gap: 1.1rem; padding: 0.4rem 1.25rem 1.25rem; }
+.kt-cb-grant .kt-cb-field + .kt-cb-field { margin-top: 0; }
+.kt-cb-fiefs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.kt-cb-grant-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.9rem; }
+
+@container kt-cb (max-width: 40rem) {
+  .kt-cb-item { flex-direction: column; }
+  .kt-cb-item-side { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+}
+
+@media (max-width: 640px) {
+  .kt-cb-modal,
+  .kt-cb-modal-sm { top: auto; bottom: 0; left: 0; transform: none; width: 100vw; max-height: 92vh; border-radius: var(--kt-radius-lg) var(--kt-radius-lg) 0 0; }
+  .kt-cb-lanes-head { display: none; }
+  .kt-cb-lane { grid-template-columns: 1fr 1fr; gap: 0.5rem 0.75rem; padding: 0.6rem 0.85rem; }
+  .kt-cb-lane-name { grid-column: 1 / -1; }
+  .kt-cb-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+  .kt-cb-cell::before { display: block; font-size: 0.7rem; color: var(--text-muted); }
+  .kt-cb-foot-actions { width: 100%; }
+  .kt-cb-foot-actions .kt-ui-btn { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kt-cb-lane,
+  .kt-cb-lane-name > svg { transition: none; }
+}

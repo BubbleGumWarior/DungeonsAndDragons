@@ -1015,6 +1015,29 @@ class Campaign {
     return adjusted;
   }
 
+  // Sum of the percentage lane bonuses carried by completed buildings (kingdom unique buildings).
+  static sumBuildingBonusPct(completedBuildings) {
+    const totals = {};
+    for (const building of (completedBuildings || [])) {
+      const bonuses = Campaign.toNumericResourceMap(building?.production_bonus_pct);
+      for (const [key, value] of Object.entries(bonuses)) {
+        if (value !== 0) totals[key] = (totals[key] || 0) + value;
+      }
+    }
+    return totals;
+  }
+
+  static mergeBonusPct(...sources) {
+    const merged = {};
+    for (const source of sources) {
+      for (const [key, value] of Object.entries(source || {})) {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) merged[key] = (merged[key] || 0) + numeric;
+      }
+    }
+    return merged;
+  }
+
   static applyLegendaryBonuses(production, legendaryBonuses) {
     const adjusted = { ...(production || {}) };
     const bonuses = (legendaryBonuses && typeof legendaryBonuses === 'object') ? legendaryBonuses : {};
@@ -1707,7 +1730,8 @@ class Campaign {
                     days_remaining,
                     is_complete,
                     queue_position,
-                    resource_output
+                    resource_output,
+                    production_bonus_pct
              FROM fief_buildings
              WHERE fief_id = ANY($1::int[])`,
             [fiefStates.map((f) => f.id)]
@@ -1729,6 +1753,7 @@ class Campaign {
               queuePosition: row.queue_position == null ? null : Number(row.queue_position),
               resource_output: Campaign.toNumericResourceMap(row.resource_output),
               resourceOutput: Campaign.toNumericResourceMap(row.resource_output),
+              production_bonus_pct: Campaign.toNumericResourceMap(row.production_bonus_pct),
               dirty: false,
             });
           }
@@ -2000,7 +2025,11 @@ class Campaign {
           }
 
           const logisticsLevel = Campaign.getCompletedBuildingCount(completed, Campaign.LOGISTICS_BUILDING_TYPES);
-          const legendaryBonuses = legendaryBonusesByFief.get(fief.id) || {};
+          // Legendary characters and DM-authored unique buildings share the same *_bonus_pct lane keys.
+          const legendaryBonuses = Campaign.mergeBonusPct(
+            legendaryBonusesByFief.get(fief.id),
+            Campaign.sumBuildingBonusPct(completed)
+          );
           const unrestPenaltyPct = Campaign.getUnrestProductionPenaltyPct(fief.unrest);
           const modifiedProduction = Campaign.applyUnrestPenalty(
             Campaign.applyLegendaryBonuses(

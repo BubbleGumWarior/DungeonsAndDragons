@@ -3,11 +3,12 @@ import type { CSSProperties } from 'react';
 
 export const RESEARCH_BUILDING_CHAIN = ['research_lab', 'research_lab_advanced', 'applied_sciences_lab', 'innovation_institute', 'arcane_research_institute', 'grand_academy_of_sciences', 'experimental_nexus', 'transcendent_research_complex', 'omniscience_institute'];
 
-export const BUILD_TABS = ['all', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'animals', 'civic'] as const;
+export const BUILD_TABS = ['all', 'custom', 'food', 'wood', 'stone', 'research', 'faith', 'storage', 'military', 'defense', 'trade', 'animals', 'civic'] as const;
 export type BuildTabId = typeof BUILD_TABS[number];
 
 export const BUILD_TAB_LABELS: Record<BuildTabId, string> = {
   all: 'All',
+  custom: 'Kingdom Unique',
   food: 'Food',
   wood: 'Wood',
   stone: 'Stone & Mining',
@@ -23,6 +24,7 @@ export const BUILD_TAB_LABELS: Record<BuildTabId, string> = {
 
 export const BUILD_TAB_COLORS: Record<BuildTabId, { text: string; border: string; background: string }> = {
   all:      { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.4)',   background: 'rgba(26,26,26,0.35)' },
+  custom:   { text: '#f9a8d4', border: 'rgba(244,114,182,0.5)',   background: 'rgba(157,23,77,0.25)' },
   food:     { text: '#86efac', border: 'rgba(34,197,94,0.45)',    background: 'rgba(20,83,45,0.3)' },
   wood:     { text: '#d6bc9a', border: 'rgba(180,136,90,0.45)',   background: 'rgba(92,58,34,0.35)' },
   stone:    { text: 'var(--text-secondary)', border: 'rgba(var(--theme-accent-rgb),0.45)',  background: 'rgba(51,65,85,0.35)' },
@@ -36,8 +38,12 @@ export const BUILD_TAB_COLORS: Record<BuildTabId, { text: string; border: string
   civic:    { text: 'var(--text-gold)', border: 'rgba(var(--theme-accent-rgb),0.4)', background: 'rgba(120,53,15,0.28)' },
 };
 
+// DM-authored buildings that belong to a single kingdom are stored under 'custom_<id>'.
+export const isCustomBuildingType = (key: unknown): boolean => /^custom_\d+$/.test(String(key || ''));
+
 export const getBuildingCategory = (building: any): BuildTabId => {
   const key = String(building?.key || building?.building_type || '').trim();
+  if (isCustomBuildingType(key)) return 'custom';
   // Food
   if (['farm', 'irrigated_farm', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'].includes(key)) return 'food';
   // Wood
@@ -84,6 +90,7 @@ export const getBuildingCategory = (building: any): BuildTabId => {
 // Solid RGB per category (used with rgba(var(--cat-rgb), a)) so sections can carry a visible tint.
 export const BUILD_TAB_RGB: Record<BuildTabId, string> = {
   all: 'var(--theme-accent-rgb)',
+  custom: '244, 114, 182',
   food: '74, 222, 128',
   wood: '196, 154, 108',
   stone: '168, 162, 158',
@@ -122,3 +129,57 @@ export const getBuildingDisplayName = (building: any, nameByType?: Map<string, s
 // Inline custom properties that drive a category's tint (see constructionPanel.css).
 export const catStyle = (category: BuildTabId): CSSProperties =>
   ({ '--cat-rgb': BUILD_TAB_RGB[category], '--cat-text': BUILD_TAB_COLORS[category].text } as CSSProperties);
+
+/* ── Production lanes (Kingdom Unique buildings) ────────────────────────────
+   A unique building can add a flat amount per day to a lane and/or change the lane's
+   total by a percentage. `flatKey` is the resource_output key, `pctKey` the *_bonus_pct
+   key (the same keys legendary characters use). Iron's flat key is 'minerals'. */
+
+export type LaneIconName = 'wheat' | 'drumstick' | 'tree' | 'mountain' | 'pickaxe' | 'coins' | 'flask' | 'sparkles';
+
+export interface ProductionLane {
+  id: 'vegetables' | 'meat' | 'wood' | 'stone' | 'iron' | 'gold' | 'research' | 'faith';
+  label: string;
+  flatKey: string;
+  pctKey: string;
+  rgb: string;
+  icon: LaneIconName;
+}
+
+export const PRODUCTION_LANES: ProductionLane[] = [
+  { id: 'vegetables', label: 'Farming',  flatKey: 'vegetables', pctKey: 'vegetables_bonus_pct', rgb: '74, 222, 128',  icon: 'wheat' },
+  { id: 'meat',       label: 'Meat',     flatKey: 'meat',       pctKey: 'meat_bonus_pct',       rgb: '251, 113, 133', icon: 'drumstick' },
+  { id: 'wood',       label: 'Wood',     flatKey: 'wood',       pctKey: 'wood_bonus_pct',       rgb: '196, 154, 108', icon: 'tree' },
+  { id: 'stone',      label: 'Stone',    flatKey: 'stone',      pctKey: 'stone_bonus_pct',      rgb: '168, 162, 158', icon: 'mountain' },
+  { id: 'iron',       label: 'Iron',     flatKey: 'minerals',   pctKey: 'iron_bonus_pct',       rgb: '129, 150, 178', icon: 'pickaxe' },
+  { id: 'gold',       label: 'Gold',     flatKey: 'gold',       pctKey: 'gold_bonus_pct',       rgb: '250, 204, 21',  icon: 'coins' },
+  { id: 'research',   label: 'Research', flatKey: 'research',   pctKey: 'research_bonus_pct',   rgb: '96, 165, 250',  icon: 'flask' },
+  { id: 'faith',      label: 'Faith',    flatKey: 'faith',      pctKey: 'faith_bonus_pct',      rgb: '167, 139, 250', icon: 'sparkles' },
+];
+
+export interface LaneEffect {
+  lane: ProductionLane;
+  flat: number;
+  pct: number;
+}
+
+const trimNumber = (n: number): string => String(Math.round(n * 100) / 100);
+
+export const formatFlatPerDay = (n: number): string => `+${trimNumber(n)}/day`;
+export const formatPctChange = (n: number): string => `${n > 0 ? '+' : '−'}${trimNumber(Math.abs(n))}%`;
+
+// Lane-by-lane effects of a building. Accepts a catalogue blueprint (resourceOutput / bonusPct),
+// a unique-building definition (resource_output / bonus_pct) or a built fief_buildings row
+// (resource_output / production_bonus_pct).
+export const getLaneEffects = (source: any): LaneEffect[] => {
+  const flatSource = (source?.resourceOutput ?? source?.resource_output ?? {}) as Record<string, number>;
+  const pctSource = (source?.bonusPct ?? source?.bonus_pct ?? source?.production_bonus_pct ?? {}) as Record<string, number>;
+  const effects: LaneEffect[] = [];
+  for (const lane of PRODUCTION_LANES) {
+    const flatRaw = lane.id === 'iron' ? (flatSource.minerals ?? flatSource.iron) : flatSource[lane.flatKey];
+    const flat = Math.max(0, Number(flatRaw || 0));
+    const pct = Number(pctSource[lane.pctKey] || 0);
+    if (flat > 0 || pct !== 0) effects.push({ lane, flat, pct });
+  }
+  return effects;
+};

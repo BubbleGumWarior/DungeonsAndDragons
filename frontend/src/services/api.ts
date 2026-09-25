@@ -1549,6 +1549,37 @@ export interface LegendaryCharacter {
   assigned_at?: string | null;
 }
 
+export interface KingdomCustomBuilding {
+  id: number;
+  kingdom_id: number;
+  key: string;
+  name: string;
+  description: string;
+  tier_required: number;
+  days: number;
+  // 0 = no limit
+  max_per_fief: number;
+  cost: Record<string, number>;
+  // Flat amount added every day per copy, keyed by resource (minerals = the Iron lane).
+  resource_output: Record<string, number>;
+  // Percentage change to a lane's total, keyed like legendary bonuses (iron_bonus_pct, ...).
+  bonus_pct: Record<string, number>;
+  by_fief?: Record<number, { built: number; queued: number }>;
+  built_total?: number;
+  queued_total?: number;
+}
+
+export interface KingdomCustomBuildingInput {
+  name: string;
+  description: string;
+  tierRequired: number;
+  days: number;
+  maxPerFief: number;
+  cost: Record<string, number>;
+  resourceOutput: Record<string, number>;
+  bonusPct: Record<string, number>;
+}
+
 export interface PrayerDefinition {
   key: string;
   name: string;
@@ -2000,6 +2031,31 @@ export const kingdomAPI = {
     payload: { name: string; description: string; bonuses: Record<string, number> }
   ): Promise<{ character: LegendaryCharacter }> => {
     const response = await api.post(`/kingdoms/${kingdomId}/legendary-characters`, payload);
+    return response.data;
+  },
+
+  getCustomBuildings: async (kingdomId: number): Promise<{ buildings: KingdomCustomBuilding[] }> => {
+    const response = await api.get(`/kingdoms/${kingdomId}/custom-buildings`);
+    return response.data;
+  },
+
+  createCustomBuilding: async (kingdomId: number, payload: KingdomCustomBuildingInput): Promise<{ building: KingdomCustomBuilding }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/custom-buildings`, payload);
+    return response.data;
+  },
+
+  updateCustomBuilding: async (kingdomId: number, buildingId: number, payload: KingdomCustomBuildingInput): Promise<{ building: KingdomCustomBuilding }> => {
+    const response = await api.put(`/kingdoms/${kingdomId}/custom-buildings/${buildingId}`, payload);
+    return response.data;
+  },
+
+  deleteCustomBuilding: async (kingdomId: number, buildingId: number): Promise<{ message: string; removedCopies: number }> => {
+    const response = await api.delete(`/kingdoms/${kingdomId}/custom-buildings/${buildingId}`);
+    return response.data;
+  },
+
+  grantCustomBuilding: async (fiefId: number, buildingId: number, count: number): Promise<{ granted: number }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/custom-buildings/${buildingId}/grant`, { count });
     return response.data;
   },
 

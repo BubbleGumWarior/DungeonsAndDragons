@@ -428,6 +428,7 @@ const startServer = async () => {
         { name: 'addKingdomTaxation', fn: require('./migrations/add_kingdom_taxation') },
         { name: 'addFamilyTree', fn: require('./migrations/add_family_tree') },
         { name: 'addCharacterAgeOverride', fn: require('./migrations/add_character_age_override') },
+        { name: 'addKingdomCustomBuildings', fn: require('./migrations/add_kingdom_custom_buildings') },
       ];
       
       const failedMigrations = [];
