@@ -1410,7 +1410,7 @@ export interface KingdomFief {
       tier_index: number;
       unit_type: string;
       base_days: number;
-      required_buildings: Array<{ building_type: string; building_name: string; completed: boolean; is_custom?: boolean }>;
+      required_buildings: Array<{ building_type: string; building_name: string; completed: boolean; is_custom?: boolean; inherited?: boolean }>;
       unlocked: boolean;
       // Custom troops name the unit they upgrade from explicitly (built-in tiers follow the line order).
       parent_unit_type?: string;
@@ -1586,7 +1586,7 @@ export interface UnitTreeNode {
   line_key: string;
   tier_index: number;
   base_days: number;
-  required_buildings: Array<{ building_type: string; building_name: string; completed: boolean; is_custom?: boolean }>;
+  required_buildings: Array<{ building_type: string; building_name: string; completed: boolean; is_custom?: boolean; inherited?: boolean }>;
   unlocked: boolean;
   is_root: boolean;
   is_custom: boolean;

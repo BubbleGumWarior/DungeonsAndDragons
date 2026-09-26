@@ -195,3 +195,8 @@
 
 /* Unique tag inside the Train up line heading */
 .kt-mt-line-name .kt-tt-tag { margin-left: 0.55rem; vertical-align: 0.12em; }
+
+/* Requirements a troop inherits from the unit it upgrades from */
+.kt-tt-req-inherit { font-size: 0.72rem; font-weight: 500; color: var(--text-muted); font-style: italic; }
+.kt-tt-inherit { margin: 0 0 0.6rem; max-width: 62ch; font-size: 0.82rem; line-height: 1.5; color: var(--text-secondary); }
+.kt-tt-inherit strong { color: var(--text-primary); }

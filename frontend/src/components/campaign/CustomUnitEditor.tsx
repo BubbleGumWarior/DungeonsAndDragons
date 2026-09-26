@@ -59,6 +59,8 @@ const CustomUnitEditor: React.FC<CustomUnitEditorProps> = ({ kingdomId, kingdomN
   }, [index, editing, pickerQuery]);
 
   const parentNode = index.byId.get(parent);
+  // Whatever the source unit needs is inherited: this troop needs it in every fief too.
+  const inheritedReqs = parentNode?.required_buildings || [];
   const selectedBuilding = buildings.find((b) => b.id === buildingId) || null;
   const canSave = name.trim().length >= 2 && !!parentNode && (!needsBuilding || buildingId != null) && !saving;
 
@@ -190,11 +192,16 @@ const CustomUnitEditor: React.FC<CustomUnitEditorProps> = ({ kingdomId, kingdomN
 
                 <section className="kt-cb-sec" aria-label="Requirements">
                   <div className="kt-cb-sec-head"><h4 className="kt-ui-h">Requirements</h4></div>
+                  <p className="kt-tt-inherit">
+                    {inheritedReqs.length > 0
+                      ? <>Inherited from {parentNode?.unit_type}: <strong>{inheritedReqs.map((r) => r.building_name).join(' + ')}</strong> must be built in the fief.</>
+                      : <>{parentNode?.unit_type || 'The source unit'} needs no building, so this troop needs none unless you add one.</>}
+                  </p>
                   <Switch
                     checked={needsBuilding}
                     onChange={setNeedsBuilding}
                     label="Needs a building"
-                    hint={needsBuilding ? 'Each fief must build its own copy before it can train this troop.' : 'Trainable as soon as the fief has troops to upgrade from.'}
+                    hint={needsBuilding ? 'An extra unique building each fief must build its own copy of.' : "Turn on to also require one of this kingdom's unique buildings."}
                   />
                   {needsBuilding && (
                     <div className="kt-tt-req">

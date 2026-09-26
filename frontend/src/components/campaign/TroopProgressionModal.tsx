@@ -374,6 +374,7 @@ const TroopProgressionModal: React.FC<TroopProgressionModalProps> = ({
                               <Icon name={b.completed ? 'check' : 'lock'} size={13} />
                               <span>{b.building_name}</span>
                               {b.is_custom ? <span className="kt-tt-tag">Unique</span> : null}
+                              {b.inherited && parentOfSelected ? <span className="kt-tt-req-inherit">from {parentOfSelected.unit_type}</span> : null}
                               <span className="kt-tt-req-state">{b.completed ? 'Built here' : 'Not built here'}</span>
                             </li>
                           ))}

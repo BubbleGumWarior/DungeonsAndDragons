@@ -3176,22 +3176,57 @@ const getCustomChildren = (parentType, customUnits) =>
 const getCustomUnitBuildingType = (unit) =>
   (unit.requires_building && unit.custom_building_id) ? `${CUSTOM_BUILDING_PREFIX}${unit.custom_building_id}` : null;
 
-const isCustomUnitUnlocked = (unit, completedBuildings) => {
-  if (!unit.requires_building) return true;
-  const type = getCustomUnitBuildingType(unit);
-  if (!type) return false;
-  return (completedBuildings || []).some((b) => String(b?.building_type || '') === type);
+// Buildings a built-in unit type needs in a fief (its own tier's building(s)), chain-aware like the
+// rest of the unlock checks so an upgraded building still counts.
+const getBuiltInUnitRequirements = (unitType, completedBuildings) => {
+  const info = getUnitLineInfo(unitType);
+  if (!info) return [];
+  return getRequiredBuildingsForTier(info.line.buildingChain, info.tierIndex).map((type) => ({
+    building_type: type,
+    building_name: BUILDING_CATALOG[type]?.name || type,
+    completed: isRequiredBuildingTypeMet(type, completedBuildings),
+  }));
 };
 
-const getCustomUnitRequiredBuildings = (unit, completedBuildings) => {
-  const type = getCustomUnitBuildingType(unit);
-  if (!type) return [];
-  return [{
-    building_type: type,
-    building_name: unit.building_name || 'Unique building',
-    completed: (completedBuildings || []).some((b) => String(b?.building_type || '') === type),
-    is_custom: true,
-  }];
+// Everything a custom troop needs before a fief can train it: whatever the unit it upgrades from
+// needs (recursively, so a chain of custom troops keeps carrying the original building), plus the
+// unique building the DM attached to this troop. Inherited entries are flagged.
+const getCustomUnitRequirements = (unit, completedBuildings, customUnits, seen = new Set()) => {
+  const nextSeen = new Set(seen).add(String(unit.name));
+  const parentName = String(unit.parent_unit_type);
+  const parentCustom = findCustomUnit(parentName, customUnits);
+  let inherited = [];
+  if (parentCustom) {
+    if (!nextSeen.has(String(parentCustom.name))) {
+      inherited = getCustomUnitRequirements(parentCustom, completedBuildings, customUnits, nextSeen);
+    }
+  } else {
+    inherited = getBuiltInUnitRequirements(parentName, completedBuildings);
+  }
+
+  const out = inherited.map((r) => ({ ...r, inherited: true }));
+  const ownType = getCustomUnitBuildingType(unit);
+  if (ownType && !out.some((r) => r.building_type === ownType)) {
+    out.push({
+      building_type: ownType,
+      building_name: unit.building_name || 'Unique building',
+      completed: (completedBuildings || []).some((b) => String(b?.building_type || '') === ownType),
+      is_custom: true,
+    });
+  }
+  return out;
+};
+
+const isCustomUnitUnlocked = (unit, completedBuildings, customUnits) =>
+  getCustomUnitRequirements(unit, completedBuildings, customUnits).every((r) => r.completed);
+
+const getCustomUnitRequiredBuildings = (unit, completedBuildings, customUnits) =>
+  getCustomUnitRequirements(unit, completedBuildings, customUnits);
+
+// "Mage Training Ground + Ember Forge", or null when nothing is required.
+const getCustomUnitRequirementLabel = (unit, completedBuildings, customUnits) => {
+  const reqs = getCustomUnitRequirements(unit, completedBuildings, customUnits);
+  return reqs.length > 0 ? reqs.map((r) => r.building_name).join(' + ') : null;
 };
 
 // Walks up through custom parents to the built-in unit (or Militia) the branch is rooted on.
@@ -3264,8 +3299,8 @@ const getUnitProgressionView = (completedBuildings, customUnits = []) => {
       tier_index: depth - 1,
       unit_type: unit.name,
       base_days: Math.max(1, Number(unit.base_days || 1)),
-      required_buildings: getCustomUnitRequiredBuildings(unit, completedBuildings),
-      unlocked: isCustomUnitUnlocked(unit, completedBuildings),
+      required_buildings: getCustomUnitRequiredBuildings(unit, completedBuildings, customUnits),
+      unlocked: isCustomUnitUnlocked(unit, completedBuildings, customUnits),
       parent_unit_type: unit.parent_unit_type,
       is_custom: true,
       custom_id: Number(unit.id),
@@ -3316,8 +3351,8 @@ const getUnitTreeView = (completedBuildings, customUnits = []) => {
       line_key: rootLine,
       tier_index: depth,
       base_days: Math.max(1, Number(unit.base_days || 1)),
-      required_buildings: getCustomUnitRequiredBuildings(unit, completedBuildings),
-      unlocked: isCustomUnitUnlocked(unit, completedBuildings),
+      required_buildings: getCustomUnitRequiredBuildings(unit, completedBuildings, customUnits),
+      unlocked: isCustomUnitUnlocked(unit, completedBuildings, customUnits),
       is_root: false,
       is_custom: true,
       custom_id: Number(unit.id),
@@ -3385,8 +3420,8 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings, customUnits =
         unit_type: unitType,
         next_unit_type: child.name,
         next_base_days: Math.max(1, Number(child.base_days || 1)),
-        required_building_type: child.requires_building ? (child.building_name || 'Unique building') : null,
-        unlocked: isCustomUnitUnlocked(child, completedBuildings),
+        required_building_type: getCustomUnitRequirementLabel(child, completedBuildings, customUnits),
+        unlocked: isCustomUnitUnlocked(child, completedBuildings, customUnits),
         available,
         is_custom: true,
       });
@@ -5333,8 +5368,8 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
       if (String(customTarget.parent_unit_type) !== fromUnitType) {
         return res.status(400).json({ error: `${customTarget.name} is not an upgrade of ${fromUnitType}.` });
       }
-      upgradeUnlocked = isCustomUnitUnlocked(customTarget, completedBuildings);
-      upgradeRequiredBuildingLabel = customTarget.building_name || 'required';
+      upgradeUnlocked = isCustomUnitUnlocked(customTarget, completedBuildings, customUnits);
+      upgradeRequiredBuildingLabel = getCustomUnitRequirementLabel(customTarget, completedBuildings, customUnits) || 'required';
       toUnitType = customTarget.name;
     } else if (requestedHeadLine && getLineParentUnit(requestedHeadLine.lineKey) === fromUnitType) {
       // The first unit of a line upgrades from that line's parent (Militia for trunk lines, e.g. Ranger for Crossbowman).

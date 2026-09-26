@@ -1063,6 +1063,24 @@ class Campaign {
     return merged;
   }
 
+  // Whole build-days of effort a fief's builders put in today. The Kingdom tab's construction lane
+  // shows builders x (1 + location "building" modifier) x (1 + legendary building %), so the server
+  // has to spend exactly that. Building time is an integer, so a fractional total (5 builders at
+  // +50% = 7.5) is dithered by day number: floor(e*n) - floor(e*(n-1)) gives 7 and 8 on alternating
+  // days and averages exactly 7.5, with no per-fief state to persist.
+  static getBuilderEffortForDay(rawBuilders, locationModifiers, legendaryBonuses, dayNumber) {
+    const raw = Math.max(0, Number(rawBuilders) || 0);
+    if (raw <= 0) return 0;
+    const locationMod = Number((locationModifiers && locationModifiers.building) || 0);
+    const legendaryPct = Number((legendaryBonuses && legendaryBonuses.building_bonus_pct) || 0);
+    const multiplier = Math.max(0, (1 + (Number.isFinite(locationMod) ? locationMod : 0)) * (1 + (Number.isFinite(legendaryPct) ? legendaryPct : 0) / 100));
+    const effort = raw * multiplier;
+    const day = Math.max(1, Math.floor(Number(dayNumber) || 1));
+    // Tiny epsilon: 5 x 1.1 style products can land just under a whole number in floating point.
+    const eps = 1e-9;
+    return Math.max(0, Math.floor(effort * day + eps) - Math.floor(effort * (day - 1) + eps));
+  }
+
   static applyLegendaryBonuses(production, legendaryBonuses) {
     const adjusted = { ...(production || {}) };
     const bonuses = (legendaryBonuses && typeof legendaryBonuses === 'object') ? legendaryBonuses : {};
@@ -2555,8 +2573,10 @@ class Campaign {
           const builderWorkers = Math.max(0, Math.floor(Number(fief.workerAssignments.building || 0)))
             + Math.max(0, Math.floor(Math.max(0, Number((fief.slaveWorkerAssignments || {}).building || 0)) * slaveOutputMultiplier))
             + passiveBuilderBonus;
-          if (builderWorkers > 0) {
-            let remainingEffort = builderWorkers;
+          // Location and legendary "building" bonuses count, exactly as the construction lane shows.
+          const builderEffort = Campaign.getBuilderEffortForDay(builderWorkers, fief.locationModifiers, legendaryBonuses, dayNumber);
+          if (builderEffort > 0) {
+            let remainingEffort = builderEffort;
 
             // Unfinished buildings only — a fief can hold thousands of finished ones, and the
             // loop below runs once per building it completes. Built once per fief and shrunk as
