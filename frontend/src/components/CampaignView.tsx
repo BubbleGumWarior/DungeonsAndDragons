@@ -9793,6 +9793,9 @@ const CampaignView: React.FC = () => {
 
                           {/* Army positions */}
                           {activeBattle.participants && activeBattle.participants.map((participant) => {
+                            // Wiped-out armies (0 surviving troops) leave the map so they don't read as extra armies
+                            if ((participant.current_troops || 0) <= 0) return null;
+
                             const canDrag = user?.role === 'Dungeon Master' || (participant.user_id === user?.id && !participant.is_temporary);
                             const factionColor = participant.faction_color || (participant.team_name === 'A' ? '#3b82f6' : '#ef4444');
                             const hasMovement = (remainingArmyMovement[participant.id] ?? 0) > 0;
