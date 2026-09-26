@@ -1,5 +1,7 @@
 const { pool } = require('../../models/database');
 
+const normalizeRollMode = (mode) => (mode === 'advantage' || mode === 'disadvantage' ? mode : 'normal');
+
 module.exports = (socket, io, userSocketMap) => {
   // Send a chat message
   socket.on('chatMessage', async ({ campaignId, content }) => {
@@ -46,7 +48,7 @@ module.exports = (socket, io, userSocketMap) => {
   // DM requests a player to make a roll outside combat
   socket.on('requestOutOfCombatRoll', async ({
     campaignId, targetPlayerId, targetCharacterName,
-    diceType, rollPurpose, purposeDetail, modifier, precomputedModifier, diceGroups
+    diceType, rollPurpose, purposeDetail, modifier, precomputedModifier, diceGroups, rollMode
   }) => {
     try {
       const userId = socket.userId;
@@ -61,6 +63,7 @@ module.exports = (socket, io, userSocketMap) => {
       const dmName = dmUser.rows[0]?.username ?? 'DM';
 
       const requestId = Date.now();
+      const safeMode = normalizeRollMode(rollMode);
 
       // Emit roll request directly to the target player's socket
       const targetSocketId = userSocketMap.get(Number(targetPlayerId));
@@ -77,12 +80,14 @@ module.exports = (socket, io, userSocketMap) => {
           precomputedModifier: precomputedModifier ?? null,
           requesterName: dmName,
           diceGroups: diceGroups ?? null,
+          rollMode: safeMode,
         });
       }
 
       // Broadcast server message to whole room
       const label = purposeDetail || rollPurpose || 'roll';
-      const serverContent = `${dmName} is requesting ${targetCharacterName} make a ${label} (${diceType || 'd20'})`;
+      const modeLabel = safeMode === 'normal' ? '' : ` with ${safeMode}`;
+      const serverContent = `${dmName} is requesting ${targetCharacterName} make a ${label}${modeLabel} (${diceType || 'd20'})`;
       const result = await pool.query(
         `INSERT INTO campaign_chat_messages (campaign_id, sender_id, sender_name, message_type, content)
          VALUES ($1, $2, $3, 'server', $4) RETURNING *`,
@@ -98,7 +103,7 @@ module.exports = (socket, io, userSocketMap) => {
   // Player submits a completed out-of-combat roll
   socket.on('submitOutOfCombatRoll', async ({
     campaignId, requestId, rawRoll, total, modifierValue, modifier,
-    rollerName, diceType, purposeDetail, allRolls
+    rollerName, diceType, purposeDetail, allRolls, rollMode, rollSets
   }) => {
     try {
       if (!campaignId || !rollerName) return;
@@ -107,7 +112,23 @@ module.exports = (socket, io, userSocketMap) => {
       const safeMod = Number(modifierValue) || 0;
       const safeTotal = Number(total) || safeRaw + safeMod;
 
+      // With advantage/disadvantage the client sends every set it rolled; allRolls is the kept one.
+      const safeMode = normalizeRollMode(rollMode);
+      const safeSets = safeMode !== 'normal' && Array.isArray(rollSets) && rollSets.length === 2
+        ? rollSets.map(set => ({
+            groups: (Array.isArray(set?.groups) ? set.groups : []).map(g => ({
+              diceType: String(g?.diceType || 'd20'),
+              rolls: (Array.isArray(g?.rolls) ? g.rolls : []).map(Number).filter(Number.isFinite),
+            })),
+            sum: Number(set?.sum) || 0,
+            kept: !!set?.kept,
+          }))
+        : null;
+      const modeForData = safeSets ? safeMode : 'normal';
+
       const rollData = {
+        rollMode: modeForData,
+        rollSets: safeSets,
         diceType: diceType || 'd20',
         rolls: allRolls ? allRolls.flatMap(g => g.rolls) : [safeRaw],
         modifier: safeMod,
@@ -117,7 +138,15 @@ module.exports = (socket, io, userSocketMap) => {
       };
 
       const modLabel = safeMod !== 0 ? ` ${safeMod >= 0 ? '+' : ''}${safeMod} (${modifier || '?'})` : '';
-      const content = `${rollerName} rolled ${purposeDetail || 'roll'}: ${safeRaw}${modLabel} = ${safeTotal}`;
+      let modeNote = '';
+      if (safeSets) {
+        const keptSet = safeSets.find(set => set.kept);
+        const droppedSet = safeSets.find(set => !set.kept);
+        if (keptSet && droppedSet) {
+          modeNote = ` [${modeForData}: kept ${keptSet.sum}, dropped ${droppedSet.sum}]`;
+        }
+      }
+      const content = `${rollerName} rolled ${purposeDetail || 'roll'}: ${safeRaw}${modLabel} = ${safeTotal}${modeNote}`;
 
       const result = await pool.query(
         `INSERT INTO campaign_chat_messages (campaign_id, sender_name, message_type, content, roll_data)

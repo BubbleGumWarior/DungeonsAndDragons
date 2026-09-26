@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Socket } from 'socket.io-client';
-import { ChatMessage, OutOfCombatRollRequest, DiceGroup, CampaignNPC } from '../../types/campaignTypes';
+import { ChatMessage, OutOfCombatRollRequest, DiceGroup, CampaignNPC, RollMode } from '../../types/campaignTypes';
 import { npcAPI } from '../../services/api';
 import { IMAGE_WIDTH, sizedImageUrl } from '../../utils/imageUrls';
 
@@ -86,6 +86,12 @@ const ABILITY_BADGE: Record<string, string> = {
   str: '#f87171', dex: '#22d3ee', con: '#fb923c',
   int: '#a5b4fc', wis: '#4ade80', cha: '#f472b6', none: '#9ca3af',
 };
+
+const ROLL_MODES: { id: RollMode; label: string }[] = [
+  { id: 'normal', label: 'Normal' },
+  { id: 'advantage', label: 'Advantage' },
+  { id: 'disadvantage', label: 'Disadvantage' },
+];
 
 const DICE_TYPES = ['d2', 'd3', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
@@ -235,6 +241,20 @@ const CHAT_CSS = `
 .cp-die { min-width: 27px; height: 27px; padding: 0 7px; display: inline-grid; place-items: center; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--cp-line); font-size: 0.82rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cp-die.mod { color: var(--text-gold, #d4c19c); border-color: rgba(var(--cp-acc), 0.3); background: rgba(var(--cp-acc), 0.08); }
 .cp-plain-roll { font-size: 0.86rem; color: var(--cp-text); }
+.cp-flag.adv { color: #8fe3a8; background: rgba(94,194,123,0.16); }
+.cp-flag.dis { color: #ff9494; background: rgba(239,84,84,0.16); }
+.cp-sets { display: flex; flex-direction: column; gap: 5px; }
+.cp-set { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 4px 8px 4px 6px; border-radius: 10px; border: 1px solid transparent; }
+.cp-set.kept { border-color: var(--cp-set-color); background: color-mix(in srgb, var(--cp-set-color) 12%, transparent); }
+.cp-set.dropped { border-style: dashed; border-color: var(--cp-line); opacity: 0.6; }
+.cp-set-tag { margin-left: auto; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.cp-set.kept .cp-set-tag { color: var(--cp-set-color); }
+.cp-set.dropped .cp-set-tag { color: var(--cp-muted); }
+.cp-set.dropped .cp-die { text-decoration: line-through; color: var(--cp-muted); }
+.cp-set.kept .cp-die { border-color: var(--cp-set-color); }
+.cp-seg.modes { margin-bottom: 0; }
+.cp-seg.modes .cp-seg-ind.advantage { background: rgba(94,194,123,0.2); border-color: rgba(94,194,123,0.6); }
+.cp-seg.modes .cp-seg-ind.disadvantage { background: rgba(239,84,84,0.2); border-color: rgba(239,84,84,0.6); }
 
 /* NPC reveal */
 .cp-npc { align-self: stretch; display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 12px; border-radius: 16px; background: linear-gradient(160deg, rgba(var(--cp-acc), 0.15), rgba(var(--cp-acc), 0.04)); border: 1px solid rgba(var(--cp-acc), 0.38); }
@@ -373,6 +393,7 @@ const ChatPanel: React.FC<Props> = ({
   const [rollTargetId, setRollTargetId] = useState<number | ''>('');
   const [selectedOption, setSelectedOption] = useState<RollOption | null>(null);
   const [rollDiceGroups, setRollDiceGroups] = useState<DiceGroup[]>([{ count: 1, diceType: 'd20' }]);
+  const [rollMode, setRollMode] = useState<RollMode>('normal');
   const [newBelow, setNewBelow] = useState(0);
 
   // NPC modal state
@@ -600,12 +621,14 @@ const ChatPanel: React.FC<Props> = ({
       precomputedModifier: selectedOption.modifier !== 'none' ? selectedOption.modifier : undefined,
       diceGroups: rollDiceGroups,
       requesterName: currentUserName,
+      rollMode,
     };
     socket.emit('requestOutOfCombatRoll', req);
     setShowRollPicker(false);
     setRollTargetId('');
     setSelectedOption(null);
     setRollDiceGroups([{ count: 1, diceType: 'd20' }]);
+    setRollMode('normal');
   };
 
   const handleRootKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -633,6 +656,12 @@ const ChatPanel: React.FC<Props> = ({
     const nat1 = isSingleD20 && groups[0].rolls[0] === 1;
     const purpose = (rd as any).purpose || rd.purposeDetail || 'Roll';
     const tone = nat20 ? ' nat20' : nat1 ? ' nat1' : '';
+    const sets = rd.rollMode && rd.rollMode !== 'normal' && rd.rollSets && rd.rollSets.length > 1 ? rd.rollSets : null;
+    const isAdv = rd.rollMode === 'advantage';
+    const setColor = isAdv ? '#8fe3a8' : '#ff9494';
+    const modChip = rd.modifier !== 0 && (
+      <span className="cp-die mod" title="Modifier">{rd.modifier >= 0 ? '+' : '−'}{Math.abs(rd.modifier)}</span>
+    );
     return (
       <div key={msg.id} className={`cp-roll${fresh ? ' cp-fresh' : ''}`}>
         <div className={`cp-roll-total${tone}`} aria-label={`Total ${rd.total}`}>{rd.total}</div>
@@ -642,20 +671,38 @@ const ChatPanel: React.FC<Props> = ({
               <span>{purpose}</span>
               {nat20 && <span className="cp-flag nat20">Natural 20</span>}
               {nat1 && <span className="cp-flag nat1">Natural 1</span>}
+              {sets && <span className={`cp-flag ${isAdv ? 'adv' : 'dis'}`}>{isAdv ? 'Advantage' : 'Disadvantage'}</span>}
             </div>
             <div className="cp-roll-by">{msg.sender_name} · {formatTime(msg.created_at)}</div>
           </div>
-          <div className="cp-chips">
-            {groups.map((grp, gi) => (
-              <React.Fragment key={gi}>
-                <span className="cp-glabel">{grp.rolls.length}{grp.diceType}</span>
-                {grp.rolls.map((r, ri) => <span key={ri} className="cp-die">{r}</span>)}
-              </React.Fragment>
-            ))}
-            {rd.modifier !== 0 && (
-              <span className="cp-die mod" title="Modifier">{rd.modifier >= 0 ? '+' : '−'}{Math.abs(rd.modifier)}</span>
-            )}
-          </div>
+          {sets ? (
+            <div className="cp-sets" style={{ ['--cp-set-color' as any]: setColor }}>
+              {sets.map((set, si) => (
+                <div key={si} className={`cp-set ${set.kept ? 'kept' : 'dropped'}`}>
+                  <span className="cp-glabel">Roll {si + 1}</span>
+                  {set.groups.map((grp, gi) => (
+                    <React.Fragment key={gi}>
+                      {set.groups.length > 1 && <span className="cp-glabel">{grp.rolls.length}{grp.diceType}</span>}
+                      {grp.rolls.map((r, ri) => <span key={ri} className="cp-die">{r}</span>)}
+                    </React.Fragment>
+                  ))}
+                  {set.groups.reduce((n, g) => n + g.rolls.length, 0) > 1 && <span className="cp-glabel">= {set.sum}</span>}
+                  <span className="cp-set-tag">{set.kept ? `✔ kept (${isAdv ? 'higher' : 'lower'})` : '✖ dropped'}</span>
+                </div>
+              ))}
+              {modChip && <div className="cp-chips">{modChip}</div>}
+            </div>
+          ) : (
+            <div className="cp-chips">
+              {groups.map((grp, gi) => (
+                <React.Fragment key={gi}>
+                  <span className="cp-glabel">{grp.rolls.length}{grp.diceType}</span>
+                  {grp.rolls.map((r, ri) => <span key={ri} className="cp-die">{r}</span>)}
+                </React.Fragment>
+              ))}
+              {modChip}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -822,6 +869,23 @@ const ChatPanel: React.FC<Props> = ({
               <div className="cp-build">
                 {selectedOption ? (
                   <>
+                    <div>
+                      <div className="cp-plabel">Roll mode</div>
+                      <div className="cp-seg modes" role="radiogroup" aria-label="Roll mode">
+                        <span className={`cp-seg-ind ${rollMode}`} style={{ transform: `translateX(${ROLL_MODES.findIndex(m => m.id === rollMode) * 100}%)` }} />
+                        {ROLL_MODES.map(m => (
+                          <button key={m.id} role="radio" aria-checked={rollMode === m.id} className={rollMode === m.id ? 'on' : ''}
+                            onClick={() => setRollMode(m.id)}>
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                      {rollMode !== 'normal' && (
+                        <div className="cp-hint" style={{ marginTop: 6 }}>
+                          Rolls the dice twice and keeps the {rollMode === 'advantage' ? 'higher' : 'lower'} result. Both rolls show in the chat.
+                        </div>
+                      )}
+                    </div>
                     {rollDiceGroups.map((grp, idx) => (
                       <div key={idx} className="cp-drow">
                         <input className="cp-field num" type="number" min={1} max={10} value={grp.count} aria-label="Number of dice"
@@ -864,7 +928,7 @@ const ChatPanel: React.FC<Props> = ({
                 )}
                 <div className="cp-actions">
                   <button className="cp-btn primary" onClick={sendRollRequest} disabled={!canSendRoll}>
-                    {targetPlayer && selectedOption ? `Ask ${targetPlayer.characterName} to roll` : 'Send request'}
+                    {targetPlayer && selectedOption ? `Ask ${targetPlayer.characterName} to roll${rollMode !== 'normal' ? ` with ${rollMode}` : ''}` : 'Send request'}
                   </button>
                   <button className="cp-btn ghost" onClick={() => { setShowRollPicker(false); setSelectedOption(null); }}>Cancel</button>
                 </div>

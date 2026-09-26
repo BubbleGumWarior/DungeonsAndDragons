@@ -1,15 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CombatDiceRequest, DiceGroup } from '../../types/campaignTypes';
+import { CombatDiceRequest, DiceGroup, RollMode, RollSet } from '../../types/campaignTypes';
 import { Character } from '../../services/api';
+
+/** Extra detail when the roll was made with advantage/disadvantage: every set rolled, one flagged as kept. */
+export interface RollModeInfo {
+  rollMode: RollMode;
+  rollSets: RollSet[];
+}
 
 interface Props {
   request: CombatDiceRequest;
   rollerName: string;
   character?: Character | null;
-  onConfirm: (rawRoll: number, total: number, modifierValue: number, modifier: string, allRolls?: { diceType: string; rolls: number[] }[]) => void;
+  onConfirm: (rawRoll: number, total: number, modifierValue: number, modifier: string, allRolls?: { diceType: string; rolls: number[] }[], modeInfo?: RollModeInfo) => void;
   /** When provided, the result is submitted automatically the moment all dice settle,
    *  and the confirm button only closes the modal (via onClose). */
-  onRollComplete?: (rawRoll: number, total: number, modifierValue: number, modifier: string, allRolls?: { diceType: string; rolls: number[] }[]) => void;
+  onRollComplete?: (rawRoll: number, total: number, modifierValue: number, modifier: string, allRolls?: { diceType: string; rolls: number[] }[], modeInfo?: RollModeInfo) => void;
   onRequestReroll?: (diceType: string) => void;
   rerollApproved?: boolean;
   previousRollResult?: { label: string; total: number; color: string };
@@ -87,13 +93,22 @@ function flattenDice(groups: DiceGroup[]): { diceType: string; groupIdx: number 
   return flat;
 }
 
+const MODE_THEMES: Record<Exclude<RollMode, 'normal'>, { color: string; label: string; keep: string }> = {
+  advantage:    { color: '#4ade80', label: 'Advantage',    keep: 'higher' },
+  disadvantage: { color: '#f87171', label: 'Disadvantage', keep: 'lower' },
+};
+
 export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character, onConfirm, onRollComplete, onRequestReroll, rerollApproved, previousRollResult, onClose, precomputedModifier }) => {
   // Derive dice groups — fall back to single die from request.diceType
   const diceGroups: DiceGroup[] = request.diceGroups && request.diceGroups.length > 0
     ? request.diceGroups
     : [{ count: 1, diceType: request.diceType || 'd20' }];
 
-  const allDice = flattenDice(diceGroups);
+  const rollMode: RollMode = request.rollMode === 'advantage' || request.rollMode === 'disadvantage' ? request.rollMode : 'normal';
+  const setCount = rollMode === 'normal' ? 1 : 2;
+  const baseDice = flattenDice(diceGroups);
+  // Advantage/disadvantage rolls the whole requested set twice; setIdx says which set a die belongs to.
+  const allDice = Array.from({ length: setCount }).flatMap((_, si) => baseDice.map(d => ({ ...d, setIdx: si })));
 
   // Per-die results (null = not yet revealed)
   const [dieResults, setDieResults] = useState<(number | null)[]>(() => Array(allDice.length).fill(null));
@@ -135,10 +150,16 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
       }
     : baseMod;
 
-  // Compute raw sum only after all dice rolled
-  const rawSum = allDiceRolled
-    ? dieResults.reduce<number>((acc, v) => acc + (v ?? 0), 0)
+  // Compute sums only after all dice rolled; under advantage/disadvantage one set is kept, the other dropped
+  const setSums: number[] | null = allDiceRolled
+    ? Array.from({ length: setCount }, (_, si) =>
+        allDice.reduce((acc, d, di) => (d.setIdx === si ? acc + (dieResults[di] ?? 0) : acc), 0))
     : null;
+  // Ties keep the first set, which is the same total either way
+  const keptSet = !setSums || setCount === 1 ? 0
+    : rollMode === 'advantage' ? (setSums[1] > setSums[0] ? 1 : 0)
+    : (setSums[1] < setSums[0] ? 1 : 0);
+  const rawSum = setSums ? setSums[keptSet] : null;
   const total = rawSum !== null ? rawSum + mod.value : null;
 
   const revealDie = (index: number, finalValues: number[]) => {
@@ -199,15 +220,23 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
     revealDie(0, finalValues);
   };
 
-  // Build grouped allRolls for onConfirm
-  const buildAllRolls = (): { diceType: string; rolls: number[] }[] => {
+  // Build grouped allRolls for one set (the kept set by default) for onConfirm
+  const buildAllRolls = (setIdx: number = keptSet): { diceType: string; rolls: number[] }[] => {
     return diceGroups.map((g, gi) => {
       const rolls: number[] = [];
       allDice.forEach((d, di) => {
-        if (d.groupIdx === gi) rolls.push(dieResults[di] ?? 0);
+        if (d.groupIdx === gi && d.setIdx === setIdx) rolls.push(dieResults[di] ?? 0);
       });
       return { diceType: g.diceType, rolls };
     });
+  };
+
+  const buildModeInfo = (): RollModeInfo | undefined => {
+    if (setCount === 1 || !setSums) return undefined;
+    return {
+      rollMode,
+      rollSets: setSums.map((sum, si) => ({ groups: buildAllRolls(si), sum, kept: si === keptSet })),
+    };
   };
 
   // Auto-submit as soon as the roll is revealed so a bad roll can't be discarded
@@ -217,7 +246,7 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
     if (rerollApproved) autoSubmitted.current = false;
     if (allDiceRolled && total !== null && rawSum !== null && !autoSubmitted.current) {
       autoSubmitted.current = true;
-      onRollComplete(rawSum, total, mod.value, modifier ?? 'none', buildAllRolls());
+      onRollComplete(rawSum, total, mod.value, modifier ?? 'none', buildAllRolls(), buildModeInfo());
     }
   }, [allDiceRolled]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -234,8 +263,9 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
     display: 'flex', flexDirection: 'column', gap: '1.25rem',
   };
 
-  // Whether this is a multi-die roll (more than 1 total die)
-  const isMultiDie = allDice.length > 1;
+  // Whether one set is a multi-die roll (more than 1 die per set)
+  const isMultiDie = baseDice.length > 1;
+  const modeTheme = rollMode === 'normal' ? null : MODE_THEMES[rollMode];
 
   return (
     <div style={overlay} onClick={e => { if (e.target === e.currentTarget && !hasRolled) onClose(); }}>
@@ -275,6 +305,11 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
             {diceGroups.map(g => `${g.count}${g.diceType}`).join(' + ')}
             {mod.label ? ` + ${mod.label} (${mod.value >= 0 ? '+' : ''}${mod.value})` : ''}
           </p>
+          {modeTheme && (
+            <p style={{ color: modeTheme.color, margin: '0.35rem 0 0', fontSize: '0.8rem', fontWeight: 'bold' }}>
+              {modeTheme.label} — roll twice, keep the {modeTheme.keep} result
+            </p>
+          )}
         </div>
 
         {/* Previous roll result banner */}
@@ -289,53 +324,90 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
           </div>
         )}
 
-        {/* Dice faces — one per die, arranged in a flex row that wraps */}
+        {/* Dice faces — one per die, arranged in a flex row that wraps. Advantage/disadvantage shows two sets. */}
         <div style={{
           display: 'flex', flexWrap: 'wrap', gap: '0.6rem',
           justifyContent: 'center',
         }}>
-          {allDice.map((die, di) => {
-            const result = dieResults[di];
-            const isRolling = currentlyRollingIndex === di;
-            const isSettled = settledIndex === di;
-            const isRevealed = result !== null && currentlyRollingIndex !== di;
-            // Show max value (unrolled state) as placeholder label
-            const sides = parseInt(die.diceType.replace('d', ''), 10) || 20;
-            const dieAnimation = isRolling
-              ? 'diceRoll 0.2s linear infinite'
-              : isSettled
-              ? 'diceSettle 0.3s ease-out forwards'
-              : 'none';
-            const faceSize = isMultiDie ? '78px' : '130px';
-            const fontSize = isMultiDie
-              ? (isRevealed ? '1.9rem' : '0.9rem')
-              : (isRevealed ? '3.2rem' : '1.8rem');
+          {Array.from({ length: setCount }, (_, si) => {
+            const boxed = setCount > 1;
+            const isKept = allDiceRolled && si === keptSet;
+            const isDropped = allDiceRolled && boxed && si !== keptSet;
+            const setColor = isKept && modeTheme ? modeTheme.color : 'rgba(255,255,255,0.25)';
             return (
-              <div key={di} style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
-              }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: faceSize, height: faceSize, borderRadius: '14px',
-                  background: isRevealed ? theme.bg : 'rgba(255,255,255,0.04)',
-                  border: `${isRevealed ? 3 : 2}px solid ${isRevealed ? theme.color : 'rgba(255,255,255,0.2)'}`,
-                  fontSize, fontWeight: 'bold',
-                  color: isRevealed ? theme.color : isRolling ? theme.color : 'rgba(255,255,255,0.4)',
-                  boxShadow: isRolling
-                    ? `0 0 30px ${theme.color}99`
-                    : isRevealed ? `0 0 12px ${theme.color}44` : 'none',
-                  transition: 'box-shadow 0.2s ease, border-color 0.15s ease',
-                  userSelect: 'none',
-                  animation: dieAnimation,
-                }}>
-                  {isRolling && result !== null
-                    ? result
-                    : isRevealed
-                    ? result
-                    : sides /* max value as placeholder */}
+              <div key={si} style={boxed ? {
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem',
+                padding: '0.5rem', borderRadius: '14px', minWidth: 0,
+                border: `2px ${isDropped ? 'dashed' : 'solid'} ${allDiceRolled ? setColor : 'rgba(255,255,255,0.12)'}`,
+                background: isKept ? `${modeTheme?.color}14` : 'transparent',
+                opacity: isDropped ? 0.5 : 1,
+                transition: 'opacity 0.25s ease, border-color 0.25s ease, background 0.25s ease',
+              } : { display: 'contents' }}>
+                {boxed && (
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: 'bold', letterSpacing: '0.06em', textTransform: 'uppercase',
+                    color: isKept ? modeTheme?.color : 'rgba(255,255,255,0.4)',
+                  }}>
+                    {allDiceRolled
+                      ? (isKept ? `✔ Roll ${si + 1} · kept` : `✖ Roll ${si + 1} · dropped`)
+                      : `Roll ${si + 1}`}
+                  </span>
+                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', justifyContent: 'center' }}>
+                  {allDice.map((die, di) => {
+                    if (die.setIdx !== si) return null;
+                    const result = dieResults[di];
+                    const isRolling = currentlyRollingIndex === di;
+                    const isSettled = settledIndex === di;
+                    const isRevealed = result !== null && currentlyRollingIndex !== di;
+                    // Show max value (unrolled state) as placeholder label
+                    const sides = parseInt(die.diceType.replace('d', ''), 10) || 20;
+                    const dieAnimation = isRolling
+                      ? 'diceRoll 0.2s linear infinite'
+                      : isSettled
+                      ? 'diceSettle 0.3s ease-out forwards'
+                      : 'none';
+                    const faceSize = isMultiDie ? '78px' : boxed ? '104px' : '130px';
+                    const fontSize = isMultiDie
+                      ? (isRevealed ? '1.9rem' : '0.9rem')
+                      : (isRevealed ? (boxed ? '2.6rem' : '3.2rem') : (boxed ? '1.5rem' : '1.8rem'));
+                    const faceColor = isDropped ? 'rgba(255,255,255,0.55)' : theme.color;
+                    return (
+                      <div key={di} style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
+                      }}>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: faceSize, height: faceSize, borderRadius: '14px',
+                          background: isRevealed ? (isDropped ? 'rgba(255,255,255,0.04)' : theme.bg) : 'rgba(255,255,255,0.04)',
+                          border: `${isRevealed ? 3 : 2}px solid ${isRevealed ? faceColor : 'rgba(255,255,255,0.2)'}`,
+                          fontSize, fontWeight: 'bold',
+                          color: isRevealed ? faceColor : isRolling ? theme.color : 'rgba(255,255,255,0.4)',
+                          textDecoration: isDropped && isRevealed ? 'line-through' : 'none',
+                          boxShadow: isRolling
+                            ? `0 0 30px ${theme.color}99`
+                            : isRevealed && !isDropped ? `0 0 12px ${theme.color}44` : 'none',
+                          transition: 'box-shadow 0.2s ease, border-color 0.15s ease',
+                          userSelect: 'none',
+                          animation: dieAnimation,
+                        }}>
+                          {isRolling && result !== null
+                            ? result
+                            : isRevealed
+                            ? result
+                            : sides /* max value as placeholder */}
+                        </div>
+                        {(isMultiDie || boxed) && (
+                          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.62rem' }}>{die.diceType}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                {isMultiDie && (
-                  <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.62rem' }}>{die.diceType}</span>
+                {boxed && isMultiDie && allDiceRolled && setSums && (
+                  <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: isKept ? modeTheme?.color : 'rgba(255,255,255,0.45)' }}>
+                    Sum {setSums[si]}
+                  </span>
                 )}
               </div>
             );
@@ -346,7 +418,7 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
         {allDiceRolled && rawSum !== null && total !== null && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             {isMultiDie && diceGroups.map((g, gi) => {
-              const groupDice = allDice.map((d, di) => ({ d, di })).filter(x => x.d.groupIdx === gi);
+              const groupDice = allDice.map((d, di) => ({ d, di })).filter(x => x.d.groupIdx === gi && x.d.setIdx === keptSet);
               const groupRolls = groupDice.map(x => dieResults[x.di] ?? 0);
               const groupSum = groupRolls.reduce((a, b) => a + b, 0);
               return (
@@ -402,7 +474,7 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
         )}
 
         {/* Single die no-modifier result (kept for clean display when only 1 die + no modifier) */}
-        {!isMultiDie && !allDiceRolled && dieResults[0] !== null && currentlyRollingIndex === -1 && (
+        {!isMultiDie && setCount === 1 && !allDiceRolled && dieResults[0] !== null && currentlyRollingIndex === -1 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: theme.color, fontSize: '1.5rem', fontWeight: 'bold' }}>
               {dieResults[0]}
@@ -421,12 +493,12 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
                   border: `2px solid ${theme.color}`,
                   color: '#000', fontWeight: 'bold', fontSize: '1rem',
                 }}>
-                🎲 Roll {diceGroups.map(g => `${g.count}${g.diceType}`).join(' + ')}
+                🎲 Roll {diceGroups.map(g => `${g.count}${g.diceType}`).join(' + ')}{modeTheme ? ` (${modeTheme.label.toLowerCase()})` : ''}
               </button>
             )}
 
             {allDiceRolled && total !== null && (
-              <button onClick={() => onRollComplete ? onClose() : onConfirm(rawSum!, total, mod.value, modifier ?? 'none', buildAllRolls())}
+              <button onClick={() => onRollComplete ? onClose() : onConfirm(rawSum!, total, mod.value, modifier ?? 'none', buildAllRolls(), buildModeInfo())}
                 style={{
                   flex: 1, padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
                   background: 'linear-gradient(135deg,#4ade80cc,#22c55e)',

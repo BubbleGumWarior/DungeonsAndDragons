@@ -754,22 +754,27 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
       feet: 0        // Leggings / boots item AC bonus
     };
     
-    // Apply armor bonuses from equipped items
+    // Apply armor bonuses from equipped items. Hand bonuses are additive: gloves/gauntlets in
+    // the 'hands' slot cover BOTH hands, and a shield (or off-hand gauntlet) stacks on top for
+    // the off hand only.
+    const addHandAC = (slot, ac) => {
+      if (slot === 'hands') {
+        limbAC.main_hand += ac;
+        limbAC.off_hand += ac;
+      } else if (slot === 'main_hand') {
+        limbAC.main_hand += ac;
+      } else if (slot === 'off_hand') {
+        limbAC.off_hand += ac;
+      }
+    };
     for (const [slot, item] of Object.entries(equippedWithSlots)) {
       if (!item) continue;
       if (item.limb_armor_class && Object.keys(item.limb_armor_class).length > 0) {
         for (const [limb, ac] of Object.entries(item.limb_armor_class)) {
           if (limb === 'hands') {
-            // Apply to the specific hand slot where it's equipped
-            if (slot === 'main_hand') {
-              limbAC.main_hand = ac;
-            } else if (slot === 'off_hand') {
-              limbAC.off_hand = ac;
-            } else if (slot === 'hands') {
-              limbAC.main_hand = ac;
-            }
+            addHandAC(slot, Number(ac) || 0);
           } else if (limbAC.hasOwnProperty(limb)) {
-            limbAC[limb] = ac;
+            limbAC[limb] = Number(ac) || 0;
           }
         }
       } else if (item.armor_class) {
@@ -777,17 +782,15 @@ router.get('/:id/equipped', authenticateToken, async (req, res) => {
         if (slot === 'head') limbAC.head = item.armor_class;
         else if (slot === 'chest') limbAC.chest = item.armor_class;
         else if (slot === 'feet') limbAC.feet = item.armor_class;
-        else if (slot === 'main_hand') limbAC.main_hand = item.armor_class;
-        else if (slot === 'off_hand') limbAC.off_hand = item.armor_class;
-        else if (slot === 'hands') limbAC.main_hand = item.armor_class;
+        else addHandAC(slot, item.armor_class);
       }
     }
-    
+
     // Convert to the expected format (both hands share the same keys for display)
     const displayLimbAC = {
       head: limbAC.head,
       chest: limbAC.chest,
-      hands: limbAC.main_hand + limbAC.off_hand, // Gloves and shield/off-hand bonuses stack
+      hands: limbAC.main_hand + limbAC.off_hand,
       main_hand: limbAC.main_hand,
       off_hand: limbAC.off_hand,
       feet: limbAC.feet

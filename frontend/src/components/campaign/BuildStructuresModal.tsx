@@ -19,7 +19,7 @@ interface BuildStructuresModalProps {
   onClose: () => void;
 }
 
-const MAX_QUEUE = 100;
+const MAX_QUEUE = 1000;
 
 const BuildStructuresModal: React.FC<BuildStructuresModalProps> = ({
   tier,

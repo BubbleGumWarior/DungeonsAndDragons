@@ -2123,6 +2123,75 @@ Object.assign(BUILDING_CATALOG, {
     tierRequired: 6, cost: { wood: 38, stone: 28, iron: 16 }, days: 7, resourceOutput: {},
     prerequisites: [{ type: 'immigration_bureau', minCount: 1 }],
   },
+
+  // ── Docks (fief tier 5+) ────────────────────────────────────────────────
+  // Passive, no worker lane. Three separate dock lines unlock at tier 5:
+  // Trading Dock (passive gold), Migration Dock (population growth) and
+  // Military Dock (placeholder — no functionality yet). Upgrading the Trading
+  // and Migration lines is gated behind research (see BUILDING_UPGRADE_MAP).
+  // Boat Yard — the shipwrights' yard where boats are built. Text/UI only for now.
+  boat_yard: {
+    key: 'boat_yard', name: 'Boat Yard',
+    description: 'The shipwrights\' yard where the fief\'s boats are built.',
+    tierRequired: 5, cost: { wood: 40, stone: 24, iron: 10 }, days: 5, resourceOutput: {},
+    prerequisites: [],
+  },
+  trading_dock: {
+    key: 'trading_dock', name: 'Trading Dock',
+    description: 'Passive trade building — no worker lane. Merchant ships bring in a steady stream of coin: passively produces +4 gold/day. Upgrading requires Tier 1 Trading Dock research.',
+    tierRequired: 5, cost: { wood: 44, stone: 30, iron: 16 }, days: 6, resourceOutput: { gold: 4 },
+    prerequisites: [{ type: 'boat_yard', minCount: 1 }, { type: 'trade_post', minCount: 1 }],
+  },
+  merchant_quay: {
+    key: 'merchant_quay', name: 'Merchant Quay',
+    description: 'Passive trade building — no worker lane. Deeper berths and bonded warehouses handle larger cargoes: passively produces +6 gold/day. Upgrading requires Tier 2 Trading Dock research.',
+    tierRequired: 6, cost: { wood: 52, stone: 38, iron: 20 }, days: 7, resourceOutput: { gold: 6 },
+    prerequisites: [{ type: 'trading_dock', minCount: 1 }],
+  },
+  harbor_exchange: {
+    key: 'harbor_exchange', name: 'Harbor Exchange',
+    description: 'Passive trade building — no worker lane. Brokers, insurers, and tariff agents settle deals at the water\'s edge: passively produces +8 gold/day. Upgrading requires Tier 3 Trading Dock research.',
+    tierRequired: 7, cost: { wood: 60, stone: 46, iron: 26 }, days: 8, resourceOutput: { gold: 8 },
+    prerequisites: [{ type: 'merchant_quay', minCount: 1 }],
+  },
+  royal_customs_house: {
+    key: 'royal_customs_house', name: 'Royal Customs House',
+    description: 'Passive trade building — no worker lane. Crown-chartered duties on every ship that docks — the best dock income available: passively produces +10 gold/day.',
+    tierRequired: 8, cost: { wood: 68, stone: 54, iron: 32 }, days: 9, resourceOutput: { gold: 10 },
+    prerequisites: [{ type: 'harbor_exchange', minCount: 1 }],
+  },
+
+  migration_dock: {
+    key: 'migration_dock', name: 'Migration Dock',
+    description: 'Passive civic building — no worker lane. Ships carrying settlers put in at your shores: +8% population growth. Upgrading requires Tier 1 Migration Dock research.',
+    tierRequired: 5, cost: { wood: 40, stone: 26, iron: 12 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'boat_yard', minCount: 1 }, { type: 'housing', minCount: 4 }],
+  },
+  settlers_landing: {
+    key: 'settlers_landing', name: "Settlers' Landing",
+    description: 'Passive civic building — no worker lane. Reception halls and guides help newcomers find their feet: +12% population growth. Upgrading requires Tier 2 Migration Dock research.',
+    tierRequired: 6, cost: { wood: 48, stone: 32, iron: 16 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'migration_dock', minCount: 1 }],
+  },
+  immigration_harbor: {
+    key: 'immigration_harbor', name: 'Immigration Harbor',
+    description: 'Passive civic building — no worker lane. A dedicated harbor with registry offices and land grants for arrivals: +16% population growth. Upgrading requires Tier 3 Migration Dock research.',
+    tierRequired: 7, cost: { wood: 56, stone: 40, iron: 20 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'settlers_landing', minCount: 1 }],
+  },
+  grand_migration_port: {
+    key: 'grand_migration_port', name: 'Grand Migration Port',
+    description: 'Passive civic building — no worker lane. A great port that draws families from across the seas — the best population growth available from docks: +20% population growth.',
+    tierRequired: 8, cost: { wood: 64, stone: 48, iron: 26 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'immigration_harbor', minCount: 1 }],
+  },
+
+  military_dock: {
+    key: 'military_dock', name: 'Military Dock',
+    description: 'Allows the fief to store warships.',
+    tierRequired: 5, cost: { wood: 44, stone: 34, iron: 20 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'boat_yard', minCount: 1 }],
+  },
 });
 
 const TIER1_BUILDING_TYPES = new Set(['housing', 'storage', 'hunters_guild', 'farm', 'quarry']);
@@ -2407,6 +2476,16 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   recruiters_hall: { researchRequired: null, upgradedBuilding: 'immigration_bureau', tier3: 'immigration_bureau' },
   immigration_bureau: { researchRequired: null, upgradedBuilding: 'grand_migration_hall', tier3: 'grand_migration_hall' },
 
+  // Docks — every upgrade step is gated behind its own research (see kingdomResearch.js).
+  // Military Dock has no upgrade path yet.
+  trading_dock: { researchRequired: 'tier1_trading_dock', upgradedBuilding: 'merchant_quay', tier3: 'merchant_quay' },
+  merchant_quay: { researchRequired: 'tier2_trading_dock', upgradedBuilding: 'harbor_exchange', tier3: 'harbor_exchange' },
+  harbor_exchange: { researchRequired: 'tier3_trading_dock', upgradedBuilding: 'royal_customs_house', tier3: 'royal_customs_house' },
+
+  migration_dock: { researchRequired: 'tier1_migration_dock', upgradedBuilding: 'settlers_landing', tier3: 'settlers_landing' },
+  settlers_landing: { researchRequired: 'tier2_migration_dock', upgradedBuilding: 'immigration_harbor', tier3: 'immigration_harbor' },
+  immigration_harbor: { researchRequired: 'tier3_migration_dock', upgradedBuilding: 'grand_migration_port', tier3: 'grand_migration_port' },
+
   animal_stable: { researchRequired: null, upgradedBuilding: 'grand_stable', tier3: 'grand_stable' },
   grand_stable: { researchRequired: null, upgradedBuilding: 'royal_stud_farm', tier3: 'royal_stud_farm' },
   royal_stud_farm: { researchRequired: null, upgradedBuilding: 'imperial_stud_farm', tier3: 'imperial_stud_farm' },
@@ -2462,6 +2541,8 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'overseer_barracks', 'slave_marshal_hall', 'grand_overseer_citadel',
   'grand_amphitheater', 'coliseum', 'imperial_coliseum',
   'recruiters_hall', 'immigration_bureau', 'grand_migration_hall',
+  'merchant_quay', 'harbor_exchange', 'royal_customs_house',
+  'settlers_landing', 'immigration_harbor', 'grand_migration_port',
   'grand_stable', 'royal_stud_farm', 'imperial_stud_farm',
   'grand_pasture', 'livestock_ranch', 'grand_stockyards',
 ].forEach((type) => UPGRADE_ONLY_BUILDING_TYPES.add(type));
@@ -3040,10 +3121,92 @@ const getUnitLineInfo = (unitType) => {
   return { lineKey: info.lineKey, tierIndex: info.tierIndex, line, tierDef: line.tiers[info.tierIndex] };
 };
 
-// Full troop progression tree (all lines/tiers) annotated with this fief's building-unlock status.
-// Used by the frontend "View Troop Progression" panel and the DM's flat unit-adjustment list.
-const getUnitProgressionView = (completedBuildings) => {
-  return Object.entries(UNIT_LINES).map(([lineKey, line]) => {
+// ─── Kingdom custom (DM-authored) troop types ───────────────────────────────
+// Rows of kingdom_custom_units (joined with the name of the custom building they need). A custom
+// unit hangs off any unit already in the tree via parent_unit_type, so it is reached by upgrading
+// that parent, and unlocks in a fief once the linked custom building is completed there.
+const CUSTOM_UNIT_LINE_PREFIX = 'Custom \u00b7 ';
+
+const loadCustomUnits = async (kingdomId, db = pool) => {
+  const result = await db.query(
+    `SELECT u.*, b.name AS building_name
+     FROM kingdom_custom_units u
+     LEFT JOIN kingdom_custom_buildings b ON b.id = u.custom_building_id
+     WHERE u.kingdom_id = $1
+     ORDER BY u.id ASC`,
+    [kingdomId]
+  );
+  return result.rows;
+};
+
+const findCustomUnit = (unitType, customUnits) =>
+  (customUnits || []).find((u) => String(u.name) === String(unitType)) || null;
+
+const getCustomChildren = (parentType, customUnits) =>
+  (customUnits || []).filter((u) => String(u.parent_unit_type) === String(parentType));
+
+const getCustomUnitBuildingType = (unit) =>
+  (unit.requires_building && unit.custom_building_id) ? `${CUSTOM_BUILDING_PREFIX}${unit.custom_building_id}` : null;
+
+const isCustomUnitUnlocked = (unit, completedBuildings) => {
+  if (!unit.requires_building) return true;
+  const type = getCustomUnitBuildingType(unit);
+  if (!type) return false;
+  return (completedBuildings || []).some((b) => String(b?.building_type || '') === type);
+};
+
+const getCustomUnitRequiredBuildings = (unit, completedBuildings) => {
+  const type = getCustomUnitBuildingType(unit);
+  if (!type) return [];
+  return [{
+    building_type: type,
+    building_name: unit.building_name || 'Unique building',
+    completed: (completedBuildings || []).some((b) => String(b?.building_type || '') === type),
+    is_custom: true,
+  }];
+};
+
+// Walks up through custom parents to the built-in unit (or Militia) the branch is rooted on.
+// depth = number of custom hops (1 for a custom unit whose parent is built-in).
+const resolveCustomUnitRoot = (unit, customUnits) => {
+  let depth = 1;
+  let parent = String(unit.parent_unit_type);
+  const seen = new Set([String(unit.name)]);
+  while (true) {
+    const parentCustom = findCustomUnit(parent, customUnits);
+    if (!parentCustom || seen.has(parent)) break;
+    seen.add(parent);
+    depth += 1;
+    parent = String(parentCustom.parent_unit_type);
+  }
+  const rootLine = parent === MILITIA_UNIT_TYPE ? MILITIA_UNIT_TYPE : (UNIT_TYPE_LOOKUP[parent]?.lineKey || MILITIA_UNIT_TYPE);
+  return { rootLine, rootUnit: parent, depth };
+};
+
+// Every unit type that can be the parent of a custom unit: Militia, each built-in tier, and existing custom units.
+const isKnownParentUnitType = (unitType, customUnits) =>
+  unitType === MILITIA_UNIT_TYPE || Boolean(UNIT_TYPE_LOOKUP[unitType]) || Boolean(findCustomUnit(unitType, customUnits));
+
+// True when `ancestorName` sits somewhere above `unitName` (used to refuse re-parenting into a cycle).
+const isCustomAncestor = (ancestorName, unitName, customUnits) => {
+  let current = String(unitName);
+  const seen = new Set();
+  while (!seen.has(current)) {
+    seen.add(current);
+    const unit = findCustomUnit(current, customUnits);
+    if (!unit) return false;
+    const parent = String(unit.parent_unit_type);
+    if (parent === String(ancestorName)) return true;
+    current = parent;
+  }
+  return false;
+};
+
+// Full troop progression (all lines/tiers) annotated with this fief's building-unlock status.
+// Used by the frontend Troop Progression tree and the DM's flat unit-adjustment list. Custom units
+// are appended as extra "Custom \u00b7 <line>" lines whose tiers carry an explicit parent_unit_type.
+const getUnitProgressionView = (completedBuildings, customUnits = []) => {
+  const lines = Object.entries(UNIT_LINES).map(([lineKey, line]) => {
     const completedTierIndex = getCompletedLineTierIndex(line.buildingChain, completedBuildings);
     const tiers = line.tiers.map((tierDef, tierIndex) => {
       const requiredBuildings = getRequiredBuildingsForTier(line.buildingChain, tierIndex).map((type) => ({
@@ -3061,6 +3224,82 @@ const getUnitProgressionView = (completedBuildings) => {
     });
     return { line_key: lineKey, tiers };
   });
+
+  const customLines = new Map();
+  for (const unit of customUnits) {
+    const { rootLine, depth } = resolveCustomUnitRoot(unit, customUnits);
+    const lineKey = `${CUSTOM_UNIT_LINE_PREFIX}${rootLine}`;
+    if (!customLines.has(lineKey)) customLines.set(lineKey, { line_key: lineKey, is_custom: true, tiers: [] });
+    customLines.get(lineKey).tiers.push({
+      tier_index: depth - 1,
+      unit_type: unit.name,
+      base_days: Math.max(1, Number(unit.base_days || 1)),
+      required_buildings: getCustomUnitRequiredBuildings(unit, completedBuildings),
+      unlocked: isCustomUnitUnlocked(unit, completedBuildings),
+      parent_unit_type: unit.parent_unit_type,
+      is_custom: true,
+      custom_id: Number(unit.id),
+    });
+  }
+  for (const line of customLines.values()) line.tiers.sort((a, b) => a.tier_index - b.tier_index);
+  return [...lines, ...customLines.values()];
+};
+
+// The troop tree as a graph (Militia at the root) for the frontend's node/edge view. Built-in
+// units follow the rule the training routes enforce: Militia specialises into any line's first
+// tier, and each tier upgrades into the next. Custom units are extra children of their parent.
+const getUnitTreeView = (completedBuildings, customUnits = []) => {
+  const nodes = [];
+  const edges = [];
+
+  for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
+    const completedTierIndex = getCompletedLineTierIndex(line.buildingChain, completedBuildings);
+    line.tiers.forEach((tierDef, tierIndex) => {
+      const requiredBuildings = getRequiredBuildingsForTier(line.buildingChain, tierIndex).map((type) => ({
+        building_type: type,
+        building_name: BUILDING_CATALOG[type]?.name || type,
+        completed: (completedBuildings || []).some((b) => String(b?.building_type || '') === type),
+      }));
+      const isRoot = lineKey === MILITIA_UNIT_TYPE;
+      nodes.push({
+        id: tierDef.unitType,
+        unit_type: tierDef.unitType,
+        line_key: lineKey,
+        tier_index: tierIndex,
+        base_days: tierDef.baseDays,
+        required_buildings: requiredBuildings,
+        unlocked: completedTierIndex >= tierIndex,
+        is_root: isRoot,
+        is_custom: false,
+      });
+      if (!isRoot) {
+        edges.push({ from: tierIndex === 0 ? MILITIA_UNIT_TYPE : line.tiers[tierIndex - 1].unitType, to: tierDef.unitType });
+      }
+    });
+  }
+
+  for (const unit of customUnits) {
+    const { rootLine, depth } = resolveCustomUnitRoot(unit, customUnits);
+    nodes.push({
+      id: unit.name,
+      unit_type: unit.name,
+      line_key: rootLine,
+      tier_index: depth,
+      base_days: Math.max(1, Number(unit.base_days || 1)),
+      required_buildings: getCustomUnitRequiredBuildings(unit, completedBuildings),
+      unlocked: isCustomUnitUnlocked(unit, completedBuildings),
+      is_root: false,
+      is_custom: true,
+      custom_id: Number(unit.id),
+      description: unit.description || '',
+      requires_building: Boolean(unit.requires_building),
+      custom_building_id: unit.custom_building_id == null ? null : Number(unit.custom_building_id),
+      parent_unit_type: unit.parent_unit_type,
+    });
+    edges.push({ from: unit.parent_unit_type, to: unit.name });
+  }
+
+  return { nodes, edges };
 };
 
 // Only Militia is recruited directly from civilians. Every other line's tier-1 unit is reached
@@ -3073,8 +3312,9 @@ const getTrainableUnitTypesForFief = (completedBuildings) => {
 
 // For each unit type currently held in reserves, describe what it can be upgraded/specialized into.
 // Militia can specialize into any other line's tier-1 unit (one entry per unlocked-or-lockable line).
-// Every other unit type follows its own line's next tier, as before.
-const getUpgradableEntriesForFief = (reserves, completedBuildings) => {
+// Every other unit type follows its own line's next tier, as before. Custom units branch off any
+// unit, so every custom child of a held unit type is listed too.
+const getUpgradableEntriesForFief = (reserves, completedBuildings, customUnits = []) => {
   const out = [];
   for (const [unitType, count] of Object.entries(reserves || {})) {
     const available = Math.max(0, Number(count || 0));
@@ -3094,23 +3334,34 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings) => {
           available,
         });
       }
-      continue;
+    } else {
+      const info = getUnitLineInfo(unitType);
+      const nextTierDef = info ? info.line.tiers[info.tierIndex + 1] : null;
+      if (info && nextTierDef) {
+        const nextTierIndex = info.tierIndex + 1;
+        const completedTierIndex = getCompletedLineTierIndex(info.line.buildingChain, completedBuildings);
+        out.push({
+          unit_type: unitType,
+          next_unit_type: nextTierDef.unitType,
+          next_base_days: nextTierDef.baseDays,
+          required_building_type: getRequiredBuildingsLabel(info.line.buildingChain, nextTierIndex),
+          unlocked: completedTierIndex >= nextTierIndex,
+          available,
+        });
+      }
     }
 
-    const info = getUnitLineInfo(unitType);
-    if (!info) continue;
-    const nextTierIndex = info.tierIndex + 1;
-    const nextTierDef = info.line.tiers[nextTierIndex];
-    if (!nextTierDef) continue;
-    const completedTierIndex = getCompletedLineTierIndex(info.line.buildingChain, completedBuildings);
-    out.push({
-      unit_type: unitType,
-      next_unit_type: nextTierDef.unitType,
-      next_base_days: nextTierDef.baseDays,
-      required_building_type: getRequiredBuildingsLabel(info.line.buildingChain, nextTierIndex),
-      unlocked: completedTierIndex >= nextTierIndex,
-      available,
-    });
+    for (const child of getCustomChildren(unitType, customUnits)) {
+      out.push({
+        unit_type: unitType,
+        next_unit_type: child.name,
+        next_base_days: Math.max(1, Number(child.base_days || 1)),
+        required_building_type: child.requires_building ? (child.building_name || 'Unique building') : null,
+        unlocked: isCustomUnitUnlocked(child, completedBuildings),
+        available,
+        is_custom: true,
+      });
+    }
   }
   return out;
 };
@@ -3166,14 +3417,16 @@ const getTrainingSpeedReductionPct = (legendaryBonuses) => {
   return Math.min(90, raw);
 };
 
-const getBaseTrainingDaysForUnit = (unitType) => {
+const getBaseTrainingDaysForUnit = (unitType, customUnits = []) => {
+  const custom = findCustomUnit(unitType, customUnits);
+  if (custom) return Math.max(1, Math.floor(Number(custom.base_days || 1)));
   const info = getUnitLineInfo(unitType);
   if (!info) return null;
   return Math.max(1, Math.floor(Number(info.tierDef.baseDays || 1)));
 };
 
-const getEffectiveTrainingDaysForUnit = (unitType, legendaryBonuses) => {
-  const base = getBaseTrainingDaysForUnit(unitType);
+const getEffectiveTrainingDaysForUnit = (unitType, legendaryBonuses, customUnits = []) => {
+  const base = getBaseTrainingDaysForUnit(unitType, customUnits);
   if (!base) return null;
   const reductionPct = getTrainingSpeedReductionPct(legendaryBonuses);
   const reduced = base * (1 - (reductionPct / 100));
@@ -3207,14 +3460,8 @@ const getUpgradeInfoForUnit = (unitType, completedBuildings) => {
 
 const getLegendaryBonusesForFief = async (fiefId) => {
   let legendaryBonuses = {};
-  const legendaryTableCheck = await pool.query(
-    `SELECT to_regclass('public.kingdom_legendary_assignments') AS assignments,
-            to_regclass('public.kingdom_legendary_characters') AS characters`
-  );
-  const canUseLegendary = Boolean(
-    legendaryTableCheck.rows[0]?.assignments &&
-    legendaryTableCheck.rows[0]?.characters
-  );
+  const canUseLegendary = (await tableExists('kingdom_legendary_assignments'))
+    && (await tableExists('kingdom_legendary_characters'));
   if (!canUseLegendary) return legendaryBonuses;
 
   const legendaryRows = await pool.query(
@@ -3246,8 +3493,7 @@ const getCampaignCurrentDay = async (campaignId) => {
 };
 
 const getFiefTrainingQueue = async (fiefId, currentDay) => {
-  const tableResult = await pool.query(`SELECT to_regclass('public.fief_training') AS name`);
-  if (!tableResult.rows[0]?.name) return [];
+  if (!(await tableExists('fief_training'))) return [];
 
   const queueResult = await pool.query(
     `SELECT id,
@@ -3392,9 +3638,16 @@ const calculatePrisonerCapacityFromBuildings = (buildings) => {
   return cap;
 };
 
+// Tables are never dropped at runtime, so a positive answer is cached for the life of the process
+// (the fief endpoints check several optional tables on every request). A negative answer is not
+// cached, so a table created later by a migration is still picked up.
+const knownTables = new Set();
 const tableExists = async (name) => {
+  if (knownTables.has(name)) return true;
   const result = await pool.query(`SELECT to_regclass($1) AS name`, [`public.${name}`]);
-  return Boolean(result.rows[0]?.name);
+  const exists = Boolean(result.rows[0]?.name);
+  if (exists) knownTables.add(name);
+  return exists;
 };
 
 const getFiefContext = async (fiefId) => {
@@ -4040,6 +4293,83 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/kingdoms/fiefs/:id — DM removes a single fief (destroyed, razed, lost). Child rows cascade.
+router.delete('/fiefs/:id', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) {
+      return res.status(400).json({ error: 'Invalid fief id' });
+    }
+
+    await client.query('BEGIN');
+
+    const fiefResult = await client.query(
+      `SELECT f.id, f.name, f.kingdom_id, f.is_capital, k.campaign_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE OF f`,
+      [fiefId]
+    );
+    const fief = fiefResult.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+
+    if (Number(fief.dungeon_master_id) !== Number(req.user.id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Not authorized to delete this fief' });
+    }
+
+    const siblingsResult = await client.query(
+      `SELECT id FROM fiefs WHERE kingdom_id = $1 AND id <> $2 ORDER BY id ASC`,
+      [fief.kingdom_id, fiefId]
+    );
+    if (siblingsResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This is the only fief in the kingdom. Delete the kingdom instead.' });
+    }
+
+    await client.query(`DELETE FROM fiefs WHERE id = $1`, [fiefId]);
+
+    // A kingdom needs a capital (new-fief creation draws from it), so the oldest surviving fief takes over.
+    let newCapitalId = null;
+    if (fief.is_capital) {
+      newCapitalId = Number(siblingsResult.rows[0].id);
+      await client.query(`UPDATE fiefs SET is_capital = true WHERE id = $1`, [newCapitalId]);
+    }
+
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', {
+        campaignId: fief.campaign_id,
+        kingdomId: Number(fief.kingdom_id),
+        fiefId,
+        fiefDeleted: true,
+      });
+    }
+
+    res.json({
+      message: 'Fief deleted',
+      fiefId,
+      kingdomId: Number(fief.kingdom_id),
+      newCapitalId,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting fief:', error);
+    res.status(500).json({ error: 'Failed to delete fief' });
+  } finally {
+    client.release();
+  }
+});
+
 // ── Co-owner routes ──────────────────────────────────────────────────────────
 
 router.post('/:id/co-owners', authenticateToken, async (req, res) => {
@@ -4190,6 +4520,37 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to view this fief' });
     }
 
+    // Everything below except the buildings-derived math only needs the fief row, so start those
+    // reads together (they used to be awaited one after another, ~10 sequential round trips).
+    const researchQueuePromise = tableExists('fief_research_queue').then(async (exists) => (
+      exists
+        ? (await pool.query(
+          `SELECT *
+           FROM fief_research_queue
+           WHERE fief_id = $1
+           ORDER BY COALESCE(queue_position, 999999) ASC, id ASC`,
+          [fiefId]
+        )).rows
+        : []
+    ));
+    const researchLevelsPromise = tableExists('fief_research_levels').then(async (exists) => (
+      exists
+        ? (await pool.query(`SELECT building_type FROM fief_research_levels WHERE fief_id = $1`, [fiefId])).rows
+        : []
+    ));
+    // Kingdom-unique buildings the DM authored for this fief's kingdom (never visible to other kingdoms).
+    const customBuildingRowsPromise = pool.query(
+      `SELECT * FROM kingdom_custom_buildings WHERE kingdom_id = $1 ORDER BY id ASC`,
+      [fief.kingdom_id]
+    );
+    const legendaryBonusesPromise = getLegendaryBonusesForFief(fiefId);
+    const trainingPromise = getCampaignCurrentDay(fief.campaign_id)
+      .then(async (day) => [day, await getFiefTrainingQueue(fiefId, day)]);
+    const customUnitsPromise = loadCustomUnits(fief.kingdom_id);
+    // If the sequential part below throws first, don't leave these as unhandled rejections.
+    [researchQueuePromise, researchLevelsPromise, customBuildingRowsPromise, legendaryBonusesPromise, trainingPromise, customUnitsPromise]
+      .forEach((p) => p.catch(() => {}));
+
     const buildingsResult = await pool.query(
       `SELECT *
        FROM fief_buildings
@@ -4286,29 +4647,10 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
       fief.bank_capacity = calculatedBankCapacity;
     }
 
-    let researchQueue = [];
+    const researchQueue = await researchQueuePromise;
     const completedResearch = new Set(Array.isArray(fief.completed_research) ? fief.completed_research : []);
-    if (await tableExists('fief_research_queue')) {
-      const rq = await pool.query(
-        `SELECT *
-         FROM fief_research_queue
-         WHERE fief_id = $1
-         ORDER BY COALESCE(queue_position, 999999) ASC, id ASC`,
-        [fiefId]
-      );
-      researchQueue = rq.rows;
-    }
-
-    if (await tableExists('fief_research_levels')) {
-      const rl = await pool.query(
-        `SELECT building_type
-         FROM fief_research_levels
-         WHERE fief_id = $1`,
-        [fiefId]
-      );
-      for (const row of rl.rows) {
-        completedResearch.add(String(row.building_type));
-      }
+    for (const row of await researchLevelsPromise) {
+      completedResearch.add(String(row.building_type));
     }
 
     const activeOrQueuedResearch = new Set(
@@ -4326,11 +4668,7 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     const completedBuildings = buildingsResult.rows.filter((b) => Boolean(b?.is_complete));
     const fiefTier = getNumber(fief.tier || 1);
     const storedForCostChecks = normalizeStoredResources(fief?.stored_resources);
-    // Kingdom-unique buildings the DM authored for this fief's kingdom (never visible to other kingdoms).
-    const customBuildingRows = await pool.query(
-      `SELECT * FROM kingdom_custom_buildings WHERE kingdom_id = $1 ORDER BY id ASC`,
-      [fief.kingdom_id]
-    );
+    const customBuildingRows = await customBuildingRowsPromise;
     const customBlueprints = customBuildingRows.rows.map(customBuildingBlueprint);
     const countByBuildingType = {};
     for (const b of buildingsResult.rows) {
@@ -4479,12 +4817,12 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     const militaryHoused = Math.min(militaryPopulation, barracksCapacity);
     const militaryOverflow = Math.max(0, militaryPopulation - barracksCapacity);
     const prisonerCapacity = calculatePrisonerCapacityFromBuildings(buildingsResult.rows);
-    const legendaryBonuses = await getLegendaryBonusesForFief(fiefId);
-    const currentCampaignDay = await getCampaignCurrentDay(fief.campaign_id);
-    const trainingQueue = await getFiefTrainingQueue(fiefId, currentCampaignDay);
+    const legendaryBonuses = await legendaryBonusesPromise;
+    const [, trainingQueue] = await trainingPromise;
     const guardAssignments = buildGuardAssignmentsView(buildingsResult.rows);
     const trainableUnitTypes = getTrainableUnitTypesForFief(completedBuildings);
-    const upgradableUnits = getUpgradableEntriesForFief(normalizeUnitReserves(fief?.unit_reserves), completedBuildings);
+    const customUnits = await customUnitsPromise;
+    const upgradableUnits = getUpgradableEntriesForFief(normalizeUnitReserves(fief?.unit_reserves), completedBuildings, customUnits);
 
     res.json({
       fief: {
@@ -4516,7 +4854,8 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         guard_assignments: guardAssignments,
         trainable_unit_types: trainableUnitTypes,
         upgradable_units: upgradableUnits,
-        unit_progression: getUnitProgressionView(completedBuildings),
+        unit_progression: getUnitProgressionView(completedBuildings, customUnits),
+        unit_tree: getUnitTreeView(completedBuildings, customUnits),
         buildings: buildingsResult.rows,
         researchQueue,
         availableResearch,
@@ -4953,7 +5292,18 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
     let upgradeUnlocked;
     let upgradeRequiredBuildingLabel;
 
-    if (fromUnitType === MILITIA_UNIT_TYPE) {
+    const customUnits = await loadCustomUnits(owned.kingdom_id, client);
+    const customTarget = requestedToUnitType ? findCustomUnit(requestedToUnitType, customUnits) : null;
+
+    if (customTarget) {
+      // A DM-authored unit: valid only as a direct child of the unit being upgraded.
+      if (String(customTarget.parent_unit_type) !== fromUnitType) {
+        return res.status(400).json({ error: `${customTarget.name} is not an upgrade of ${fromUnitType}.` });
+      }
+      upgradeUnlocked = isCustomUnitUnlocked(customTarget, completedBuildings);
+      upgradeRequiredBuildingLabel = customTarget.building_name || 'required';
+      toUnitType = customTarget.name;
+    } else if (fromUnitType === MILITIA_UNIT_TYPE) {
       // Militia has no same-line next tier — it specializes into another line's tier-1 unit instead.
       if (!requestedToUnitType) {
         return res.status(400).json({ error: 'Choose a unit type to specialize Militia into.' });
@@ -4980,7 +5330,7 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
     }
 
     const legendaryBonuses = await getLegendaryBonusesForFief(fiefId);
-    const effectiveDays = getEffectiveTrainingDaysForUnit(toUnitType, legendaryBonuses);
+    const effectiveDays = getEffectiveTrainingDaysForUnit(toUnitType, legendaryBonuses, customUnits);
     if (!effectiveDays) {
       return res.status(400).json({ error: `Unknown or unsupported unit type: ${toUnitType}` });
     }
@@ -5594,7 +5944,7 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
   try {
     const fiefId = Number(req.params.id);
     const buildingType = String(req.body?.buildingType || '').trim();
-    const count = Math.max(1, Math.min(100, Math.floor(Number(req.body?.count) || 1)));
+    const count = Math.max(1, Math.min(1000, Math.floor(Number(req.body?.count) || 1)));
     if (!Number.isFinite(fiefId) || !buildingType) {
       return res.status(400).json({ error: 'fief id and buildingType are required' });
     }
@@ -5919,8 +6269,8 @@ router.patch('/fiefs/:id/buildings/upgrade-batch', authenticateToken, async (req
     if (!Number.isFinite(fiefId) || buildingIds.length === 0) {
       return res.status(400).json({ error: 'fief id and buildingIds are required' });
     }
-    if (buildingIds.length > 100) {
-      return res.status(400).json({ error: 'Cannot upgrade more than 100 buildings at once' });
+    if (buildingIds.length > 1000) {
+      return res.status(400).json({ error: 'Cannot upgrade more than 1000 buildings at once' });
     }
 
     await client.query('BEGIN');
@@ -7796,6 +8146,16 @@ router.delete('/:id/custom-buildings/:buildingId', authenticateToken, async (req
       return res.status(404).json({ error: 'Unique building not found' });
     }
 
+    // A custom troop that needs this building would become untrainable, so the DM must reassign them first.
+    const dependents = await client.query(
+      `SELECT name FROM kingdom_custom_units WHERE kingdom_id = $1 AND custom_building_id = $2 ORDER BY id ASC`,
+      [kingdomId, buildingId]
+    );
+    if (dependents.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Custom troops need this building (${dependents.rows.map((r) => r.name).join(', ')}). Change or delete those troops first.` });
+    }
+
     // Removing the definition removes every copy in the kingdom (built and queued).
     const removed = await client.query(
       `DELETE FROM fief_buildings
@@ -7894,6 +8254,259 @@ router.post('/fiefs/:id/custom-buildings/:buildingId/grant', authenticateToken, 
     await client.query('ROLLBACK').catch(() => {});
     console.error('Error granting unique building:', error);
     res.status(500).json({ error: 'Failed to grant unique building' });
+  } finally {
+    client.release();
+  }
+});
+
+// ── Kingdom custom troop types (DM authored, one kingdom only) ───────────────
+
+const readCustomUnitPayload = (body) => {
+  const name = String(body?.name || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 40) return { error: 'Give the troop a name between 2 and 40 characters' };
+  if (name.includes('->')) return { error: 'The name cannot contain "->"' };
+  const parent = String(body?.parentUnitType || '').trim();
+  if (!parent) return { error: 'Choose the unit this troop branches from' };
+  const days = Math.floor(Number(body?.baseDays));
+  const requiresBuilding = Boolean(body?.requiresBuilding);
+  const buildingId = body?.customBuildingId == null ? null : Math.floor(Number(body.customBuildingId));
+  if (requiresBuilding && !(Number.isInteger(buildingId) && buildingId > 0)) {
+    return { error: 'Pick the unique building this troop needs, or turn off "Needs a building"' };
+  }
+  return {
+    value: {
+      name,
+      description: String(body?.description || '').trim().slice(0, 600),
+      parentUnitType: parent,
+      baseDays: Number.isFinite(days) ? Math.max(1, Math.min(365, days)) : 10,
+      requiresBuilding,
+      customBuildingId: requiresBuilding ? buildingId : null,
+    },
+  };
+};
+
+// How many of a custom unit exist across a kingdom's fiefs: in reserve, in training, and posted as guards.
+const countCustomUnitHeld = async (kingdomId, unitName, db = pool) => {
+  const reserves = await db.query(
+    `SELECT COALESCE(SUM(GREATEST(0, COALESCE((unit_reserves->>$2)::numeric, 0))), 0) AS n
+     FROM fiefs WHERE kingdom_id = $1`,
+    [kingdomId, unitName]
+  );
+  const training = await db.query(
+    `SELECT COALESCE(SUM(COALESCE(t.count, 1)), 0) AS n
+     FROM fief_training t JOIN fiefs f ON f.id = t.fief_id
+     WHERE f.kingdom_id = $1 AND t.unit_type = $2 AND t.status IN ('training', 'ready')`,
+    [kingdomId, unitName]
+  );
+  const posted = await db.query(
+    `SELECT COALESCE(SUM(GREATEST(0, COALESCE((b.assigned_guards_by_type->>$2)::numeric, 0))), 0) AS n
+     FROM fief_buildings b JOIN fiefs f ON f.id = b.fief_id
+     WHERE f.kingdom_id = $1`,
+    [kingdomId, unitName]
+  );
+  return {
+    reserve: getNumber(reserves.rows[0]?.n),
+    training: getNumber(training.rows[0]?.n),
+    posted: getNumber(posted.rows[0]?.n),
+  };
+};
+
+const describeHeldUnits = (held) => {
+  const parts = [];
+  if (held.reserve > 0) parts.push(`${held.reserve} in reserve`);
+  if (held.training > 0) parts.push(`${held.training} in training`);
+  if (held.posted > 0) parts.push(`${held.posted} posted as guards`);
+  return parts.join(', ');
+};
+
+router.get('/:id/custom-units', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+
+    const units = await loadCustomUnits(kingdomId);
+    res.json({
+      units: units.map((u) => ({
+        id: Number(u.id),
+        name: u.name,
+        description: u.description || '',
+        parent_unit_type: u.parent_unit_type,
+        base_days: Number(u.base_days),
+        requires_building: Boolean(u.requires_building),
+        custom_building_id: u.custom_building_id == null ? null : Number(u.custom_building_id),
+        building_name: u.building_name || null,
+      })),
+    });
+  } catch (error) {
+    console.error('Error loading custom units:', error);
+    res.status(500).json({ error: 'Failed to load custom troops' });
+  }
+});
+
+// Shared by create and update: validates the parent, the name and the building link against this kingdom.
+const validateCustomUnit = async (client, kingdomId, value, existing) => {
+  const customUnits = await loadCustomUnits(kingdomId, client);
+  const others = customUnits.filter((u) => !existing || Number(u.id) !== Number(existing.id));
+
+  const lowered = value.name.toLowerCase();
+  const takenByBuiltIn = value.name === MILITIA_UNIT_TYPE || Object.keys(UNIT_TYPE_LOOKUP).some((n) => n.toLowerCase() === lowered);
+  if (takenByBuiltIn || others.some((u) => String(u.name).toLowerCase() === lowered)) {
+    return takenByBuiltIn ? `"${value.name}" is already a built-in troop. Pick a different name.` : `A troop called "${value.name}" already exists in this kingdom`;
+  }
+  if (!isKnownParentUnitType(value.parentUnitType, others)) {
+    return 'The unit this troop branches from does not exist';
+  }
+  if (existing && (value.parentUnitType === existing.name || isCustomAncestor(existing.name, value.parentUnitType, customUnits))) {
+    return 'A troop cannot branch from itself or from one of its own upgrades';
+  }
+  if (value.requiresBuilding) {
+    const building = await client.query(
+      `SELECT id FROM kingdom_custom_buildings WHERE id = $1 AND kingdom_id = $2`,
+      [value.customBuildingId, kingdomId]
+    );
+    if (!building.rows[0]) return 'That unique building does not belong to this kingdom';
+  }
+  return null;
+};
+
+router.post('/:id/custom-units', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const kingdom = await loadKingdomForDmWrite(req, res, kingdomId);
+    if (!kingdom) return;
+
+    const parsed = readCustomUnitPayload(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const v = parsed.value;
+
+    const problem = await validateCustomUnit(client, kingdomId, v, null);
+    if (problem) return res.status(400).json({ error: problem });
+
+    const result = await client.query(
+      `INSERT INTO kingdom_custom_units
+       (kingdom_id, name, description, parent_unit_type, base_days, requires_building, custom_building_id, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [kingdomId, v.name, v.description, v.parentUnitType, v.baseDays, v.requiresBuilding, v.customBuildingId, req.user.id]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+    res.status(201).json({ id: Number(result.rows[0].id) });
+  } catch (error) {
+    console.error('Error creating custom unit:', error);
+    res.status(500).json({ error: 'Failed to create custom troop' });
+  } finally {
+    client.release();
+  }
+});
+
+router.put('/:id/custom-units/:unitId', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const unitId = Number(req.params.unitId);
+    const kingdom = await loadKingdomForDmWrite(req, res, kingdomId);
+    if (!kingdom) return;
+    if (!Number.isFinite(unitId)) return res.status(400).json({ error: 'Invalid troop ID' });
+
+    const parsed = readCustomUnitPayload(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const v = parsed.value;
+
+    const existingResult = await client.query(
+      `SELECT * FROM kingdom_custom_units WHERE id = $1 AND kingdom_id = $2`,
+      [unitId, kingdomId]
+    );
+    const existing = existingResult.rows[0];
+    if (!existing) return res.status(404).json({ error: 'Custom troop not found' });
+
+    // Troops are stored under their name (reserves, training queue, guard posts), so a rename or a
+    // move to a new parent is only safe while none exist.
+    const renamed = existing.name !== v.name;
+    if (renamed) {
+      const held = await countCustomUnitHeld(kingdomId, existing.name, client);
+      if (held.reserve + held.training + held.posted > 0) {
+        return res.status(409).json({ error: `${existing.name} cannot be renamed while troops exist (${describeHeldUnits(held)}). Remove them in DM Tools first.` });
+      }
+    }
+
+    const problem = await validateCustomUnit(client, kingdomId, v, existing);
+    if (problem) return res.status(400).json({ error: problem });
+
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE kingdom_custom_units
+       SET name = $3, description = $4, parent_unit_type = $5, base_days = $6,
+           requires_building = $7, custom_building_id = $8, updated_at = NOW()
+       WHERE id = $1 AND kingdom_id = $2`,
+      [unitId, kingdomId, v.name, v.description, v.parentUnitType, v.baseDays, v.requiresBuilding, v.customBuildingId]
+    );
+    if (renamed) {
+      // Children point at their parent by name.
+      await client.query(
+        `UPDATE kingdom_custom_units SET parent_unit_type = $3 WHERE kingdom_id = $1 AND parent_unit_type = $2`,
+        [kingdomId, existing.name, v.name]
+      );
+    }
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+    res.json({ id: unitId });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error updating custom unit:', error);
+    res.status(500).json({ error: 'Failed to update custom troop' });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete('/:id/custom-units/:unitId', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const kingdomId = Number(req.params.id);
+    const unitId = Number(req.params.unitId);
+    const kingdom = await loadKingdomForDmWrite(req, res, kingdomId);
+    if (!kingdom) return;
+    if (!Number.isFinite(unitId)) return res.status(400).json({ error: 'Invalid troop ID' });
+
+    const existingResult = await client.query(
+      `SELECT * FROM kingdom_custom_units WHERE id = $1 AND kingdom_id = $2`,
+      [unitId, kingdomId]
+    );
+    const existing = existingResult.rows[0];
+    if (!existing) return res.status(404).json({ error: 'Custom troop not found' });
+
+    const children = await client.query(
+      `SELECT name FROM kingdom_custom_units WHERE kingdom_id = $1 AND parent_unit_type = $2 ORDER BY id ASC`,
+      [kingdomId, existing.name]
+    );
+    if (children.rows.length > 0) {
+      return res.status(409).json({ error: `${existing.name} still has upgrades branching from it (${children.rows.map((r) => r.name).join(', ')}). Delete or move those first.` });
+    }
+
+    const held = await countCustomUnitHeld(kingdomId, existing.name, client);
+    if (held.reserve + held.training + held.posted > 0) {
+      return res.status(409).json({ error: `${existing.name} still exists in this kingdom (${describeHeldUnits(held)}). Remove them in DM Tools first, then delete the troop type.` });
+    }
+
+    await client.query(`DELETE FROM kingdom_custom_units WHERE id = $1`, [unitId]);
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+    res.json({ message: 'Custom troop removed' });
+  } catch (error) {
+    console.error('Error deleting custom unit:', error);
+    res.status(500).json({ error: 'Failed to delete custom troop' });
   } finally {
     client.release();
   }
@@ -8432,6 +9045,18 @@ const ANIMAL_TYPES = {
   // than food stock — unslaughterable blocks it in both the manual slaughter route and
   // the auto-slaughter feature (see below).
   wolf: { key: 'wolf', name: 'Wolf', category: 'livestock', purchaseCost: 260, slaughterMeatBase: 0, nurseryWeight: 0.5, unslaughterable: true },
+
+  // ── Exotic beasts — DM-granted only ──
+  // dmOnly blocks the purchase route (see below); the DM seeds the founding stock via
+  // dm-add, after which the herd breeds like any other (Nursery room, Farming-lane
+  // upkeep). They have no Stable/Farm capacity of their own and can't be slaughtered.
+  dragon: { key: 'dragon', name: 'Dragon', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 4, unslaughterable: true },
+  spinosaurus: { key: 'spinosaurus', name: 'Spinosaurus', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 3, unslaughterable: true },
+  t_rex: { key: 't_rex', name: 'T-Rex', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 4, unslaughterable: true },
+  triceratops: { key: 'triceratops', name: 'Triceratops', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 3, unslaughterable: true },
+  pteranodon: { key: 'pteranodon', name: 'Pteranodon', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 1, unslaughterable: true },
+  quetzalcoatlus: { key: 'quetzalcoatlus', name: 'Quetzalcoatlus', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 2, unslaughterable: true },
+  raptor: { key: 'raptor', name: 'Raptor', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 0.5, unslaughterable: true },
 };
 
 // Each tier doubles the previous tier's capacity: 20 -> 40 -> 80 -> 160.
@@ -8673,6 +9298,7 @@ router.post('/fiefs/:id/animals/purchase', authenticateToken, async (req, res) =
 
     const animalDef = ANIMAL_TYPES[animalType];
     if (!animalDef) return res.status(400).json({ error: 'Unknown animal type' });
+    if (animalDef.dmOnly) return res.status(403).json({ error: `${animalDef.name} cannot be purchased — only the DM can grant them` });
 
     const owned = await getFiefContext(fiefId);
     if (!owned) return res.status(404).json({ error: 'Fief not found' });

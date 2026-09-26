@@ -874,6 +874,56 @@ const RESEARCH_CATALOG = {
     tierRequired: 5,
     prerequisites: ['tier3_siege_engine_workshop'],
   },
+
+  // ── Docks (tier 5+) — gate every upgrade step of the Trading and Migration dock lines ──
+  tier1_trading_dock: {
+    id: 'tier1_trading_dock',
+    name: 'Tier 1 Trading Dock',
+    description: 'Upgrade the Trading Dock into a Merchant Quay with deeper berths and bonded warehouses for larger cargoes.',
+    pointsRequired: 3000,
+    tierRequired: 5,
+    prerequisites: [],
+  },
+  tier2_trading_dock: {
+    id: 'tier2_trading_dock',
+    name: 'Tier 2 Trading Dock',
+    description: 'Upgrade the Merchant Quay into a Harbor Exchange where brokers and tariff agents settle deals at the water\'s edge.',
+    pointsRequired: 5500,
+    tierRequired: 6,
+    prerequisites: ['tier1_trading_dock'],
+  },
+  tier3_trading_dock: {
+    id: 'tier3_trading_dock',
+    name: 'Tier 3 Trading Dock',
+    description: 'Upgrade the Harbor Exchange into a Royal Customs House with crown-chartered duties on every ship that docks.',
+    pointsRequired: 8500,
+    tierRequired: 7,
+    prerequisites: ['tier2_trading_dock'],
+  },
+  tier1_migration_dock: {
+    id: 'tier1_migration_dock',
+    name: 'Tier 1 Migration Dock',
+    description: 'Upgrade the Migration Dock into Settlers\' Landing with reception halls and guides that help newcomers settle.',
+    pointsRequired: 3000,
+    tierRequired: 5,
+    prerequisites: [],
+  },
+  tier2_migration_dock: {
+    id: 'tier2_migration_dock',
+    name: 'Tier 2 Migration Dock',
+    description: 'Upgrade Settlers\' Landing into an Immigration Harbor with registry offices and land grants for arrivals.',
+    pointsRequired: 5500,
+    tierRequired: 6,
+    prerequisites: ['tier1_migration_dock'],
+  },
+  tier3_migration_dock: {
+    id: 'tier3_migration_dock',
+    name: 'Tier 3 Migration Dock',
+    description: 'Upgrade the Immigration Harbor into a Grand Migration Port that draws families from across the seas.',
+    pointsRequired: 8500,
+    tierRequired: 7,
+    prerequisites: ['tier2_migration_dock'],
+  },
 };
 
 function getResearchConfig(researchId) {

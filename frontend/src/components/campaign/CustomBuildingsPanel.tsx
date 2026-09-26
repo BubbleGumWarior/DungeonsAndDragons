@@ -1,4 +1,4 @@
-import React, { CSSProperties, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import '../../styles/constructionPanel.css';
@@ -115,10 +115,11 @@ interface EditorProps {
   onClose: () => void;
 }
 
-const BuildingEditor: React.FC<EditorProps> = ({ kingdomName, editing, onSave, onClose }) => {
+export const BuildingEditor: React.FC<EditorProps> = ({ kingdomName, editing, onSave, onClose }) => {
   const [form, setForm] = useState<FormState>(() => (editing ? formFromBuilding(editing) : emptyForm()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const setIn = (group: 'cost' | 'flat' | 'pct', key: string, value: string) =>
@@ -144,7 +145,11 @@ const BuildingEditor: React.FC<EditorProps> = ({ kingdomName, editing, onSave, o
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="kt-cs-overlay" />
-        <Dialog.Content className="kt-cs-modal kt-cb-modal kt-ui" aria-describedby="kt-cb-editor-desc">
+        <Dialog.Content
+          className="kt-cs-modal kt-cb-modal kt-ui"
+          aria-describedby="kt-cb-editor-desc"
+          onOpenAutoFocus={(e) => { e.preventDefault(); nameRef.current?.focus(); }}
+        >
           <div className="kt-cs-modal-head">
             <div>
               <Dialog.Title className="kt-cs-modal-title">{editing ? `Edit ${editing.name}` : 'New unique building'}</Dialog.Title>
@@ -163,12 +168,12 @@ const BuildingEditor: React.FC<EditorProps> = ({ kingdomName, editing, onSave, o
                 <label className="kt-cb-field">
                   <span className="kt-cb-label">Name</span>
                   <input
+                    ref={nameRef}
                     className="kt-cb-input"
                     value={form.name}
                     maxLength={120}
                     placeholder="e.g. The Sunken Reliquary"
                     onChange={(e) => set('name', e.target.value)}
-                    autoFocus
                   />
                 </label>
                 <label className="kt-cb-field">

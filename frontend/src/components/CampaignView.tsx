@@ -12,6 +12,7 @@ import { compressImageFile } from '../utils/imageCompression';
 import { IMAGE_WIDTH, resolveImageUrl, sizedImageUrl, toWebpArt } from '../utils/imageUrls';
 import { getSpellSlots, isSpellcaster, toRoman, getSpellSlotChanges } from '../utils/spellSlotUtils';
 import { getCharacterAge } from '../utils/age';
+import { calcCharacterLimbAC, calcCharacterCombatLimbAC } from '../utils/limbAC';
 import FamilyTreePanel from './campaign/FamilyTreePanel';
 import { classInfo } from '../data/classInfo';
 import { getChoiceOptions } from '../data/choiceOptions';
@@ -596,6 +597,8 @@ const CampaignView: React.FC = () => {
   const [equipmentDetails, setEquipmentDetails] = useState<{ [characterId: number]: InventoryItem[] }>({});
   const [equippedItems, setEquippedItems] = useState<{ [characterId: number]: Record<string, InventoryItem | null> }>({});
   const [limbAC, setLimbAC] = useState<{ [characterId: number]: { head: number; chest: number; hands: number; main_hand: number; off_hand: number; feet: number } }>({});
+  // Characters whose equipped-item AC has already been requested for combat (avoids refetch loops on 403/failure)
+  const requestedCombatLimbAC = useRef<Set<number>>(new Set());
   const [socket, setSocket] = useState<any>(null);
   
   // Ref to store socket for handlers (avoids stale closure in async callbacks)
@@ -3776,6 +3779,20 @@ const CampaignView: React.FC = () => {
       console.error('Error loading equipped items:', error);
     }
   }, []);
+
+  // Combat needs each participating character's equipped-item AC (shields, gauntlets, armour),
+  // not just their flat base AC — load it for every character who joins, once.
+  useEffect(() => {
+    if (!currentCampaign) return;
+    for (const c of combatants) {
+      if (c.isMonster || (c as any).isPet || (c as any).isBeast || (c as any).isShadow) continue;
+      const charId = Number(c.characterId);
+      if (!Number.isFinite(charId) || limbAC[charId] || requestedCombatLimbAC.current.has(charId)) continue;
+      if (!currentCampaign.characters.some((ch: any) => ch.id === charId)) continue;
+      requestedCombatLimbAC.current.add(charId);
+      loadEquippedItems(charId);
+    }
+  }, [combatants, currentCampaign, limbAC, loadEquippedItems]);
 
   // Helper function to refresh active battle (uses ref to avoid closure issues)
   const refreshActiveBattle = useCallback(async (battleId: number) => {
@@ -8120,7 +8137,8 @@ const CampaignView: React.FC = () => {
                           const tempHpTotal = tempData ? Object.values(tempData).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
                           healthPct = limbMax > 0 ? (limbCurrent / limbMax) * 100 : 0;
                           healthLabel = tempHpTotal > 0 ? `${limbCurrent}+${tempHpTotal}/${limbMax}` : `${limbCurrent}/${limbMax}`;
-                          displayAC = initCharacter.armor_class || 10;
+                          // Torso AC (base + equipped chest armour), matching the monster display below
+                          displayAC = calcCharacterLimbAC(initCharacter.armor_class, limbAC[initCharacter.id]).chest;
                         } else if (combatant.isMonster) {
                           const instanceHp = monsterInstanceHp[String(combatant.characterId)];
                           if (instanceHp) {
@@ -12433,22 +12451,8 @@ const CampaignView: React.FC = () => {
                             rightLeg: { cur: _trackedLimbs?.right_leg ?? _limbMax.right_leg, max: _limbMax.right_leg },
                           };
                           
-                          const rawLimbAC = limbAC[selectedCharacterData.id];
-                          const baseAC = selectedCharacterData.armor_class || 10;
-                          const helmAC      = rawLimbAC?.head      ?? 0;
-                          const chestAC     = rawLimbAC?.chest     ?? 0;
-                          const mainHandAC  = rawLimbAC?.main_hand ?? 0;
-                          const offHandAC   = rawLimbAC?.off_hand  ?? 0;
-                          const feetAC      = rawLimbAC?.feet      ?? 0;
                           // All armor is additive: base limb AC + equipped item bonus.
-                          const characterLimbAC = {
-                            head:      Math.round(baseAC * 1.50) + helmAC,
-                            chest:     Math.round(baseAC * 1.00) + chestAC,
-                            hands:     Math.round(baseAC * 0.25) + mainHandAC + offHandAC,
-                            main_hand: Math.round(baseAC * 0.25) + mainHandAC,
-                            off_hand:  Math.round(baseAC * 0.25) + offHandAC,
-                            feet:      Math.round(baseAC * 0.50) + feetAC
-                          };
+                          const characterLimbAC = calcCharacterLimbAC(selectedCharacterData.armor_class, limbAC[selectedCharacterData.id]);
                           
                           // Helper function to get health color based on percentage
                           const getHealthColor = (current: number, max: number) => {
@@ -17217,14 +17221,9 @@ const CampaignView: React.FC = () => {
           // Pets get per-limb AC using the same proportional formula as per-limb HP, fed the
           // armor-equipped effective AC — equipping a piece shifts every limb's AC together.
           const targetPetLimbAc = targetPet ? calcCharacterLimbHealthMax(targetPetAc, targetPet.abilities?.con ?? 10) : null;
-          const limbAC = targetMonsterTemplate?.limb_ac ?? (targetPetLimbAc ?? {
-            head: targetCharacter?.armor_class ?? 10,
-            chest: targetCharacter?.armor_class ?? 10,
-            left_arm: targetCharacter?.armor_class ?? 10,
-            right_arm: targetCharacter?.armor_class ?? 10,
-            left_leg: targetCharacter?.armor_class ?? 10,
-            right_leg: targetCharacter?.armor_class ?? 10,
-          });
+          // Characters use the sheet's per-limb AC (base split by limb + equipped item bonuses).
+          const targetCombatLimbAC = targetMonsterTemplate?.limb_ac ?? (targetPetLimbAc
+            ?? calcCharacterCombatLimbAC(targetCharacter?.armor_class, targetCharacter ? limbAC[targetCharacter.id] : undefined));
 
           // Build per-limb current + max HP for the target
           let targetLimbHealth: Record<string, number> | undefined;
@@ -17249,7 +17248,7 @@ const CampaignView: React.FC = () => {
             <AttackModal
               attacker={{ characterId: attacker.characterId, name: attacker.name, isMonster: attacker.isMonster }}
               target={{ characterId: target.characterId, name: target.name, isMonster: target.isMonster, monsterId: target.monsterId, kind: targetIsPet ? 'pet' : undefined }}
-              targetLimbAC={limbAC}
+              targetLimbAC={targetCombatLimbAC}
               targetLimbHealth={targetLimbHealth}
               targetLimbHealthMax={targetLimbHealthMax}
               prefillDamage={showAttackModal.prefillDamage}
@@ -17860,19 +17859,13 @@ const CampaignView: React.FC = () => {
           if (!healTarget) return null;
           const healTargetChar = !healTarget.isMonster ? currentCampaign.characters.find((c: any) => c.id === healTarget.characterId) : null;
           const healTargetMonster = (healTarget.isMonster && healTarget.monsterId) ? monsters.find((m: any) => m.id === healTarget.monsterId) : null;
-          const limbAC = healTargetMonster?.limb_ac ?? {
-            head: healTargetChar?.armor_class ?? 10,
-            chest: healTargetChar?.armor_class ?? 10,
-            left_arm: healTargetChar?.armor_class ?? 10,
-            right_arm: healTargetChar?.armor_class ?? 10,
-            left_leg: healTargetChar?.armor_class ?? 10,
-            right_leg: healTargetChar?.armor_class ?? 10,
-          };
+          const healCombatLimbAC = healTargetMonster?.limb_ac
+            ?? calcCharacterCombatLimbAC(healTargetChar?.armor_class, healTargetChar ? limbAC[healTargetChar.id] : undefined);
           return (
             <AttackModal
               attacker={{ characterId: 'dm', name: 'Dungeon Master', isMonster: false }}
               target={{ characterId: healTarget.characterId, name: healTarget.name, isMonster: healTarget.isMonster, monsterId: healTarget.monsterId }}
-              targetLimbAC={limbAC}
+              targetLimbAC={healCombatLimbAC}
               mode="heal"
               onConfirm={(params) => {
                 socket.emit('applyHeal', {
@@ -18656,21 +18649,8 @@ const CampaignView: React.FC = () => {
                   const totalTemp = tempLimbs ? Object.values(tempLimbs).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
                   const tempPctBar = totalMax > 0 ? Math.min(100, (totalTemp / totalMax) * 100) : 0;
 
-                  const baseAC = detailCharacter.armor_class || 10;
-                  const rawLimbAC = limbAC[detailCharacter.id];
-                  const helmAC     = rawLimbAC?.head      ?? 0;
-                  const chestAC    = rawLimbAC?.chest     ?? 0;
-                  const mainHandAC = rawLimbAC?.main_hand ?? 0;
-                  const offHandAC  = rawLimbAC?.off_hand  ?? 0;
-                  const feetAC     = rawLimbAC?.feet      ?? 0;
                   // All armor is additive: base limb AC + equipped item bonus.
-                  const cLimbAC = {
-                    head:      Math.round(baseAC * 1.50) + helmAC,
-                    chest:     Math.round(baseAC * 1.00) + chestAC,
-                    main_hand: Math.round(baseAC * 0.25) + mainHandAC,
-                    off_hand:  Math.round(baseAC * 0.25) + offHandAC,
-                    feet:      Math.round(baseAC * 0.50) + feetAC
-                  };
+                  const cLimbAC = calcCharacterLimbAC(detailCharacter.armor_class, limbAC[detailCharacter.id]);
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
@@ -18738,7 +18718,7 @@ const CampaignView: React.FC = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                           <div style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
                             <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginBottom: '0.2rem' }}>Base AC</div>
-                            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#93c5fd' }}>{baseAC}</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#93c5fd' }}>{detailCharacter.armor_class || 10}</div>
                           </div>
                           <div style={{ background: 'rgba(var(--theme-accent-rgb),0.05)', border: '1px solid rgba(var(--theme-accent-rgb),0.2)', borderRadius: '0.5rem', padding: '0.6rem', textAlign: 'center' }}>
                             <div style={{ fontSize: '0.7rem', color: '#999', marginBottom: '0.2rem' }}>Movement</div>
@@ -23525,7 +23505,8 @@ const CampaignView: React.FC = () => {
                     if (summary.seasonChanged && summary.previousSeason && summary.season) {
                       parts.push(`Season changed: ${summary.previousSeason} -> ${summary.season}`);
                     }
-                    if (summary.completedBuildings?.length) parts.push(`${summary.completedBuildings.length} building(s) completed`);
+                    const completedBuildingCount = (summary.completedBuildings || []).reduce((n, b) => n + (b.count ?? 1), 0);
+                    if (completedBuildingCount > 0) parts.push(`${completedBuildingCount} building(s) completed`);
                     const totalGold = Object.values(summary.resourcesGained || {}).reduce((acc: number, r) => acc + ((r as { gold?: number }).gold || 0), 0);
                     if (totalGold > 0) parts.push(`+${totalGold} gold produced`);
                     setToastMessage(parts.join(' • ') || 'Rest complete');
@@ -23849,6 +23830,7 @@ const CampaignView: React.FC = () => {
                 campaignId: pendingOOCRoll.campaignId,
                 modifier: pendingOOCRoll.precomputedModifier ?? 'none',
                 diceGroups: pendingOOCRoll.diceGroups,
+                rollMode: pendingOOCRoll.rollMode,
               }}
               rollerName={currentCampaign.userCharacter?.name ?? 'You'}
               character={currentCampaign.userCharacter ? {
@@ -23856,7 +23838,7 @@ const CampaignView: React.FC = () => {
                 ...( characterDataOverrides[currentCampaign.userCharacter.id] ?? {} )
               } : null}
               onConfirm={() => setPendingOOCRoll(null)}
-              onRollComplete={(rawRoll, total, modifierValue, modifier, allRolls) => {
+              onRollComplete={(rawRoll, total, modifierValue, modifier, allRolls, modeInfo) => {
                 // Result goes to chat the moment the roll is revealed; the OK button only closes the modal
                 socket.emit('submitOutOfCombatRoll', {
                   campaignId: currentCampaign.campaign.id,
@@ -23870,6 +23852,8 @@ const CampaignView: React.FC = () => {
                   modifier,
                   total,
                   allRolls,
+                  rollMode: modeInfo?.rollMode,
+                  rollSets: modeInfo?.rollSets,
                 });
               }}
               onClose={() => setPendingOOCRoll(null)}

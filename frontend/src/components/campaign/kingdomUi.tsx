@@ -119,3 +119,22 @@ export const EmptyNote: React.FC<{ title: string; children?: React.ReactNode }> 
     {children ? <div className="kt-ui-empty-sub">{children}</div> : null}
   </div>
 );
+
+/* ── Switch: an on/off setting that reveals more options when on ─────────── */
+
+export const Switch: React.FC<{ checked: boolean; onChange: (next: boolean) => void; label: string; hint?: string; disabled?: boolean }> = ({ checked, onChange, label, hint, disabled }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    disabled={disabled}
+    className="kt-ui-switch"
+    onClick={() => onChange(!checked)}
+  >
+    <span className="kt-ui-switch-track" aria-hidden="true"><span className="kt-ui-switch-knob" /></span>
+    <span className="kt-ui-switch-text">
+      <span className="kt-ui-switch-label">{label}</span>
+      {hint ? <span className="kt-ui-switch-hint">{hint}</span> : null}
+    </span>
+  </button>
+);

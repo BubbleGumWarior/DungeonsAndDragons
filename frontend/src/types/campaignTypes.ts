@@ -158,6 +158,16 @@ export interface DiceGroup {
   diceType: string; // e.g. 'd6', 'd20'
 }
 
+/** DM-applied roll mode: advantage rolls the whole set twice and keeps the higher, disadvantage keeps the lower. */
+export type RollMode = 'normal' | 'advantage' | 'disadvantage';
+
+/** One full roll of the requested dice. Advantage/disadvantage produces two of these; exactly one is kept. */
+export interface RollSet {
+  groups: { diceType: string; rolls: number[] }[];
+  sum: number;
+  kept: boolean;
+}
+
 export interface CombatDiceRequest {
   requestId: number;
   requesterName: string;
@@ -169,6 +179,7 @@ export interface CombatDiceRequest {
   modifier?: string; // 'none' | 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha' | 'prof'
   precomputedModifier?: number | null; // pre-calculated modifier (e.g. from Quick Roll skill lookup)
   diceGroups?: DiceGroup[]; // multi-dice request (e.g. 2d6 + 1d8)
+  rollMode?: RollMode;
 }
 
 // Outcome panel shown to DM after a player submits a dice roll
@@ -257,6 +268,8 @@ export interface ChatMessage {
     total: number;
     characterName?: string;
     diceGroups?: { diceType: string; rolls: number[] }[];
+    rollMode?: RollMode;
+    rollSets?: RollSet[] | null; // every set rolled under advantage/disadvantage, in roll order
   } | null;
   created_at: string;
 }
@@ -273,5 +286,6 @@ export interface OutOfCombatRollRequest {
   precomputedModifier?: string;
   requesterName: string;
   diceGroups?: DiceGroup[]; // multi-dice request (e.g. 2d6 + 1d8)
+  rollMode?: RollMode;
 }
 

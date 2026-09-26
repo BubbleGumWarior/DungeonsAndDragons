@@ -16,8 +16,22 @@ function normalizeMaturationSchedule(raw) {
 }
 
 function getUnderagePopulation(schedule) {
-  const normalized = normalizeMaturationSchedule(schedule);
-  return Object.values(normalized).reduce((sum, count) => sum + Math.max(0, Number(count) || 0), 0);
+  if (!schedule || typeof schedule !== 'object') return 0;
+  // Hot path: the schedule can hold thousands of day keys and this runs per fief per simulated day,
+  // so sum in place instead of building a normalised copy. Only canonical integer-day keys are
+  // handled here (distinct keys can then never collide once normalised); anything else falls
+  // through to the full normalise-then-sum below so odd legacy data behaves exactly as before.
+  let sum = 0;
+  for (const key of Object.keys(schedule)) {
+    const day = Math.floor(Number(key));
+    if (String(day) !== key) {
+      const normalized = normalizeMaturationSchedule(schedule);
+      return Object.values(normalized).reduce((total, count) => total + Math.max(0, Number(count) || 0), 0);
+    }
+    const count = Math.floor(Number(schedule[key]) || 0);
+    if (Number.isFinite(day) && day > 0 && count > 0) sum += count;
+  }
+  return sum;
 }
 
 function getAssignablePopulation(totalPopulation, schedule, sickInjuredPopulation = 0) {

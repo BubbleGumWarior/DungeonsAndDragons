@@ -308,8 +308,9 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
     const summary = await Campaign.advanceDays(req.params.id, numericDays);
     // Notify all players in the campaign via socket
     if (req.io) {
+      // One event is enough: the Kingdom tab refreshes its data on dayAdvanced. A second
+      // kingdomDataChanged right behind it used to trigger the same full refetch again.
       req.io.to(`campaign_${req.params.id}`).emit('dayAdvanced', { campaignId: req.params.id, ...summary, restType });
-      req.io.to(`campaign_${req.params.id}`).emit('kingdomDataChanged', { campaignId: Number(req.params.id) });
 
       // Broadcast hunger tick results — pet/mount cards and the market panel refresh live.
       if (summary.petFoodUpdates?.length) {

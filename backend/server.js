@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
@@ -104,6 +105,11 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Gzip/deflate JSON and text responses. Kingdom fief/animal payloads are large and repetitive
+// (a big fief is ~1.2 MB of JSON), so this cuts them by ~30x on the wire. Images and other
+// already-compressed types are skipped by the default filter; socket.io bypasses Express entirely.
+app.use(compression({ threshold: 1024 }));
 
 // Request logging middleware for debugging
 app.use((req, res, next) => {
@@ -429,6 +435,7 @@ const startServer = async () => {
         { name: 'addFamilyTree', fn: require('./migrations/add_family_tree') },
         { name: 'addCharacterAgeOverride', fn: require('./migrations/add_character_age_override') },
         { name: 'addKingdomCustomBuildings', fn: require('./migrations/add_kingdom_custom_buildings') },
+        { name: 'addKingdomCustomUnits', fn: require('./migrations/add_kingdom_custom_units') },
       ];
       
       const failedMigrations = [];

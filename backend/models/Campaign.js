@@ -32,10 +32,15 @@ class Campaign {
   static ANIMAL_CATEGORY_BY_TYPE = {
     riding_horse: 'horse', draft_horse: 'horse', plough_horse: 'horse', courser: 'horse', war_horse: 'horse', destrier: 'horse',
     chicken: 'livestock', duck: 'livestock', goose: 'livestock', rabbit: 'livestock', sheep: 'livestock', goat: 'livestock', pig: 'livestock', ox: 'livestock', cow: 'livestock', wolf: 'livestock',
+    // DM-granted only (dmOnly in routes/kingdoms.js) — no Stable/Farm capacity of their own.
+    dragon: 'exotic', spinosaurus: 'exotic', t_rex: 'exotic', triceratops: 'exotic', pteranodon: 'exotic', quetzalcoatlus: 'exotic', raptor: 'exotic',
   };
   // Breedable like any other animal, but can never be slaughtered (see the manual and
   // auto-slaughter routes in routes/kingdoms.js, which block it the same way).
-  static ANIMAL_UNSLAUGHTERABLE_TYPES = new Set(['wolf']);
+  static ANIMAL_UNSLAUGHTERABLE_TYPES = new Set([
+    'wolf',
+    'dragon', 'spinosaurus', 't_rex', 'triceratops', 'pteranodon', 'quetzalcoatlus', 'raptor',
+  ]);
   // Each tier doubles the previous tier's capacity: 20 -> 40 -> 80 -> 160.
   static HORSE_CAPACITY_BY_TYPE = { animal_stable: 20, grand_stable: 40, royal_stud_farm: 80, imperial_stud_farm: 160 };
   static LIVESTOCK_CAPACITY_BY_TYPE = { animal_farm: 20, grand_pasture: 40, livestock_ranch: 80, grand_stockyards: 160 };
@@ -50,6 +55,7 @@ class Campaign {
     riding_horse: 1, draft_horse: 1, plough_horse: 1, courser: 1, war_horse: 1, destrier: 1, cow: 1, ox: 1,
     sheep: 0.5, goat: 0.5, pig: 0.5, wolf: 0.5,
     chicken: 0.125, duck: 0.125, goose: 0.125, rabbit: 0.125,
+    dragon: 4, t_rex: 4, spinosaurus: 3, triceratops: 3, quetzalcoatlus: 2, pteranodon: 1, raptor: 0.5,
   };
 
   static getNurseryWeight(animalType) {
@@ -83,6 +89,13 @@ class Campaign {
     chicken: { min: 3, max: 7 },
     duck: { min: 3, max: 8 },
     goose: { min: 2, max: 5 },
+    dragon: { min: 1, max: 1 },
+    t_rex: { min: 1, max: 2 },
+    spinosaurus: { min: 1, max: 2 },
+    triceratops: { min: 1, max: 3 },
+    quetzalcoatlus: { min: 1, max: 2 },
+    pteranodon: { min: 1, max: 3 },
+    raptor: { min: 2, max: 5 },
   };
 
   // Rolls how many offspring one birth produces. Quality biases the roll toward
@@ -177,6 +190,11 @@ class Campaign {
     grand_amphitheater: 3,
     coliseum: 4,
     imperial_coliseum: 5,
+    // Migration Dock chain — settlers arriving by sea
+    migration_dock: 8,
+    settlers_landing: 12,
+    immigration_harbor: 16,
+    grand_migration_port: 20,
   };
 
   static getPopulationGrowthBonusPct(completedBuildings) {
@@ -674,10 +692,15 @@ class Campaign {
     const unlockedResources = { ...(fief.unlockedResources || {}) };
     const maxWorkersPerResource = { ...(fief.maxWorkersPerResource || {}) };
 
-    for (const [resource, buildingTypes] of Object.entries(Campaign.WORKER_CAP_BUILDING_MAP)) {
+    // Set lookups (built once) — with thousands of buildings, Array.includes per building per lane adds up.
+    if (!Campaign._workerCapTypeSets) {
+      Campaign._workerCapTypeSets = Object.entries(Campaign.WORKER_CAP_BUILDING_MAP)
+        .map(([resource, buildingTypes]) => [resource, new Set(buildingTypes)]);
+    }
+    for (const [resource, buildingTypes] of Campaign._workerCapTypeSets) {
       const count = (completedBuildings || []).reduce((sum, building) => {
         const type = String(building?.buildingType || building?.building_type || '');
-        return sum + (buildingTypes.includes(type) ? 1 : 0);
+        return sum + (buildingTypes.has(type) ? 1 : 0);
       }, 0);
       if (count <= 0) continue;
 
@@ -917,20 +940,22 @@ class Campaign {
     };
   }
 
-  static async updateMilitaryTrainingForDay(client, fiefId, dayNumber) {
-    const tableCheck = await client.query(`SELECT to_regclass('public.fief_training') AS name`);
-    if (!tableCheck.rows[0]?.name) return;
-
+  // Marks every batch whose complete_day has been reached as 'ready', for many fiefs in one
+  // statement. Called once per advance with each fief's last simulated day — the state after a
+  // multi-day advance only depends on that final day, so there is no need to touch the table daily.
+  // Only finished rows are written: days-left for batches still training is derived from
+  // complete_day at read time (see getFiefTrainingQueue), not from the stored days_remaining.
+  static async markFinishedMilitaryTraining(client, fiefIds, dayNumbers) {
+    if (!fiefIds.length) return;
     await client.query(
-      `UPDATE fief_training
-       SET days_remaining = GREATEST(0, COALESCE(complete_day, $2) - $2),
-           status = CASE
-             WHEN COALESCE(complete_day, $2) <= $2 THEN 'ready'
-             ELSE status
-           END
-       WHERE fief_id = $1
-         AND status = 'training'`,
-      [fiefId, dayNumber]
+      `UPDATE fief_training t
+       SET days_remaining = 0,
+           status = 'ready'
+       FROM unnest($1::int[], $2::int[]) AS v(fief_id, day_number)
+       WHERE t.fief_id = v.fief_id
+         AND t.status = 'training'
+         AND COALESCE(t.complete_day, v.day_number) <= v.day_number`,
+      [fiefIds, dayNumbers]
     );
   }
 
@@ -1513,7 +1538,8 @@ class Campaign {
                to_regclass('public.fief_research_levels') AS fief_research_levels,
                to_regclass('public.fief_animals') AS fief_animals,
                to_regclass('public.fief_breeding_pairs') AS fief_breeding_pairs,
-               to_regclass('public.fief_animal_slaughter_limits') AS fief_animal_slaughter_limits
+               to_regclass('public.fief_animal_slaughter_limits') AS fief_animal_slaughter_limits,
+               to_regclass('public.fief_training') AS fief_training
       `);
       const canSimulateKingdoms = Boolean(
         tableCheck.rows[0]?.kingdoms &&
@@ -1527,6 +1553,7 @@ class Campaign {
       const canSimulateAnimals = Boolean(tableCheck.rows[0]?.fief_animals);
       const canSimulateBreedingPens = Boolean(tableCheck.rows[0]?.fief_breeding_pairs);
       const canSimulateAutoSlaughter = Boolean(tableCheck.rows[0]?.fief_animal_slaughter_limits);
+      const canSimulateTraining = Boolean(tableCheck.rows[0]?.fief_training);
 
       let hasConsecutiveStarvationDaysColumn = false;
       let hasConsecutiveGoldShortageDaysColumn = false;
@@ -1634,7 +1661,9 @@ class Campaign {
 
       const resourcesGained = {};
       const populationGained = {};
-      const completedBuildings = [];
+      // Buildings finished during this advance, grouped by fief/type/level. A big time skip can
+      // finish thousands of individual buildings, and this summary is sent to every client.
+      const completedBuildingGroups = new Map();
       const completedResearch = [];
       const completedTierUpgrades = [];
       const revolts = [];
@@ -1722,6 +1751,10 @@ class Campaign {
             travelDaysRemaining: Number(row.travel_days_remaining || 0),
             unitReserves: (row.unit_reserves && typeof row.unit_reserves === 'object' && !Array.isArray(row.unit_reserves)) ? row.unit_reserves : {},
             unrest: Math.max(0, Math.min(100, Number(row.unrest || 0))),
+            // Last day this fief was actually simulated (not in transit) — drives the single
+            // end-of-advance training update. Unfinished buildings are indexed lazily (see below).
+            lastActiveDay: null,
+            pendingBuildings: null,
           });
           resourcesGained[id] = {};
           populationGained[id] = 0;
@@ -1901,7 +1934,7 @@ class Campaign {
             continue;
           }
 
-          await Campaign.updateMilitaryTrainingForDay(client, fief.id, dayNumber);
+          fief.lastActiveDay = dayNumber;
 
           const matureToday = Math.max(0, Math.floor(Number(fief.populationMaturationSchedule[String(dayNumber)] || 0)));
           if (matureToday > 0) {
@@ -2271,15 +2304,19 @@ class Campaign {
               const litterSize = Campaign.getAnimalLitterSize(mother.animalType, avgQuality);
               const litterUnits = litterSize * Campaign.getNurseryWeight(mother.animalType);
               if (currentJuvenileUnits + litterUnits > nurseryCapacity) continue; // not enough room for the whole litter yet — stays overdue
+              // Roll the whole litter first, then insert it as one multi-row statement.
+              const offspringSexes = [];
+              const offspringQualities = [];
               for (let i = 0; i < litterSize; i += 1) {
-                const offspringQuality = Math.max(0, Math.min(100, Math.round(avgQuality + (Math.random() * 20 - 10))));
-                const offspringSex = Math.random() < 0.5 ? 'male' : 'female';
-                await client.query(
-                  `INSERT INTO fief_animals (fief_id, animal_type, sex, quality, born_on_day)
-                   VALUES ($1, $2, $3, $4, $5)`,
-                  [fief.id, mother.animalType, offspringSex, offspringQuality, dayNumber]
-                );
+                offspringQualities.push(Math.max(0, Math.min(100, Math.round(avgQuality + (Math.random() * 20 - 10)))));
+                offspringSexes.push(Math.random() < 0.5 ? 'male' : 'female');
               }
+              await client.query(
+                `INSERT INTO fief_animals (fief_id, animal_type, sex, quality, born_on_day)
+                 SELECT $1::int, $2::text, v.sex, v.quality, $5::int
+                 FROM unnest($3::text[], $4::int[]) AS v(sex, quality)`,
+                [fief.id, mother.animalType, offspringSexes, offspringQualities, dayNumber]
+              );
               const cooldownUntilDay = dayNumber + Campaign.ANIMAL_POSTPARTUM_COOLDOWN_DAYS;
               await client.query(
                 `UPDATE fief_animals
@@ -2521,16 +2558,27 @@ class Campaign {
           if (builderWorkers > 0) {
             let remainingEffort = builderWorkers;
 
-            while (remainingEffort > 0) {
-              const active = fiefBuildings
-                .filter((b) => !b.isComplete)
-                .sort((a, b) => {
-                  const ap = a.queuePosition == null ? Number.MAX_SAFE_INTEGER : a.queuePosition;
-                  const bp = b.queuePosition == null ? Number.MAX_SAFE_INTEGER : b.queuePosition;
-                  return ap === bp ? a.id - b.id : ap - bp;
-                })[0];
+            // Unfinished buildings only — a fief can hold thousands of finished ones, and the
+            // loop below runs once per building it completes. Built once per fief and shrunk as
+            // buildings finish (nothing else completes a building during the tick).
+            if (!fief.pendingBuildings) fief.pendingBuildings = fiefBuildings.filter((b) => !b.isComplete);
+            const pending = fief.pendingBuildings;
 
-              if (!active) break;
+            while (remainingEffort > 0) {
+              // Next building to work on: lowest queue position (unqueued last), then lowest id.
+              let activeIndex = -1;
+              let activeRank = 0;
+              for (let i = 0; i < pending.length; i += 1) {
+                const candidate = pending[i];
+                const rank = candidate.queuePosition == null ? Number.MAX_SAFE_INTEGER : candidate.queuePosition;
+                if (activeIndex === -1 || rank < activeRank || (rank === activeRank && candidate.id < pending[activeIndex].id)) {
+                  activeIndex = i;
+                  activeRank = rank;
+                }
+              }
+
+              if (activeIndex === -1) break;
+              const active = pending[activeIndex];
 
               const effortSpent = Math.max(0, Math.min(remainingEffort, Math.max(0, Number(active.daysRemaining || 0))));
               active.daysRemaining = Math.max(0, active.daysRemaining - remainingEffort);
@@ -2542,18 +2590,26 @@ class Campaign {
                 active.isComplete = true;
                 active.queuePosition = null;
                 active.dirty = true;
-                completedBuildings.push({
-                  name: active.name,
-                  buildingType: active.buildingType,
-                  level: active.level,
-                  fiefId: fief.id,
-                  fiefName: fief.name,
-                });
+                pending.splice(activeIndex, 1);
+                const groupKey = `${fief.id}|${active.buildingType}|${active.level}`;
+                const group = completedBuildingGroups.get(groupKey);
+                if (group) {
+                  group.count += 1;
+                } else {
+                  completedBuildingGroups.set(groupKey, {
+                    name: active.name,
+                    buildingType: active.buildingType,
+                    level: active.level,
+                    fiefId: fief.id,
+                    fiefName: fief.name,
+                    count: 1,
+                  });
+                }
                 Campaign.applyBuildingUnlockEffects(fief, active.buildingType);
 
                 if (finishedQueuePosition != null) {
-                  for (const queued of fiefBuildings) {
-                    if (!queued.isComplete && queued.queuePosition != null && queued.queuePosition > finishedQueuePosition) {
+                  for (const queued of pending) {
+                    if (queued.queuePosition != null && queued.queuePosition > finishedQueuePosition) {
                       queued.queuePosition -= 1;
                       queued.dirty = true;
                     }
@@ -2627,10 +2683,8 @@ class Campaign {
           if (canSimulateResearch) {
             const queue = researchByFief.get(fief.id) || [];
             const researchWorkers = Math.max(0, Number(fief.workerAssignments.research || 0));
-            if ((researchWorkers > 0 || completed.some((b) => {
-              const output = Campaign.toNumericResourceMap(b.resource_output);
-              return Number(output.research || 0) > 0;
-            })) && queue.length > 0) {
+            // resource_output was already normalised to a numeric map when the buildings were loaded.
+            if (queue.length > 0 && (researchWorkers > 0 || completed.some((b) => Number(b.resource_output.research || 0) > 0))) {
               const activeResearch = queue.find((entry) => entry.status === 'active');
               if (activeResearch) {
                 // Accumulate research from workers only (no tier multiplier)
@@ -2638,8 +2692,7 @@ class Campaign {
                 
                 // Add research from building outputs
                 for (const building of completed) {
-                  const buildingOutput = Campaign.toNumericResourceMap(building.resource_output);
-                  const buildingResearch = Number(buildingOutput.research || 0);
+                  const buildingResearch = Number(building.resource_output.research || 0);
                   if (buildingResearch > 0) {
                     researchAccumulation += buildingResearch;
                   }
@@ -2839,25 +2892,51 @@ class Campaign {
           );
         }
 
+        // Persist every changed building with set-based UPDATEs instead of one round trip each:
+        // finishing a building renumbers the whole build queue, so a big queue used to mean
+        // thousands of sequential UPDATEs inside this transaction.
+        const dirtyBuildings = [];
         for (const fiefBuildings of buildingsByFief.values()) {
           for (const building of fiefBuildings) {
             if (!building.dirty) continue;
             // days_remaining is an integer column — guard against any fractional worker-effort
             // math upstream (e.g. a slave output multiplier) so this write can never 500.
             building.daysRemaining = Math.max(0, Math.round(Number(building.daysRemaining) || 0));
-            await client.query(
-              `UPDATE fief_buildings
-               SET days_remaining = $1,
-                   is_complete = $2,
-                   queue_position = $3,
-                   built_at = CASE
-                     WHEN $2 = true AND built_at IS NULL THEN NOW()
-                     ELSE built_at
-                   END
-               WHERE id = $4`,
-              [building.daysRemaining, building.isComplete, building.queuePosition, building.id]
-            );
+            dirtyBuildings.push(building);
           }
+        }
+        const BUILDING_WRITE_CHUNK = 2000;
+        for (let start = 0; start < dirtyBuildings.length; start += BUILDING_WRITE_CHUNK) {
+          const chunk = dirtyBuildings.slice(start, start + BUILDING_WRITE_CHUNK);
+          await client.query(
+            `UPDATE fief_buildings b
+             SET days_remaining = v.days_remaining,
+                 is_complete = v.is_complete,
+                 queue_position = v.queue_position,
+                 built_at = CASE
+                   WHEN v.is_complete = true AND b.built_at IS NULL THEN NOW()
+                   ELSE b.built_at
+                 END
+             FROM unnest($1::int[], $2::int[], $3::boolean[], $4::int[])
+               AS v(id, days_remaining, is_complete, queue_position)
+             WHERE b.id = v.id`,
+            [
+              chunk.map((b) => b.id),
+              chunk.map((b) => b.daysRemaining),
+              chunk.map((b) => b.isComplete),
+              chunk.map((b) => b.queuePosition),
+            ]
+          );
+        }
+
+        // Troop training: one statement for every fief, using each fief's last simulated day.
+        if (canSimulateTraining) {
+          const trainedFiefs = fiefStates.filter((f) => f.lastActiveDay != null);
+          await Campaign.markFinishedMilitaryTraining(
+            client,
+            trainedFiefs.map((f) => f.id),
+            trainedFiefs.map((f) => f.lastActiveDay)
+          );
         }
 
         if (canSimulateResearch) {
@@ -2961,7 +3040,7 @@ class Campaign {
         seasonChanged,
         previousSeason,
         crossedSeasons,
-        completedBuildings,
+        completedBuildings: Array.from(completedBuildingGroups.values()),
         completedResearch,
         completedTierUpgrades,
         revolts,

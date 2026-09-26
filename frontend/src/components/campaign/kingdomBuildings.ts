@@ -67,6 +67,7 @@ export const getBuildingCategory = (building: any): BuildTabId => {
        'drill_yard', 'training_grounds', 'elite_drill_grounds', 'veteran_training_grounds', 'war_college',
        'command_post', 'war_room', 'strategic_command', 'advanced_command_center', 'high_command_citadel',
        'siege_engine_workshop', 'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall',
+       'military_dock',
   ].includes(key)) return 'military';
   // Defense
   if (['watchtower', 'signal_tower', 'sentinel_tower', 'border_tower', 'high_watch', 'beacon_tower', 'watch_bastion',
@@ -76,6 +77,8 @@ export const getBuildingCategory = (building: any): BuildTabId => {
   // Trade & Logistics
   if (['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum',
        'logistics_depot', 'supply_depot', 'roadworks', 'quartermaster_depot', 'supply_network', 'imperial_logistics_hub', 'trade_route_office',
+       'boat_yard', 'trading_dock', 'merchant_quay', 'harbor_exchange', 'royal_customs_house',
+       'migration_dock', 'settlers_landing', 'immigration_harbor', 'grand_migration_port',
   ].includes(key)) return 'trade';
   // Animals — Animal Management panel capacity/breeding buildings
   if (['animal_stable', 'grand_stable', 'royal_stud_farm', 'imperial_stud_farm',

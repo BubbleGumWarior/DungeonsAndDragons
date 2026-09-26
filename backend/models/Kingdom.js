@@ -1,5 +1,28 @@
 const { pool } = require('./database');
 
+// Fief columns the kingdom *list* leaves out. population_maturation_schedule holds one entry per
+// upcoming coming-of-age day (thousands of keys on an established fief) and is only used by the
+// single-fief detail view, but SELECT f.* sent it for every fief of every kingdom on each refresh.
+const LIST_EXCLUDED_FIEF_COLUMNS = new Set(['population_maturation_schedule']);
+let fiefListColumns = null;
+
+// "f.col, f.col, ..." for every fiefs column except the excluded ones (falls back to f.* if the
+// column list can't be read). Cached after the first successful lookup.
+const getFiefListSelect = async () => {
+  if (!fiefListColumns) {
+    try {
+      const result = await pool.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fiefs' ORDER BY ordinal_position`
+      );
+      const columns = result.rows.map((r) => String(r.column_name)).filter((c) => !LIST_EXCLUDED_FIEF_COLUMNS.has(c));
+      if (columns.length > 0) fiefListColumns = columns.map((c) => `f."${c.replace(/"/g, '""')}"`).join(', ');
+    } catch (_) {
+      // fall through to f.*
+    }
+  }
+  return fiefListColumns || 'f.*';
+};
+
 class Kingdom {
   static async create({ campaign_id, player_id }) {
     const existing = await pool.query(
@@ -36,7 +59,7 @@ class Kingdom {
 
     const ids = result.rows.map((k) => Number(k.id));
     const fiefsResult = await pool.query(
-      `SELECT f.*
+      `SELECT ${await getFiefListSelect()}
        FROM fiefs f
        WHERE f.kingdom_id = ANY($1::int[])
        ORDER BY f.is_capital DESC, f.id ASC`,

@@ -45,7 +45,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   const [trainUnitType, setTrainUnitType] = useState('Militia');
   const [trainAmount, setTrainAmount] = useState('1');
   const [upgradeAmounts, setUpgradeAmounts] = useState<Record<string, string>>({});
-  const [guardStep, setGuardStep] = useState(1);
+  // 'max' moves as many as the reserve and the post's free capacity allow (or recalls everything posted).
+  const [guardStep, setGuardStep] = useState<number | 'max'>(1);
   const [dmEdit, setDmEdit] = useState<{ unit: string; value: string } | null>(null);
   const [dmPickerOpen, setDmPickerOpen] = useState(false);
   const [queueRef] = useAutoAnimate<HTMLUListElement>({ duration: 180 });
@@ -271,7 +272,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
       .filter((line) => line.line_key !== 'Militia')
       .map((line) => {
         const tiers = line.tiers.map((t, i) => {
-          const source = i === 0 ? 'Militia' : line.tiers[i - 1].unit_type;
+          // Custom troops name the unit they upgrade from; built-in tiers follow the line order.
+          const source = t.parent_unit_type || (i === 0 ? 'Militia' : line.tiers[i - 1].unit_type);
           const entry = upgradeMap.get(`${source}->${t.unit_type}`);
           return {
             unit: t.unit_type,
@@ -284,7 +286,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
           };
         });
         const total = tiers.reduce((s, t) => s + t.held, 0);
-        return { key: line.line_key, tiers, total, active: tiers[0].unlocked || total > 0 };
+        return { key: line.line_key, tiers, total, custom: Boolean(line.is_custom), active: tiers[0].unlocked || total > 0 };
       });
   }, [fief.upgradable_units, progression, reserves, speedPct]);
 
@@ -358,7 +360,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             {activeLadders.map((line) => (
               <div key={line.key} className="kt-mt-line">
                 <div className="kt-mt-line-head">
-                  <h5 className="kt-mt-line-name">{line.key}</h5>
+                  <h5 className="kt-mt-line-name">{line.key}{line.custom ? <span className="kt-tt-tag">Unique</span> : null}</h5>
                   {line.total > 0 && <span className="kt-mt-line-total">{line.total} in reserve</span>}
                 </div>
                 <ul className="kt-mt-tiers">{line.tiers.map(renderTierRow)}</ul>
@@ -397,9 +399,9 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
         <div className="kt-mt-guard-bar">
           <span className="kt-mt-guard-bar-label" id="kt-mt-step-label">Troops moved per click</span>
           <div className="kt-ui-seg" role="group" aria-labelledby="kt-mt-step-label">
-            {[1, 5, 10].map((n) => (
+            {([1, 5, 10, 100, 1000, 'max'] as const).map((n) => (
               <button key={n} type="button" className="kt-ui-seg-btn" aria-pressed={guardStep === n} onClick={() => setGuardStep(n)}>
-                {n}
+                {n === 'max' ? 'Max' : n}
               </button>
             ))}
           </div>
@@ -436,8 +438,9 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                     {units.map((unit) => {
                       const free = toCount(reserves[unit]);
                       const posted = toCount(assignedBy[unit]);
-                      const addBy = Math.min(guardStep, free, remaining);
-                      const removeBy = Math.min(guardStep, posted);
+                      const stepSize = guardStep === 'max' ? Number.POSITIVE_INFINITY : guardStep;
+                      const addBy = Math.min(stepSize, free, remaining);
+                      const removeBy = Math.min(stepSize, posted);
                       return (
                         <li key={unit} className="kt-mt-guard">
                           <span className="kt-mt-guard-name">{unit}</span>
@@ -448,7 +451,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                               className="kt-ui-stepper-btn"
                               onClick={() => onAdjustGuards(g.building_type, unit, -removeBy)}
                               disabled={isBusy || removeBy <= 0}
-                              aria-label={`Recall ${removeBy || guardStep} ${unit} from ${g.building_name}`}
+                              aria-label={`Recall ${removeBy || (guardStep === 'max' ? 0 : guardStep)} ${unit} from ${g.building_name}`}
                             >
                               <Icon name="minus" size={13} />
                             </button>
@@ -458,7 +461,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                               className="kt-ui-stepper-btn"
                               onClick={() => onAdjustGuards(g.building_type, unit, addBy)}
                               disabled={isBusy || addBy <= 0}
-                              aria-label={remaining <= 0 ? `${g.building_name} is at capacity` : `Post ${addBy || guardStep} ${unit} to ${g.building_name}`}
+                              aria-label={remaining <= 0 ? `${g.building_name} is at capacity` : `Post ${addBy || (guardStep === 'max' ? 0 : guardStep)} ${unit} to ${g.building_name}`}
                               title={remaining <= 0 ? 'Post is at capacity' : undefined}
                             >
                               <Icon name="plus" size={13} />

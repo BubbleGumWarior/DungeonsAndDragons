@@ -5,8 +5,11 @@ import MilitiaTrainingPanel from './MilitiaTrainingPanel';
 import ConstructionPanel from './ConstructionPanel';
 import BuildStructuresModal from './BuildStructuresModal';
 import CustomBuildingsPanel from './CustomBuildingsPanel';
+import TroopProgressionModal from './TroopProgressionModal';
 import LaneEffectChips from './LaneEffectChips';
 import { getBuildingCategory, getBuildingDisplayName, getLaneEffects, isCustomBuildingType, RESEARCH_BUILDING_CHAIN } from './kingdomBuildings';
+import { createRefreshCoordinator } from './kingdomSync';
+import { reconcile } from '../../utils/reconcile';
 import {
   campaignAPI,
   kingdomAPI,
@@ -331,6 +334,14 @@ const ANIMAL_ICONS: Record<string, string> = {
   ox: '🐂',
   cow: '🐄',
   wolf: '🐺',
+  // Exotic beasts (DM-granted only)
+  dragon: '🐉',
+  spinosaurus: '🐊',
+  t_rex: '🦖',
+  triceratops: '🦕',
+  pteranodon: '🦅',
+  quetzalcoatlus: '🦇',
+  raptor: '🦎',
 };
 
 const getQualityColor = (quality: number) => {
@@ -460,7 +471,7 @@ const RESEARCH_TAB_COLORS: Record<ResearchTabId, { text: string; border: string;
 
 const getResearchCategory = (research: any): ResearchTabId => {
   const id = String(research?.id || '');
-  if (/_hunter$|_vegetable$|_quarry$|_mine$|_research_lab$/.test(id)) return 'economy';
+  if (/_hunter$|_vegetable$|_quarry$|_mine$|_research_lab$|_trading_dock$/.test(id)) return 'economy';
   if (/_militia_camp$|_stables$|_archer_range$|_swordsmith_hall$|_spear_drill_yard$|_armory$|_drill_yard$|_command_post$|_siege_engine_workshop$|_smithy$|_palisades$|_watchtower$/.test(id)) return 'military';
   return 'civic';
 };
@@ -648,7 +659,8 @@ const KingdomTab: React.FC<Props> = ({
   const fetchKingdoms = useCallback(async () => {
     try {
       const result = await kingdomAPI.getCampaignKingdoms(campaignId);
-      setKingdoms(result.kingdoms || []);
+      // reconcile keeps the previous object for anything unchanged, so an identical refetch is a no-op render.
+      setKingdoms((prev) => reconcile(prev, result.kingdoms || []));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to load kingdoms');
     }
@@ -659,7 +671,8 @@ const KingdomTab: React.FC<Props> = ({
     if (!Number.isFinite(numericFiefId)) return;
     try {
       const result = await kingdomAPI.getFief(numericFiefId);
-      setFiefDetails(result.fief);
+      // Keep identity of unchanged subtrees (buildings, catalogs...) so the memoised panels stay put.
+      setFiefDetails((prev) => reconcile(prev, result.fief));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to load fief details');
     }
@@ -706,21 +719,68 @@ const KingdomTab: React.FC<Props> = ({
     animalTypesRef.current = animalTypes;
   }, [animalTypes]);
 
+  // The panel showing the animals reads its own data, so only refetch it while that panel is open
+  // (opening it always fetches — see the managementMode effect below).
+  const managementModeRef = React.useRef<ManagementMode>('fief');
+  useEffect(() => {
+    managementModeRef.current = managementMode;
+  }, [managementMode]);
+
   useEffect(() => {
     if (!socket) return;
 
-    const onDataChanged = (data: { campaignId: number }) => {
-      if (Number(data?.campaignId) !== Number(campaignId)) return;
-      fetchKingdoms();
+    // Every socket event used to fire its own full refetch (kingdoms + fief + animals + day), and a
+    // long rest sends more than one event. Requests are merged here into a single run instead.
+    const refresher = createRefreshCoordinator(async ({ kingdoms: wantKingdoms, fief: wantFief, animals: wantAnimals }) => {
       const currentFiefId = selectedFiefIdRef.current;
-      if (currentFiefId) fetchFief(currentFiefId);
+      await Promise.all([
+        wantKingdoms ? fetchKingdoms() : null,
+        wantFief && currentFiefId ? fetchFief(currentFiefId) : null,
+        wantAnimals ? fetchAnimalsDataRef.current() : null,
+      ]);
+    });
+
+    const canSeeKingdom = (k: KingdomSummary) =>
+      isDungeonMaster
+      || Number(k.player_id) === Number(userId)
+      || (k.co_owners || []).some((co) => Number(co.player_id) === Number(userId));
+
+    const onDataChanged = (data: { campaignId: number; kingdomId?: number; fiefId?: number; fiefDeleted?: boolean }) => {
+      if (Number(data?.campaignId) !== Number(campaignId)) return;
+
+      // Which kingdom changed? Most events carry kingdomId; the fief-scoped ones only a fiefId.
+      const knownKingdoms = kingdomsRef.current;
+      let eventKingdomId: number | null = data.kingdomId != null ? Number(data.kingdomId) : null;
+      if (eventKingdomId == null && data.fiefId != null) {
+        const owner = knownKingdoms.find((k) => (k.fiefs || []).some((f) => Number(f.id) === Number(data.fiefId)));
+        if (owner) eventKingdomId = Number(owner.id);
+      }
+      if (eventKingdomId != null) {
+        // Another player's kingdom changed: nothing this user can see depends on it.
+        const eventKingdom = knownKingdoms.find((k) => Number(k.id) === eventKingdomId);
+        if (eventKingdom && !canSeeKingdom(eventKingdom)) return;
+      }
+
+      const currentFiefId = selectedFiefIdRef.current;
+      const openKingdom = currentFiefId
+        ? knownKingdoms.find((k) => (k.fiefs || []).some((f) => Number(f.id) === Number(currentFiefId)))
+        : undefined;
+      const sameKingdomAsOpenFief = eventKingdomId == null || !openKingdom || Number(openKingdom.id) === eventKingdomId;
+      // A deleted fief would 404 here; the selection effect falls back to a surviving fief instead.
+      const refreshFief = Boolean(currentFiefId)
+        && sameKingdomAsOpenFief
+        && !(data.fiefDeleted && Number(data.fiefId) === Number(currentFiefId));
       // Animal purchases/slaughters/breeding-pen changes also emit kingdomDataChanged
-      // (see the /animals routes) — keep the panel's due dates and headcounts live.
-      fetchAnimalsDataRef.current();
+      // (see the /animals routes) — keep the panel's due dates and headcounts live while it is open.
+      const refreshAnimals = managementModeRef.current === 'animals' && sameKingdomAsOpenFief;
+      refresher.request({ kingdoms: true, fief: refreshFief, animals: refreshAnimals });
     };
 
     const onDayAdvanced = (data: {
       campaignId: number | string;
+      newDay?: number;
+      season?: 'Spring' | 'Summer' | 'Autumn' | 'Winter';
+      seasonEffects?: Record<string, number>;
       animalsLost?: Record<string, number>;
       animalsBorn?: Record<string, number>;
       animalsAutoSlaughtered?: Record<string, Record<string, number>>;
@@ -728,20 +788,24 @@ const KingdomTab: React.FC<Props> = ({
       kingdomTaxPayouts?: Record<string, number>;
     }) => {
       if (Number(data?.campaignId) !== Number(campaignId)) return;
-      fetchKingdoms();
-      const currentFiefId = selectedFiefIdRef.current;
-      if (currentFiefId) fetchFief(currentFiefId);
-      campaignAPI.getCurrentDay(campaignId)
-        .then((dayInfo) => {
-          setCurrentCampaignDay(Math.max(1, Number(dayInfo?.current_day || 1)));
-          setCurrentSeason((dayInfo?.season || null) as ('Spring' | 'Summer' | 'Autumn' | 'Winter' | null));
-          setCurrentSeasonEffects((dayInfo?.season_effects && typeof dayInfo.season_effects === 'object') ? dayInfo.season_effects : {});
-        })
-        .catch(() => {});
       // A long rest/time skip runs the animal tick server-side (pregnancies progressing,
       // births, natural breeding, aging, understaffed breeding halts) — refresh so due dates and
-      // the herd list reflect it immediately instead of only on next manual open.
-      fetchAnimalsDataRef.current();
+      // the herd list reflect it immediately if that panel is open (otherwise it refetches on open).
+      refresher.request({ kingdoms: true, fief: true, animals: managementModeRef.current === 'animals' });
+      if (data.newDay != null && data.season) {
+        // The event already carries the new day/season, so no extra round trip is needed.
+        setCurrentCampaignDay(Math.max(1, Number(data.newDay || 1)));
+        setCurrentSeason(data.season);
+        setCurrentSeasonEffects((data.seasonEffects && typeof data.seasonEffects === 'object') ? data.seasonEffects : {});
+      } else {
+        campaignAPI.getCurrentDay(campaignId)
+          .then((dayInfo) => {
+            setCurrentCampaignDay(Math.max(1, Number(dayInfo?.current_day || 1)));
+            setCurrentSeason((dayInfo?.season || null) as ('Spring' | 'Summer' | 'Autumn' | 'Winter' | null));
+            setCurrentSeasonEffects((dayInfo?.season_effects && typeof dayInfo.season_effects === 'object') ? dayInfo.season_effects : {});
+          })
+          .catch(() => {});
+      }
 
       // Explain animal population changes from this tick — losses especially are
       // otherwise a silent mystery (herd size crept past what the Farming lane can support).
@@ -838,6 +902,7 @@ const KingdomTab: React.FC<Props> = ({
       socket.off('kingdomDataChanged', onDataChanged);
       socket.off('dayAdvanced', onDayAdvanced);
       socket.off('fiefCreated', onFiefCreated);
+      refresher.cancel();
     };
   }, [socket, campaignId, fetchKingdoms, fetchFief, isDungeonMaster, userId, pushToast]);
 
@@ -1142,6 +1207,27 @@ const KingdomTab: React.FC<Props> = ({
       await fetchKingdoms();
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to delete kingdom');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeleteFief = async (fiefId: number, fiefName: string, kingdomId: number) => {
+    if (!isDungeonMaster) return;
+    const isCapital = kingdoms.some((k) => Number(k.id) === kingdomId && (k.fiefs || []).some((f) => Number(f.id) === fiefId && f.is_capital));
+    const capitalNote = isCapital ? ' It is the capital, so the oldest remaining fief will become the new capital.' : '';
+    if (!window.confirm(`Delete ${fiefName}? Its buildings, workers, animals and stored resources will be lost and this cannot be undone.${capitalNote}`)) return;
+
+    setBusy(`delete-fief-${fiefId}`);
+    try {
+      await kingdomAPI.deleteFief(fiefId);
+      if (Number(selectedFiefId) === fiefId) {
+        setSelectedFiefId(null);
+        setFiefDetails(null);
+      }
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to delete fief');
     } finally {
       setBusy(null);
     }
@@ -1803,47 +1889,6 @@ const KingdomTab: React.FC<Props> = ({
       }
     }
     return map;
-  }, [fiefDetails?.unit_progression]);
-
-  // Splits unit_progression into "primary" single-building lines and "hybrid" lines whose tiers
-  // require more than one building (e.g. Horse Archer, Lancer) — hybrids are rendered as a branch
-  // row under every primary line whose building chain they draw from, instead of their own panel.
-  const progressionRenderModel = useMemo(() => {
-    const lines = fiefDetails?.unit_progression || [];
-    const isHybrid = (line: typeof lines[number]) => line.tiers.some((t) => t.required_buildings.length > 1);
-    const primaryLines = lines.filter((l) => !isHybrid(l));
-    const hybridLines = lines.filter(isHybrid);
-
-    const buildingOwnerLine = new Map<string, string>();
-    for (const line of primaryLines) {
-      for (const tier of line.tiers) {
-        for (const rb of tier.required_buildings) {
-          buildingOwnerLine.set(rb.building_type, line.line_key);
-        }
-      }
-    }
-
-    const branchesByParent = new Map<string, typeof hybridLines>();
-    for (const hybrid of hybridLines) {
-      const parentKeys = new Set<string>();
-      for (const tier of hybrid.tiers) {
-        for (const rb of tier.required_buildings) {
-          const owner = buildingOwnerLine.get(rb.building_type);
-          if (owner) parentKeys.add(owner);
-        }
-      }
-      for (const parentKey of parentKeys) {
-        if (!branchesByParent.has(parentKey)) branchesByParent.set(parentKey, []);
-        branchesByParent.get(parentKey)!.push(hybrid);
-      }
-    }
-
-    // Reference column count for right-aligning branches, taken from the longest primary line rather
-    // than the specific parent — so a branch attached to a short base (e.g. Covert's 2-tier Street
-    // Informant/Infiltrator) still lands in its true tier-3/4 columns instead of overlapping columns 0-1.
-    const maxPrimaryTierCount = primaryLines.reduce((max, l) => Math.max(max, l.tiers.length), 0);
-
-    return { primaryLines, branchesByParent, maxPrimaryTierCount };
   }, [fiefDetails?.unit_progression]);
 
   const hasCompletedResearchLab = useMemo(
@@ -2877,6 +2922,29 @@ const KingdomTab: React.FC<Props> = ({
                       + New Fief
                     </button>
                   )}
+                  {isDungeonMaster && (k.fiefs || []).length > 1 && (() => {
+                    const fiefToDelete = (k.fiefs || []).find((f) => Number(f.id) === Number(selectedFiefId));
+                    if (!fiefToDelete) return null;
+                    const deleting = busy === `delete-fief-${Number(fiefToDelete.id)}`;
+                    return (
+                      <button
+                        onClick={() => handleDeleteFief(Number(fiefToDelete.id), fiefToDelete.name, Number(k.id))}
+                        disabled={deleting}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          borderRadius: '1.4rem',
+                          border: '1px solid rgba(239,68,68,0.45)',
+                          background: 'rgba(127,29,29,0.3)',
+                          color: '#fca5a5',
+                          cursor: 'pointer',
+                          fontSize: '0.88rem',
+                        }}
+                        title="Remove the selected fief from the kingdom (destroyed, razed, or lost)"
+                      >
+                        {deleting ? 'Deleting...' : `Delete ${fiefToDelete.name}`}
+                      </button>
+                    );
+                  })()}
                   {canToggleManagement && isSelectedKingdom && (
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
                       <button
@@ -3312,6 +3380,8 @@ const KingdomTab: React.FC<Props> = ({
                     // Adults compete for Stable/Farm capacity; juveniles live in the Nursery instead.
                     const horseUsed = fief.animals.filter((a) => a.is_adult && animalTypes[a.animal_type]?.category === 'horse').length;
                     const livestockUsed = fief.animals.filter((a) => a.is_adult && animalTypes[a.animal_type]?.category === 'livestock').length;
+                    // Exotic beasts are DM-granted and have no Stable/Farm cap, so they get a plain headcount.
+                    const exoticCount = fief.animals.filter((a) => animalTypes[a.animal_type]?.category === 'exotic').length;
                     // Nursery room is weighted "slots", not raw headcount — a calf takes a full
                     // slot, a rabbit kit takes 1/8th (see ANIMAL_TYPES[type].nurseryWeight).
                     const juvenileUsedUnitsRaw = fief.animals
@@ -3427,6 +3497,15 @@ const KingdomTab: React.FC<Props> = ({
                               </div>
                             );
                           })}
+                          {exoticCount > 0 && (
+                            <div title="Granted by the DM — no Stable or Farm capacity needed, but the young still need Nursery room">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                                <span>🐉 Exotic Beasts</span>
+                                <span style={{ color: '#c4b5fd', fontWeight: 700 }}>{exoticCount}</span>
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>DM-granted · no housing limit</div>
+                            </div>
+                          )}
                         </div>
 
                         {groupedUnpaired.size === 0 ? (
@@ -3614,6 +3693,7 @@ const KingdomTab: React.FC<Props> = ({
                                 ))}
                               </optgroup>
                             </select>
+                            {/* Exotic beasts (dmOnly) are deliberately absent here — the DM grants them via "DM Add Animals". */}
                             <input
                               type="number" min="1" step="1"
                               value={purchaseForm.qty}
@@ -5118,6 +5198,11 @@ const KingdomTab: React.FC<Props> = ({
                           <option key={t.key} value={t.key}>{ANIMAL_ICONS[t.key]} {t.name}</option>
                         ))}
                       </optgroup>
+                      <optgroup label="Exotic Beasts (DM-granted only)">
+                        {Object.values(animalTypes).filter((t) => t.category === 'exotic').map((t) => (
+                          <option key={t.key} value={t.key}>{ANIMAL_ICONS[t.key]} {t.name}</option>
+                        ))}
+                      </optgroup>
                     </select>
                   </div>
 
@@ -6137,160 +6222,19 @@ const KingdomTab: React.FC<Props> = ({
         document.body
       )}
 
-      {showProgressionModal && ReactDOM.createPortal(
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.72)',
-            zIndex: 10020,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
+      {showProgressionModal && (
+        <TroopProgressionModal
+          tree={fiefDetails?.unit_tree}
+          reserves={fiefDetails?.unit_reserves || {}}
+          speedPct={Math.min(90, Number((fiefDetails?.legendary_bonuses || {}).unit_training_speed_reduction_pct || 0)) || 0}
+          isDungeonMaster={isDungeonMaster}
+          kingdomId={selectedKingdom ? Number(selectedKingdom.id) : null}
+          kingdomName={selectedKingdom?.name || `${selectedKingdom?.player_username || 'this player'}'s kingdom`}
+          onChanged={async () => {
+            if (fiefDetails) await fetchFief(Number(fiefDetails.id));
           }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowProgressionModal(false);
-          }}
-        >
-          <div
-            style={{
-              background: 'rgba(18, 18, 18, 0.96)',
-              border: '2px solid rgba(var(--theme-accent-rgb),0.4)',
-              borderRadius: '12px',
-              boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
-              width: '100%',
-              maxWidth: '80vw',
-              maxHeight: '85vh',
-              overflowY: 'auto',
-              padding: '2rem',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-              <div>
-                <h2 style={{ color: 'var(--text-gold)', margin: 0, marginBottom: '0.25rem', fontSize: '1.3rem', fontWeight: 700 }}>
-                  Troop Progression
-                </h2>
-                <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.82rem' }}>
-                  Train civilians into Militia, then upgrade reserve units up their line's tiers as the matching building is completed. Some tiers require more than one building to unlock.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowProgressionModal(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.5rem', cursor: 'pointer', padding: 0 }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {progressionRenderModel.primaryLines.map((line) => (
-                <div key={line.line_key} style={{ padding: '0.75rem', background: 'rgba(26,26,26,0.35)', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.2)' }}>
-                  <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{line.line_key}</div>
-                  <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    {line.tiers.map((tier, idx) => (
-                      <React.Fragment key={tier.unit_type}>
-                        {idx > 0 && (
-                          <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', fontSize: '1rem' }}>→</div>
-                        )}
-                        <div
-                          style={{
-                            minWidth: '150px',
-                            padding: '0.5rem',
-                            borderRadius: '0.4rem',
-                            border: `1px solid ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(var(--theme-accent-rgb),0.25)'}`,
-                            background: tier.unlocked ? 'rgba(20,83,45,0.25)' : 'rgba(15,15,15,0.4)',
-                          }}
-                        >
-                          <div style={{ color: tier.unlocked ? '#86efac' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem' }}>
-                            {tier.unlocked ? '✅' : '🔒'} {tier.unit_type}
-                          </div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
-                          <div style={{ marginTop: '0.3rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                            {tier.required_buildings.map((rb) => (
-                              <div key={rb.building_type} style={{ color: rb.completed ? '#86efac' : '#f87171', fontSize: '0.68rem' }}>
-                                {rb.completed ? '✓' : '✗'} {rb.building_name}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </React.Fragment>
-                    ))}
-                  </div>
-
-                  {(progressionRenderModel.branchesByParent.get(line.line_key) || []).map((branch) => {
-                    // Right-align the branch's tiers under the LAST N columns of the widest primary line
-                    // (N = branch tier count) so equivalent-power units (matching base_days/tier) land in
-                    // the correct column even when their direct parent has fewer tiers than the full tree
-                    // (e.g. Covert only shows Street Informant/Infiltrator, but Assassin/Shadow Assassin
-                    // are tier-3/4 units and must land in columns 3-4, not overlap columns 1-2).
-                    const offset = Math.max(0, progressionRenderModel.maxPrimaryTierCount - branch.tiers.length);
-                    const totalSlots = offset + branch.tiers.length;
-                    return (
-                      <div key={branch.line_key} style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(var(--theme-accent-rgb),0.2)' }}>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic', marginBottom: '0.35rem' }}>
-                          ⤷ {branch.line_key}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.4rem', flexWrap: 'wrap' }}>
-                          {Array.from({ length: totalSlots }).map((_, i) => {
-                            const isSpacer = i < offset;
-                            const tier = isSpacer ? null : branch.tiers[i - offset];
-                            return (
-                              <React.Fragment key={i}>
-                                {i > 0 && (
-                                  <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', fontSize: '1rem', visibility: i > offset ? 'visible' : 'hidden' }}>→</div>
-                                )}
-                                {isSpacer || !tier ? (
-                                  <div style={{ minWidth: '150px', visibility: 'hidden' }} />
-                                ) : (
-                                  <div
-                                    style={{
-                                      minWidth: '150px',
-                                      padding: '0.5rem',
-                                      borderRadius: '0.4rem',
-                                      border: `1px dashed ${tier.unlocked ? 'rgba(34,197,94,0.4)' : 'rgba(var(--theme-accent-rgb),0.3)'}`,
-                                      background: tier.unlocked ? 'rgba(20,83,45,0.18)' : 'rgba(15,15,15,0.3)',
-                                    }}
-                                  >
-                                    <div style={{ color: tier.unlocked ? '#86efac' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.82rem' }}>
-                                      {tier.unlocked ? '✅' : '🔒'} {tier.unit_type}
-                                    </div>
-                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '0.2rem' }}>{tier.base_days} day(s)</div>
-                                    <div style={{ marginTop: '0.3rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                                      {tier.required_buildings.map((rb) => (
-                                        <div key={rb.building_type} style={{ color: rb.completed ? '#86efac' : '#f87171', fontSize: '0.68rem' }}>
-                                          {rb.completed ? '✓' : '✗'} {rb.building_name}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-              {(fiefDetails?.unit_progression || []).length === 0 && (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No unit progression data available for this fief yet.</div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-              <button
-                onClick={() => setShowProgressionModal(false)}
-                style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid rgba(var(--theme-accent-rgb),0.3)', background: 'rgba(26,26,26,0.35)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+          onClose={() => setShowProgressionModal(false)}
+        />
       )}
 
       {showUpgradeModal && selectedUpgradeBuildingId !== null && (() => {

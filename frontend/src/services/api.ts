@@ -1337,7 +1337,8 @@ export interface AdvanceDaysSummary {
   previousSeason?: 'Spring' | 'Summer' | 'Autumn' | 'Winter';
   crossedSeasons?: Array<'Spring' | 'Summer' | 'Autumn' | 'Winter'>;
   restType?: string;
-  completedBuildings: Array<{ name: string; level: number; fiefId: number; fiefName: string }>;
+  // Grouped by fief/type/level; `count` is how many of that building finished (absent = 1).
+  completedBuildings: Array<{ name: string; level: number; fiefId: number; fiefName: string; buildingType?: string; count?: number }>;
   completedResearch?: Array<{ fiefId: number; fiefName: string; researchId: string }>;
   completedTierUpgrades?: Array<{ fiefId: number; fiefName: string; newTier: number }>;
   resourcesGained: Record<number, unknown>;
@@ -1403,14 +1404,21 @@ export interface KingdomFief {
   }>;
   unit_progression?: Array<{
     line_key: string;
+    // DM-authored troops are grouped into "Custom · <line>" lines.
+    is_custom?: boolean;
     tiers: Array<{
       tier_index: number;
       unit_type: string;
       base_days: number;
-      required_buildings: Array<{ building_type: string; building_name: string; completed: boolean }>;
+      required_buildings: Array<{ building_type: string; building_name: string; completed: boolean; is_custom?: boolean }>;
       unlocked: boolean;
+      // Custom troops name the unit they upgrade from explicitly (built-in tiers follow the line order).
+      parent_unit_type?: string;
+      is_custom?: boolean;
+      custom_id?: number;
     }>;
   }>;
+  unit_tree?: UnitTree;
   prisoners?: number;
   slaves?: number;
   population_maturation_schedule?: Record<string, number>;
@@ -1487,7 +1495,7 @@ export interface KingdomSummary {
   tithe_rate_pct?: number;
 }
 
-export type AnimalCategory = 'horse' | 'livestock';
+export type AnimalCategory = 'horse' | 'livestock' | 'exotic';
 
 export interface AnimalTypeDefinition {
   key: string;
@@ -1497,6 +1505,8 @@ export interface AnimalTypeDefinition {
   slaughterMeatBase: number;
   nurseryWeight: number;
   unslaughterable?: boolean;
+  /** Can't be bought — only the DM can grant them (dm-add), after which they breed normally. */
+  dmOnly?: boolean;
 }
 
 export interface FiefAnimal {
@@ -1567,6 +1577,50 @@ export interface KingdomCustomBuilding {
   by_fief?: Record<number, { built: number; queued: number }>;
   built_total?: number;
   queued_total?: number;
+}
+
+// One unit in the troop tree. Militia is the root; every other troop hangs off exactly one parent.
+export interface UnitTreeNode {
+  id: string;
+  unit_type: string;
+  line_key: string;
+  tier_index: number;
+  base_days: number;
+  required_buildings: Array<{ building_type: string; building_name: string; completed: boolean; is_custom?: boolean }>;
+  unlocked: boolean;
+  is_root: boolean;
+  is_custom: boolean;
+  // Custom troops only:
+  custom_id?: number;
+  description?: string;
+  requires_building?: boolean;
+  custom_building_id?: number | null;
+  parent_unit_type?: string;
+}
+
+export interface UnitTree {
+  nodes: UnitTreeNode[];
+  edges: Array<{ from: string; to: string }>;
+}
+
+export interface KingdomCustomUnit {
+  id: number;
+  name: string;
+  description: string;
+  parent_unit_type: string;
+  base_days: number;
+  requires_building: boolean;
+  custom_building_id: number | null;
+  building_name: string | null;
+}
+
+export interface KingdomCustomUnitInput {
+  name: string;
+  description: string;
+  parentUnitType: string;
+  baseDays: number;
+  requiresBuilding: boolean;
+  customBuildingId: number | null;
 }
 
 export interface KingdomCustomBuildingInput {
@@ -1780,6 +1834,11 @@ export const kingdomAPI = {
 
   deleteKingdom: async (kingdomId: number): Promise<{ message: string; kingdomId: number; playerId: number }> => {
     const response = await api.delete(`/kingdoms/${kingdomId}`);
+    return response.data;
+  },
+
+  deleteFief: async (fiefId: number): Promise<{ message: string; fiefId: number; kingdomId: number; newCapitalId: number | null }> => {
+    const response = await api.delete(`/kingdoms/fiefs/${fiefId}`);
     return response.data;
   },
 
@@ -2051,6 +2110,26 @@ export const kingdomAPI = {
 
   deleteCustomBuilding: async (kingdomId: number, buildingId: number): Promise<{ message: string; removedCopies: number }> => {
     const response = await api.delete(`/kingdoms/${kingdomId}/custom-buildings/${buildingId}`);
+    return response.data;
+  },
+
+  getCustomUnits: async (kingdomId: number): Promise<{ units: KingdomCustomUnit[] }> => {
+    const response = await api.get(`/kingdoms/${kingdomId}/custom-units`);
+    return response.data;
+  },
+
+  createCustomUnit: async (kingdomId: number, payload: KingdomCustomUnitInput): Promise<{ id: number }> => {
+    const response = await api.post(`/kingdoms/${kingdomId}/custom-units`, payload);
+    return response.data;
+  },
+
+  updateCustomUnit: async (kingdomId: number, unitId: number, payload: KingdomCustomUnitInput): Promise<{ id: number }> => {
+    const response = await api.put(`/kingdoms/${kingdomId}/custom-units/${unitId}`, payload);
+    return response.data;
+  },
+
+  deleteCustomUnit: async (kingdomId: number, unitId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/kingdoms/${kingdomId}/custom-units/${unitId}`);
     return response.data;
   },
 
