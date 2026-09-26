@@ -3042,6 +3042,34 @@ for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
   });
 }
 
+// Where each line's first tier is reached from. A line that is not listed here starts at the root:
+// Militia specialises into it. The rest are branches that only begin partway up the tree, so their
+// first unit is an upgrade of the listed unit instead (this mirrors the parents in unitTemplates.js:
+// e.g. Ranger -> Crossbowman / Mounted Archer, Guard -> Axeman, Infiltrator -> Scout / Spy / Assassin).
+const UNIT_LINE_PARENTS = {
+  'Horse Archer': 'Ranger',
+  'Shock Cavalry': 'Spearman',
+  'Two-Handed Swordsman': 'Swordsman',
+  Crossbowman: 'Ranger',
+  Lancer: 'Man-at-Arms',
+  Axeman: 'Guard',
+  Scout: 'Infiltrator',
+  Spy: 'Infiltrator',
+  Assassin: 'Infiltrator',
+  'Siege Apprentice': 'Siege Laborer',
+  Ballista: 'Siege Apprentice',
+  Catapult: 'Siege Apprentice',
+  'Siege Tower': 'Catapult Crew',
+  Bombard: 'Siege Apprentice',
+};
+
+// The unit a line's first tier upgrades from (Militia unless the line is a branch listed above).
+const getLineParentUnit = (lineKey) => UNIT_LINE_PARENTS[lineKey] || MILITIA_UNIT_TYPE;
+
+// Lines whose first tier is an upgrade of `parentUnit` (never the Militia line itself).
+const getLinesBranchingFrom = (parentUnit) =>
+  Object.entries(UNIT_LINES).filter(([lineKey]) => lineKey !== MILITIA_UNIT_TYPE && getLineParentUnit(lineKey) === parentUnit);
+
 // Reverse lookup: building_type -> { chain, index } within whichever *_LINE_BUILDINGS
 // chain it belongs to. Buildings upgrade in place (one row mutates its building_type as
 // it advances), so a fief that has upgraded past a given tier no longer has a row with
@@ -3220,6 +3248,8 @@ const getUnitProgressionView = (completedBuildings, customUnits = []) => {
         base_days: tierDef.baseDays,
         required_buildings: requiredBuildings,
         unlocked: completedTierIndex >= tierIndex,
+        // Only branch lines name a parent explicitly; everything else follows the line order / Militia.
+        ...(tierIndex === 0 && UNIT_LINE_PARENTS[lineKey] ? { parent_unit_type: UNIT_LINE_PARENTS[lineKey] } : {}),
       };
     });
     return { line_key: lineKey, tiers };
@@ -3273,7 +3303,7 @@ const getUnitTreeView = (completedBuildings, customUnits = []) => {
         is_custom: false,
       });
       if (!isRoot) {
-        edges.push({ from: tierIndex === 0 ? MILITIA_UNIT_TYPE : line.tiers[tierIndex - 1].unitType, to: tierDef.unitType });
+        edges.push({ from: tierIndex === 0 ? getLineParentUnit(lineKey) : line.tiers[tierIndex - 1].unitType, to: tierDef.unitType });
       }
     });
   }
@@ -3320,21 +3350,20 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings, customUnits =
     const available = Math.max(0, Number(count || 0));
     if (available <= 0) continue;
 
-    if (unitType === MILITIA_UNIT_TYPE) {
-      for (const [lineKey, line] of Object.entries(UNIT_LINES)) {
-        if (lineKey === MILITIA_UNIT_TYPE) continue;
-        const tierDef = line.tiers[0];
-        const unlocked = getCompletedLineTierIndex(line.buildingChain, completedBuildings) >= 0;
-        out.push({
-          unit_type: unitType,
-          next_unit_type: tierDef.unitType,
-          next_base_days: tierDef.baseDays,
-          required_building_type: getRequiredBuildingsLabel(line.buildingChain, 0),
-          unlocked,
-          available,
-        });
-      }
-    } else {
+    // Line heads that branch off this unit (Militia for the trunk lines, or e.g. Ranger for Crossbowman).
+    for (const [, line] of getLinesBranchingFrom(unitType)) {
+      const tierDef = line.tiers[0];
+      out.push({
+        unit_type: unitType,
+        next_unit_type: tierDef.unitType,
+        next_base_days: tierDef.baseDays,
+        required_building_type: getRequiredBuildingsLabel(line.buildingChain, 0),
+        unlocked: getCompletedLineTierIndex(line.buildingChain, completedBuildings) >= 0,
+        available,
+      });
+    }
+
+    if (unitType !== MILITIA_UNIT_TYPE) {
       const info = getUnitLineInfo(unitType);
       const nextTierDef = info ? info.line.tiers[info.tierIndex + 1] : null;
       if (info && nextTierDef) {
@@ -5294,6 +5323,10 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
 
     const customUnits = await loadCustomUnits(owned.kingdom_id, client);
     const customTarget = requestedToUnitType ? findCustomUnit(requestedToUnitType, customUnits) : null;
+    const requestedInfo = requestedToUnitType ? getUnitLineInfo(requestedToUnitType) : null;
+    const requestedHeadLine = (requestedInfo && requestedInfo.tierIndex === 0 && requestedInfo.lineKey !== MILITIA_UNIT_TYPE)
+      ? requestedInfo
+      : null;
 
     if (customTarget) {
       // A DM-authored unit: valid only as a direct child of the unit being upgraded.
@@ -5303,22 +5336,26 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
       upgradeUnlocked = isCustomUnitUnlocked(customTarget, completedBuildings);
       upgradeRequiredBuildingLabel = customTarget.building_name || 'required';
       toUnitType = customTarget.name;
+    } else if (requestedHeadLine && getLineParentUnit(requestedHeadLine.lineKey) === fromUnitType) {
+      // The first unit of a line upgrades from that line's parent (Militia for trunk lines, e.g. Ranger for Crossbowman).
+      upgradeUnlocked = getCompletedLineTierIndex(requestedHeadLine.line.buildingChain, completedBuildings) >= 0;
+      upgradeRequiredBuildingLabel = getRequiredBuildingsLabel(requestedHeadLine.line.buildingChain, 0);
+      toUnitType = requestedToUnitType;
+    } else if (requestedHeadLine) {
+      return res.status(400).json({ error: `${requestedToUnitType} upgrades from ${getLineParentUnit(requestedHeadLine.lineKey)}, not ${fromUnitType}.` });
     } else if (fromUnitType === MILITIA_UNIT_TYPE) {
-      // Militia has no same-line next tier — it specializes into another line's tier-1 unit instead.
+      // Militia only specializes into the first unit of a trunk line.
       if (!requestedToUnitType) {
         return res.status(400).json({ error: 'Choose a unit type to specialize Militia into.' });
       }
-      const targetInfo = getUnitLineInfo(requestedToUnitType);
-      if (!targetInfo || targetInfo.tierIndex !== 0 || targetInfo.lineKey === MILITIA_UNIT_TYPE) {
-        return res.status(400).json({ error: `${requestedToUnitType} is not a valid specialization for Militia.` });
-      }
-      upgradeUnlocked = getCompletedLineTierIndex(targetInfo.line.buildingChain, completedBuildings) >= 0;
-      upgradeRequiredBuildingLabel = getRequiredBuildingsLabel(targetInfo.line.buildingChain, 0);
-      toUnitType = requestedToUnitType;
+      return res.status(400).json({ error: `${requestedToUnitType} is not a valid specialization for Militia.` });
     } else {
       const upgradeInfo = getUpgradeInfoForUnit(fromUnitType, completedBuildings);
       if (!upgradeInfo) {
         return res.status(400).json({ error: `${fromUnitType} has no further upgrade available.` });
+      }
+      if (requestedToUnitType && requestedToUnitType !== upgradeInfo.nextUnitType) {
+        return res.status(400).json({ error: `${requestedToUnitType} is not an upgrade of ${fromUnitType}.` });
       }
       upgradeUnlocked = upgradeInfo.unlocked;
       upgradeRequiredBuildingLabel = upgradeInfo.requiredBuildingType;
