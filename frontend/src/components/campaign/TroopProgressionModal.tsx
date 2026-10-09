@@ -200,7 +200,12 @@ const toCustomUnit = (node: UnitTreeNode): KingdomCustomUnit => ({
   requires_building: Boolean(node.requires_building),
   custom_building_id: node.custom_building_id ?? null,
   building_name: node.required_buildings[0]?.building_name || null,
+  required_animal_types: node.required_animal_types || [],
 });
+
+// "war_horse" -> "War Horse"
+const animalLabel = (key: string): string =>
+  key.split('_').map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
 
 const TroopProgressionModal: React.FC<TroopProgressionModalProps> = ({
   tree, reserves, speedPct, isDungeonMaster, kingdomId, kingdomName, onChanged, onClose,
@@ -379,6 +384,13 @@ const TroopProgressionModal: React.FC<TroopProgressionModalProps> = ({
                             </li>
                           ))}
                         </ul>
+                      )}
+                      {(selected.required_animal_types || []).length > 0 && (
+                        <p className="kt-ui-note kt-tt-animal-req">
+                          🐎 Each recruit locks one {(selected.required_animal_types || []).map(animalLabel).join(' or ')} in the fief's herd
+                          {selected.parent_unit_type || !selected.is_root ? ' (a troop upgrading from a unit with the same animal keeps it)' : ''}.
+                          Locked animals cannot breed or be slaughtered, but still eat.
+                        </p>
                       )}
                     </div>
 

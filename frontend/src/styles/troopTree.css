@@ -200,3 +200,9 @@
 .kt-tt-req-inherit { font-size: 0.72rem; font-weight: 500; color: var(--text-muted); font-style: italic; }
 .kt-tt-inherit { margin: 0 0 0.6rem; max-width: 62ch; font-size: 0.82rem; line-height: 1.5; color: var(--text-secondary); }
 .kt-tt-inherit strong { color: var(--text-primary); }
+
+/* Animal requirement in the troop editor / inspector */
+.kt-tt-animal-group { display: grid; gap: 0.35rem; }
+.kt-tt-animal-group + .kt-tt-animal-group { margin-top: 0.4rem; }
+.kt-tt-animal-cat { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.kt-tt-animal-req { margin: 0.5rem 0 0; line-height: 1.45; }

@@ -285,6 +285,31 @@
 .kt-mt-picker-line { display: flex; align-items: center; gap: 0.6rem 0.9rem; flex-wrap: wrap; }
 .kt-mt-picker-name { min-width: 6.5rem; font-size: 0.78rem; font-weight: 700; color: var(--text-gold); }
 .kt-mt-picker-chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+/* Mounted / bonded troops: which animals get locked, and from which quality band. */
+.kt-mt-mount-note { flex-basis: 100%; margin: 0; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--text-muted); }
+.kt-mt-mount {
+  flex-basis: 100%;
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--kt-radius-md);
+  background: rgba(var(--kt-tone-rgb), 0.05);
+}
+.kt-mt-mount-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 0.8rem; }
+.kt-mt-mount-title { font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); }
+.kt-mt-mount-free { margin-left: 0.25rem; font-size: 0.7rem; opacity: 0.75; }
+.kt-mt-mount-band { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; }
+.kt-mt-mount-field { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.75rem; color: var(--text-muted); }
+.kt-mt-mount-hist { display: flex; align-items: flex-end; gap: 3px; height: 2.4rem; }
+.kt-mt-mount-bar { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; background: var(--ui-line); transition: background-color 0.15s ease; }
+.kt-mt-mount-bar[data-active='true'] { background: var(--text-gold); }
+.kt-mt-mount-count { margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--text-muted); }
+.kt-mt-mount-count b { color: var(--text-gold); }
+.kt-mt-mount-count[data-short='true'] b { color: #f87171; }
+@media (prefers-reduced-motion: reduce) {
+  .kt-mt-mount-bar { transition: none; }
+}
 @media (max-width: 520px) {
   .kt-mt-tab { padding: 0.6rem 0.65rem; font-size: 0.84rem; }
   .kt-mt-stat:nth-child(odd) { border-left: 0; }

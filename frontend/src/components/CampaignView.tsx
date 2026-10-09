@@ -859,7 +859,7 @@ const CampaignView: React.FC = () => {
   const [attackHitRoll, setAttackHitRoll] = useState<{ raw: number; total: number } | null>(null);
   const [attackCompletedSummary, setAttackCompletedSummary] = useState<{ hitTotal: number; damageTotal: number; targetName: string } | null>(null);
   const [awaitingHitApproval, setAwaitingHitApproval] = useState(false);
-  const [pendingHitRollApproval, setPendingHitRollApproval] = useState<{ requestId: number; attackerName: string; targetName: string; hitTotal: number } | null>(null);
+  const [pendingHitRollApproval, setPendingHitRollApproval] = useState<{ requestId: number; attackerName: string; targetName: string; hitTotal: number; rollMode?: import('../types/campaignTypes').RollMode; rollSets?: import('../types/campaignTypes').RollSet[] } | null>(null);
 
   // Reroll request/approve flow
   const [pendingRerollRequest, setPendingRerollRequest] = useState<{ requestId: number; rollerName: string; diceType: string } | null>(null);
@@ -871,6 +871,7 @@ const CampaignView: React.FC = () => {
   const [pendingOOCRoll, setPendingOOCRoll] = useState<OutOfCombatRollRequest | null>(null);
   // DM attack config picker state
   const [dmAttackHitDie, setDmAttackHitDie] = useState('d20');
+  const [dmAttackRollMode, setDmAttackRollMode] = useState<import('../types/campaignTypes').RollMode>('normal');
   const [dmAttackDamageGroups, setDmAttackDamageGroups] = useState<import('../types/campaignTypes').DiceGroup[]>([{ count: 1, diceType: 'd6' }]);
   const [turnNotification, setTurnNotification] = useState<string | null>(null);
   const [selectedCombatant, setSelectedCombatant] = useState<string | number | null>(null);
@@ -4602,6 +4603,7 @@ const CampaignView: React.FC = () => {
         if (user?.role === 'Dungeon Master') {
           setPendingAttackRequest(data);
           setDmAttackHitDie('d20');
+          setDmAttackRollMode('normal');
           setDmAttackDamageGroups([{ count: 1, diceType: 'd6' }]);
         }
       });
@@ -4648,7 +4650,7 @@ const CampaignView: React.FC = () => {
       });
 
       // Hit roll submitted — DM approves/denies before player rolls damage
-      newSocket.on('hitRollResult', (data: { requestId: number; attackerName: string; targetName: string; hitTotal: number }) => {
+      newSocket.on('hitRollResult', (data: { requestId: number; attackerName: string; targetName: string; hitTotal: number; rollMode?: import('../types/campaignTypes').RollMode; rollSets?: import('../types/campaignTypes').RollSet[] }) => {
         if (user?.role === 'Dungeon Master') setPendingHitRollApproval(data);
       });
       newSocket.on('hitRollApproved', (data: { requestId: number; hitTotal: number; hitRaw: number }) => {
@@ -5419,8 +5421,10 @@ const CampaignView: React.FC = () => {
 
       newSocket.on('kingdomProgressToast', (data: {
         campaignId: number;
-        type: 'research' | 'tier' | 'birth' | 'revolt';
+        type: 'research' | 'tier' | 'birth' | 'revolt' | 'secession' | 'wonder';
         fiefName?: string;
+        provinceName?: string;
+        wonderKey?: string;
         researchId?: string;
         newTier?: number;
         soldiersLost?: number;
@@ -5458,6 +5462,19 @@ const CampaignView: React.FC = () => {
             : `A fief advanced to Tier ${Number(data.newTier || 2)}`;
           setToastMessage(message);
           setTimeout(() => setToastMessage(null), 5000);
+          return;
+        }
+
+        if (data.type === 'secession') {
+          setToastMessage(`⚠️ ${data.provinceName || 'A province'} has broken away from ${data.fiefName || 'your fief'}!`);
+          setTimeout(() => setToastMessage(null), 7000);
+          return;
+        }
+
+        if (data.type === 'wonder') {
+          const readable = String(data.wonderKey || '').split('_').filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+          setToastMessage(`🏛️ ${readable || 'A Wonder'} is complete!`);
+          setTimeout(() => setToastMessage(null), 7000);
           return;
         }
 
@@ -17340,6 +17357,34 @@ const CampaignView: React.FC = () => {
                 <strong style={{ color: 'var(--text-gold)' }}>{pendingAttackRequest.attackerName}</strong> wants to attack <strong style={{ color: '#f87171' }}>{pendingAttackRequest.targetName}</strong>
               </p>
 
+              {/* Advantage / disadvantage for the hit roll */}
+              <div style={{ marginBottom: '1rem' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Hit Roll Mode</p>
+                <div role="radiogroup" style={{ display: 'flex', gap: '0.4rem' }}>
+                  {([
+                    { id: 'disadvantage', label: 'Disadvantage', color: '#f87171' },
+                    { id: 'normal', label: 'Normal', color: '#93c5fd' },
+                    { id: 'advantage', label: 'Advantage', color: '#4ade80' },
+                  ] as const).map(m => (
+                    <button key={m.id} role="radio" aria-checked={dmAttackRollMode === m.id} onClick={() => setDmAttackRollMode(m.id)}
+                      style={{
+                        flex: 1, padding: '0.35rem 0.4rem', borderRadius: '0.4rem', fontSize: '0.8rem', cursor: 'pointer',
+                        background: dmAttackRollMode === m.id ? `${m.color}33` : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${dmAttackRollMode === m.id ? m.color : 'rgba(255,255,255,0.15)'}`,
+                        color: dmAttackRollMode === m.id ? m.color : 'rgba(255,255,255,0.5)',
+                        fontWeight: dmAttackRollMode === m.id ? 'bold' : 'normal',
+                      }}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                {dmAttackRollMode !== 'normal' && (
+                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem', margin: '0.35rem 0 0' }}>
+                    Hit die is rolled twice; the {dmAttackRollMode === 'advantage' ? 'higher' : 'lower'} result counts.
+                  </p>
+                )}
+              </div>
+
               {/* Hit die picker */}
               <div style={{ marginBottom: '1rem' }}>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Hit Die</p>
@@ -17405,12 +17450,14 @@ const CampaignView: React.FC = () => {
                     damageDie: dmAttackDamageGroups[0]?.diceType ?? 'd6',
                     damageDiceGroups: dmAttackDamageGroups,
                     dmName: user?.username ?? 'DM',
+                    rollMode: dmAttackRollMode,
                   });
+                  setDmAttackRollMode('normal');
                   setDmAttackDamageGroups([{ count: 1, diceType: 'd6' }]);
                   setPendingAttackRequest(null);
                 }}
                   style={{ flex: 2, padding: '0.6rem', borderRadius: '0.5rem', background: 'linear-gradient(135deg,#f87171cc,#ef4444)', border: '2px solid #ef4444', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.95rem' }}>
-                  ⚔️ Send Roll Request ({dmAttackHitDie} hit / {dmAttackDamageGroups.map(g => `${g.count}${g.diceType}`).join('+')} dmg)
+                  ⚔️ Send Roll Request ({dmAttackHitDie} hit{dmAttackRollMode !== 'normal' ? ` ${dmAttackRollMode === 'advantage' ? 'adv' : 'dis'}` : ''} / {dmAttackDamageGroups.map(g => `${g.count}${g.diceType}`).join('+')} dmg)
                 </button>
               </div>
             </div>
@@ -17433,6 +17480,7 @@ const CampaignView: React.FC = () => {
               : `Damage roll vs ${cfg.targetName}`,
             campaignId: cfg.campaignId,
             modifier: isHitPhase ? 'none' : 'none',
+            rollMode: isHitPhase ? cfg.rollMode : undefined,
           };
           return (
             <DiceRollModal
@@ -17453,7 +17501,7 @@ const CampaignView: React.FC = () => {
                   diceType,
                 });
               }}
-              onConfirm={(rawRoll, total, modifierValue, modifier) => {
+              onConfirm={(rawRoll, total, modifierValue, modifier, _allRolls, modeInfo) => {
                 if (isHitPhase) {
                   // Send hit roll to DM for approval before proceeding to damage
                   setAttackHitRoll({ raw: rawRoll, total });
@@ -17465,6 +17513,8 @@ const CampaignView: React.FC = () => {
                     targetName: cfg.targetName,
                     hitTotal: total,
                     hitRaw: rawRoll,
+                    rollMode: modeInfo?.rollMode,
+                    rollSets: modeInfo?.rollSets,
                   });
                 } else {
                   // Both rolls done — send to server for DM
@@ -17558,6 +17608,11 @@ const CampaignView: React.FC = () => {
             <div style={{ textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.35)', marginBottom: '0.75rem' }}>
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem', marginBottom: '0.15rem' }}>HIT ROLL</div>
               <div style={{ color: '#60a5fa', fontSize: '2rem', fontWeight: 'bold' }}>{pendingHitRollApproval.hitTotal}</div>
+              {pendingHitRollApproval.rollMode && pendingHitRollApproval.rollMode !== 'normal' && pendingHitRollApproval.rollSets && (
+                <div style={{ color: pendingHitRollApproval.rollMode === 'advantage' ? '#4ade80' : '#f87171', fontSize: '0.72rem', marginTop: '0.2rem' }}>
+                  {pendingHitRollApproval.rollMode === 'advantage' ? 'Advantage' : 'Disadvantage'}: rolled {pendingHitRollApproval.rollSets.map(rs => rs.sum).join(' & ')} — kept {pendingHitRollApproval.rollSets.find(rs => rs.kept)?.sum}
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button

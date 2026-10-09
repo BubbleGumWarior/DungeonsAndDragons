@@ -436,6 +436,13 @@ const startServer = async () => {
         { name: 'addCharacterAgeOverride', fn: require('./migrations/add_character_age_override') },
         { name: 'addKingdomCustomBuildings', fn: require('./migrations/add_kingdom_custom_buildings') },
         { name: 'addKingdomCustomUnits', fn: require('./migrations/add_kingdom_custom_units') },
+        { name: 'addHighTierUpgrade', fn: require('./migrations/add_high_tier_upgrade') },
+        { name: 'addEspionageMissions', fn: require('./migrations/add_espionage_missions') },
+        { name: 'addWonders', fn: require('./migrations/add_wonders') },
+        { name: 'addManaStatus', fn: require('./migrations/add_mana_status') },
+        { name: 'addProvinces', fn: require('./migrations/add_provinces') },
+        { name: 'addUnitAnimalRequirements', fn: require('./migrations/add_unit_animal_requirements') },
+        { name: 'addUnitAwaitingAnimals', fn: require('./migrations/add_unit_awaiting_animals') },
       ];
       
       const failedMigrations = [];
@@ -1894,6 +1901,7 @@ const startServer = async () => {
       socket.on('confirmAttackDice', (data) => {
         try {
           const { campaignId, requestId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, damageDiceGroups, dmName, targetPlayerId } = data;
+          const rollMode = data.rollMode === 'advantage' || data.rollMode === 'disadvantage' ? data.rollMode : 'normal';
           const session = battleCombatState[campaignId];
           if (!session) return;
           // Find the attacking combatant's player socket and send only to them
@@ -1905,7 +1913,7 @@ const startServer = async () => {
             type: 'attackDiceConfig',
             status: 'pending',
             targetPlayerId: attackerPlayerId,
-            config: { requestId, campaignId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, damageDiceGroups: damageDiceGroups ?? null, dmName, attackerPlayerId },
+            config: { requestId, campaignId, attackerKey, attackerName, targetKey, targetName, hitDie, damageDie, damageDiceGroups: damageDiceGroups ?? null, dmName, attackerPlayerId, rollMode },
           };
           // Emit to whole room — frontend filters by attackerKey
           io.to(`campaign_${campaignId}`).emit('attackDiceConfig', {
@@ -1920,6 +1928,7 @@ const startServer = async () => {
             damageDiceGroups: damageDiceGroups ?? null,
             dmName,
             attackerPlayerId,
+            rollMode,
           });
           console.log(`⚔️ DM configured attack: ${hitDie} hit / ${damageDiceGroups ? damageDiceGroups.map(g => `${g.count}${g.diceType}`).join('+') : damageDie} damage for ${attackerName} vs ${targetName}`);
         } catch (error) {
@@ -3441,7 +3450,7 @@ const startServer = async () => {
 
       // Hit roll submitted by player — DM approves (proceed to damage) or denies (miss)
       socket.on('submitHitRoll', (data) => {
-        const { campaignId, requestId, attackerName, targetName, hitTotal, hitRaw } = data;
+        const { campaignId, requestId, attackerName, targetName, hitTotal, hitRaw, rollMode, rollSets } = data;
         // Anti-cheat: advance to hit_submitted (NOT resolved — damage roll still coming)
         if (requestId && battleRollState[campaignId]?.[requestId]) {
           battleRollState[campaignId][requestId].status = 'hit_submitted';
@@ -3449,7 +3458,7 @@ const startServer = async () => {
           battleRollState[campaignId][requestId].attackerName = attackerName;
           battleRollState[campaignId][requestId].targetName = targetName;
         }
-        io.to(`campaign_${campaignId}`).emit('hitRollResult', { requestId, attackerName, targetName, hitTotal, hitRaw });
+        io.to(`campaign_${campaignId}`).emit('hitRollResult', { requestId, attackerName, targetName, hitTotal, hitRaw, rollMode, rollSets });
       });
 
       socket.on('approveHitRoll', (data) => {

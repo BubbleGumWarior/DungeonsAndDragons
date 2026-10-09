@@ -4,6 +4,8 @@ const { authenticateToken } = require('../middleware/auth');
 const { pool } = require('../models/database');
 const Kingdom = require('../models/Kingdom');
 const { RESEARCH_CATALOG, getResearchConfig } = require('../utils/kingdomResearch');
+const { MAX_FIEF_TIER, COST_LABELS, getTierUpgradeConfig } = require('../utils/kingdomTiers');
+const { REFINING_LANES, MANA_WELL_TYPES, MANA_CAPACITY_BY_TYPE, MAGIC_STORAGE_BONUS_BY_TYPE } = require('../utils/kingdomTier68');
 const { getAssignablePopulation, getUnderagePopulation, normalizeMaturationSchedule } = require('../utils/population');
 
 const BUILDING_CATALOG = {
@@ -1505,7 +1507,7 @@ Object.assign(BUILDING_CATALOG, {
   },
   vaulted_warehouse: {
     key: 'vaulted_warehouse', name: 'Vaulted Warehouse',
-    description: 'Adds +800 storage capacity — the highest single-building storage bonus available.',
+    description: 'Adds +7,000 storage capacity. Storage now runs on magic: ten times a tier 7 Advanced Warehouse.',
     tierRequired: 8, cost: { wood: 56, stone: 46, iron: 20 }, days: 8, resourceOutput: {},
     prerequisites: [{ type: 'storage_advanced', minCount: 1 }],
   },
@@ -2192,6 +2194,63 @@ Object.assign(BUILDING_CATALOG, {
     tierRequired: 5, cost: { wood: 44, stone: 34, iron: 20 }, days: 6, resourceOutput: {},
     prerequisites: [{ type: 'boat_yard', minCount: 1 }],
   },
+
+  // ── Tier 6: Workshops (refined goods) ───────────────────────────────────────
+  // Each unlocks its own worker lane (+20 cap per building). Citizens only. A worker turns 3 of the
+  // raw resource into 1 refined good, twice a day, so a staffed workshop eats raw stock.
+  sawyers_workshop: {
+    key: 'sawyers_workshop', name: "Sawyer's Workshop",
+    description: 'Unlocks the planks worker lane with a cap of +20 sawyers. Each sawyer turns 6 wood into 2 planks every day. Planks are needed for the bigger tier upgrades.',
+    tierRequired: 6, cost: { wood: 70, stone: 44, iron: 24 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'lumber_mill', minCount: 1 }],
+  },
+  stonecutters_yard: {
+    key: 'stonecutters_yard', name: "Stonecutter's Yard",
+    description: 'Unlocks the dressed stone worker lane with a cap of +20 stonecutters. Each stonecutter turns 6 stone into 2 dressed stone every day. Dressed stone is needed for the bigger tier upgrades.',
+    tierRequired: 6, cost: { wood: 56, stone: 64, iron: 24 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'quarry', minCount: 1 }],
+  },
+  steel_foundry: {
+    key: 'steel_foundry', name: 'Steel Foundry',
+    description: 'Unlocks the steel worker lane with a cap of +20 smelters. Each smelter turns 6 iron into 2 steel every day. Steel is needed for the bigger tier upgrades.',
+    tierRequired: 6, cost: { wood: 60, stone: 50, iron: 40 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'mine', minCount: 1 }],
+  },
+
+  // ── Tier 8: Mana Wells ──────────────────────────────────────────────────────
+  // Unlocks the mana worker lane (+20 cap per well, citizens only) and raises how much mana the fief can hold.
+  mana_well: {
+    key: 'mana_well', name: 'Mana Well',
+    description: 'Unlocks the mana worker lane with a cap of +20 channelers. Each channeler draws +4 mana/day and the well itself yields +10 mana/day. Holds 5,000 mana. Buildings upgraded to their Age of Magic form need mana every day.',
+    tierRequired: 8, cost: { wood: 80, stone: 60, iron: 40, steel: 20 }, days: 10, resourceOutput: { mana: 10 },
+    prerequisites: [],
+  },
+  deep_mana_well: {
+    key: 'deep_mana_well', name: 'Deep Mana Well',
+    description: 'Raises the mana worker cap by +20. Each channeler draws +6 mana/day and the well yields +25 mana/day. Holds 25,000 mana.',
+    tierRequired: 9, cost: { wood: 96, stone: 72, iron: 52, steel: 40, planks: 20 }, days: 11, resourceOutput: { mana: 25 },
+    prerequisites: [{ type: 'mana_well', minCount: 1 }],
+  },
+  ley_font: {
+    key: 'ley_font', name: 'Ley Font',
+    description: 'Raises the mana worker cap by +20. Each channeler draws +8 mana/day and the font yields +60 mana/day. Holds 125,000 mana — the best mana source available.',
+    tierRequired: 10, cost: { wood: 116, stone: 90, iron: 66, steel: 80, planks: 40, dressed_stone: 40 }, days: 12, resourceOutput: { mana: 60 },
+    prerequisites: [{ type: 'deep_mana_well', minCount: 1 }],
+  },
+
+  // ── Tier 9-10: magic storage (10x the step before; see utils/kingdomTier68.js) ──
+  arcane_vault: {
+    key: 'arcane_vault', name: 'Arcane Vault',
+    description: 'Adds +70,000 storage capacity. Space folded by magic holds ten times what a Vaulted Warehouse does.',
+    tierRequired: 9, cost: { wood: 90, stone: 70, iron: 45, steel: 30, dressed_stone: 30 }, days: 10, resourceOutput: {},
+    prerequisites: [{ type: 'vaulted_warehouse', minCount: 1 }],
+  },
+  dimensional_depository: {
+    key: 'dimensional_depository', name: 'Dimensional Depository',
+    description: 'Adds +700,000 storage capacity — the largest single storage building available.',
+    tierRequired: 10, cost: { wood: 120, stone: 96, iron: 64, steel: 60, dressed_stone: 60, planks: 30 }, days: 12, resourceOutput: {},
+    prerequisites: [{ type: 'arcane_vault', minCount: 1 }],
+  },
 });
 
 const TIER1_BUILDING_TYPES = new Set(['housing', 'storage', 'hunters_guild', 'farm', 'quarry']);
@@ -2493,6 +2552,11 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   animal_farm: { researchRequired: null, upgradedBuilding: 'grand_pasture', tier3: 'grand_pasture' },
   grand_pasture: { researchRequired: null, upgradedBuilding: 'livestock_ranch', tier3: 'livestock_ranch' },
   livestock_ranch: { researchRequired: null, upgradedBuilding: 'grand_stockyards', tier3: 'grand_stockyards' },
+
+  vaulted_warehouse: { researchRequired: null, upgradedBuilding: 'arcane_vault', tier3: 'arcane_vault' },
+  arcane_vault: { researchRequired: null, upgradedBuilding: 'dimensional_depository', tier3: 'dimensional_depository' },
+  mana_well: { researchRequired: null, upgradedBuilding: 'deep_mana_well', tier3: 'deep_mana_well' },
+  deep_mana_well: { researchRequired: null, upgradedBuilding: 'ley_font', tier3: 'ley_font' },
 });
 
 const UPGRADE_ONLY_BUILDING_TYPES = new Set([
@@ -2545,6 +2609,7 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'settlers_landing', 'immigration_harbor', 'grand_migration_port',
   'grand_stable', 'royal_stud_farm', 'imperial_stud_farm',
   'grand_pasture', 'livestock_ranch', 'grand_stockyards',
+  'arcane_vault', 'dimensional_depository', 'deep_mana_well', 'ley_font',
 ].forEach((type) => UPGRADE_ONLY_BUILDING_TYPES.add(type));
 
 // All building types that are the destination of any upgrade path.
@@ -2595,6 +2660,11 @@ const normalizeWorkerAssignments = (value) => {
     building: Math.max(0, getNumber(source.building)),
     // Tavern lane is citizen-only — never added to normalizeSlaveWorkerAssignments.
     tavern: Math.max(0, getNumber(source.tavern)),
+    // Tier 6 refining lanes and the tier 8 mana lane are citizen-only too.
+    planks: Math.max(0, getNumber(source.planks)),
+    dressed_stone: Math.max(0, getNumber(source.dressed_stone)),
+    steel: Math.max(0, getNumber(source.steel)),
+    mana: Math.max(0, getNumber(source.mana)),
   };
 
   const legacyFood = Math.max(0, getNumber(source.food));
@@ -2643,6 +2713,10 @@ const WORKER_CAP_BUILDING_MAP = {
   faith: ['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'],
   // Tavern lane is citizen-only — deliberately absent from normalizeSlaveWorkerAssignments.
   tavern: ['tavern', 'roadside_inn', 'grand_tavern', 'merchants_rest', 'golden_cup_hall', 'royal_tavern', 'legendary_tavern'],
+  planks: REFINING_LANES.planks.buildings,
+  dressed_stone: REFINING_LANES.dressed_stone.buildings,
+  steel: REFINING_LANES.steel.buildings,
+  mana: MANA_WELL_TYPES,
 };
 
 const applyBuildingBasedWorkerCaps = (unlockedResources, maxWorkersPerResource, completedBuildings) => {
@@ -2675,7 +2749,7 @@ const STORAGE_CAPACITY_BONUS_BY_TYPE = {
   reinforced_storehouse: 500,
   central_storehouse: 600,
   storage_advanced: 700,
-  vaulted_warehouse: 800,
+  ...MAGIC_STORAGE_BONUS_BY_TYPE,
 };
 
 // Granary chain — the same building line that raises vegetable worker output also raises
@@ -3265,6 +3339,149 @@ const isCustomAncestor = (ancestorName, unitName, customUnits) => {
   return false;
 };
 
+// ─── Animal requirements (mounts / bonded beasts) ───────────────────────────
+// Training a troop whose type lists required animals locks one animal per recruit (see
+// fief_animals.assigned_unit_type). Built-in cavalry lines need a War Horse or a Destrier; a
+// DM-authored troop lists whatever animal types they chose (any one of them is enough).
+const MOUNT_ANIMAL_TYPES = ['war_horse', 'destrier'];
+const MOUNTED_UNIT_LINES = ['Cavalry', 'Horse Archer', 'Shock Cavalry', 'Lancer'];
+const MOUNTED_BUILT_IN_UNITS = new Set(
+  MOUNTED_UNIT_LINES.flatMap((lineKey) => UNIT_LINES[lineKey].tiers.map((t) => t.unitType))
+);
+
+const normalizeAnimalTypeList = (raw) => {
+  const list = Array.isArray(raw) ? raw : [];
+  return Array.from(new Set(list.map((t) => String(t || '').trim()).filter(Boolean)));
+};
+
+// Animal types that satisfy a unit's requirement; empty when the unit needs no animal.
+const getRequiredAnimalTypesForUnit = (unitType, customUnits = []) => {
+  const custom = findCustomUnit(unitType, customUnits);
+  if (custom) return normalizeAnimalTypeList(custom.required_animal_types);
+  return MOUNTED_BUILT_IN_UNITS.has(String(unitType)) ? [...MOUNT_ANIMAL_TYPES] : [];
+};
+
+// Every animal type any troop can require in this kingdom (drives the free-animal pool sent to the client).
+const getAllRequiredAnimalTypes = (customUnits = []) => {
+  const out = new Set(MOUNT_ANIMAL_TYPES);
+  for (const unit of customUnits) normalizeAnimalTypeList(unit.required_animal_types).forEach((t) => out.add(t));
+  return Array.from(out);
+};
+
+// An adult that is not already bound to a troop, in a breeding pen, or carrying young.
+const FREE_ANIMAL_SQL = `a.assigned_unit_type IS NULL
+  AND a.pregnant_due_day IS NULL
+  AND NOT EXISTS (SELECT 1 FROM fief_breeding_pairs p WHERE p.male_animal_id = a.id OR p.female_animal_id = a.id)`;
+
+// Qualities of the animals a fief could still assign, per type: { war_horse: [20, 20, 35], ... }.
+const getFiefFreeAnimalPool = async (fiefId, animalTypes, currentDay, db = pool) => {
+  const pool_ = {};
+  if (!animalTypes.length) return pool_;
+  const result = await db.query(
+    `SELECT a.animal_type, a.quality
+     FROM fief_animals a
+     WHERE a.fief_id = $1 AND a.animal_type = ANY($2::text[])
+       AND (a.born_on_day IS NULL OR $3::int - a.born_on_day >= $4)
+       AND ${FREE_ANIMAL_SQL}
+     ORDER BY a.quality ASC`,
+    [fiefId, animalTypes, currentDay, ANIMAL_ADULT_AGE_DAYS]
+  );
+  for (const row of result.rows) {
+    (pool_[row.animal_type] ||= []).push(Number(row.quality));
+  }
+  return pool_;
+};
+
+// How many of a unit this fief holds (reserve + posted as guards + still in the training queue).
+const countFiefUnitsHeld = async (client, fiefId, unitType, reserves) => {
+  const reserveCount = Math.max(0, Number(reserves?.[unitType] || 0));
+  const posted = await client.query(
+    `SELECT COALESCE(SUM(GREATEST(0, COALESCE((assigned_guards_by_type->>$2)::numeric, 0))), 0) AS n
+     FROM fief_buildings WHERE fief_id = $1`,
+    [fiefId, unitType]
+  );
+  const training = await client.query(
+    `SELECT COALESCE(SUM(COALESCE(count, 1)), 0) AS n
+     FROM fief_training WHERE fief_id = $1 AND unit_type = $2 AND status IN ('training', 'ready')`,
+    [fiefId, unitType]
+  );
+  return reserveCount + getNumber(posted.rows[0]?.n) + getNumber(training.rows[0]?.n);
+};
+
+// Frees animals bound to a troop type beyond the number of that troop the fief still holds, so
+// units lost to a DM edit, an upgrade into something that needs no mount, etc. never leave a
+// horse locked forever. Lowest-quality animals are released first.
+const releaseExcessAssignedAnimals = async (client, fiefId, unitType, reserves) => {
+  const assigned = await client.query(
+    `SELECT id FROM fief_animals WHERE fief_id = $1 AND assigned_unit_type = $2 ORDER BY quality ASC, id ASC`,
+    [fiefId, unitType]
+  );
+  if (assigned.rows.length === 0) return 0;
+  const held = await countFiefUnitsHeld(client, fiefId, unitType, reserves);
+  const excess = assigned.rows.length - held;
+  if (excess <= 0) return 0;
+  const ids = assigned.rows.slice(0, excess).map((r) => Number(r.id));
+  await client.query(`UPDATE fief_animals SET assigned_unit_type = NULL WHERE id = ANY($1::int[])`, [ids]);
+  return ids.length;
+};
+
+// Troops that need an animal but have none wait outside the reserve (fiefs.unit_awaiting_animals)
+// until animals are assigned to them: they can't be upgraded or posted as guards meanwhile.
+const addAwaitingUnits = async (client, fiefId, unitType, amount) => {
+  const row = await client.query(`SELECT unit_awaiting_animals FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
+  const awaiting = normalizeUnitReserves(row.rows[0]?.unit_awaiting_animals);
+  awaiting[unitType] = Math.max(0, Number(awaiting[unitType] || 0)) + amount;
+  await client.query(`UPDATE fiefs SET unit_awaiting_animals = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(awaiting)]);
+};
+
+// Validates the player's animal choice for a batch that needs `needed` new animals and locks them.
+// Throws { status, message } on a bad request. Returns [] when nothing needs choosing.
+const lockAnimalsForTraining = async (client, fiefId, targetUnit, needed, allowedTypes, choice, currentDay, partial = false) => {
+  if (needed <= 0 || allowedTypes.length === 0) return [];
+  if (partial && !choice) return [];
+  const animalType = String(choice?.animalType || (allowedTypes.length === 1 ? allowedTypes[0] : '')).trim();
+  if (!animalType) {
+    const err = new Error(`Choose which animal ${targetUnit} will use (${allowedTypes.map((t) => ANIMAL_TYPES[t]?.name || t).join(' or ')}).`);
+    err.status = 400;
+    throw err;
+  }
+  if (!allowedTypes.includes(animalType)) {
+    const err = new Error(`${targetUnit} cannot use a ${ANIMAL_TYPES[animalType]?.name || animalType}.`);
+    err.status = 400;
+    throw err;
+  }
+  let minQ = Math.round(Number(choice?.minQuality));
+  let maxQ = Math.round(Number(choice?.maxQuality));
+  if (!Number.isFinite(minQ)) minQ = 0;
+  if (!Number.isFinite(maxQ)) maxQ = 100;
+  minQ = Math.max(0, Math.min(100, minQ));
+  maxQ = Math.max(0, Math.min(100, maxQ));
+  if (minQ > maxQ) [minQ, maxQ] = [maxQ, minQ];
+
+  const candidates = await client.query(
+    `SELECT a.id
+     FROM fief_animals a
+     WHERE a.fief_id = $1 AND a.animal_type = $2
+       AND a.quality BETWEEN $3 AND $4
+       AND (a.born_on_day IS NULL OR $5::int - a.born_on_day >= $6)
+       AND ${FREE_ANIMAL_SQL}
+     ORDER BY a.quality ASC, a.id ASC
+     LIMIT $7
+     FOR UPDATE OF a`,
+    [fiefId, animalType, minQ, maxQ, currentDay, ANIMAL_ADULT_AGE_DAYS, needed]
+  );
+  if (candidates.rows.length < needed && !partial) {
+    const err = new Error(
+      `Only ${candidates.rows.length} free adult ${ANIMAL_TYPES[animalType]?.name || animalType}${candidates.rows.length === 1 ? '' : 's'} between ${minQ}% and ${maxQ}% quality — need ${needed}.`
+    );
+    err.status = 400;
+    throw err;
+  }
+  const ids = candidates.rows.map((r) => Number(r.id));
+  await client.query(`UPDATE fief_animals SET assigned_unit_type = $2 WHERE id = ANY($1::int[])`, [ids, targetUnit]);
+  return ids;
+};
+
 // Full troop progression (all lines/tiers) annotated with this fief's building-unlock status.
 // Used by the frontend Troop Progression tree and the DM's flat unit-adjustment list. Custom units
 // are appended as extra "Custom \u00b7 <line>" lines whose tiers carry an explicit parent_unit_type.
@@ -3283,6 +3500,7 @@ const getUnitProgressionView = (completedBuildings, customUnits = []) => {
         base_days: tierDef.baseDays,
         required_buildings: requiredBuildings,
         unlocked: completedTierIndex >= tierIndex,
+        required_animal_types: getRequiredAnimalTypesForUnit(tierDef.unitType),
         // Only branch lines name a parent explicitly; everything else follows the line order / Militia.
         ...(tierIndex === 0 && UNIT_LINE_PARENTS[lineKey] ? { parent_unit_type: UNIT_LINE_PARENTS[lineKey] } : {}),
       };
@@ -3301,6 +3519,7 @@ const getUnitProgressionView = (completedBuildings, customUnits = []) => {
       base_days: Math.max(1, Number(unit.base_days || 1)),
       required_buildings: getCustomUnitRequiredBuildings(unit, completedBuildings, customUnits),
       unlocked: isCustomUnitUnlocked(unit, completedBuildings, customUnits),
+      required_animal_types: normalizeAnimalTypeList(unit.required_animal_types),
       parent_unit_type: unit.parent_unit_type,
       is_custom: true,
       custom_id: Number(unit.id),
@@ -3334,6 +3553,7 @@ const getUnitTreeView = (completedBuildings, customUnits = []) => {
         base_days: tierDef.baseDays,
         required_buildings: requiredBuildings,
         unlocked: completedTierIndex >= tierIndex,
+        required_animal_types: getRequiredAnimalTypesForUnit(tierDef.unitType),
         is_root: isRoot,
         is_custom: false,
       });
@@ -3359,6 +3579,7 @@ const getUnitTreeView = (completedBuildings, customUnits = []) => {
       description: unit.description || '',
       requires_building: Boolean(unit.requires_building),
       custom_building_id: unit.custom_building_id == null ? null : Number(unit.custom_building_id),
+      required_animal_types: normalizeAnimalTypeList(unit.required_animal_types),
       parent_unit_type: unit.parent_unit_type,
     });
     edges.push({ from: unit.parent_unit_type, to: unit.name });
@@ -3395,6 +3616,7 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings, customUnits =
         required_building_type: getRequiredBuildingsLabel(line.buildingChain, 0),
         unlocked: getCompletedLineTierIndex(line.buildingChain, completedBuildings) >= 0,
         available,
+        required_animal_types: getRequiredAnimalTypesForUnit(tierDef.unitType),
       });
     }
 
@@ -3411,6 +3633,7 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings, customUnits =
           required_building_type: getRequiredBuildingsLabel(info.line.buildingChain, nextTierIndex),
           unlocked: completedTierIndex >= nextTierIndex,
           available,
+          required_animal_types: getRequiredAnimalTypesForUnit(nextTierDef.unitType),
         });
       }
     }
@@ -3424,6 +3647,7 @@ const getUpgradableEntriesForFief = (reserves, completedBuildings, customUnits =
         unlocked: isCustomUnitUnlocked(child, completedBuildings, customUnits),
         available,
         is_custom: true,
+        required_animal_types: normalizeAnimalTypeList(child.required_animal_types),
       });
     }
   }
@@ -3666,7 +3890,10 @@ const removeUnitsFromReservesAndGuards = async (client, fiefId, reserves, unitTy
   const fromReserves = Math.min(available, amount);
   reserves[unitType] = available - fromReserves;
   let remaining = amount - fromReserves;
-  if (remaining <= 0) return;
+  if (remaining <= 0) {
+    await releaseExcessAssignedAnimals(client, fiefId, unitType, reserves);
+    return;
+  }
 
   const buildingsResult = await client.query(
     `SELECT id, assigned_guards_by_type
@@ -3691,6 +3918,19 @@ const removeUnitsFromReservesAndGuards = async (client, fiefId, reserves, unitTy
     );
   }
   // If remaining > 0 here, fewer than `amount` of this unit existed in total (reserves + guards) — clamps to what's available.
+  // Troops still waiting for an animal are removed last.
+  if (remaining > 0) {
+    const row = await client.query(`SELECT unit_awaiting_animals FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
+    const awaiting = normalizeUnitReserves(row.rows[0]?.unit_awaiting_animals);
+    const take = Math.min(remaining, Math.max(0, Number(awaiting[unitType] || 0)));
+    if (take > 0) {
+      awaiting[unitType] -= take;
+      if (awaiting[unitType] <= 0) delete awaiting[unitType];
+      await client.query(`UPDATE fiefs SET unit_awaiting_animals = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(awaiting)]);
+    }
+  }
+  // Mounts / bonded beasts of troops that no longer exist go back to the herd.
+  await releaseExcessAssignedAnimals(client, fiefId, unitType, reserves);
 };
 
 const calculatePrisonerCapacityFromBuildings = (buildings) => {
@@ -4882,11 +5122,14 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     const militaryOverflow = Math.max(0, militaryPopulation - barracksCapacity);
     const prisonerCapacity = calculatePrisonerCapacityFromBuildings(buildingsResult.rows);
     const legendaryBonuses = await legendaryBonusesPromise;
-    const [, trainingQueue] = await trainingPromise;
+    const [trainingDay, trainingQueue] = await trainingPromise;
     const guardAssignments = buildGuardAssignmentsView(buildingsResult.rows);
     const trainableUnitTypes = getTrainableUnitTypesForFief(completedBuildings);
     const customUnits = await customUnitsPromise;
     const upgradableUnits = getUpgradableEntriesForFief(normalizeUnitReserves(fief?.unit_reserves), completedBuildings, customUnits);
+    // Free (unassigned) adult animals that a troop could lock, as qualities per type — lets the
+    // training panel show how many animals fall inside a chosen quality range.
+    const unitAnimalPool = await getFiefFreeAnimalPool(fiefId, getAllRequiredAnimalTypes(customUnits), trainingDay);
 
     res.json({
       fief: {
@@ -4897,6 +5140,8 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         military_housed: militaryHoused,
         military_overflow: militaryOverflow,
         prisoner_capacity: prisonerCapacity,
+        mana_capacity: completedBuildings.reduce((sum, b) => sum + (MANA_CAPACITY_BY_TYPE[String(b.building_type || '')] || 0), 0),
+        mana_status: (fief?.mana_status && typeof fief.mana_status === 'object') ? fief.mana_status : {},
         stored_resources: normalizeStoredResources(fief?.stored_resources),
         worker_assignments: normalizeWorkerAssignments(fief?.worker_assignments),
         slave_worker_assignments: normalizeSlaveWorkerAssignments(fief?.slave_worker_assignments),
@@ -4918,6 +5163,8 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         guard_assignments: guardAssignments,
         trainable_unit_types: trainableUnitTypes,
         upgradable_units: upgradableUnits,
+        unit_animal_pool: unitAnimalPool,
+        unit_awaiting_animals: normalizeUnitReserves(fief?.unit_awaiting_animals),
         unit_progression: getUnitProgressionView(completedBuildings, customUnits),
         unit_tree: getUnitTreeView(completedBuildings, customUnits),
         buildings: buildingsResult.rows,
@@ -5242,6 +5489,60 @@ router.get('/fiefs/:id/military/training', authenticateToken, async (req, res) =
   }
 });
 
+// POST /fiefs/:id/military/mount — assign animals to troops that finished training without one.
+// Each troop locks one animal drawn from the chosen type and quality band, then joins the reserve.
+router.post('/fiefs/:id/military/mount', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const unitType = String(req.body?.unitType || '').trim();
+    const amount = Math.max(0, Math.floor(Number(req.body?.amount) || 0));
+    if (!Number.isFinite(fiefId) || !unitType || amount <= 0) return res.status(400).json({ error: 'Invalid payload' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    const customUnits = await loadCustomUnits(owned.kingdom_id, client);
+    const requiredAnimals = getRequiredAnimalTypesForUnit(unitType, customUnits);
+    if (requiredAnimals.length === 0) return res.status(400).json({ error: `${unitType} does not need an animal.` });
+
+    const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+    await client.query('BEGIN');
+    const lock = await client.query(`SELECT unit_reserves, unit_awaiting_animals FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
+    const reserves = normalizeUnitReserves(lock.rows[0]?.unit_reserves);
+    const awaiting = normalizeUnitReserves(lock.rows[0]?.unit_awaiting_animals);
+    const waiting = Math.max(0, Number(awaiting[unitType] || 0));
+    if (amount > waiting) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Only ${waiting} ${unitType} are waiting for an animal.` });
+    }
+
+    await lockAnimalsForTraining(client, fiefId, unitType, amount, requiredAnimals, req.body?.animals, currentDay);
+
+    awaiting[unitType] = waiting - amount;
+    if (awaiting[unitType] <= 0) delete awaiting[unitType];
+    reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + amount;
+    await client.query(
+      `UPDATE fiefs SET unit_reserves = $2::jsonb, unit_awaiting_animals = $3::jsonb WHERE id = $1`,
+      [fiefId, JSON.stringify(reserves), JSON.stringify(awaiting)]
+    );
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+    res.json({ mounted: amount });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (error?.status === 400) return res.status(400).json({ error: error.message });
+    console.error('Error assigning animals to troops:', error);
+    res.status(500).json({ error: 'Failed to assign animals' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -5256,8 +5557,9 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
 
     await client.query('BEGIN');
 
+    const customUnits = await loadCustomUnits(owned.kingdom_id, client);
     const readyRowsResult = await client.query(
-      `SELECT id, unit_type, COALESCE(count, 1) AS count
+      `SELECT id, unit_type, COALESCE(count, 1) AS count, COALESCE(animals_locked, 0) AS animals_locked
        FROM fief_training
        WHERE fief_id = $1
          AND status IN ('training', 'ready')
@@ -5270,7 +5572,7 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
     const totalCollected = readyRows.reduce((sum, r) => sum + Math.max(1, Math.floor(Number(r.count || 1))), 0);
     if (readyRows.length > 0) {
       const reservesLock = await client.query(
-        `SELECT unit_reserves, soldiers
+        `SELECT unit_reserves, soldiers, unit_awaiting_animals
          FROM fiefs
          WHERE id = $1
          FOR UPDATE`,
@@ -5278,10 +5580,17 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
       );
 
       const currentReserves = normalizeUnitReserves(reservesLock.rows[0]?.unit_reserves);
+      const awaitingMounts = normalizeUnitReserves(reservesLock.rows[0]?.unit_awaiting_animals);
       for (const row of readyRows) {
         const unitType = String(row.unit_type || MILITIA_UNIT_TYPE);
         const rowCount = Math.max(1, Math.floor(Number(row.count || 1)));
-        currentReserves[unitType] = Math.max(0, Number(currentReserves[unitType] || 0)) + rowCount;
+        // Troops that need an animal only join the reserve for the recruits that were given one.
+        const needsAnimal = getRequiredAnimalTypesForUnit(unitType, customUnits).length > 0;
+        const ready = needsAnimal ? Math.min(rowCount, Math.max(0, Math.floor(Number(row.animals_locked || 0)))) : rowCount;
+        currentReserves[unitType] = Math.max(0, Number(currentReserves[unitType] || 0)) + ready;
+        if (rowCount - ready > 0) {
+          awaitingMounts[unitType] = Math.max(0, Number(awaitingMounts[unitType] || 0)) + (rowCount - ready);
+        }
       }
 
       const militiaCount = Math.max(0, Number(currentReserves[MILITIA_UNIT_TYPE] || 0));
@@ -5289,9 +5598,10 @@ router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) =
       await client.query(
         `UPDATE fiefs
          SET unit_reserves = $2::jsonb,
-             soldiers = $3
+             soldiers = $3,
+             unit_awaiting_animals = $4::jsonb
          WHERE id = $1`,
-        [fiefId, JSON.stringify(currentReserves), militiaCount]
+        [fiefId, JSON.stringify(currentReserves), militiaCount, JSON.stringify(awaitingMounts)]
       );
 
       await client.query(
@@ -5426,13 +5736,49 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
     reserves[fromUnitType] = availableSource - amount;
 
     const currentDay = await getCampaignCurrentDay(owned.campaign_id);
+
+    // Mounted / bonded troops lock animals. Troops already carrying a suitable animal (e.g.
+    // Squire -> Man-at-Arms) keep it; otherwise the player picks the animal type and the quality
+    // band to draw from, and those animals are bound to the new troop type.
+    const requiredAnimals = getRequiredAnimalTypesForUnit(toUnitType, customUnits);
+    // Recruits without an animal still train, but wait (outside the reserve) for a mount once done.
+    let animalsLocked = 0;
+    if (requiredAnimals.length > 0) {
+      const sourceRequired = getRequiredAnimalTypesForUnit(fromUnitType, customUnits);
+      const keepsMount = sourceRequired.some((t) => requiredAnimals.includes(t));
+      let carried = 0;
+      if (keepsMount) {
+        const carry = await client.query(
+          `SELECT id FROM fief_animals
+           WHERE fief_id = $1 AND assigned_unit_type = $2 AND animal_type = ANY($3::text[])
+           ORDER BY quality ASC, id ASC
+           LIMIT $4
+           FOR UPDATE`,
+          [fiefId, fromUnitType, requiredAnimals, amount]
+        );
+        carried = carry.rows.length;
+        if (carried > 0) {
+          await client.query(
+            `UPDATE fief_animals SET assigned_unit_type = $2 WHERE id = ANY($1::int[])`,
+            [carry.rows.map((r) => Number(r.id)), toUnitType]
+          );
+        }
+      }
+      if (!keepsMount) {
+        const lockedIds = await lockAnimalsForTraining(client, fiefId, toUnitType, amount, requiredAnimals, req.body?.animals, currentDay, true);
+        animalsLocked = lockedIds.length;
+      } else {
+        animalsLocked = carried;
+      }
+    }
+
     // One row with count = amount instead of `amount` individual INSERTs — see the
     // training-start endpoint above for why.
     await client.query(
       `INSERT INTO fief_training
-         (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier)
+         (fief_id, unit_type, source_unit_type, count, training_days_required, days_remaining, status, started_day, complete_day, resource_cost, tier, animals_locked)
        VALUES
-         ($1, $2, $3, $7, $4, $4, 'training', $5, $6, '{}'::jsonb, 1)`,
+         ($1, $2, $3, $7, $4, $4, 'training', $5, $6, '{}'::jsonb, 1, $8)`,
       [
         fiefId,
         toUnitType,
@@ -5441,6 +5787,7 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
         currentDay,
         currentDay + effectiveDays,
         amount,
+        animalsLocked,
       ]
     );
 
@@ -5455,6 +5802,9 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
         Math.max(0, Number(reserves[MILITIA_UNIT_TYPE] || 0)),
       ]
     );
+
+    // Troops that moved on no longer hold the animals they were bound to (unless carried over above).
+    await releaseExcessAssignedAnimals(client, fiefId, fromUnitType, reserves);
 
     await client.query('COMMIT');
 
@@ -5473,6 +5823,7 @@ router.post('/fiefs/:id/military/upgrade', authenticateToken, async (req, res) =
     });
   } catch (error) {
     await client.query('ROLLBACK');
+    if (error?.status === 400) return res.status(400).json({ error: error.message });
     console.error('Error upgrading militia units:', error);
     res.status(500).json({ error: 'Failed to upgrade militia units' });
   } finally {
@@ -5507,7 +5858,11 @@ router.patch('/fiefs/:id/military/units/adjust', authenticateToken, async (req, 
     );
     const reserves = normalizeUnitReserves(lockResult.rows[0]?.unit_reserves);
     if (delta > 0) {
-      reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + delta;
+      if (getRequiredAnimalTypesForUnit(unitType, await loadCustomUnits(owned.kingdom_id, client)).length > 0) {
+        await addAwaitingUnits(client, fiefId, unitType, delta);
+      } else {
+        reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + delta;
+      }
     } else {
       await removeUnitsFromReservesAndGuards(client, fiefId, reserves, unitType, Math.abs(delta));
     }
@@ -5576,9 +5931,14 @@ router.patch('/fiefs/:id/military/units/adjust-batch', authenticateToken, async 
       [fiefId]
     );
     const reserves = normalizeUnitReserves(lockResult.rows[0]?.unit_reserves);
+    const batchCustomUnits = await loadCustomUnits(owned.kingdom_id, client);
     for (const [unitType, delta] of entries) {
       if (delta > 0) {
-        reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + delta;
+        if (getRequiredAnimalTypesForUnit(unitType, batchCustomUnits).length > 0) {
+          await addAwaitingUnits(client, fiefId, unitType, delta);
+        } else {
+          reserves[unitType] = Math.max(0, Number(reserves[unitType] || 0)) + delta;
+        }
       } else {
         await removeUnitsFromReservesAndGuards(client, fiefId, reserves, unitType, Math.abs(delta));
       }
@@ -7047,6 +7407,73 @@ router.post('/fiefs/:id/upgrade-tier-5', authenticateToken, async (req, res) => 
   }
 });
 
+// Generic upgrade for tiers 6-10, driven by utils/kingdomTiers.js. The target is always the
+// fief's current tier + 1, so the client doesn't choose it.
+router.post('/fiefs/:id/upgrade-tier-next', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const hasCols = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'fiefs' AND column_name = 'tier_upgrade_days_remaining_high'`
+    );
+    if (hasCols.rows.length === 0) {
+      return res.status(400).json({ error: 'Tier upgrade timer is not available yet' });
+    }
+
+    const fief = await getFiefContext(fiefId);
+    if (!fief) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, fief)) return res.status(403).json({ error: 'Not authorized to upgrade this fief' });
+
+    const currentTier = getNumber(fief.tier);
+    const targetTier = currentTier + 1;
+    if (currentTier < 5) {
+      return res.status(400).json({ error: `Must reach Tier ${currentTier + 1} through the earlier upgrade first` });
+    }
+    if (currentTier >= MAX_FIEF_TIER) {
+      return res.status(400).json({ error: 'Maximum tier already reached' });
+    }
+    if (getNumber(fief.tier_upgrade_days_remaining_high || 0) > 0) {
+      return res.status(400).json({ error: `Tier upgrade already in progress (${fief.tier_upgrade_days_remaining_high} day(s) remaining)` });
+    }
+
+    const config = getTierUpgradeConfig(targetTier);
+    if (!config) return res.status(400).json({ error: `Tier ${targetTier} is not available yet` });
+
+    const storedResources = fief.stored_resources || {};
+    const updatedResources = { ...storedResources };
+    for (const [key, required] of Object.entries(config.cost)) {
+      const available = getNumber(storedResources[key] || 0);
+      if (available < required) {
+        return res.status(400).json({
+          error: `Not enough ${COST_LABELS[key] || key}. Required: ${required}, Available: ${available}`,
+        });
+      }
+      updatedResources[key] = available - required;
+    }
+
+    const updateResult = await pool.query(
+      `UPDATE fiefs
+       SET tier_upgrade_days_remaining_high = $1,
+           tier_upgrade_target = $2,
+           stored_resources = $3::jsonb
+       WHERE id = $4
+       RETURNING id, tier, tier_upgrade_days_remaining_high, tier_upgrade_target`,
+      [config.days, targetTier, JSON.stringify(updatedResources), fiefId]
+    );
+
+    if (req.io) {
+      req.io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ fief: updateResult.rows[0] });
+  } catch (error) {
+    console.error('Error starting tier upgrade:', error);
+    res.status(500).json({ error: 'Failed to start tier upgrade' });
+  }
+});
+
 // ─── Create New Fief ─────────────────────────────────────────────────────────
 router.post('/:kingdomId/fiefs', authenticateToken, async (req, res) => {
   try {
@@ -8345,10 +8772,14 @@ const readCustomUnitPayload = (body) => {
   if (requiresBuilding && !(Number.isInteger(buildingId) && buildingId > 0)) {
     return { error: 'Pick the unique building this troop needs, or turn off "Needs a building"' };
   }
+  const requiredAnimalTypes = normalizeAnimalTypeList(body?.requiredAnimalTypes);
+  const unknownAnimal = requiredAnimalTypes.find((t) => !ANIMAL_TYPES[t]);
+  if (unknownAnimal) return { error: `Unknown animal type: ${unknownAnimal}` };
   return {
     value: {
       name,
       description: String(body?.description || '').trim().slice(0, 600),
+      requiredAnimalTypes,
       parentUnitType: parent,
       baseDays: Number.isFinite(days) ? Math.max(1, Math.min(365, days)) : 10,
       requiresBuilding,
@@ -8410,6 +8841,7 @@ router.get('/:id/custom-units', authenticateToken, async (req, res) => {
         requires_building: Boolean(u.requires_building),
         custom_building_id: u.custom_building_id == null ? null : Number(u.custom_building_id),
         building_name: u.building_name || null,
+        required_animal_types: normalizeAnimalTypeList(u.required_animal_types),
       })),
     });
   } catch (error) {
@@ -8460,10 +8892,10 @@ router.post('/:id/custom-units', authenticateToken, async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO kingdom_custom_units
-       (kingdom_id, name, description, parent_unit_type, base_days, requires_building, custom_building_id, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (kingdom_id, name, description, parent_unit_type, base_days, requires_building, custom_building_id, created_by, required_animal_types)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
        RETURNING id`,
-      [kingdomId, v.name, v.description, v.parentUnitType, v.baseDays, v.requiresBuilding, v.customBuildingId, req.user.id]
+      [kingdomId, v.name, v.description, v.parentUnitType, v.baseDays, v.requiresBuilding, v.customBuildingId, req.user.id, JSON.stringify(v.requiredAnimalTypes)]
     );
 
     if (req.io) {
@@ -8515,9 +8947,9 @@ router.put('/:id/custom-units/:unitId', authenticateToken, async (req, res) => {
     await client.query(
       `UPDATE kingdom_custom_units
        SET name = $3, description = $4, parent_unit_type = $5, base_days = $6,
-           requires_building = $7, custom_building_id = $8, updated_at = NOW()
+           requires_building = $7, custom_building_id = $8, required_animal_types = $9::jsonb, updated_at = NOW()
        WHERE id = $1 AND kingdom_id = $2`,
-      [unitId, kingdomId, v.name, v.description, v.parentUnitType, v.baseDays, v.requiresBuilding, v.customBuildingId]
+      [unitId, kingdomId, v.name, v.description, v.parentUnitType, v.baseDays, v.requiresBuilding, v.customBuildingId, JSON.stringify(v.requiredAnimalTypes)]
     );
     if (renamed) {
       // Children point at their parent by name.
@@ -9264,7 +9696,8 @@ const getFiefBreedingPairs = async (fiefId) => {
 const getFiefAnimalsDetailed = async (fiefId, currentDay) => {
   const result = await pool.query(
     `SELECT id, animal_type, sex, quality, created_at, born_on_day,
-            pregnant_due_day, pregnancy_avg_quality, pregnant_by_animal_id, cooldown_until_day
+            pregnant_due_day, pregnancy_avg_quality, pregnant_by_animal_id, cooldown_until_day,
+            assigned_unit_type
      FROM fief_animals
      WHERE fief_id = $1
      ORDER BY animal_type ASC, id ASC`,
@@ -9287,6 +9720,7 @@ const getFiefAnimalsDetailed = async (fiefId, currentDay) => {
       pregnant_by_animal_id: a.pregnant_by_animal_id == null ? null : Number(a.pregnant_by_animal_id),
       cooldown_until_day: cooldownUntilDay,
       on_cooldown: cooldownUntilDay != null && cooldownUntilDay > currentDay,
+      assigned_unit_type: a.assigned_unit_type || null,
     };
   });
 };
@@ -9357,6 +9791,21 @@ router.get('/:id/animals', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error loading animals:', error);
     res.status(500).json({ error: 'Failed to load animals' });
+  }
+});
+
+// GET /api/kingdoms/:id/animal-types — the animal catalogue (used by the custom troop editor's mount picker).
+router.get('/:id/animal-types', authenticateToken, async (req, res) => {
+  try {
+    const kingdomId = Number(req.params.id);
+    if (!Number.isFinite(kingdomId)) return res.status(400).json({ error: 'Invalid kingdom ID' });
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (!canManageKingdom(req.user, kingdom)) return res.status(403).json({ error: 'Not authorized' });
+    res.json({ animalTypes: ANIMAL_TYPES });
+  } catch (error) {
+    console.error('Error loading animal types:', error);
+    res.status(500).json({ error: 'Failed to load animal types' });
   }
 });
 
@@ -9452,11 +9901,14 @@ router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (
     if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
 
     const animalResult = await pool.query(
-      `SELECT id, animal_type, sex, quality, born_on_day FROM fief_animals WHERE id = $1 AND fief_id = $2`,
+      `SELECT id, animal_type, sex, quality, born_on_day, assigned_unit_type FROM fief_animals WHERE id = $1 AND fief_id = $2`,
       [animalId, fiefId]
     );
     const animal = animalResult.rows[0];
     if (!animal) return res.status(404).json({ error: 'Animal not found in this fief' });
+    if (animal.assigned_unit_type) {
+      return res.status(400).json({ error: `This animal is bound to your ${animal.assigned_unit_type} troops and cannot be slaughtered` });
+    }
 
     if (ANIMAL_TYPES[animal.animal_type]?.unslaughterable) {
       return res.status(400).json({ error: `${ANIMAL_TYPES[animal.animal_type].name} cannot be slaughtered` });
@@ -9577,7 +10029,7 @@ router.post('/fiefs/:id/animals/breeding-pen/assign', authenticateToken, async (
     const currentDay = await getCampaignCurrentDay(owned.campaign_id);
 
     const parentsResult = await pool.query(
-      `SELECT id, animal_type, sex, born_on_day, cooldown_until_day FROM fief_animals WHERE fief_id = $1 AND id = ANY($2::int[])`,
+      `SELECT id, animal_type, sex, born_on_day, cooldown_until_day, assigned_unit_type FROM fief_animals WHERE fief_id = $1 AND id = ANY($2::int[])`,
       [fiefId, [maleId, femaleId]]
     );
     const male = parentsResult.rows.find((r) => Number(r.id) === maleId);
@@ -9585,6 +10037,9 @@ router.post('/fiefs/:id/animals/breeding-pen/assign', authenticateToken, async (
     if (!male || !female) return res.status(404).json({ error: 'One or both animals not found in this fief' });
     if (male.sex !== 'male' || female.sex !== 'female') return res.status(400).json({ error: 'Breeding requires one male and one female' });
     if (male.animal_type !== female.animal_type) return res.status(400).json({ error: 'Both animals must be the same type' });
+    if (male.assigned_unit_type || female.assigned_unit_type) {
+      return res.status(400).json({ error: 'Animals bound to a troop cannot be bred' });
+    }
 
     const ageOf = (bornOnDay) => (bornOnDay == null ? ANIMAL_ADULT_AGE_DAYS : Math.max(0, currentDay - Number(bornOnDay)));
     if (ageOf(male.born_on_day) < ANIMAL_ADULT_AGE_DAYS || ageOf(female.born_on_day) < ANIMAL_ADULT_AGE_DAYS) {
@@ -9655,6 +10110,59 @@ router.delete('/fiefs/:id/animals/breeding-pen/:pairId', authenticateToken, asyn
   }
 });
 
+// POST /api/kingdoms/fiefs/:id/animals/:animalId/unassign — DM escape hatch: frees an animal that
+// is locked to a troop (normally released automatically when the troops are upgraded or removed).
+router.post('/fiefs/:id/animals/:animalId/unassign', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+    const fiefId = Number(req.params.id);
+    const animalId = Number(req.params.animalId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(animalId)) return res.status(400).json({ error: 'Invalid payload' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    const result = await pool.query(
+      `UPDATE fief_animals a SET assigned_unit_type = NULL
+       FROM fief_animals old
+       WHERE a.id = $1 AND a.fief_id = $2 AND old.id = a.id
+       RETURNING old.assigned_unit_type AS previous_unit_type`,
+      [animalId, fiefId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Animal not found in this fief' });
+    // The troop that lost its animal leaves the reserve and waits for a new one.
+    const previousUnit = result.rows[0].previous_unit_type;
+    if (previousUnit) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const lock = await client.query(`SELECT unit_reserves FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
+        const reserves = normalizeUnitReserves(lock.rows[0]?.unit_reserves);
+        if (Number(reserves[previousUnit] || 0) > 0) {
+          reserves[previousUnit] -= 1;
+          await client.query(`UPDATE fiefs SET unit_reserves = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(reserves)]);
+          await addAwaitingUnits(client, fiefId, previousUnit, 1);
+        }
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
+    }
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+    res.json({ unassigned: true });
+  } catch (error) {
+    console.error('Error unassigning animal:', error);
+    res.status(500).json({ error: 'Failed to unassign animal' });
+  }
+});
+
 // POST /api/kingdoms/fiefs/:id/animals/dm-add — DM authoring tool. Bypasses gold
 // cost and capacity (unlike purchase) so a DM can seed or narratively adjust a
 // fief's herd directly. Either a single exact quality or a random range per animal.
@@ -9714,5 +10222,15 @@ router.post('/fiefs/:id/animals/dm-add', authenticateToken, async (req, res) => 
     res.status(500).json({ error: 'Failed to add animals' });
   }
 });
+
+// Lets models/Campaign.js look up a building's tier (blueprint.tierRequired) without duplicating the catalog.
+router.BUILDING_CATALOG = BUILDING_CATALOG;
+
+// Tier 7 espionage (routes/espionage.js) shares this file's auth/fief helpers.
+router.use(require('./espionage')({ pool, authenticateToken, getFiefContext, canManageFief, requireDM }));
+// Tier 10 Wonders (routes/wonders.js).
+router.use(require('./wonders')({ pool, authenticateToken, getFiefContext, canManageFief, requireDM }));
+// Tier 9 provinces (routes/provinces.js).
+router.use(require('./provinces')({ pool, authenticateToken, getFiefContext, canManageFief, requireDM }));
 
 module.exports = router;

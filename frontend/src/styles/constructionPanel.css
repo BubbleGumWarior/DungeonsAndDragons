@@ -351,3 +351,8 @@
   .kt-cs-opt-do { justify-content: space-between; }
   .kt-cs-lock { max-width: none; text-align: left; }
 }
+
+/* Tier 8+: a building that could not be powered with mana today. */
+.kt-cs-item[data-unpowered='true'] { border-color: rgba(239, 68, 68, 0.6); background: rgba(127, 29, 29, 0.18); }
+.kt-cs-item[data-unpowered='true'] .kt-cs-item-name > span:first-child { opacity: 0.65; text-decoration: line-through; text-decoration-color: rgba(239, 68, 68, 0.7); }
+.kt-cs-tag.kt-cs-unpowered { border-color: rgba(239, 68, 68, 0.6); color: #fca5a5; background: rgba(127, 29, 29, 0.35); }

@@ -1,6 +1,17 @@
 ﻿const { pool } = require('./database');
 const { getResearchConfig } = require('../utils/kingdomResearch');
 const { normalizeMaturationSchedule, getAssignablePopulation } = require('../utils/population');
+const {
+  REFINING_RAW_PER_UNIT,
+  REFINING_UNITS_PER_WORKER,
+  REFINING_LANES,
+  MANA_WELL_CHAIN,
+  MANA_WELL_TYPES,
+  MANA_CAPACITY_BY_TYPE,
+  MANA_DRAW_MIN_BUILDING_TIER,
+  MANA_DRAW_MIN_FIEF_TIER,
+  MAGIC_STORAGE_BONUS_BY_TYPE,
+} = require('../utils/kingdomTier68');
 
 class Campaign {
   static WORKER_CAP_BUILDING_MAP = {
@@ -16,6 +27,11 @@ class Campaign {
     faith: ['faith_temple', 'great_temple', 'sanctified_basilica', 'pilgrim_cathedral', 'divine_sanctuary', 'celestial_cathedral', 'high_sacred_citadel', 'eternal_shrine_complex', 'pantheon_spire'],
     // Tavern lane is citizen-only — never merged with slaveWorkerAssignments in advanceDays.
     tavern: ['tavern', 'roadside_inn', 'grand_tavern', 'merchants_rest', 'golden_cup_hall', 'royal_tavern', 'legendary_tavern'],
+    // Tier 6 refining lanes and the tier 8 mana lane are citizen-only as well.
+    planks: REFINING_LANES.planks.buildings,
+    dressed_stone: REFINING_LANES.dressed_stone.buildings,
+    steel: REFINING_LANES.steel.buildings,
+    mana: MANA_WELL_TYPES,
   };
 
   static LOGISTICS_BUILDING_TYPES = [
@@ -378,6 +394,9 @@ class Campaign {
   // Tiered per-worker gold rates for the Tavern chain. Unlike the Trade Post
   // chain (flat 1 gold/worker forever), each tavern tier raises gold/worker —
   // this chain is the whole point of the building.
+  // Mana lane: per-channeler mana by well tier (highest first), citizens only.
+  static MANA_WELL_CHAIN = MANA_WELL_CHAIN;
+
   static TAVERN_BUILDING_CHAIN = [
     { type: 'legendary_tavern', rate: 3.2, capacity: 20 },
     { type: 'royal_tavern',     rate: 3.0, capacity: 20 },
@@ -730,7 +749,7 @@ class Campaign {
     reinforced_storehouse: 500,
     central_storehouse: 600,
     storage_advanced: 700,
-    vaulted_warehouse: 800,
+    ...MAGIC_STORAGE_BONUS_BY_TYPE,
   };
 
   static getFoodStorageCapacityBonusForBuilding(buildingType) {
@@ -828,6 +847,120 @@ class Campaign {
     }
     const multiplier = Campaign.getStorageCapacityResearchMultiplier(completedResearch);
     return Math.max(0, bonus * multiplier);
+  }
+
+  // ── Tier 6: refining lanes ────────────────────────────────────────────────
+  // Each worker in a refining lane turns REFINING_RAW_PER_UNIT of the raw resource into one refined
+  // good, REFINING_UNITS_PER_WORKER times a day. Limited by the raw stock on hand; the raw is spent
+  // so a staffed workshop eats stock. Returns { lane: unitsMade }.
+  static applyRefining(storedResources, workerAssignments, tier) {
+    const made = {};
+    const stored = storedResources;
+    const multiplier = Campaign.getTierWorkerYieldMultiplier(tier);
+    for (const [lane, config] of Object.entries(REFINING_LANES)) {
+      const workers = Math.max(0, Number((workerAssignments || {})[lane] || 0));
+      if (workers <= 0) continue;
+      const wanted = workers * REFINING_UNITS_PER_WORKER * multiplier;
+      const rawOnHand = Math.max(0, Number(stored[config.raw] || 0));
+      const units = Math.min(wanted, rawOnHand / REFINING_RAW_PER_UNIT);
+      if (units <= 0) continue;
+      stored[config.raw] = rawOnHand - (units * REFINING_RAW_PER_UNIT);
+      stored[lane] = Math.max(0, Number(stored[lane] || 0)) + units;
+      made[lane] = units;
+    }
+    return made;
+  }
+
+  // ── Tier 8: mana ────────────────────────────────────────────────────────────
+  // A building's own tier is its blueprint's tierRequired (the BUILDING_TIER_MATRIX column), looked
+  // up lazily because the catalog lives in routes/kingdoms.js. Custom (DM-authored) buildings have no tier.
+  static getBuildingTierForType(buildingType) {
+    if (!Campaign._buildingTierCache) {
+      Campaign._buildingTierCache = new Map();
+    }
+    const key = String(buildingType || '');
+    if (Campaign._buildingTierCache.has(key)) return Campaign._buildingTierCache.get(key);
+    let tier = 0;
+    try {
+      const catalog = require('../routes/kingdoms').BUILDING_CATALOG || {};
+      tier = Number(catalog[key]?.tierRequired || 0);
+    } catch (_) {
+      tier = 0;
+    }
+    // Only cache real answers, so a lookup before the catalog is loaded can't stick.
+    if (tier > 0) Campaign._buildingTierCache.set(key, tier);
+    return tier;
+  }
+
+  // Housing and the food chains (hunting, farming, granaries, animal pens) are powered before anything else.
+  static isFoodPriorityBuildingType(buildingType) {
+    if (!Campaign._foodPriorityTypes) {
+      Campaign._foodPriorityTypes = new Set([
+        ...Object.keys(Campaign.HOUSING_CAPACITY_BY_TYPE),
+        ...(Campaign.WORKER_CAP_BUILDING_MAP.meat || []),
+        ...(Campaign.WORKER_CAP_BUILDING_MAP.vegetables || []),
+      ]);
+    }
+    return Campaign._foodPriorityTypes.has(String(buildingType || ''));
+  }
+
+  static calculateManaCapacityFromCompletedBuildings(completedBuildings) {
+    let total = 0;
+    for (const b of (completedBuildings || [])) {
+      total += MANA_CAPACITY_BY_TYPE[String(b?.buildingType || b?.building_type || '')] || 0;
+    }
+    return total;
+  }
+
+  /**
+   * Daily power check for a tier 8+ fief. Every completed building whose own tier is 8 or higher
+   * draws mana equal to that tier (Mana Wells are exempt, so a shortage can't switch off the fix).
+   * Food and housing buildings are powered first, then everything else highest tier first, oldest
+   * building first on ties. A building that can't be afforded is Unpowered for the day: it is dropped
+   * from `powered`, so it produces nothing and adds no capacity.
+   * Spends the mana from fief.storedResources and returns { powered, status }.
+   */
+  static resolveManaPowering(fief, completedBuildings) {
+    if (Number(fief.tier || 1) < MANA_DRAW_MIN_FIEF_TIER) {
+      return { powered: completedBuildings, status: { unpowered: [], draw: 0, shortfall: false } };
+    }
+
+    const draws = [];
+    for (const b of completedBuildings) {
+      const type = String(b?.buildingType || b?.building_type || '');
+      if (MANA_WELL_TYPES.includes(type)) continue;
+      const tier = Campaign.getBuildingTierForType(type);
+      if (tier < MANA_DRAW_MIN_BUILDING_TIER) continue;
+      draws.push({ building: b, tier, food: Campaign.isFoodPriorityBuildingType(type) });
+    }
+    if (draws.length === 0) {
+      return { powered: completedBuildings, status: { unpowered: [], draw: 0, shortfall: false } };
+    }
+
+    draws.sort((a, b) => (Number(b.food) - Number(a.food)) || (b.tier - a.tier) || (Number(a.building.id) - Number(b.building.id)));
+
+    let available = Math.max(0, Number(fief.storedResources.mana || 0));
+    let totalDraw = 0;
+    const unpowered = new Set();
+    for (const d of draws) {
+      totalDraw += d.tier;
+      if (available >= d.tier) {
+        available -= d.tier;
+      } else {
+        unpowered.add(d.building);
+      }
+    }
+    fief.storedResources.mana = available;
+
+    const powered = unpowered.size === 0 ? completedBuildings : completedBuildings.filter((b) => !unpowered.has(b));
+    return {
+      powered,
+      status: {
+        unpowered: Array.from(unpowered).map((b) => Number(b.id)),
+        draw: totalDraw,
+        shortfall: unpowered.size > 0,
+      },
+    };
   }
 
   static applyBuildingUnlockEffects(fief, buildingType) {
@@ -1158,6 +1291,7 @@ class Campaign {
       gold: 0,
       faith: 0,
       research: 0,
+      mana: 0,
     };
 
     const legacyFoodWorkers = Number(workers.food || 0);
@@ -1179,6 +1313,8 @@ class Campaign {
     output.gold += Campaign.computeTieredWorkerOutput(tavernWorkers, completedBuildings, Campaign.TAVERN_BUILDING_CHAIN) * tierWorkerYieldMultiplier;
     output.faith += (Number(workers.faith || 0) * 0.5) * tierWorkerYieldMultiplier;
     output.research += Number(workers.research || 0) * tierWorkerYieldMultiplier;
+    // Mana lane: citizen-only, tiered per-channeler rate (see MANA_WELL_CHAIN). Wells also add a passive trickle via resource_output.
+    output.mana += Campaign.computeTieredWorkerOutput(Number(workers.mana || 0), completedBuildings, Campaign.MANA_WELL_CHAIN) * tierWorkerYieldMultiplier;
 
     for (const building of completedBuildings) {
       const bOutput = Campaign.toNumericResourceMap(building.resource_output);
@@ -1196,7 +1332,9 @@ class Campaign {
   // fit there overflows into the general Warehouse instead of being wasted outright —
   // Granary/Bank space is always used before Warehouse space, but a full Granary/Bank no
   // longer means the surplus is simply lost as long as the Warehouse has room.
-  static applyStorageCapacity(storedResources, producedResources, capacity, foodCapacity, bankCapacity) {
+  // Mana lives in its own pool (like faith it never takes Warehouse space) but, unlike faith, is capped by the
+  // fief's Mana Wells via `manaCapacity`. Left undefined it is uncapped, for callers that predate mana.
+  static applyStorageCapacity(storedResources, producedResources, capacity, foodCapacity, bankCapacity, manaCapacity) {
     const stored = Campaign.toNumericResourceMap(storedResources);
     const legacyFood = Math.max(0, Number(stored.food || 0)) + Math.max(0, Number(stored.meat || 0)) + Math.max(0, Number(stored.vegetables || 0));
     stored.food = legacyFood;
@@ -1229,7 +1367,7 @@ class Campaign {
     // turn's capacity check) instead of actually filling up the Warehouse behind it.
     // Faith is an abstract resource, not a physical good — it takes no Warehouse space.
     const nonOverflowUsed = Object.entries(stored).reduce((sum, [resource, n]) => {
-      if (resource === 'food' || resource === 'gold' || resource === 'faith') return sum;
+      if (resource === 'food' || resource === 'gold' || resource === 'faith' || resource === 'mana') return sum;
       return sum + Math.max(0, Number(n) || 0);
     }, 0);
 
@@ -1295,6 +1433,14 @@ class Campaign {
         // Uncapped: faith never occupies Warehouse space.
         if (amount > 0) stored.faith = (Number(stored.faith) || 0) + amount;
         applied.faith = amount;
+        continue;
+      }
+      if (resource === 'mana') {
+        const manaCap = manaCapacity == null ? Number.POSITIVE_INFINITY : Math.max(0, Number(manaCapacity) || 0);
+        const room = Math.max(0, manaCap - Math.max(0, Number(stored.mana) || 0));
+        const acceptedMana = Math.min(amount, room);
+        if (acceptedMana > 0) stored.mana = (Number(stored.mana) || 0) + acceptedMana;
+        applied.mana = acceptedMana;
         continue;
       }
       if (amount <= 0) {
@@ -1579,6 +1725,7 @@ class Campaign {
       let hasTierUpgradeDaysRemaining3Column = false;
       let hasTierUpgradeDaysRemaining4Column = false;
       let hasTierUpgradeDaysRemaining5Column = false;
+      let hasTierUpgradeHighColumns = false;
       let hasCompletedResearchColumn = false;
       let hasVegetableHarvestStateColumn = false;
       let hasSickInjuredPopulationColumn = false;
@@ -1588,6 +1735,7 @@ class Campaign {
       let hasUnitReservesColumn = false;
       let hasFoodStorageCapacityColumn = false;
       let hasBankCapacityColumn = false;
+      let hasManaStatusColumn = false;
       if (canSimulateKingdoms) {
         const fiefColumnsCheck = await client.query(
           `SELECT column_name
@@ -1600,6 +1748,8 @@ class Campaign {
             'tier_upgrade_days_remaining_3',
             'tier_upgrade_days_remaining_4',
             'tier_upgrade_days_remaining_5',
+            'tier_upgrade_days_remaining_high',
+            'tier_upgrade_target',
             'completed_research',
             'vegetable_harvest_state',
             'sick_injured_population',
@@ -1610,6 +1760,7 @@ class Campaign {
             'unrest',
             'food_storage_capacity',
             'bank_capacity',
+            'mana_status',
           ]]
         );
         const availableColumns = new Set(fiefColumnsCheck.rows.map((r) => String(r.column_name || '')));
@@ -1618,6 +1769,7 @@ class Campaign {
         hasTierUpgradeDaysRemaining3Column = availableColumns.has('tier_upgrade_days_remaining_3');
         hasTierUpgradeDaysRemaining4Column = availableColumns.has('tier_upgrade_days_remaining_4');
         hasTierUpgradeDaysRemaining5Column = availableColumns.has('tier_upgrade_days_remaining_5');
+        hasTierUpgradeHighColumns = availableColumns.has('tier_upgrade_days_remaining_high') && availableColumns.has('tier_upgrade_target');
         hasCompletedResearchColumn = availableColumns.has('completed_research');
         hasVegetableHarvestStateColumn = availableColumns.has('vegetable_harvest_state');
         hasSickInjuredPopulationColumn = availableColumns.has('sick_injured_population');
@@ -1628,6 +1780,7 @@ class Campaign {
         hasUnrestColumn = availableColumns.has('unrest');
         hasFoodStorageCapacityColumn = availableColumns.has('food_storage_capacity');
         hasBankCapacityColumn = availableColumns.has('bank_capacity');
+        hasManaStatusColumn = availableColumns.has('mana_status');
       }
 
       // ── Kingdom Taxation — per-kingdom tax/tithe rates set from the Kingdom
@@ -1709,6 +1862,8 @@ class Campaign {
                     ${hasTierUpgradeDaysRemaining3Column ? "COALESCE(f.tier_upgrade_days_remaining_3, 0)" : '0'} AS tier_upgrade_days_remaining_3,
                     ${hasTierUpgradeDaysRemaining4Column ? "COALESCE(f.tier_upgrade_days_remaining_4, 0)" : '0'} AS tier_upgrade_days_remaining_4,
                     ${hasTierUpgradeDaysRemaining5Column ? "COALESCE(f.tier_upgrade_days_remaining_5, 0)" : '0'} AS tier_upgrade_days_remaining_5,
+                    ${hasTierUpgradeHighColumns ? "COALESCE(f.tier_upgrade_days_remaining_high, 0)" : '0'} AS tier_upgrade_days_remaining_high,
+                    ${hasTierUpgradeHighColumns ? "COALESCE(f.tier_upgrade_target, 0)" : '0'} AS tier_upgrade_target,
                   COALESCE(f.storage_capacity, 100) AS storage_capacity,
                     ${hasFoodStorageCapacityColumn ? 'COALESCE(f.food_storage_capacity, 100)' : '100'} AS food_storage_capacity,
                     ${hasBankCapacityColumn ? 'COALESCE(f.bank_capacity, 0)' : '0'} AS bank_capacity,
@@ -1726,7 +1881,8 @@ class Campaign {
                     ${hasLocationModifiersColumn ? "COALESCE(f.location_modifiers, '{}'::jsonb)" : "'{}'::jsonb"} AS location_modifiers,
                     ${hasTravelDaysColumn ? 'COALESCE(f.travel_days_remaining, 0)' : '0'} AS travel_days_remaining,
                     ${hasUnitReservesColumn ? "COALESCE(f.unit_reserves, '{}'::jsonb)" : "'{}'::jsonb"} AS unit_reserves,
-                    ${hasUnrestColumn ? 'COALESCE(f.unrest, 0)' : '0'} AS unrest
+                    ${hasUnrestColumn ? 'COALESCE(f.unrest, 0)' : '0'} AS unrest,
+                    ${hasManaStatusColumn ? "COALESCE(f.mana_status, '{}'::jsonb)" : "'{}'::jsonb"} AS mana_status
            FROM fiefs f
            JOIN kingdoms k ON k.id = f.kingdom_id
            WHERE k.campaign_id = $1`,
@@ -1749,6 +1905,8 @@ class Campaign {
             tierUpgradeDaysRemaining3: Number(row.tier_upgrade_days_remaining_3 || 0),
             tierUpgradeDaysRemaining4: Number(row.tier_upgrade_days_remaining_4 || 0),
             tierUpgradeDaysRemaining5: Number(row.tier_upgrade_days_remaining_5 || 0),
+            tierUpgradeDaysRemainingHigh: Number(row.tier_upgrade_days_remaining_high || 0),
+            tierUpgradeTarget: Number(row.tier_upgrade_target || 0),
             storageCapacity: Number(row.storage_capacity || 100),
             foodStorageCapacity: Number(row.food_storage_capacity || 100),
             bankCapacity: Number(row.bank_capacity || 0),
@@ -1769,6 +1927,7 @@ class Campaign {
             travelDaysRemaining: Number(row.travel_days_remaining || 0),
             unitReserves: (row.unit_reserves && typeof row.unit_reserves === 'object' && !Array.isArray(row.unit_reserves)) ? row.unit_reserves : {},
             unrest: Math.max(0, Math.min(100, Number(row.unrest || 0))),
+            manaStatus: (row.mana_status && typeof row.mana_status === 'object') ? row.mana_status : {},
             // Last day this fief was actually simulated (not in transit) — drives the single
             // end-of-advance training update. Unfinished buildings are indexed lazily (see below).
             lastActiveDay: null,
@@ -1819,7 +1978,8 @@ class Campaign {
           if (canSimulateAnimals) {
             const animalsResult = await client.query(
               `SELECT id, fief_id, animal_type, sex, quality, born_on_day,
-                      pregnant_due_day, pregnancy_avg_quality, cooldown_until_day
+                      pregnant_due_day, pregnancy_avg_quality, cooldown_until_day,
+                      assigned_unit_type
                FROM fief_animals
                WHERE fief_id = ANY($1::int[])`,
               [fiefStates.map((f) => f.id)]
@@ -1836,6 +1996,8 @@ class Campaign {
                 pregnantDueDay: row.pregnant_due_day == null ? null : Number(row.pregnant_due_day),
                 pregnancyAvgQuality: row.pregnancy_avg_quality == null ? null : Number(row.pregnancy_avg_quality),
                 cooldownUntilDay: row.cooldown_until_day == null ? null : Number(row.cooldown_until_day),
+                // Bound to a troop (mount / bonded beast): never breeds or gets slaughtered, but still eats.
+                assignedUnitType: row.assigned_unit_type || null,
               });
             }
           }
@@ -1960,7 +2122,12 @@ class Campaign {
           }
 
           const fiefBuildings = buildingsByFief.get(fief.id) || [];
-          const completed = fiefBuildings.filter((b) => b.isComplete);
+          const completedAll = fiefBuildings.filter((b) => b.isComplete);
+          // Tier 8+: buildings that can't be powered today are left out, so they produce nothing and add no capacity.
+          const manaCapacity = Campaign.calculateManaCapacityFromCompletedBuildings(completedAll);
+          const powering = Campaign.resolveManaPowering(fief, completedAll);
+          const completed = powering.powered;
+          fief.manaStatus = powering.status;
           fief.storageCapacity = Campaign.calculateStorageCapacityFromCompletedBuildings(completed, fief.completedResearch);
           fief.foodStorageCapacity = Campaign.calculateFoodStorageCapacityFromCompletedBuildings(completed, fief.tier, fief.completedResearch);
           fief.bankCapacity = Campaign.calculateBankCapacityFromCompletedBuildings(completed, fief.completedResearch);
@@ -2140,8 +2307,14 @@ class Campaign {
             }
           }
 
-          const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity, fief.foodStorageCapacity, fief.bankCapacity);
+          const capacityApplied = Campaign.applyStorageCapacity(fief.storedResources, modifiedProduction, fief.storageCapacity, fief.foodStorageCapacity, fief.bankCapacity, manaCapacity);
           fief.storedResources = capacityApplied.stored;
+
+          // Tier 6: workshops turn today's raw stock into refined goods.
+          const refined = Campaign.applyRefining(fief.storedResources, fief.workerAssignments, fief.tier);
+          for (const [lane, units] of Object.entries(refined)) {
+            resourcesGained[fief.id][lane] = (Number(resourcesGained[fief.id][lane]) || 0) + units;
+          }
 
           for (const [resource, amount] of Object.entries(capacityApplied.applied)) {
             resourcesGained[fief.id][resource] = (Number(resourcesGained[fief.id][resource]) || 0) + amount;
@@ -2380,7 +2553,7 @@ class Campaign {
             // 3) Natural breeding among unpaired adults — one random eligible pair per type.
             const byType = new Map();
             for (const a of fiefAnimals) {
-              if (pairedIds.has(a.id) || ageOf(a.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS) continue;
+              if (pairedIds.has(a.id) || a.assignedUnitType || ageOf(a.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS) continue;
               if (!byType.has(a.animalType)) byType.set(a.animalType, { males: [], females: [] });
               const bucket = byType.get(a.animalType);
               if (a.sex === 'male') bucket.males.push(a);
@@ -2422,7 +2595,7 @@ class Campaign {
               if (!Number.isFinite(limit) || limit < 0) continue;
               if (Campaign.ANIMAL_UNSLAUGHTERABLE_TYPES.has(animalType)) continue;
               const adults = (byTypeForSlaughter.get(animalType) || [])
-                .filter((a) => ageOfForSlaughter(a.bornOnDay) >= Campaign.ANIMAL_ADULT_AGE_DAYS);
+                .filter((a) => !a.assignedUnitType && ageOfForSlaughter(a.bornOnDay) >= Campaign.ANIMAL_ADULT_AGE_DAYS);
               const excess = adults.length - limit;
               if (excess <= 0) continue;
               adults.sort((a, b) => a.quality - b.quality);
@@ -2462,6 +2635,35 @@ class Campaign {
               ? Campaign.reduceUnitReservesByFraction(fief.unitReserves, soldierLossFraction)
               : { reserves: fief.unitReserves, removed: 0 };
             fief.unitReserves = nextReserves;
+
+            // Mounts / bonded beasts of troops that just died go back to the herd.
+            if (soldiersLost > 0 && fiefAnimals.some((a) => a.assignedUnitType)) {
+              const boundTypes = Array.from(new Set(fiefAnimals.filter((a) => a.assignedUnitType).map((a) => a.assignedUnitType)));
+              for (const unitType of boundTypes) {
+                const bound = fiefAnimals.filter((a) => a.assignedUnitType === unitType).sort((x, y) => x.quality - y.quality);
+                const postedResult = await client.query(
+                  `SELECT COALESCE(SUM(GREATEST(0, COALESCE((assigned_guards_by_type->>$2)::numeric, 0))), 0) AS n
+                   FROM fief_buildings WHERE fief_id = $1`,
+                  [fief.id, unitType]
+                );
+                const trainingResult = await client.query(
+                  `SELECT COALESCE(SUM(COALESCE(count, 1)), 0) AS n
+                   FROM fief_training WHERE fief_id = $1 AND unit_type = $2 AND status IN ('training', 'ready')`,
+                  [fief.id, unitType]
+                );
+                const held = Math.max(0, Number((fief.unitReserves || {})[unitType] || 0))
+                  + Number(postedResult.rows[0]?.n || 0)
+                  + Number(trainingResult.rows[0]?.n || 0);
+                const excess = bound.length - held;
+                if (excess <= 0) continue;
+                const freed = bound.slice(0, excess);
+                await client.query(
+                  `UPDATE fief_animals SET assigned_unit_type = NULL WHERE id = ANY($1::int[])`,
+                  [freed.map((a) => a.id)]
+                );
+                freed.forEach((a) => { a.assignedUnitType = null; });
+              }
+            }
 
             // Without defenders, the mob burns more of the fief before it burns out.
             let populationLossFraction = 0.02 + (severity * 0.06);
@@ -2700,6 +2902,24 @@ class Campaign {
             }
           }
 
+          // Generic upgrade for tiers 6-10: one timer, with the target tier stored alongside it.
+          if (fief.tierUpgradeDaysRemainingHigh > 0) {
+            fief.tierUpgradeDaysRemainingHigh = Math.max(0, fief.tierUpgradeDaysRemainingHigh - 1);
+            if (fief.tierUpgradeDaysRemainingHigh === 0) {
+              const target = Number(fief.tierUpgradeTarget || 0);
+              fief.tierUpgradeTarget = 0;
+              if (target > fief.tier) {
+                fief.tier = target;
+                Campaign.applyTierUpgradeCompletionEffects(fief);
+                completedTierUpgrades.push({
+                  fiefId: fief.id,
+                  fiefName: fief.name,
+                  newTier: fief.tier,
+                });
+              }
+            }
+          }
+
           if (canSimulateResearch) {
             const queue = researchByFief.get(fief.id) || [];
             const researchWorkers = Math.max(0, Number(fief.workerAssignments.research || 0));
@@ -2817,6 +3037,15 @@ class Campaign {
             paramIndex += 1;
           }
 
+          if (hasTierUpgradeHighColumns) {
+            updateSetClauses.push(`tier_upgrade_days_remaining_high = $${paramIndex}`);
+            updateValues.push(fief.tierUpgradeDaysRemainingHigh);
+            paramIndex += 1;
+            updateSetClauses.push(`tier_upgrade_target = $${paramIndex}`);
+            updateValues.push(fief.tierUpgradeTarget);
+            paramIndex += 1;
+          }
+
           updateSetClauses.push(`unlocked_resources = $${paramIndex}::jsonb`);
           updateValues.push(JSON.stringify(fief.unlockedResources || {}));
           paramIndex += 1;
@@ -2882,6 +3111,12 @@ class Campaign {
           if (hasUnrestColumn) {
             updateSetClauses.push(`unrest = $${paramIndex}`);
             updateValues.push(Math.max(0, Math.min(100, Number(fief.unrest || 0))));
+            paramIndex += 1;
+          }
+
+          if (hasManaStatusColumn) {
+            updateSetClauses.push(`mana_status = $${paramIndex}::jsonb`);
+            updateValues.push(JSON.stringify(fief.manaStatus || {}));
             paramIndex += 1;
           }
 
@@ -3033,6 +3268,14 @@ class Campaign {
         [days, campaignId]
       );
       const newDay = Number(campResult.rows[0].current_day);
+
+      // Tier 7 espionage: advance missions after the fief rows are saved so returning spies
+      // land in the persisted reserve instead of being overwritten by the tick's own writes.
+      const espionageChanges = await require('../utils/espionage').resolveEspionageForCampaign(client, campaignId, newDay);
+
+      const completedWonders = await require('../utils/wonders').resolveWondersForCampaign(client, campaignId, newDay);
+      const provinceEvents = await require('../utils/provinces').advanceProvincesForCampaign(client, campaignId, days);
+
       const seasonMetadata = Campaign.getSeasonMetadata(newDay);
 
       const crossedSeasons = [];
@@ -3063,6 +3306,9 @@ class Campaign {
         completedBuildings: Array.from(completedBuildingGroups.values()),
         completedResearch,
         completedTierUpgrades,
+        espionageChanges,
+        completedWonders,
+        provinceEvents,
         revolts,
         resourcesGained,
         populationGained,

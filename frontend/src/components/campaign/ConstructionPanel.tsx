@@ -19,6 +19,8 @@ interface ConstructionPanelProps {
   hasResearchLab: boolean;
   // buildingId -> upgrade info ({ canUpgrade, ... }) from the fief's availableUpgrades.
   upgradeByBuildingId: Map<number, any>;
+  // Tier 8+: ids of completed buildings that could not be powered with mana today.
+  unpoweredIds?: ReadonlySet<number>;
   onOpenBuild: () => void;
   onOpenQueue: () => void;
   onOpenResearch: () => void;
@@ -37,10 +39,11 @@ interface BuildingGroup {
 const plural = (n: number, one: string, many: string = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // Identical structures (same type, level and construction state) collapse into one row with a count.
-const groupBuildings = (list: any[]): BuildingGroup[] => {
+const groupBuildings = (list: any[], unpoweredIds?: ReadonlySet<number>): BuildingGroup[] => {
   const groups = new Map<string, BuildingGroup>();
   for (const b of list) {
-    const key = [String(b.building_type), Number(b.level || 1), b.is_complete ? 'done' : `building:${Number(b.days_remaining || 0)}`].join('|');
+    const off = Boolean(b.is_complete && unpoweredIds && unpoweredIds.has(Number(b.id)));
+    const key = [String(b.building_type), Number(b.level || 1), b.is_complete ? 'done' : `building:${Number(b.days_remaining || 0)}`, off ? 'unpowered' : ''].join('|');
     const existing = groups.get(key);
     if (existing) existing.ids.push(Number(b.id));
     else groups.set(key, { key, rep: b, ids: [Number(b.id)], category: getBuildingCategory(b) });
@@ -54,6 +57,7 @@ const ConstructionPanel: React.FC<ConstructionPanelProps> = ({
   buildQueueCount,
   hasResearchLab,
   upgradeByBuildingId,
+  unpoweredIds,
   onOpenBuild,
   onOpenQueue,
   onOpenResearch,
@@ -70,8 +74,8 @@ const ConstructionPanel: React.FC<ConstructionPanelProps> = ({
   const { built, building } = useMemo(() => {
     const done = buildings.filter((b) => b.is_complete);
     const pending = buildings.filter((b) => !b.is_complete);
-    return { built: groupBuildings(done), building: groupBuildings(pending) };
-  }, [buildings]);
+    return { built: groupBuildings(done, unpoweredIds), building: groupBuildings(pending) };
+  }, [buildings, unpoweredIds]);
 
   const builtCount = built.reduce((s, g) => s + g.ids.length, 0);
   const buildingCount = building.reduce((s, g) => s + g.ids.length, 0);
@@ -101,11 +105,13 @@ const ConstructionPanel: React.FC<ConstructionPanelProps> = ({
     const isUpgrade = Boolean(b.previous_building_type);
     const days = Math.max(0, Number(b.days_remaining || 0));
     const level = Number(b.level || 1);
+    const unpowered = done && Boolean(unpoweredIds && unpoweredIds.has(Number(b.id)));
     return (
       <li
         key={g.key}
         className="kt-cs-item"
         data-done={done ? 'true' : undefined}
+        data-unpowered={unpowered ? 'true' : undefined}
         style={catStyle(g.category)}
         onMouseEnter={done ? (e) => onHoverBuilding(b, (e.currentTarget as HTMLElement).getBoundingClientRect()) : undefined}
         onMouseLeave={done ? onLeaveBuilding : undefined}
@@ -125,6 +131,11 @@ const ConstructionPanel: React.FC<ConstructionPanelProps> = ({
               </span>
             )}
             {!done && isUpgrade && <span className="kt-cs-tag">Upgrade</span>}
+            {unpowered && (
+              <span className="kt-cs-tag kt-cs-unpowered" title="Not enough mana to power this building today. It produces nothing until it is powered again.">
+                ⚡ Unpowered
+              </span>
+            )}
           </div>
         </div>
         {upgrade && (

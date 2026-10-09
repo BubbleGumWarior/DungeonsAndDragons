@@ -7,6 +7,10 @@ import BuildStructuresModal from './BuildStructuresModal';
 import CustomBuildingsPanel from './CustomBuildingsPanel';
 import TroopProgressionModal from './TroopProgressionModal';
 import LaneEffectChips from './LaneEffectChips';
+import { HighTierUpgradePanel, TierInfoButton } from './kingdomTierInfo';
+import { EspionagePanel, EspionageDmInbox } from './EspionagePanel';
+import { PlayerWondersPanel, DmWondersPanel } from './WondersPanel';
+import { ProvincesPanel } from './ProvincesPanel';
 import { getBuildingCategory, getBuildingDisplayName, getLaneEffects, isCustomBuildingType, RESEARCH_BUILDING_CHAIN } from './kingdomBuildings';
 import { createRefreshCoordinator } from './kingdomSync';
 import { reconcile } from '../../utils/reconcile';
@@ -22,6 +26,7 @@ import {
   AnimalTypeDefinition,
   FiefAnimalsSummary,
   FiefAnimal,
+  UnitAnimalChoice,
 } from '../../services/api';
 
 interface Player {
@@ -305,12 +310,20 @@ const RESOURCE_ICONS: Record<string, string> = {
   meat: '🥩',
   vegetables: '🥕',
   building: '🏗️',
+  planks: '🪵',
+  dressed_stone: '🧱',
+  steel: '⚔️',
+  mana: '🔮',
 };
 
 // Display-only rename: the underlying resource/worker-lane key stays 'vegetables'
 // everywhere (DB, API payloads, calculations) — only the label shown to players changes.
 const RESOURCE_LABEL_OVERRIDES: Record<string, string> = {
   vegetables: 'Farming',
+  planks: 'Planks',
+  dressed_stone: 'Dressed Stone',
+  steel: 'Steel',
+  mana: 'Mana',
 };
 const getResourceLabel = (key: string) => RESOURCE_LABEL_OVERRIDES[key] || key;
 
@@ -439,8 +452,23 @@ const LOGISTICS_BUILDING_TYPES = new Set([
   'trade_route_office',
 ]);
 
-const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'tavern', 'research', 'faith'];
+const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'tavern', 'research', 'faith', 'planks', 'dressed_stone', 'steel', 'mana'];
 const SLAVE_RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables'];
+
+// Tier 6 refining lanes and the tier 8 mana lane. Mirrors backend/utils/kingdomTier68.js.
+const REFINING_LANES: Record<string, { raw: string }> = {
+  planks: { raw: 'wood' },
+  dressed_stone: { raw: 'stone' },
+  steel: { raw: 'minerals' },
+};
+const REFINING_RAW_PER_UNIT = 3;
+const REFINING_UNITS_PER_WORKER = 2;
+const MANA_WELL_CHAIN = [
+  { type: 'ley_font', rate: 8, capacity: 20 },
+  { type: 'deep_mana_well', rate: 6, capacity: 20 },
+  { type: 'mana_well', rate: 4, capacity: 20 },
+];
+const EXPLICIT_UNLOCK_LANES = new Set(['meat', 'gold', 'tavern', 'planks', 'dressed_stone', 'steel', 'mana']);
 
 const sortByCanonicalOrder = (keys: string[], order: string[]) =>
   [...keys].sort((a, b) => {
@@ -1333,6 +1361,19 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  // DM escape hatch: frees an animal locked to a troop (normally released automatically).
+  const handleDmUnassignAnimal = async (fiefId: number, animalId: number) => {
+    setBusy(`animal-unassign-${animalId}`);
+    try {
+      await kingdomAPI.unassignAnimal(fiefId, animalId);
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to release animal');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const confirmSlaughterAnimal = async () => {
     if (!slaughterConfirmTarget) return;
     const { fiefId, animal } = slaughterConfirmTarget;
@@ -1438,7 +1479,7 @@ const KingdomTab: React.FC<Props> = ({
 
     // Resources that require an explicit unlock (building must be built before the lane is visible).
     // These start as undefined in older fiefs, so we can't rely on !== false — require === true.
-    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold', 'tavern']);
+    const REQUIRE_EXPLICIT_UNLOCK = EXPLICIT_UNLOCK_LANES;
     return keys
       .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
       .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] ?? 10)) }));
@@ -1454,7 +1495,7 @@ const KingdomTab: React.FC<Props> = ({
       : SLAVE_RESOURCE_CANONICAL_ORDER;
     const keys = sortByCanonicalOrder(rawKeys, SLAVE_RESOURCE_CANONICAL_ORDER);
 
-    const REQUIRE_EXPLICIT_UNLOCK = new Set(['meat', 'gold', 'tavern']);
+    const REQUIRE_EXPLICIT_UNLOCK = EXPLICIT_UNLOCK_LANES;
     return keys
       .filter((k) => (REQUIRE_EXPLICIT_UNLOCK.has(k) ? unlocked[k] === true : unlocked[k] !== false))
       .map((k) => ({ key: k, assigned: Math.max(0, Number(assignments[k] || 0)), max: Math.max(0, Number(maxMap[k] ?? 10)) }));
@@ -1484,6 +1525,8 @@ const KingdomTab: React.FC<Props> = ({
     Number(fiefDetails?.underage_population ?? Math.max(0, totalPopulation - assignablePopulation))
   );
   const storedResources = (fiefDetails?.stored_resources || {}) as Record<string, number>;
+  const manaStatus = ((fiefDetails as any)?.mana_status || {}) as { unpowered?: number[]; draw?: number; shortfall?: boolean };
+  const unpoweredBuildingIds = useMemo(() => new Set<number>((manaStatus.unpowered || []).map((id) => Number(id))), [manaStatus.unpowered]);
   const storedFood = Math.max(
     0,
     Number(storedResources.food || 0) + Number(storedResources.meat || 0) + Number(storedResources.vegetables || 0)
@@ -1672,6 +1715,10 @@ const KingdomTab: React.FC<Props> = ({
       faith: 0,
       building: 0,
       tavern: 0,
+      planks: 0,
+      dressed_stone: 0,
+      steel: 0,
+      mana: 0,
     };
     if (!fiefDetails) {
       return {
@@ -1682,7 +1729,9 @@ const KingdomTab: React.FC<Props> = ({
 
     const assignments = (fiefDetails.worker_assignments || {}) as Record<string, number>;
     const slaveAssignments = (fiefDetails.slave_worker_assignments || {}) as Record<string, number>;
-    const completedBuildings = (fiefDetails.buildings || []).filter((b: any) => Boolean(b.is_complete));
+    // Buildings left unpowered by a mana shortage produce nothing, so leave them out here too.
+    const unpoweredNow = new Set<number>((((fiefDetails as any).mana_status || {}).unpowered || []).map((id: number) => Number(id)));
+    const completedBuildings = (fiefDetails.buildings || []).filter((b: any) => Boolean(b.is_complete) && !unpoweredNow.has(Number(b.id)));
     const completedResearch = ((fiefDetails.completed_research || []) as string[]).map((r) => String(r));
     const tierWorkerYieldMultiplier = getTierWorkerYieldMultiplier(Number(fiefDetails.tier || 1));
     const hunterResearchMultiplier = getResearchWorkerYieldMultiplier(completedResearch, 'meat');
@@ -1801,6 +1850,14 @@ const KingdomTab: React.FC<Props> = ({
     output.research += workersResearch;
     output.faith += (workersFaith * 0.5) * tierWorkerYieldMultiplier;
     output.building += Math.max(0, Number(assignments.building || 0)) + slaveBuilding + getPassiveBuilderBonus(completedBuildings);
+    // Mana lane: citizens only, tiered per-channeler rate. Passive well output is added with the other building outputs below.
+    output.mana += computeTieredWorkerOutput(Math.max(0, Number(assignments.mana || 0)), completedBuildings, MANA_WELL_CHAIN) * tierWorkerYieldMultiplier;
+    // Refining lanes: each worker makes up to 2 refined goods a day, limited by the raw stock on hand.
+    for (const [lane, cfg] of Object.entries(REFINING_LANES)) {
+      const refiners = Math.max(0, Number(assignments[lane] || 0));
+      const rawOnHand = Math.max(0, Number((fiefDetails.stored_resources as Record<string, number>)?.[cfg.raw] || 0));
+      output[lane] = Math.min(refiners * REFINING_UNITS_PER_WORKER * tierWorkerYieldMultiplier, rawOnHand / REFINING_RAW_PER_UNIT);
+    }
 
     for (const building of completedBuildings) {
       const buildingOutput = (building?.resource_output && typeof building.resource_output === 'object')
@@ -1820,6 +1877,7 @@ const KingdomTab: React.FC<Props> = ({
         else if (resource === 'research') output.research += amount;
         else if (resource === 'faith') output.faith += amount;
         else if (resource === 'gold') output.gold += amount;
+        else if (resource === 'mana') output.mana += amount;
       }
     }
 
@@ -2050,6 +2108,21 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const mountWaitingUnits = async (unitType: string, amount: number, animals: UnitAnimalChoice): Promise<boolean> => {
+    if (!fiefDetails) return false;
+    setBusy(`mount-units-${unitType}`);
+    try {
+      await kingdomAPI.mountUnits(Number(fiefDetails.id), unitType, amount, animals);
+      await fetchFief(Number(fiefDetails.id));
+      return true;
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to assign animals');
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const collectTrainedUnits = async () => {
     if (!fiefDetails) return;
     setBusy('collect-units');
@@ -2068,7 +2141,7 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
-  const upgradeMilitiaUnits = async (fromUnitType: string, amount: number, toUnitType?: string) => {
+  const upgradeMilitiaUnits = async (fromUnitType: string, amount: number, toUnitType?: string, animals?: UnitAnimalChoice) => {
     if (!fiefDetails) return;
     if (amount <= 0) {
       pushToast('Enter a positive whole number.');
@@ -2081,7 +2154,7 @@ const KingdomTab: React.FC<Props> = ({
 
     setBusy(`upgrade-units-${fromUnitType}-${toUnitType || ''}`);
     try {
-      await kingdomAPI.upgradeUnit(Number(fiefDetails.id), fromUnitType, amount, toUnitType);
+      await kingdomAPI.upgradeUnit(Number(fiefDetails.id), fromUnitType, amount, toUnitType, animals);
       await fetchFief(Number(fiefDetails.id));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to queue unit upgrade');
@@ -2295,6 +2368,19 @@ const KingdomTab: React.FC<Props> = ({
       await fetchFief(Number(fiefDetails.id));
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to start tier 5 upgrade');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const startNextTierUpgrade = async () => {
+    if (!fiefDetails) return;
+    setBusy('upgrade-tier-next');
+    try {
+      await kingdomAPI.startNextTierUpgrade(Number(fiefDetails.id));
+      await fetchFief(Number(fiefDetails.id));
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to start tier upgrade');
     } finally {
       setBusy(null);
     }
@@ -2658,6 +2744,7 @@ const KingdomTab: React.FC<Props> = ({
         )}
       </div>
 
+      {isDungeonMaster && <EspionageDmInbox campaignId={campaignId} socket={socket} pushToast={pushToast} />}
       {toasts.length > 0 && ReactDOM.createPortal(
         <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
           {toasts.map(t => {
@@ -3423,10 +3510,10 @@ const KingdomTab: React.FC<Props> = ({
                     );
                     const breedForm = getAnimalBreedForm(fief.fief_id, breedableTypes.length > 0 ? breedableTypes[0][0] : (grouped.size > 0 ? Array.from(grouped.keys())[0] : 'sheep'));
                     const breedCandidates = grouped.get(breedForm.animalType) || [];
-                    const males = breedCandidates.filter((a) => a.is_adult && a.sex === 'male' && !pairedIds.has(a.id));
+                    const males = breedCandidates.filter((a) => a.is_adult && a.sex === 'male' && !pairedIds.has(a.id) && !a.assigned_unit_type);
                     // Already-pregnant or postpartum-cooldown females don't need to be paired
                     // again — they won't roll until birth/cooldown clears (see the daily tick).
-                    const females = breedCandidates.filter((a) => a.is_adult && a.sex === 'female' && !pairedIds.has(a.id) && a.pregnant_due_day == null && !a.on_cooldown);
+                    const females = breedCandidates.filter((a) => a.is_adult && a.sex === 'female' && !pairedIds.has(a.id) && a.pregnant_due_day == null && !a.on_cooldown && !a.assigned_unit_type);
                     const canAssignPair = Boolean(breedForm.maleId && breedForm.femaleId);
                     const selectedMale = males.find((a) => a.id === breedForm.maleId);
                     const selectedFemale = females.find((a) => a.id === breedForm.femaleId);
@@ -3599,7 +3686,8 @@ const KingdomTab: React.FC<Props> = ({
                                       const cooldownDaysLeft = a.on_cooldown ? Math.max(0, a.cooldown_until_day! - currentAnimalDay) : null;
                                       const qColor = getQualityColor(a.quality);
                                       const meatYield = Math.round((def?.slaughterMeatBase || 0) * (a.quality / 100));
-                                      const canSlaughter = a.is_adult && !def?.unslaughterable;
+                                      const boundTo = a.assigned_unit_type || null;
+                                      const canSlaughter = a.is_adult && !def?.unslaughterable && !boundTo;
                                       return (
                                         <div
                                           key={a.id}
@@ -3625,6 +3713,14 @@ const KingdomTab: React.FC<Props> = ({
                                             <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '1rem', color: a.is_adult ? '#86efac' : '#fbbf24', border: `1px solid ${a.is_adult ? 'rgba(34,197,94,0.4)' : 'rgba(217,119,6,0.45)'}`, background: a.is_adult ? 'rgba(20,83,45,0.25)' : 'rgba(120,53,15,0.25)' }}>
                                               {a.is_adult ? 'Adult' : `🍼 Juvenile · ${Math.max(0, adultAgeDays - a.age_days)}d left`}
                                             </span>
+                                            {boundTo && (
+                                              <span
+                                                title={`Locked to your ${boundTo} troops: can't breed or be slaughtered, but still eats and needs farmers.`}
+                                                style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '1rem', color: '#fcd34d', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(120,53,15,0.35)' }}
+                                              >
+                                                ⚔️ {boundTo}
+                                              </span>
+                                            )}
                                             {isPregnant && (
                                               <span
                                                 title={isOverdue ? 'Past due, waiting for a free Nursery slot — build/expand a Nursery so the whole litter has room. Re-rolls every long rest.' : `Due in ${dueInDays}d`}
@@ -3645,11 +3741,24 @@ const KingdomTab: React.FC<Props> = ({
                                             )}
                                           </div>
 
+                                          {boundTo && isDungeonMaster && (
+                                            <button
+                                              onClick={() => handleDmUnassignAnimal(fief.fief_id, a.id)}
+                                              disabled={busy === `animal-unassign-${a.id}`}
+                                              title="DM: release this animal from its troop assignment"
+                                              style={{ border: 'none', background: 'transparent', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700, textDecoration: 'underline' }}
+                                            >
+                                              Release
+                                            </button>
+                                          )}
+
                                           <button
                                             onClick={() => canSlaughter && setSlaughterConfirmTarget({ fiefId: fief.fief_id, animal: a })}
                                             disabled={!canSlaughter || busy === `animal-slaughter-${a.id}`}
                                             title={
-                                              def?.unslaughterable
+                                              boundTo
+                                                ? `Bound to your ${boundTo} troops — it can't be slaughtered or bred`
+                                                : def?.unslaughterable
                                                 ? `${def.name} cannot be slaughtered`
                                                 : a.is_adult ? `Slaughter for +${meatYield} food` : `Too young to slaughter — becomes an adult in ${Math.max(0, adultAgeDays - a.age_days)}d`
                                             }
@@ -3662,7 +3771,7 @@ const KingdomTab: React.FC<Props> = ({
                                               opacity: (!canSlaughter || busy === `animal-slaughter-${a.id}`) ? 0.5 : 1,
                                             }}
                                           >
-                                            {def?.unslaughterable ? '🛡️ Protected' : a.is_adult ? `🔪 Slaughter · +${meatYield}` : 'Too young'}
+                                            {boundTo ? '⚔️ Assigned' : def?.unslaughterable ? '🛡️ Protected' : a.is_adult ? `🔪 Slaughter · +${meatYield}` : 'Too young'}
                                           </button>
                                         </div>
                                       );
@@ -3938,7 +4047,7 @@ const KingdomTab: React.FC<Props> = ({
                   const rawFoodStored = Math.max(0, Number(storedResources.food || 0));
                   const rawGoldStored = Math.max(0, Number(storedResources.gold || 0));
                   const nonOverflowStored = Object.entries(storedResources)
-                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research' && k !== 'faith' && k !== 'food' && k !== 'gold')
+                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research' && k !== 'faith' && k !== 'mana' && k !== 'food' && k !== 'gold')
                     .reduce((sum, [, amount]) => sum + Math.max(0, Number(amount || 0)), 0);
 
                   const foodCap = Number(fiefDetails.food_storage_capacity || 100);
@@ -4038,56 +4147,137 @@ const KingdomTab: React.FC<Props> = ({
 
                       {barRow('📦', 'Warehouse', warehouseStored, warehouseCap, warehousePct, warehouseBarColor, warehouseWillLose,
                         `📦 Warehouse nearly full — ${lostResources.map(r => `${r.lost.toFixed(1)} ${r.label}`).join(', ')} will be lost today`)}
+
+                      {Number(fiefDetails.tier || 1) >= 8 && (() => {
+                        const manaCap = Math.max(0, Number((fiefDetails as any).mana_capacity || 0));
+                        const manaStored = Math.max(0, Number(storedResources.mana || 0));
+                        const manaPct = manaCap > 0 ? Math.min(1, manaStored / manaCap) : 0;
+                        const draw = Math.max(0, Number(manaStatus.draw || 0));
+                        const manaIn = Math.max(0, Number(productionByLane.output.mana || 0));
+                        return (
+                          <>
+                            {barRow('🔮', 'Mana', manaStored, manaCap, manaPct, manaStatus.shortfall ? '#ef4444' : '#a78bfa', false, '',
+                              manaCap <= 0 ? ' (no Mana Well built)' : '')}
+                            <div style={{ marginTop: '-0.35rem', marginBottom: '0.7rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                              Draws {draw.toFixed(0)} mana/day · makes about +{manaIn.toFixed(1)}/day
+                            </div>
+                            {manaStatus.shortfall && (
+                              <div style={{ marginBottom: '0.7rem', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.78rem', fontWeight: 600 }}>
+                                ⚡ {unpoweredBuildingIds.size} building{unpoweredBuildingIds.size === 1 ? ' is' : 's are'} unpowered — not enough mana. Add Mana Wells and assign channelers.
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </>
                   );
                 })()}
 
-                <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
-                  {Object.entries((fiefDetails.stored_resources || {}) as Record<string, number>)
-                    .filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research')
-                    .map(([k, v]) => (
-                    <div
-                      key={k}
+                {(() => {
+                  const stock = (fiefDetails.stored_resources || {}) as Record<string, number>;
+                  const REFINED_KEYS = ['planks', 'dressed_stone', 'steel'];
+                  const REFINED_LOOK: Record<string, { rgb: string; text: string }> = {
+                    planks: { rgb: '217, 158, 82', text: '#fcd9a0' },
+                    dressed_stone: { rgb: '147, 197, 253', text: '#dbeafe' },
+                    steel: { rgb: '203, 213, 225', text: '#f1f5f9' },
+                  };
+                  const plain = Object.entries(stock).filter(([k]) => k !== 'meat' && k !== 'vegetables' && k !== 'research' && !REFINED_KEYS.includes(k));
+                  const showRefined = Number(fiefDetails.tier || 1) >= 6 || REFINED_KEYS.some((k) => Number(stock[k] || 0) > 0);
+
+                  const dmEdit = (k: string, v: number) => isDungeonMaster && (
+                    <button
+                      onClick={() => dmSetResourceAmount(k, Number(v || 0))}
+                      disabled={busy === 'dm-adjust'}
                       style={{
-                        borderRadius: '0.55rem',
-                        border: `1px solid ${RESOURCE_COLORS[k]?.border || 'rgba(var(--theme-accent-rgb),0.25)'}`,
-                        background: RESOURCE_COLORS[k]?.background || 'rgba(15,15,15,0.25)',
-                        padding: '0.45rem 0.55rem',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.12rem',
-                        minHeight: '56px',
-                        justifyContent: 'center',
+                        padding: '0.08rem 0.32rem',
+                        borderRadius: '0.3rem',
+                        border: '1px solid rgba(125,211,252,0.45)',
+                        background: 'rgba(12,74,110,0.35)',
+                        color: '#7dd3fc',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        cursor: busy === 'dm-adjust' ? 'not-allowed' : 'pointer',
+                        opacity: busy === 'dm-adjust' ? 0.6 : 1,
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          {RESOURCE_ICONS[k] ? `${RESOURCE_ICONS[k]} ` : ''}{k}
-                        </span>
-                        {isDungeonMaster && (
-                          <button
-                            onClick={() => dmSetResourceAmount(k, Number(v || 0))}
-                            disabled={busy === 'dm-adjust'}
+                      Edit
+                    </button>
+                  );
+
+                  return (
+                    <>
+                      <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
+                        {plain.map(([k, v]) => (
+                          <div
+                            key={k}
                             style={{
-                              padding: '0.08rem 0.32rem',
-                              borderRadius: '0.3rem',
-                              border: '1px solid rgba(125,211,252,0.45)',
-                              background: 'rgba(12,74,110,0.35)',
-                              color: '#7dd3fc',
-                              fontSize: '0.66rem',
-                              fontWeight: 700,
-                              cursor: busy === 'dm-adjust' ? 'not-allowed' : 'pointer',
-                              opacity: busy === 'dm-adjust' ? 0.6 : 1,
+                              borderRadius: '0.55rem',
+                              border: `1px solid ${RESOURCE_COLORS[k]?.border || 'rgba(var(--theme-accent-rgb),0.25)'}`,
+                              background: RESOURCE_COLORS[k]?.background || 'rgba(15,15,15,0.25)',
+                              padding: '0.45rem 0.55rem',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.12rem',
+                              minHeight: '56px',
+                              justifyContent: 'center',
                             }}
                           >
-                            Edit
-                          </button>
-                        )}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                {RESOURCE_ICONS[k] ? `${RESOURCE_ICONS[k]} ` : ''}{getResourceLabel(k)}
+                              </span>
+                              {dmEdit(k, v)}
+                            </div>
+                            <span style={{ color: RESOURCE_COLORS[k]?.text || 'var(--text-secondary)', fontSize: '0.94rem', fontWeight: 700 }}>{Number(v || 0).toFixed(1)}</span>
+                          </div>
+                        ))}
                       </div>
-                      <span style={{ color: RESOURCE_COLORS[k]?.text || 'var(--text-secondary)', fontSize: '0.94rem', fontWeight: 700 }}>{Number(v || 0).toFixed(1)}</span>
-                    </div>
-                  ))}
-                </div>
+
+                      {showRefined && (
+                        <>
+                          <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-gold)', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+                            <span>✦ Refined goods</span>
+                            <span style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, rgba(var(--theme-accent-rgb),0.5), transparent)' }} />
+                          </div>
+                          <div style={{ marginTop: '0.4rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem' }}>
+                            {REFINED_KEYS.map((k) => {
+                              const v = Number(stock[k] || 0);
+                              const look = REFINED_LOOK[k];
+                              return (
+                                <div
+                                  key={k}
+                                  data-testid={`refined-tile-${k}`}
+                                  style={{
+                                    position: 'relative',
+                                    borderRadius: '0.7rem',
+                                    border: `1px solid rgba(${look.rgb}, 0.7)`,
+                                    background: `linear-gradient(135deg, rgba(${look.rgb}, 0.22) 0%, rgba(15,15,15,0.55) 60%, rgba(${look.rgb}, 0.1) 100%)`,
+                                    boxShadow: `0 0 0 1px rgba(${look.rgb}, 0.12) inset, 0 0 14px rgba(${look.rgb}, 0.22)`,
+                                    padding: '0.65rem 0.75rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.2rem',
+                                    minHeight: '74px',
+                                    justifyContent: 'center',
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                    <span style={{ color: look.text, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                      {RESOURCE_ICONS[k]} {getResourceLabel(k)}
+                                    </span>
+                                    {dmEdit(k, v)}
+                                  </div>
+                                  <span style={{ color: look.text, fontSize: '1.25rem', fontWeight: 800, textShadow: `0 0 10px rgba(${look.rgb}, 0.45)` }}>{v.toFixed(1)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="kt-panel" data-tone="gold">
@@ -4633,6 +4823,7 @@ const KingdomTab: React.FC<Props> = ({
                 buildQueueCount={buildQueueOrder.length}
                 hasResearchLab={hasCompletedResearchLab}
                 upgradeByBuildingId={upgradeByBuildingId}
+                unpoweredIds={unpoweredBuildingIds}
                 onOpenBuild={() => setShowBuildModal(true)}
                 onOpenQueue={() => setShowBuildQueueModal(true)}
                 onOpenResearch={() => {
@@ -4673,20 +4864,69 @@ const KingdomTab: React.FC<Props> = ({
                   onTrain={trainSoldiers}
                   onCollect={collectTrainedUnits}
                   onUpgrade={upgradeMilitiaUnits}
+                  onMount={mountWaitingUnits}
                   onAdjustGuards={adjustBuildingGuardsDirect}
                   onDmAdjust={dmAdjustUnits}
+                />
+              )}
+              {Number(fiefDetails.tier || 1) >= 9 && (
+                <ProvincesPanel
+                  fiefId={Number(fiefDetails.id)}
+                  tier={Number(fiefDetails.tier || 1)}
+                  campaignId={campaignId}
+                  isDungeonMaster={isDungeonMaster}
+                  socket={socket}
+                  pushToast={pushToast}
+                  onChanged={() => { fetchFief(Number(fiefDetails.id)); }}
+                />
+              )}
+              {isDungeonMaster ? (
+                <DmWondersPanel
+                  campaignId={campaignId}
+                  socket={socket}
+                  fiefOptions={kingdoms.flatMap((k) => (k.fiefs || []).map((f) => ({ id: Number(f.id), label: `${f.name} (${k.name || 'kingdom'})` })))}
+                  pushToast={pushToast}
+                />
+              ) : (
+                <PlayerWondersPanel
+                  campaignId={campaignId}
+                  fiefId={Number(fiefDetails.id)}
+                  tier={Number(fiefDetails.tier || 1)}
+                  socket={socket}
+                  pushToast={pushToast}
+                  onChanged={() => { fetchFief(Number(fiefDetails.id)); }}
+                />
+              )}
+              {Number(fiefDetails.tier || 1) >= 7 && (
+                <EspionagePanel
+                  fiefId={Number(fiefDetails.id)}
+                  tier={Number(fiefDetails.tier || 1)}
+                  isDungeonMaster={isDungeonMaster}
+                  unitReserves={(fiefDetails.unit_reserves || {}) as Record<string, number>}
+                  socket={socket}
+                  campaignId={campaignId}
+                  onChanged={() => { fetchFief(Number(fiefDetails.id)); }}
+                  pushToast={pushToast}
                 />
               )}
               <div style={{ padding: '0.8rem', border: '1px solid rgba(218,165,32,0.3)', borderRadius: '0.6rem', background: 'rgba(113,63,18,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                   <div style={{ color: 'var(--text-gold)', fontWeight: 700, fontSize: '1.05rem' }}>⬆️ Fief Tier Upgrade</div>
-                  <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '1rem' }}>Tier {fiefDetails.tier}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '1rem' }}>Tier {fiefDetails.tier}</div>
+                    <TierInfoButton currentTier={Number(fiefDetails.tier || 1)} />
+                  </div>
                 </div>
 
                 {fiefDetails.tier >= 5 ? (
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>
-                    ✓ Maximum tier reached for this phase
-                  </div>
+                  <HighTierUpgradePanel
+                    currentTier={Number(fiefDetails.tier)}
+                    daysRemaining={Number(fiefDetails.tier_upgrade_days_remaining_high || 0)}
+                    target={Number(fiefDetails.tier_upgrade_target || 0)}
+                    stored={storedResources as Record<string, number>}
+                    busy={busy === 'upgrade-tier-next'}
+                    onStart={startNextTierUpgrade}
+                  />
                 ) : fiefDetails.tier >= 4 ? (
                   <>
                     {Number(fiefDetails.tier_upgrade_days_remaining_5 || 0) > 0 ? (

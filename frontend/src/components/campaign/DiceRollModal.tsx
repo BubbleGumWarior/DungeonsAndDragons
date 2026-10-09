@@ -112,16 +112,16 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
 
   // Per-die results (null = not yet revealed)
   const [dieResults, setDieResults] = useState<(number | null)[]>(() => Array(allDice.length).fill(null));
-  // Index of the die currently animating (-1 = idle)
-  const [currentlyRollingIndex, setCurrentlyRollingIndex] = useState(-1);
+  // True while the dice are tumbling (all dice animate together)
+  const [isRollingNow, setIsRollingNow] = useState(false);
   // True once every die has settled
   const [allDiceRolled, setAllDiceRolled] = useState(false);
-  // Settled highlight index (for bounce animation)
-  const [settledIndex, setSettledIndex] = useState(-1);
+  // True briefly after the dice land (for the bounce animation)
+  const [justSettled, setJustSettled] = useState(false);
   const [rerollPending, setRerollPending] = useState(false);
 
   const pendingTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const hasRolled = allDiceRolled || currentlyRollingIndex >= 0;
+  const hasRolled = allDiceRolled || isRollingNow;
 
   // If DM approved a reroll, reset all state
   useEffect(() => {
@@ -129,9 +129,9 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
       pendingTimeouts.current.forEach(clearTimeout);
       pendingTimeouts.current = [];
       setDieResults(Array(allDice.length).fill(null));
-      setCurrentlyRollingIndex(-1);
+      setIsRollingNow(false);
       setAllDiceRolled(false);
-      setSettledIndex(-1);
+      setJustSettled(false);
       setRerollPending(false);
     }
   }, [rerollApproved]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -162,15 +162,10 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
   const rawSum = setSums ? setSums[keptSet] : null;
   const total = rawSum !== null ? rawSum + mod.value : null;
 
-  const revealDie = (index: number, finalValues: number[]) => {
-    if (index >= allDice.length) {
-      setCurrentlyRollingIndex(-1);
-      setAllDiceRolled(true);
-      return;
-    }
-
-    setCurrentlyRollingIndex(index);
-    const sides = parseInt(allDice[index].diceType.replace('d', ''), 10) || 20;
+  // Every die tumbles at the same time, so 50 dice take no longer than one
+  const revealAll = (finalValues: number[]) => {
+    setIsRollingNow(true);
+    const sidesOf = allDice.map(d => parseInt(d.diceType.replace('d', ''), 10) || 20);
 
     // 12-step reveal: fast at start, slowing toward end (~900ms total)
     const delays = [0, 55, 110, 165, 220, 290, 370, 460, 560, 670, 790, 900];
@@ -178,24 +173,13 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
       const isFinal = i === delays.length - 1;
       const t = setTimeout(() => {
         if (isFinal) {
-          setDieResults(prev => {
-            const next = [...prev];
-            next[index] = finalValues[index];
-            return next;
-          });
-          setCurrentlyRollingIndex(-1);
-          setSettledIndex(index);
-          setTimeout(() => setSettledIndex(-1), 350);
-          // Move to next die after a short gap
-          const gap = setTimeout(() => revealDie(index + 1, finalValues), 200);
-          pendingTimeouts.current.push(gap);
+          setDieResults(finalValues);
+          setIsRollingNow(false);
+          setAllDiceRolled(true);
+          setJustSettled(true);
+          pendingTimeouts.current.push(setTimeout(() => setJustSettled(false), 350));
         } else {
-          // Cycling random value for animation
-          setDieResults(prev => {
-            const next = [...prev];
-            next[index] = Math.floor(Math.random() * sides) + 1;
-            return next;
-          });
+          setDieResults(sidesOf.map(sides => Math.floor(Math.random() * sides) + 1));
         }
       }, delay);
       pendingTimeouts.current.push(t);
@@ -207,7 +191,7 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
     pendingTimeouts.current.forEach(clearTimeout);
     pendingTimeouts.current = [];
     setAllDiceRolled(false);
-    setSettledIndex(-1);
+    setJustSettled(false);
 
     // Pre-compute all final values upfront
     const finalValues = allDice.map(d => {
@@ -215,9 +199,8 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
       return Math.floor(Math.random() * sides) + 1;
     });
 
-    // Reset all die slots to null (unrolled)
     setDieResults(Array(allDice.length).fill(null));
-    revealDie(0, finalValues);
+    revealAll(finalValues);
   };
 
   // Build grouped allRolls for one set (the kept set by default) for onConfirm
@@ -357,9 +340,9 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
                   {allDice.map((die, di) => {
                     if (die.setIdx !== si) return null;
                     const result = dieResults[di];
-                    const isRolling = currentlyRollingIndex === di;
-                    const isSettled = settledIndex === di;
-                    const isRevealed = result !== null && currentlyRollingIndex !== di;
+                    const isRolling = isRollingNow;
+                    const isSettled = justSettled;
+                    const isRevealed = result !== null && !isRollingNow;
                     // Show max value (unrolled state) as placeholder label
                     const sides = parseInt(die.diceType.replace('d', ''), 10) || 20;
                     const dieAnimation = isRolling
@@ -474,7 +457,7 @@ export const DiceRollModal: React.FC<Props> = ({ request, rollerName, character,
         )}
 
         {/* Single die no-modifier result (kept for clean display when only 1 die + no modifier) */}
-        {!isMultiDie && setCount === 1 && !allDiceRolled && dieResults[0] !== null && currentlyRollingIndex === -1 && (
+        {!isMultiDie && setCount === 1 && !allDiceRolled && dieResults[0] !== null && !isRollingNow && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: theme.color, fontSize: '1.5rem', fontWeight: 'bold' }}>
               {dieResults[0]}

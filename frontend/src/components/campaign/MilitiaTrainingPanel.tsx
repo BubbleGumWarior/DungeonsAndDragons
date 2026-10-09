@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
-import { KingdomFief } from '../../services/api';
+import { KingdomFief, UnitAnimalChoice } from '../../services/api';
 import '../../styles/militiaPanel.css';
 import { clampInt, EmptyNote, Icon, Stepper, toCount } from './kingdomUi';
 
@@ -16,7 +16,9 @@ interface MilitiaTrainingPanelProps {
   onOpenProgression: () => void;
   onTrain: (unitType: string, amount: number) => Promise<boolean>;
   onCollect: () => void;
-  onUpgrade: (fromUnitType: string, amount: number, toUnitType: string) => void;
+  onUpgrade: (fromUnitType: string, amount: number, toUnitType: string, animals?: UnitAnimalChoice) => void;
+  // Assigns animals to troops that finished training without one, moving them into the reserve.
+  onMount: (unitType: string, amount: number, animals: UnitAnimalChoice) => Promise<boolean>;
   onAdjustGuards: (buildingType: string, unitType: string, delta: number) => void;
   // Signed per-unit deltas; removals come out of reserve first, then out of guard posts (server-side).
   onDmAdjust: (deltas: Record<string, number>) => Promise<boolean>;
@@ -25,6 +27,88 @@ interface MilitiaTrainingPanelProps {
 // Mirrors the server: training time is base days reduced by the legendary speed bonus, rounded up, never below 1.
 const effectiveDays = (baseDays: number, speedPct: number): number =>
   Math.max(1, Math.ceil(baseDays * (1 - speedPct / 100)));
+
+// "war_horse" -> "War Horse"
+const animalLabel = (key: string): string =>
+  key.split('_').map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+const plural = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : many);
+
+// Ten 10%-wide buckets of the free animals' qualities, so the player can see where their herd sits.
+const qualityBuckets = (qualities: number[]): number[] => {
+  const buckets = new Array(10).fill(0);
+  for (const q of qualities) buckets[Math.min(9, Math.max(0, Math.floor(q / 10)))] += 1;
+  return buckets;
+};
+
+interface MountChoice { animalType: string; min: string; max: string }
+
+interface MountResolved { animalType: string; bandLo: number; bandHi: number; free: number[]; inBand: number }
+
+const resolveMount = (required: string[], pool: Record<string, number[]>, choice: MountChoice | undefined): MountResolved => {
+  const animalType = choice?.animalType || required.find((a) => (pool[a] || []).length > 0) || required[0] || '';
+  const lo = clampInt(choice?.min === undefined || choice.min === '' ? 0 : choice.min, 0, 100);
+  const hi = clampInt(choice?.max === undefined || choice.max === '' ? 100 : choice.max, 0, 100);
+  const [bandLo, bandHi] = lo <= hi ? [lo, hi] : [hi, lo];
+  const free = pool[animalType] || [];
+  return { animalType, bandLo, bandHi, free, inBand: free.filter((q) => q >= bandLo && q <= bandHi).length };
+};
+
+// Which animal a troop locks and the quality band it is drawn from, with a live count of the herd inside the band.
+const MountPicker: React.FC<{
+  unit: string;
+  required: string[];
+  pool: Record<string, number[]>;
+  choice: MountChoice | undefined;
+  onChange: (next: MountChoice) => void;
+  wanted: number;
+  waitNote: string;
+}> = ({ unit, required, pool, choice, onChange, wanted, waitNote }) => {
+  const r = resolveMount(required, pool, choice);
+  const current: MountChoice = choice || { animalType: r.animalType, min: '0', max: '100' };
+  const set = (patch: Partial<MountChoice>) => onChange({ ...current, animalType: r.animalType, ...patch });
+  const buckets = qualityBuckets(r.free);
+  const bucketMax = Math.max(1, ...buckets);
+  const short = r.inBand < wanted;
+  return (
+    <div className="kt-mt-mount" role="group" aria-label={`Animals for ${unit}`}>
+      <div className="kt-mt-mount-head">
+        <span className="kt-mt-mount-title">Each troop locks one {required.map(animalLabel).join(' or ')}</span>
+        {required.length > 1 && (
+          <div className="kt-ui-seg" role="group" aria-label="Animal to assign">
+            {required.map((a) => (
+              <button key={a} type="button" className="kt-ui-seg-btn" aria-pressed={r.animalType === a} onClick={() => set({ animalType: a })}>
+                {animalLabel(a)} <span className="kt-mt-mount-free">{(pool[a] || []).length}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="kt-mt-mount-band">
+        <label className="kt-mt-mount-field">
+          <span>From quality</span>
+          <Stepper size="sm" value={current.min} onChange={(v) => set({ min: v })} min={0} max={100} step={5} suffix="%" label="Lowest quality to assign" />
+        </label>
+        <label className="kt-mt-mount-field">
+          <span>To quality</span>
+          <Stepper size="sm" value={current.max} onChange={(v) => set({ max: v })} min={0} max={100} step={5} suffix="%" label="Highest quality to assign" />
+        </label>
+      </div>
+      <div className="kt-mt-mount-hist" aria-hidden="true">
+        {buckets.map((n, i) => {
+          const lo = i * 10;
+          const hi = i === 9 ? 100 : lo + 9;
+          const active = hi >= r.bandLo && lo <= r.bandHi;
+          return <span key={i} className="kt-mt-mount-bar" data-active={active ? 'true' : undefined} title={`${lo}–${hi}%: ${n}`} style={{ height: `${Math.max(n > 0 ? 12 : 3, (n / bucketMax) * 100)}%` }} />;
+        })}
+      </div>
+      <p className="kt-mt-mount-count" data-short={short ? 'true' : undefined} role="status">
+        <b>{r.inBand}</b> free {animalLabel(r.animalType)} {plural(r.inBand, 'is', 'are')} between {r.bandLo}% and {r.bandHi}% ({r.free.length} free in total).
+        The lowest quality in range are taken first; the rest stay available for breeding.
+        {short && <span className="kt-ui-bad"> {waitNote}</span>}
+      </p>
+    </div>
+  );
+};
 
 /* ── Panel ────────────────────────────────────────────────────────────────── */
 
@@ -38,6 +122,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   onTrain,
   onCollect,
   onUpgrade,
+  onMount,
   onAdjustGuards,
   onDmAdjust,
 }) => {
@@ -45,6 +130,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   const [trainUnitType, setTrainUnitType] = useState('Militia');
   const [trainAmount, setTrainAmount] = useState('1');
   const [upgradeAmounts, setUpgradeAmounts] = useState<Record<string, string>>({});
+  // Per upgrade row: which animal a mounted troop locks and the quality band it is drawn from.
+  const [mountChoices, setMountChoices] = useState<Record<string, MountChoice>>({});
   // 'max' moves as many as the reserve and the post's free capacity allow (or recalls everything posted).
   const [guardStep, setGuardStep] = useState<number | 'max'>(1);
   const [dmEdit, setDmEdit] = useState<{ unit: string; value: string } | null>(null);
@@ -74,6 +161,12 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
         });
       }
     }
+    return map;
+  }, [progression]);
+
+  const unitRequired = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const line of progression) for (const t of line.tiers) map.set(t.unit_type, t.required_animal_types || []);
     return map;
   }, [progression]);
 
@@ -259,6 +352,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
         )}
       </section>
 
+      {renderAwaiting()}
+
       {renderLadders()}
     </div>
   );
@@ -268,6 +363,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   const ladders = useMemo(() => {
     const upgradeMap = new Map<string, NonNullable<KingdomFief['upgradable_units']>[number]>();
     for (const u of fief.upgradable_units || []) upgradeMap.set(`${u.unit_type}->${u.next_unit_type}`, u);
+    const requiredByUnit = new Map<string, string[]>();
+    for (const line of progression) for (const t of line.tiers) requiredByUnit.set(t.unit_type, t.required_animal_types || []);
     return progression
       .filter((line) => line.line_key !== 'Militia')
       .map((line) => {
@@ -275,7 +372,12 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
           // Custom troops name the unit they upgrade from; built-in tiers follow the line order.
           const source = t.parent_unit_type || (i === 0 ? 'Militia' : line.tiers[i - 1].unit_type);
           const entry = upgradeMap.get(`${source}->${t.unit_type}`);
+          const required = entry?.required_animal_types ?? t.required_animal_types ?? [];
+          const sourceRequired = requiredByUnit.get(source) || [];
           return {
+            required,
+            // A troop that already rides/bonds with a suitable animal keeps it when it moves up a tier.
+            keepsMount: required.length > 0 && sourceRequired.some((a) => required.includes(a)),
             unit: t.unit_type,
             source,
             held: toCount(reserves[t.unit_type]),
@@ -299,7 +401,11 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
     const busyKey = `upgrade-units-${tier.source}-${tier.unit}`;
     const isBusy = busy === busyKey;
     const rawAmount = upgradeAmounts[amountKey] ?? '1';
-    const amount = clampInt(rawAmount === '' ? 1 : rawAmount, 1, tier.available);
+    const needsMount = tier.required.length > 0 && !tier.keepsMount;
+    const pool = fief.unit_animal_pool || {};
+    const mount = resolveMount(tier.required, pool, mountChoices[amountKey]);
+    const maxTrainable = tier.available;
+    const amount = clampInt(rawAmount === '' ? 1 : rawAmount, 1, Math.max(1, maxTrainable));
     const canTrain = tier.unlocked && tier.available > 0;
     return (
       <li key={tier.unit} className="kt-mt-tier" data-locked={tier.unlocked ? undefined : 'true'} data-idle={tier.unlocked && !canTrain ? 'true' : undefined}>
@@ -322,25 +428,115 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
               value={rawAmount}
               onChange={(v) => setUpgradeAmounts((prev) => ({ ...prev, [amountKey]: v }))}
               min={1}
-              max={tier.available}
+              max={Math.max(1, maxTrainable)}
               disabled={isBusy}
               label={`${tier.unit} to train`}
             />
             <button
               type="button"
               className="kt-ui-chip"
-              onClick={() => setUpgradeAmounts((prev) => ({ ...prev, [amountKey]: String(tier.available) }))}
+              onClick={() => setUpgradeAmounts((prev) => ({ ...prev, [amountKey]: String(Math.max(1, maxTrainable)) }))}
               disabled={isBusy}
-              aria-label={`Train all ${tier.available} ${tier.source} into ${tier.unit}`}
+              aria-label={`Train all ${maxTrainable} ${tier.source} into ${tier.unit}`}
             >
               All
             </button>
-            <button type="button" className="kt-ui-btn" data-variant="primary" onClick={() => onUpgrade(tier.source, amount, tier.unit)} disabled={isBusy}>
+            <button
+              type="button"
+              className="kt-ui-btn"
+              data-variant="primary"
+              onClick={() => onUpgrade(
+                tier.source,
+                amount,
+                tier.unit,
+                needsMount ? { animalType: mount.animalType, minQuality: mount.bandLo, maxQuality: mount.bandHi } : undefined
+              )}
+              disabled={isBusy}
+            >
               {isBusy ? 'Queueing…' : `Train ${amount}`}
             </button>
           </div>
         )}
+        {tier.unlocked && canTrain && tier.keepsMount && (
+          <p className="kt-mt-mount-note">
+            <Icon name="check" size={12} /> Keeps its {tier.required.map(animalLabel).join(' / ')}, so no new animal is needed.
+          </p>
+        )}
+        {tier.unlocked && canTrain && needsMount && (
+          <MountPicker
+            unit={tier.unit}
+            required={tier.required}
+            pool={pool}
+            choice={mountChoices[amountKey]}
+            onChange={(next) => setMountChoices((prev) => ({ ...prev, [amountKey]: next }))}
+            wanted={amount}
+            waitNote={`Only ${Math.min(amount, mount.inBand)} of ${amount} will get an animal now. The rest finish training but wait, unusable, until you assign one.`}
+          />
+        )}
       </li>
+    );
+  };
+
+  const awaitingEntries = useMemo(
+    () => Object.entries(fief.unit_awaiting_animals || {}).map(([unit, n]) => [unit, toCount(n)] as [string, number]).filter(([, n]) => n > 0),
+    [fief.unit_awaiting_animals]
+  );
+  const awaitingTotal = awaitingEntries.reduce((sum, [, n]) => sum + n, 0);
+  const [awaitAmounts, setAwaitAmounts] = useState<Record<string, string>>({});
+
+  const renderAwaiting = () => {
+    if (awaitingEntries.length === 0) return null;
+    const pool = fief.unit_animal_pool || {};
+    return (
+      <section className="kt-mt-section" aria-label="Troops awaiting animals">
+        <div className="kt-mt-section-head">
+          <h4 className="kt-ui-h">Awaiting animals<span className="kt-ui-count">{awaitingTotal}</span></h4>
+        </div>
+        <p className="kt-ui-note">These troops are trained but have no animal. They are not in reserve, cannot be upgraded or posted as guards until you assign animals.</p>
+        <ul className="kt-mt-tiers">
+          {awaitingEntries.map(([unit, waiting]) => {
+            const required = (unitRequired.get(unit) || []);
+            const key = `await:${unit}`;
+            const mount = resolveMount(required, pool, mountChoices[key]);
+            const maxAssign = Math.min(waiting, mount.inBand);
+            const rawAmount = awaitAmounts[key] ?? String(Math.max(1, maxAssign));
+            const amount = clampInt(rawAmount === '' ? 1 : rawAmount, 1, Math.max(1, maxAssign));
+            const isBusy = busy === `mount-units-${unit}`;
+            return (
+              <li key={unit} className="kt-mt-tier">
+                <div className="kt-mt-tier-what">
+                  <span className="kt-mt-tier-name">{unit}</span>
+                  <span className="kt-mt-tier-held">{waiting}</span>
+                </div>
+                <div className="kt-mt-tier-do">
+                  <Stepper size="sm" value={rawAmount} onChange={(v) => setAwaitAmounts((p) => ({ ...p, [key]: v }))} min={1} max={Math.max(1, maxAssign)} disabled={isBusy || maxAssign <= 0} label={`${unit} to give animals`} />
+                  <button
+                    type="button"
+                    className="kt-ui-btn"
+                    data-variant="primary"
+                    disabled={isBusy || maxAssign <= 0}
+                    onClick={async () => {
+                      const ok = await onMount(unit, amount, { animalType: mount.animalType, minQuality: mount.bandLo, maxQuality: mount.bandHi });
+                      if (ok) setAwaitAmounts((p) => ({ ...p, [key]: '' }));
+                    }}
+                  >
+                    {isBusy ? 'Assigning…' : `Assign ${maxAssign > 0 ? amount : 0}`}
+                  </button>
+                </div>
+                <MountPicker
+                  unit={unit}
+                  required={required}
+                  pool={pool}
+                  choice={mountChoices[key]}
+                  onChange={(next) => setMountChoices((p) => ({ ...p, [key]: next }))}
+                  wanted={waiting}
+                  waitNote={`${waiting - Math.min(waiting, mount.inBand)} of ${waiting} would still be waiting.`}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     );
   };
 
@@ -501,12 +697,13 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             .map((t) => {
               const reserve = toCount(reserves[t.unit_type]);
               const posted = postedByUnit.get(t.unit_type) || 0;
-              return { unit: t.unit_type, reserve, posted, total: reserve + posted };
+              const awaiting = toCount((fief.unit_awaiting_animals || {})[t.unit_type]);
+              return { unit: t.unit_type, reserve, posted, awaiting, total: reserve + posted + awaiting };
             })
             .filter((r) => r.total > 0 || dmEdit?.unit === r.unit),
         }))
         .filter((line) => line.rows.length > 0),
-    [progression, reserves, postedByUnit, dmEdit]
+    [progression, reserves, postedByUnit, dmEdit, fief.unit_awaiting_animals]
   );
 
   const startDmEdit = (unit: string, total: number) => {
@@ -526,13 +723,13 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
     if (ok) setDmEdit(null);
   };
 
-  const renderDmRow = (row: { unit: string; reserve: number; posted: number; total: number }) => {
+  const renderDmRow = (row: { unit: string; reserve: number; posted: number; awaiting: number; total: number }) => {
     const editing = dmEdit?.unit === row.unit;
     if (!editing || !dmEdit) {
       return (
         <li key={row.unit} className="kt-mt-dm-row">
           <span className="kt-mt-dm-unit">{row.unit}</span>
-          <span className="kt-mt-dm-split">{row.reserve} in reserve · {row.posted} posted</span>
+          <span className="kt-mt-dm-split">{row.reserve} in reserve · {row.posted} posted{row.awaiting > 0 ? ` · ${row.awaiting} awaiting animals` : ''}</span>
           <span className="kt-mt-dm-total" aria-label={`${row.total} total`}>{row.total}</span>
           <button type="button" className="kt-ui-btn" data-variant="ghost" onClick={() => startDmEdit(row.unit, row.total)} disabled={busy === 'dm-adjust-units'}>
             Edit
@@ -554,7 +751,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
     return (
       <li key={row.unit} className="kt-mt-dm-row" data-editing="true">
         <span className="kt-mt-dm-unit">{row.unit}</span>
-        <span className="kt-mt-dm-split">{row.reserve} in reserve · {row.posted} posted</span>
+        <span className="kt-mt-dm-split">{row.reserve} in reserve · {row.posted} posted{row.awaiting > 0 ? ` · ${row.awaiting} awaiting animals` : ''}</span>
         <div className="kt-mt-dm-edit">
           <Stepper
             size="sm"

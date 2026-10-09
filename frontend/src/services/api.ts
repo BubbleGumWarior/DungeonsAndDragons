@@ -1355,6 +1355,73 @@ export interface CampaignDayInfo {
   season_effects?: Record<string, number>;
 }
 
+export type EspionageStatus = 'pending' | 'in_progress' | 'failed' | 'stationed' | 'returning' | 'returned' | 'cancelled';
+
+/** Players only receive the first block; the rest is filled in for the DM. */
+export interface EspionageMission {
+  id: number;
+  fief_id: number;
+  target: string;
+  spies: Record<string, number>;
+  status: EspionageStatus;
+  progress: number;
+  return_days_remaining?: number;
+  fief_name?: string;
+  kingdom_name?: string;
+  days_total?: number | null;
+  success_rate?: number | null;
+  outcome?: 'success' | 'failure' | null;
+}
+
+export interface WonderEntry {
+  key: string;
+  name: string;
+  flavor: string;
+  status: 'available' | 'under_construction' | 'built';
+  id?: number;
+  fief_id?: number | null;
+  holder?: string;
+  is_npc?: boolean;
+  days_remaining?: number;
+  /** DM only. */
+  notes?: string;
+}
+
+export interface WondersResponse {
+  wonders: WonderEntry[];
+  build: { days: number; cost: Record<string, number> };
+  minTier: number;
+}
+
+export interface Province {
+  id: number;
+  fief_id: number;
+  name: string;
+  governor_name: string;
+  governor_bonus: '' | 'steward' | 'warden' | 'scholar';
+  population: number;
+  loyalty: number;
+  loyalty_target: number;
+  tribute_pct: number;
+  improvements: Record<string, number>;
+  status: 'active' | 'seceded';
+  tribute_per_day: { food: number; gold: number; wood: number; research: number };
+}
+
+export interface ProvincesResponse {
+  provinces: Province[];
+  free_adults: number;
+  config: {
+    minTier: number;
+    maxProvinces: number;
+    populationCap: number;
+    improvementMaxLevel: number;
+    foundingCost: Record<string, number>;
+    improvements: Record<string, { label: string; blurb: string; base: number }>;
+    governorBonuses: Record<string, { label: string; blurb: string }>;
+  };
+}
+
 export interface KingdomFief {
   id: number;
   kingdom_id: number;
@@ -1364,6 +1431,8 @@ export interface KingdomFief {
   tier_upgrade_days_remaining_3?: number;
   tier_upgrade_days_remaining_4?: number;
   tier_upgrade_days_remaining_5?: number;
+  tier_upgrade_days_remaining_high?: number;
+  tier_upgrade_target?: number;
   consecutive_gold_shortage_days?: number;
   unrest?: number;
   population: number;
@@ -1401,7 +1470,13 @@ export interface KingdomFief {
     required_building_type: string | null;
     unlocked: boolean;
     available: number;
+    /** Animal types that satisfy this upgrade's mount requirement (any one); empty/absent = none needed. */
+    required_animal_types?: string[];
   }>;
+  /** Qualities of this fief's free adult animals per type, for the troop types that need one. */
+  unit_animal_pool?: Record<string, number[]>;
+  /** Troops that finished training but have no animal yet: not in reserve, can't be upgraded or posted. */
+  unit_awaiting_animals?: Record<string, number>;
   unit_progression?: Array<{
     line_key: string;
     // DM-authored troops are grouped into "Custom · <line>" lines.
@@ -1412,6 +1487,7 @@ export interface KingdomFief {
       base_days: number;
       required_buildings: Array<{ building_type: string; building_name: string; completed: boolean; is_custom?: boolean; inherited?: boolean }>;
       unlocked: boolean;
+      required_animal_types?: string[];
       // Custom troops name the unit they upgrade from explicitly (built-in tiers follow the line order).
       parent_unit_type?: string;
       is_custom?: boolean;
@@ -1522,6 +1598,15 @@ export interface FiefAnimal {
   pregnant_by_animal_id: number | null;
   cooldown_until_day: number | null;
   on_cooldown: boolean;
+  /** Troop type this animal is bound to (mount / bonded beast). Bound animals can't breed or be slaughtered. */
+  assigned_unit_type?: string | null;
+}
+
+/** Which animals a mounted / bonded troop locks when trained: one type, drawn from a quality band. */
+export interface UnitAnimalChoice {
+  animalType: string;
+  minQuality: number;
+  maxQuality: number;
 }
 
 export interface FiefBreedingPair {
@@ -1590,6 +1675,7 @@ export interface UnitTreeNode {
   unlocked: boolean;
   is_root: boolean;
   is_custom: boolean;
+  required_animal_types?: string[];
   // Custom troops only:
   custom_id?: number;
   description?: string;
@@ -1612,6 +1698,7 @@ export interface KingdomCustomUnit {
   requires_building: boolean;
   custom_building_id: number | null;
   building_name: string | null;
+  required_animal_types: string[];
 }
 
 export interface KingdomCustomUnitInput {
@@ -1621,6 +1708,7 @@ export interface KingdomCustomUnitInput {
   baseDays: number;
   requiresBuilding: boolean;
   customBuildingId: number | null;
+  requiredAnimalTypes: string[];
 }
 
 export interface KingdomCustomBuildingInput {
@@ -1896,8 +1984,19 @@ export const kingdomAPI = {
     return response.data;
   },
 
-  upgradeUnit: async (fiefId: number, fromUnitType: string, amount: number, toUnitType?: string): Promise<{ fief: KingdomFief }> => {
-    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/upgrade`, { fromUnitType, amount, toUnitType });
+  upgradeUnit: async (
+    fiefId: number,
+    fromUnitType: string,
+    amount: number,
+    toUnitType?: string,
+    animals?: UnitAnimalChoice
+  ): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/upgrade`, { fromUnitType, amount, toUnitType, animals });
+    return response.data;
+  },
+
+  mountUnits: async (fiefId: number, unitType: string, amount: number, animals: UnitAnimalChoice): Promise<{ mounted: number }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/mount`, { unitType, amount, animals });
     return response.data;
   },
 
@@ -1958,6 +2057,101 @@ export const kingdomAPI = {
 
   startTier5Upgrade: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
     const response = await api.post(`/kingdoms/fiefs/${fiefId}/upgrade-tier-5`);
+    return response.data;
+  },
+
+  getEspionage: async (fiefId: number): Promise<{ missions: EspionageMission[] }> => {
+    const response = await api.get(`/kingdoms/fiefs/${fiefId}/espionage`);
+    return response.data;
+  },
+
+  requestEspionage: async (fiefId: number, payload: { target: string; spies: Record<string, number> }): Promise<{ mission: EspionageMission }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/espionage`, payload);
+    return response.data;
+  },
+
+  recallSpies: async (fiefId: number, missionId: number): Promise<{ mission: EspionageMission }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/espionage/${missionId}/recall`);
+    return response.data;
+  },
+
+  getCampaignEspionage: async (campaignId: number): Promise<{ missions: EspionageMission[] }> => {
+    const response = await api.get(`/kingdoms/campaigns/${campaignId}/espionage`);
+    return response.data;
+  },
+
+  approveEspionage: async (missionId: number, payload: { days: number; successRate: number }): Promise<{ mission: EspionageMission }> => {
+    const response = await api.post(`/kingdoms/espionage/${missionId}/approve`, payload);
+    return response.data;
+  },
+
+  cancelEspionage: async (missionId: number): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/espionage/${missionId}/cancel`);
+    return response.data;
+  },
+
+  getWonders: async (campaignId: number): Promise<WondersResponse> => {
+    const response = await api.get(`/kingdoms/campaigns/${campaignId}/wonders`);
+    return response.data;
+  },
+
+  startWonder: async (fiefId: number, wonderKey: string): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/wonders`, { wonderKey });
+    return response.data;
+  },
+
+  placeWonder: async (campaignId: number, payload: { wonderKey: string; fiefId?: number | null; npcHolderName?: string; notes?: string }): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/campaigns/${campaignId}/wonders`, payload);
+    return response.data;
+  },
+
+  saveWonderNotes: async (wonderId: number, notes: string): Promise<{ ok: boolean }> => {
+    const response = await api.patch(`/kingdoms/wonders/${wonderId}/notes`, { notes });
+    return response.data;
+  },
+
+  destroyWonder: async (wonderId: number): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/wonders/${wonderId}/destroy`);
+    return response.data;
+  },
+
+  cancelWonder: async (wonderId: number): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/wonders/${wonderId}/cancel`);
+    return response.data;
+  },
+
+  getProvinces: async (fiefId: number): Promise<ProvincesResponse> => {
+    const response = await api.get(`/kingdoms/fiefs/${fiefId}/provinces`);
+    return response.data;
+  },
+
+  foundProvince: async (fiefId: number, payload: { name: string; population: number }): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/provinces`, payload);
+    return response.data;
+  },
+
+  updateProvince: async (provinceId: number, payload: { tributePct?: number; governorName?: string; governorBonus?: string }): Promise<{ province: Province }> => {
+    const response = await api.patch(`/kingdoms/provinces/${provinceId}`, payload);
+    return response.data;
+  },
+
+  improveProvince: async (provinceId: number, kind: string): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/provinces/${provinceId}/improve`, { kind });
+    return response.data;
+  },
+
+  transferProvincePopulation: async (provinceId: number, delta: number): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/kingdoms/provinces/${provinceId}/transfer`, { delta });
+    return response.data;
+  },
+
+  dmEditProvince: async (provinceId: number, payload: { loyalty?: number; status?: 'active' | 'seceded' }): Promise<{ province: Province }> => {
+    const response = await api.patch(`/kingdoms/provinces/${provinceId}/dm`, payload);
+    return response.data;
+  },
+
+  startNextTierUpgrade: async (fiefId: number): Promise<{ fief: KingdomFief }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/upgrade-tier-next`);
     return response.data;
   },
 
@@ -2026,6 +2220,16 @@ export const kingdomAPI = {
     fiefs: FiefAnimalsSummary[];
   }> => {
     const response = await api.get(`/kingdoms/${kingdomId}/animals`);
+    return response.data;
+  },
+
+  getAnimalTypes: async (kingdomId: number): Promise<{ animalTypes: Record<string, AnimalTypeDefinition> }> => {
+    const response = await api.get(`/kingdoms/${kingdomId}/animal-types`);
+    return response.data;
+  },
+
+  unassignAnimal: async (fiefId: number, animalId: number): Promise<{ unassigned: boolean }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/${animalId}/unassign`);
     return response.data;
   },
 

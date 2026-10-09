@@ -393,6 +393,23 @@ router.patch('/:id/advance-days', authenticateToken, async (req, res) => {
           });
         }
 
+        for (const item of (summary.provinceEvents || [])) {
+          completedByFief.push({
+            type: 'secession',
+            fiefId: Number(item.fiefId),
+            payload: { campaignId: Number(req.params.id), type: 'secession', fiefId: Number(item.fiefId), fiefName: item.fiefName, provinceName: item.name },
+          });
+        }
+
+        for (const item of (summary.completedWonders || [])) {
+          if (item.fiefId == null) continue;
+          completedByFief.push({
+            type: 'wonder',
+            fiefId: Number(item.fiefId),
+            payload: { campaignId: Number(req.params.id), type: 'wonder', fiefId: Number(item.fiefId), wonderKey: item.wonderKey },
+          });
+        }
+
         for (const item of (summary.revolts || [])) {
           completedByFief.push({
             type: 'revolt',

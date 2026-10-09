@@ -3,7 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import '../../styles/constructionPanel.css';
 import '../../styles/customBuildings.css';
 import '../../styles/troopTree.css';
-import { kingdomAPI, KingdomCustomBuilding, KingdomCustomBuildingInput, KingdomCustomUnit, KingdomCustomUnitInput } from '../../services/api';
+import { AnimalTypeDefinition, kingdomAPI, KingdomCustomBuilding, KingdomCustomBuildingInput, KingdomCustomUnit, KingdomCustomUnitInput } from '../../services/api';
 import { BuildingEditor } from './CustomBuildingsPanel';
 import { clampInt, EmptyNote, Icon, Stepper, Switch } from './kingdomUi';
 import { descendantsOf, ROOT_ID, TreeIndex } from './troopTree';
@@ -30,6 +30,10 @@ const CustomUnitEditor: React.FC<CustomUnitEditorProps> = ({ kingdomId, kingdomN
   const [needsBuilding, setNeedsBuilding] = useState(Boolean(editing?.requires_building));
   const [buildingId, setBuildingId] = useState<number | null>(editing?.custom_building_id ?? null);
 
+  const [needsAnimal, setNeedsAnimal] = useState((editing?.required_animal_types || []).length > 0);
+  const [animalTypes, setAnimalTypes] = useState<AnimalTypeDefinition[]>([]);
+  const [requiredAnimals, setRequiredAnimals] = useState<string[]>(editing?.required_animal_types || []);
+
   const [buildings, setBuildings] = useState<KingdomCustomBuilding[]>([]);
   const [buildingsLoading, setBuildingsLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -48,6 +52,17 @@ const CustomUnitEditor: React.FC<CustomUnitEditorProps> = ({ kingdomId, kingdomN
     return () => { cancelled = true; };
   }, [kingdomId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    kingdomAPI.getAnimalTypes(kingdomId)
+      .then((res) => { if (!cancelled) setAnimalTypes(Object.values(res.animalTypes || {})); })
+      .catch(() => { if (!cancelled) setAnimalTypes([]); });
+    return () => { cancelled = true; };
+  }, [kingdomId]);
+
+  const toggleAnimal = (key: string) =>
+    setRequiredAnimals((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
   // A troop cannot branch from itself or anything below it.
   const parentOptions = useMemo(() => {
     const blocked = editing ? new Set([editing.name, ...Array.from(descendantsOf(index, editing.name))]) : new Set<string>();
@@ -62,7 +77,7 @@ const CustomUnitEditor: React.FC<CustomUnitEditorProps> = ({ kingdomId, kingdomN
   // Whatever the source unit needs is inherited: this troop needs it in every fief too.
   const inheritedReqs = parentNode?.required_buildings || [];
   const selectedBuilding = buildings.find((b) => b.id === buildingId) || null;
-  const canSave = name.trim().length >= 2 && !!parentNode && (!needsBuilding || buildingId != null) && !saving;
+  const canSave = name.trim().length >= 2 && !!parentNode && (!needsBuilding || buildingId != null) && (!needsAnimal || requiredAnimals.length > 0) && !saving;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +89,7 @@ const CustomUnitEditor: React.FC<CustomUnitEditorProps> = ({ kingdomId, kingdomN
       baseDays: clampInt(days, 1, 365),
       requiresBuilding: needsBuilding,
       customBuildingId: needsBuilding ? buildingId : null,
+      requiredAnimalTypes: needsAnimal ? requiredAnimals : [],
     };
     setSaving(true);
     setError(null);
@@ -239,6 +255,47 @@ const CustomUnitEditor: React.FC<CustomUnitEditorProps> = ({ kingdomId, kingdomN
                           Players will need a finished <strong>{selectedBuilding.name}</strong> in a fief to train {name.trim() || 'this troop'} there.
                         </p>
                       )}
+                    </div>
+                  )}
+                  <Switch
+                    checked={needsAnimal}
+                    onChange={setNeedsAnimal}
+                    label="Needs an animal"
+                    hint={needsAnimal
+                      ? 'Each recruit locks one of the animals below in the fief where it is trained. Locked animals stop breeding but still eat.'
+                      : 'Turn on for mounted or beast-bonded troops, e.g. hunters with wolves.'}
+                  />
+                  {needsAnimal && (
+                    <div className="kt-tt-req">
+                      <span className="kt-cb-label" id="kt-tt-animal-label">Animals that qualify (any one will do)</span>
+                      {animalTypes.length === 0 ? (
+                        <p className="kt-ui-note">Loading animals…</p>
+                      ) : (
+                        (['horse', 'livestock', 'exotic'] as const).map((category) => {
+                          const group = animalTypes.filter((a) => a.category === category);
+                          if (group.length === 0) return null;
+                          return (
+                            <div key={category} className="kt-tt-animal-group">
+                              <span className="kt-tt-animal-cat">{category === 'horse' ? 'Horses' : category === 'livestock' ? 'Livestock & beasts' : 'Exotic (DM-granted)'}</span>
+                              <div className="kt-tt-buildings" role="group" aria-labelledby="kt-tt-animal-label">
+                                {group.map((a) => (
+                                  <button
+                                    key={a.key}
+                                    type="button"
+                                    className="kt-tt-building"
+                                    aria-pressed={requiredAnimals.includes(a.key)}
+                                    data-selected={requiredAnimals.includes(a.key) ? 'true' : undefined}
+                                    onClick={() => toggleAnimal(a.key)}
+                                  >
+                                    <span className="kt-tt-building-name">{a.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                      {requiredAnimals.length === 0 && <p className="kt-cb-hint">Pick at least one animal.</p>}
                     </div>
                   )}
                 </section>
