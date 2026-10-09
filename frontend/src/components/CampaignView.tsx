@@ -17359,7 +17359,7 @@ const CampaignView: React.FC = () => {
 
               {/* Advantage / disadvantage for the hit roll */}
               <div style={{ marginBottom: '1rem' }}>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Hit Roll Mode</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>Roll Mode (hit &amp; damage)</p>
                 <div role="radiogroup" style={{ display: 'flex', gap: '0.4rem' }}>
                   {([
                     { id: 'disadvantage', label: 'Disadvantage', color: '#f87171' },
@@ -17380,7 +17380,7 @@ const CampaignView: React.FC = () => {
                 </div>
                 {dmAttackRollMode !== 'normal' && (
                   <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem', margin: '0.35rem 0 0' }}>
-                    Hit die is rolled twice; the {dmAttackRollMode === 'advantage' ? 'higher' : 'lower'} result counts.
+                    Hit and damage dice are each rolled twice; the {dmAttackRollMode === 'advantage' ? 'higher' : 'lower'} result counts.
                   </p>
                 )}
               </div>
@@ -17480,7 +17480,7 @@ const CampaignView: React.FC = () => {
               : `Damage roll vs ${cfg.targetName}`,
             campaignId: cfg.campaignId,
             modifier: isHitPhase ? 'none' : 'none',
-            rollMode: isHitPhase ? cfg.rollMode : undefined,
+            rollMode: cfg.rollMode,
           };
           return (
             <DiceRollModal

@@ -226,7 +226,7 @@ export interface AttackDiceConfig {
   damageDie: string; // e.g. 'd6' (legacy / first group fallback)
   damageDiceGroups?: DiceGroup[]; // multi-damage e.g. 2d6 + 1d8
   dmName: string;
-  rollMode?: RollMode; // applies to the hit roll only
+  rollMode?: RollMode; // applies to both hit and damage rolls
 }
 
 // Damage-over-time condition applied by DM
