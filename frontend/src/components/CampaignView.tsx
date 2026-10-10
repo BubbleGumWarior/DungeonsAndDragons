@@ -139,7 +139,6 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
   { name: 'Northreach',               x: 15,  y: 70 },
   { name: 'Southreach',               x: 18,  y: 74 },
   { name: 'Riverreach',               x: 25,  y: 72 },
-  { name: 'Gulltown',                 x: 38,  y: 69 },
   { name: 'Yllwyn',                   x: 43.5,  y: 78, playerCity: true },
   { name: 'Valerium',                 x: 37.25,  y: 85, major: true },
   { name: 'Pass-Crown',               x: 50,  y: 46,  major: true },
