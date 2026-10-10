@@ -2130,6 +2130,22 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const unmountWaitingUnits = async (unitType: string, amount: number): Promise<boolean> => {
+    if (!fiefDetails) return false;
+    setBusy(`unmount-units-${unitType}`);
+    try {
+      await kingdomAPI.unmountUnits(Number(fiefDetails.id), unitType, amount);
+      pushToast(`${amount} ${unitType} returned their animals.`, 'success');
+      await fetchFief(Number(fiefDetails.id));
+      return true;
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to unassign animals');
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const collectTrainedUnits = async () => {
     if (!fiefDetails) return;
     setBusy('collect-units');
@@ -4883,6 +4899,7 @@ const KingdomTab: React.FC<Props> = ({
                   onCollect={collectTrainedUnits}
                   onUpgrade={upgradeMilitiaUnits}
                   onMount={mountWaitingUnits}
+                  onUnmount={unmountWaitingUnits}
                   onAdjustGuards={adjustBuildingGuardsDirect}
                   onDmAdjust={dmAdjustUnits}
                 />

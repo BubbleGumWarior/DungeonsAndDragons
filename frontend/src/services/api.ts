@@ -2002,6 +2002,11 @@ export const kingdomAPI = {
     return response.data;
   },
 
+  unmountUnits: async (fiefId: number, unitType: string, amount: number): Promise<{ unmounted: number }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/military/unmount`, { unitType, amount });
+    return response.data;
+  },
+
   adjustUnitReserves: async (fiefId: number, unitType: string, delta: number): Promise<{ fief: KingdomFief }> => {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/military/units/adjust`, { unitType, delta });
     return response.data;

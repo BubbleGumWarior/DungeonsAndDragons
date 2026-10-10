@@ -19,6 +19,8 @@ interface MilitiaTrainingPanelProps {
   onUpgrade: (fromUnitType: string, amount: number, toUnitType: string, animals?: UnitAnimalChoice) => void;
   // Assigns animals to troops that finished training without one, moving them into the reserve.
   onMount: (unitType: string, amount: number, animals: UnitAnimalChoice) => Promise<boolean>;
+  // Takes animals back from mounted troops in reserve; the troops go back to awaiting animals.
+  onUnmount: (unitType: string, amount: number) => Promise<boolean>;
   onAdjustGuards: (buildingType: string, unitType: string, delta: number) => void;
   // Signed per-unit deltas; removals come out of reserve first, then out of guard posts (server-side).
   onDmAdjust: (deltas: Record<string, number>) => Promise<boolean>;
@@ -123,6 +125,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   onCollect,
   onUpgrade,
   onMount,
+  onUnmount,
   onAdjustGuards,
   onDmAdjust,
 }) => {
@@ -354,6 +357,8 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
 
       {renderAwaiting()}
 
+      {renderMounted()}
+
       {renderLadders()}
     </div>
   );
@@ -483,6 +488,49 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   );
   const awaitingTotal = awaitingEntries.reduce((sum, [, n]) => sum + n, 0);
   const [awaitAmounts, setAwaitAmounts] = useState<Record<string, string>>({});
+
+  const mountedEntries = useMemo(
+    () => reserveEntries.filter(([unit]) => (unitRequired.get(unit) || []).length > 0),
+    [reserveEntries, unitRequired]
+  );
+  const [unmountAmounts, setUnmountAmounts] = useState<Record<string, string>>({});
+
+  const renderMounted = () => {
+    if (mountedEntries.length === 0) return null;
+    return (
+      <section className="kt-mt-section" aria-label="Mounted troops">
+        <div className="kt-mt-section-head"><h4 className="kt-ui-h">Mounted troops</h4></div>
+        <p className="kt-ui-note">Unassigning returns the animals to your herd (highest quality first) so they can breed again. The troops go back to awaiting animals.</p>
+        <ul className="kt-mt-tiers">
+          {mountedEntries.map(([unit, held]) => {
+            const raw = unmountAmounts[unit] ?? '1';
+            const amount = clampInt(raw === '' ? 1 : raw, 1, held);
+            const isBusy = busy === `unmount-units-${unit}`;
+            return (
+              <li key={unit} className="kt-mt-tier">
+                <div className="kt-mt-tier-what">
+                  <span className="kt-mt-tier-name">{unit}</span>
+                  <span className="kt-mt-tier-held">{held}</span>
+                </div>
+                <div className="kt-mt-tier-do">
+                  <Stepper size="sm" value={raw} onChange={(v) => setUnmountAmounts((p) => ({ ...p, [unit]: v }))} min={1} max={held} disabled={isBusy} label={`${unit} to unassign`} />
+                  <button type="button" className="kt-ui-chip" onClick={() => setUnmountAmounts((p) => ({ ...p, [unit]: String(held) }))} disabled={isBusy}>All</button>
+                  <button
+                    type="button"
+                    className="kt-ui-btn"
+                    disabled={isBusy}
+                    onClick={async () => { if (await onUnmount(unit, amount)) setUnmountAmounts((p) => ({ ...p, [unit]: '1' })); }}
+                  >
+                    {isBusy ? 'Unassigning…' : `Unassign ${amount}`}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    );
+  };
 
   const renderAwaiting = () => {
     if (awaitingEntries.length === 0) return null;

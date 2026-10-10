@@ -5543,6 +5543,56 @@ router.post('/fiefs/:id/military/mount', authenticateToken, async (req, res) => 
   }
 });
 
+// POST /fiefs/:id/military/unmount — take the animals back from mounted troops in reserve. The troops
+// return to "awaiting animals" and the animals (highest quality first) are free to breed again.
+router.post('/fiefs/:id/military/unmount', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fiefId = Number(req.params.id);
+    const unitType = String(req.body?.unitType || '').trim();
+    const amount = Math.max(0, Math.floor(Number(req.body?.amount) || 0));
+    if (!Number.isFinite(fiefId) || !unitType || amount <= 0) return res.status(400).json({ error: 'Invalid payload' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized' });
+
+    await client.query('BEGIN');
+    const lock = await client.query(`SELECT unit_reserves FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
+    const reserves = normalizeUnitReserves(lock.rows[0]?.unit_reserves);
+    const inReserve = Math.max(0, Number(reserves[unitType] || 0));
+    if (amount > inReserve) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Only ${inReserve} ${unitType} in reserve (troops posted as guards must be recalled first).` });
+    }
+    const bound = await client.query(
+      `SELECT id FROM fief_animals WHERE fief_id = $1 AND assigned_unit_type = $2 ORDER BY quality DESC, id ASC LIMIT $3 FOR UPDATE`,
+      [fiefId, unitType, amount]
+    );
+    if (bound.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `No animals are assigned to ${unitType}.` });
+    }
+    const freed = bound.rows.length;
+    await client.query(`UPDATE fief_animals SET assigned_unit_type = NULL WHERE id = ANY($1::int[])`, [bound.rows.map((r) => Number(r.id))]);
+    reserves[unitType] = inReserve - freed;
+    await client.query(`UPDATE fiefs SET unit_reserves = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(reserves)]);
+    await addAwaitingUnits(client, fiefId, unitType, freed);
+    await client.query('COMMIT');
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+    res.json({ unmounted: freed });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error unassigning animals from troops:', error);
+    res.status(500).json({ error: 'Failed to unassign animals' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/fiefs/:id/military/collect', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
