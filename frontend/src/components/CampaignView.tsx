@@ -156,17 +156,10 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
 const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
   'Yllwyn': [
     '/images/CityImages/YllwynWesternBlockade.webp',
-    '/images/CityImages/YllwynRiverBlockade.webp',
-    '/images/CityImages/YllwynNorthRiverBlockade.webp',
     '/images/CityImages/YllwynNorthRiverBlockadeFront.webp',
-    '/images/CityImages/YllwynSouthRiverBlockade.webp',
     '/images/CityImages/YllwynSouthRiverBlockadeFront.webp',
-    '/images/CityImages/YllwynFarmingGrounds.webp',
-    '/images/CityImages/YllwynStableGrounds.webp',
-    '/images/CityImages/YllwynTrainingGrounds.webp',
-    '/images/CityImages/YllwynBottom.webp',
+    '/images/CityImages/YllwynDragonPitPalace.webp',
     '/images/CityImages/YllwynCenter.webp',
-    '/images/CityImages/YllwynTemple.webp',
     '/images/CityImages/YllwynTop.webp',
     '/images/CityImages/YllwynTerrain.webp',
   ],
