@@ -153,6 +153,9 @@ if (process.env.NODE_ENV === 'production') {
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-cache');
+      } else if (filePath.includes(`${path.sep}images${path.sep}`)) {
+        // Art keeps its file name when replaced, so always revalidate (cheap 304 via ETag).
+        res.setHeader('Cache-Control', 'no-cache');
       } else {
         res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
       }
