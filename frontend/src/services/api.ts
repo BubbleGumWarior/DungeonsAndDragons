@@ -2257,6 +2257,11 @@ export const kingdomAPI = {
     return response.data;
   },
 
+  releaseAnimal: async (fiefId: number, animalId: number): Promise<{ released: FiefAnimal }> => {
+    const response = await api.post(`/kingdoms/fiefs/${fiefId}/animals/${animalId}/release`);
+    return response.data;
+  },
+
   setAnimalAutoSlaughterLimit: async (
     fiefId: number,
     animalType: string,

@@ -1397,6 +1397,21 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const handleReleaseAnimal = async (fiefId: number, animal: FiefAnimal) => {
+    const name = animalTypes[animal.animal_type]?.name || animal.animal_type;
+    if (!window.confirm(`Release this ${animal.quality}% quality ${name} into the wild? You get no resources and it cannot be undone.`)) return;
+    setBusy(`animal-release-${animal.id}`);
+    try {
+      await kingdomAPI.releaseAnimal(fiefId, animal.id);
+      pushToast(`${name} released into the wild`, 'success');
+      await fetchAnimalsData();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to release animal');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleSetAutoSlaughterLimit = async (fiefId: number, animalType: string, limit: number | null) => {
     const key = `${fiefId}:${animalType}`;
     setBusy(`animal-auto-slaughter-${key}`);
@@ -3813,6 +3828,21 @@ const KingdomTab: React.FC<Props> = ({
                                             </button>
                                           )}
 
+                                          {def?.unslaughterable && !boundTo ? (
+                                            <button
+                                              onClick={() => handleReleaseAnimal(fief.fief_id, a)}
+                                              disabled={busy === `animal-release-${a.id}`}
+                                              title={`Release this ${def.name} into the wild — no resources gained, cannot be undone`}
+                                              style={{
+                                                marginTop: '0.3rem', width: '100%', padding: '0.3rem 0.4rem', borderRadius: '0.35rem',
+                                                border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(30,58,138,0.25)', color: '#93c5fd',
+                                                cursor: busy === `animal-release-${a.id}` ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 700,
+                                                opacity: busy === `animal-release-${a.id}` ? 0.5 : 1,
+                                              }}
+                                            >
+                                              🌲 Release to Wild
+                                            </button>
+                                          ) : (
                                           <button
                                             onClick={() => canSlaughter && setSlaughterConfirmTarget({ fiefId: fief.fief_id, animal: a })}
                                             disabled={!canSlaughter || busy === `animal-slaughter-${a.id}`}
@@ -3834,6 +3864,7 @@ const KingdomTab: React.FC<Props> = ({
                                           >
                                             {boundTo ? '⚔️ Assigned' : def?.unslaughterable ? '🛡️ Protected' : a.is_adult ? `🔪 Slaughter · +${meatYield}` : 'Too young'}
                                           </button>
+                                          )}
                                         </div>
                                       );
                                     })}

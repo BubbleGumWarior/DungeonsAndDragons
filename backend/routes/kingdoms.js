@@ -10055,6 +10055,41 @@ router.post('/fiefs/:id/animals/:animalId/slaughter', authenticateToken, async (
   }
 });
 
+// POST /api/kingdoms/fiefs/:id/animals/:animalId/release — set an animal free. No resources are
+// gained; this is how unslaughterable beasts (wolves, dragons, ...) and unwanted stock get culled.
+router.post('/fiefs/:id/animals/:animalId/release', authenticateToken, async (req, res) => {
+  try {
+    const fiefId = Number(req.params.id);
+    const animalId = Number(req.params.animalId);
+    if (!Number.isFinite(fiefId) || !Number.isFinite(animalId)) return res.status(400).json({ error: 'Invalid payload' });
+
+    const owned = await getFiefContext(fiefId);
+    if (!owned) return res.status(404).json({ error: 'Fief not found' });
+    if (!canManageFief(req.user, owned)) return res.status(403).json({ error: 'Not authorized to manage this fief' });
+
+    const animalResult = await pool.query(
+      `SELECT id, animal_type, sex, quality, assigned_unit_type FROM fief_animals WHERE id = $1 AND fief_id = $2`,
+      [animalId, fiefId]
+    );
+    const animal = animalResult.rows[0];
+    if (!animal) return res.status(404).json({ error: 'Animal not found in this fief' });
+    if (animal.assigned_unit_type) {
+      return res.status(400).json({ error: `This animal is bound to your ${animal.assigned_unit_type} troops and cannot be released` });
+    }
+
+    await pool.query(`DELETE FROM fief_animals WHERE id = $1`, [animalId]);
+
+    if (req.io) {
+      req.io.to(`campaign_${owned.campaign_id}`).emit('kingdomDataChanged', { campaignId: owned.campaign_id, fiefId });
+    }
+
+    res.json({ released: animal });
+  } catch (error) {
+    console.error('Error releasing animal:', error);
+    res.status(500).json({ error: 'Failed to release animal' });
+  }
+});
+
 // POST /api/kingdoms/fiefs/:id/animals/auto-slaughter — set (or clear) the desired adult
 // headcount for one animal type. Once set, the daily tick (see Campaign.advanceDays) keeps
 // the adult count for that type at or below it: whenever a juvenile matures into an adult
