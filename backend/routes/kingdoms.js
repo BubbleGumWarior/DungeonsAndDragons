@@ -9548,19 +9548,19 @@ const ANIMAL_TYPES = {
   // Breedable like any other livestock, but kept as a working/companion animal rather
   // than food stock — unslaughterable blocks it in both the manual slaughter route and
   // the auto-slaughter feature (see below).
-  wolf: { key: 'wolf', name: 'Wolf', category: 'livestock', purchaseCost: 260, slaughterMeatBase: 0, nurseryWeight: 0.5, unslaughterable: true },
+  wolf: { key: 'wolf', name: 'Wolf', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 0.5, stableSlots: 0.5, unslaughterable: true },
 
   // ── Exotic beasts — DM-granted only ──
   // dmOnly blocks the purchase route (see below); the DM seeds the founding stock via
   // dm-add, after which the herd breeds like any other (Nursery room, Farming-lane
   // upkeep). They have no Stable/Farm capacity of their own and can't be slaughtered.
-  dragon: { key: 'dragon', name: 'Dragon', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 4, unslaughterable: true },
-  spinosaurus: { key: 'spinosaurus', name: 'Spinosaurus', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 3, unslaughterable: true },
-  t_rex: { key: 't_rex', name: 'T-Rex', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 4, unslaughterable: true },
-  triceratops: { key: 'triceratops', name: 'Triceratops', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 3, unslaughterable: true },
-  pteranodon: { key: 'pteranodon', name: 'Pteranodon', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 1, unslaughterable: true },
-  quetzalcoatlus: { key: 'quetzalcoatlus', name: 'Quetzalcoatlus', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 2, unslaughterable: true },
-  raptor: { key: 'raptor', name: 'Raptor', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 0.5, unslaughterable: true },
+  dragon: { key: 'dragon', name: 'Dragon', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 4, stableSlots: 8, unslaughterable: true },
+  spinosaurus: { key: 'spinosaurus', name: 'Spinosaurus', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 3, stableSlots: 5, unslaughterable: true },
+  t_rex: { key: 't_rex', name: 'T-Rex', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 4, stableSlots: 6, unslaughterable: true },
+  triceratops: { key: 'triceratops', name: 'Triceratops', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 3, stableSlots: 4, unslaughterable: true },
+  pteranodon: { key: 'pteranodon', name: 'Pteranodon', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 1, stableSlots: 2, unslaughterable: true },
+  quetzalcoatlus: { key: 'quetzalcoatlus', name: 'Quetzalcoatlus', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 2, stableSlots: 3, unslaughterable: true },
+  raptor: { key: 'raptor', name: 'Raptor', category: 'exotic', dmOnly: true, purchaseCost: 0, slaughterMeatBase: 0, nurseryWeight: 0.5, stableSlots: 1, unslaughterable: true },
 };
 
 // Each tier doubles the previous tier's capacity: 20 -> 40 -> 80 -> 160.
@@ -9837,7 +9837,15 @@ router.post('/fiefs/:id/animals/purchase', authenticateToken, async (req, res) =
     const animals = await getFiefAnimalsDetailed(fiefId, currentDay);
     // Purchased animals are always adults, so only adults of this category compete for
     // Stable/Farm capacity — juveniles live in the Nursery instead.
-    const currentCategoryTotal = animals.filter((a) => a.is_adult && ANIMAL_TYPES[a.animal_type]?.category === animalDef.category).length;
+    // DM-granted exotic beasts are housed in the Stable alongside horses; bigger beasts take
+    // more than one horse's worth of room (ANIMAL_TYPES[type].stableSlots, default 1).
+    const stableUsed = animals.reduce((sum, a) => {
+      if (!a.is_adult) return sum;
+      const def = ANIMAL_TYPES[a.animal_type];
+      if (animalDef.category === 'horse') return def?.category === 'horse' || def?.category === 'exotic' ? sum + (def.stableSlots ?? 1) : sum;
+      return def?.category === animalDef.category ? sum + 1 : sum;
+    }, 0);
+    const currentCategoryTotal = Math.round(stableUsed * 100) / 100;
     if (currentCategoryTotal + count > capacity) {
       return res.status(400).json({ error: `Not enough capacity: ${currentCategoryTotal}/${capacity} used, cannot add ${count}` });
     }

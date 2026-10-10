@@ -1580,6 +1580,8 @@ export interface AnimalTypeDefinition {
   purchaseCost: number;
   slaughterMeatBase: number;
   nurseryWeight: number;
+  /** Exotic beasts only: how much Stable (horse) capacity one adult takes. A horse is 1. */
+  stableSlots?: number;
   unslaughterable?: boolean;
   /** Can't be bought — only the DM can grant them (dm-add), after which they breed normally. */
   dmOnly?: boolean;

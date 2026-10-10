@@ -654,6 +654,13 @@ const KingdomTab: React.FC<Props> = ({
   // Auto-slaughter: keyed by `${fiefId}:${animalType}` — tracks the inline edit popover
   // (open/value) for "keep this many adults" per fief+type group.
   const [autoSlaughterEditingKey, setAutoSlaughterEditingKey] = useState<string | null>(null);
+  // `${fiefId}:${animalType}` keys whose individual animal cards are collapsed to just the header.
+  const [collapsedAnimalGroups, setCollapsedAnimalGroups] = useState<Set<string>>(new Set());
+  const toggleAnimalGroup = (key: string) => setCollapsedAnimalGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
   const [autoSlaughterInputs, setAutoSlaughterInputs] = useState<Record<string, number>>({});
   const [showLegendaryCreateModal, setShowLegendaryCreateModal] = useState(false);
   const [legendaryForm, setLegendaryForm] = useState({
@@ -3465,10 +3472,14 @@ const KingdomTab: React.FC<Props> = ({
                   {animalFiefs.map((fief) => {
                     const grouped = groupAnimalsByType(fief.animals);
                     // Adults compete for Stable/Farm capacity; juveniles live in the Nursery instead.
-                    const horseUsed = fief.animals.filter((a) => a.is_adult && animalTypes[a.animal_type]?.category === 'horse').length;
+                    // DM-granted exotic beasts are housed in the Stable too, so they take horse capacity.
+                    // Bigger beasts take more than one horse's worth of room (stableSlots); wolves take half.
+                    const horseUsed = Math.round(fief.animals
+                      .filter((a) => a.is_adult && (animalTypes[a.animal_type]?.category === 'horse' || animalTypes[a.animal_type]?.category === 'exotic'))
+                      .reduce((sum, a) => sum + (animalTypes[a.animal_type]?.stableSlots ?? 1), 0) * 100) / 100;
                     const livestockUsed = fief.animals.filter((a) => a.is_adult && animalTypes[a.animal_type]?.category === 'livestock').length;
-                    // Exotic beasts are DM-granted and have no Stable/Farm cap, so they get a plain headcount.
                     const exoticCount = fief.animals.filter((a) => animalTypes[a.animal_type]?.category === 'exotic').length;
+                    const exoticAdultCount = fief.animals.filter((a) => a.is_adult && animalTypes[a.animal_type]?.category === 'exotic').length;
                     // Nursery room is weighted "slots", not raw headcount — a calf takes a full
                     // slot, a rabbit kit takes 1/8th (see ANIMAL_TYPES[type].nurseryWeight).
                     const juvenileUsedUnitsRaw = fief.animals
@@ -3585,12 +3596,12 @@ const KingdomTab: React.FC<Props> = ({
                             );
                           })}
                           {exoticCount > 0 && (
-                            <div title="Granted by the DM — no Stable or Farm capacity needed, but the young still need Nursery room">
+                            <div title="Granted by the DM — adults are housed in the Stable and count toward Horse capacity; the young need Nursery room">
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
                                 <span>🐉 Exotic Beasts</span>
                                 <span style={{ color: '#c4b5fd', fontWeight: 700 }}>{exoticCount}</span>
                               </div>
-                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>DM-granted · no housing limit</div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>DM-granted · {exoticAdultCount} adult{exoticAdultCount === 1 ? '' : 's'} housed in the Stable (big beasts take several slots)</div>
                             </div>
                           )}
                         </div>
@@ -3610,12 +3621,19 @@ const KingdomTab: React.FC<Props> = ({
                               const isEditingAuto = autoSlaughterEditingKey === autoKey;
                               const autoBusyKey = `animal-auto-slaughter-${autoKey}`;
                               const adultCount = animals.filter((a) => a.is_adult).length;
+                              const isCollapsed = collapsedAnimalGroups.has(autoKey);
                               return (
                                 <div key={type} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem', padding: '0.6rem 0.7rem' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                                      {ANIMAL_ICONS[type] || '🐾'} {def?.name || type} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>× {animals.length}</span>
-                                    </span>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isCollapsed ? 0 : '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                    <button
+                                      onClick={() => toggleAnimalGroup(autoKey)}
+                                      aria-expanded={!isCollapsed}
+                                      title={isCollapsed ? 'Show individual animals' : 'Collapse to just the total'}
+                                      style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-secondary)' }}
+                                    >
+                                      <span style={{ display: 'inline-block', width: '0.9rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{isCollapsed ? '▶' : '▼'}</span>
+                                      <span>{ANIMAL_ICONS[type] || '🐾'} {def?.name || type} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>× {animals.length}</span></span>
+                                    </button>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                       <span style={{ fontSize: '0.76rem', color: getQualityColor(avgQuality), fontWeight: 700 }}>avg {avgQuality}% quality</span>
                                       {def?.unslaughterable ? null : isEditingAuto ? (
@@ -3676,7 +3694,7 @@ const KingdomTab: React.FC<Props> = ({
                                       )}
                                     </div>
                                   </div>
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: '0.55rem' }}>
+                                  {!isCollapsed && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: '0.55rem' }}>
                                     {animals.map((a) => {
                                       const isPregnant = a.pregnant_due_day != null;
                                       const dueInDays = isPregnant ? Math.max(0, a.pregnant_due_day! - currentAnimalDay) : null;
@@ -3776,7 +3794,7 @@ const KingdomTab: React.FC<Props> = ({
                                         </div>
                                       );
                                     })}
-                                  </div>
+                                  </div>}
                                 </div>
                               );
                             })}

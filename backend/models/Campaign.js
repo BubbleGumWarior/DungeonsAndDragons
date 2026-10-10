@@ -47,9 +47,9 @@ class Campaign {
   // ── Animal Management (mirrors backend/routes/kingdoms.js exactly) ────────
   static ANIMAL_CATEGORY_BY_TYPE = {
     riding_horse: 'horse', draft_horse: 'horse', plough_horse: 'horse', courser: 'horse', war_horse: 'horse', destrier: 'horse',
-    chicken: 'livestock', duck: 'livestock', goose: 'livestock', rabbit: 'livestock', sheep: 'livestock', goat: 'livestock', pig: 'livestock', ox: 'livestock', cow: 'livestock', wolf: 'livestock',
+    chicken: 'livestock', duck: 'livestock', goose: 'livestock', rabbit: 'livestock', sheep: 'livestock', goat: 'livestock', pig: 'livestock', ox: 'livestock', cow: 'livestock',
     // DM-granted only (dmOnly in routes/kingdoms.js) — no Stable/Farm capacity of their own.
-    dragon: 'exotic', spinosaurus: 'exotic', t_rex: 'exotic', triceratops: 'exotic', pteranodon: 'exotic', quetzalcoatlus: 'exotic', raptor: 'exotic',
+    wolf: 'exotic', dragon: 'exotic', spinosaurus: 'exotic', t_rex: 'exotic', triceratops: 'exotic', pteranodon: 'exotic', quetzalcoatlus: 'exotic', raptor: 'exotic',
   };
   // Breedable like any other animal, but can never be slaughtered (see the manual and
   // auto-slaughter routes in routes/kingdoms.js, which block it the same way).
