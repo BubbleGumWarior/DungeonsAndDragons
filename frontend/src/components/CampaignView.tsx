@@ -173,9 +173,12 @@ const PLAYER_CITY_EXTRA_IMAGES: Record<string, string[]> = {
 const getCityImageFilename = (cityName: string): string =>
   cityName.replace(/'/g, '').replace(/\s+/g, '_');
 
+// Bump when city art is replaced under the same file name, so browsers drop their cached copy.
+const CITY_ART_VERSION = 2;
+
 // City pictures are shipped as optimised WebP (see frontend/scripts/optimize-images.js).
 const getCityImagePath = (cityName: string): string =>
-  `/images/CityImages/${getCityImageFilename(cityName)}.webp`;
+  `/images/CityImages/${getCityImageFilename(cityName)}.webp?v=${CITY_ART_VERSION}`;
 
 
 
