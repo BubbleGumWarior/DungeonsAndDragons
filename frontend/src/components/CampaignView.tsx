@@ -18,7 +18,7 @@ import { classInfo } from '../data/classInfo';
 import { getChoiceOptions } from '../data/choiceOptions';
 import FigureImage from '../assets/images/Board/Figure.webp';
 import Figure4ArmsImage from '../assets/images/Board/Figure-4Arms.webp';
-import WorldMapImage from '../assets/images/Campaign/WorldMap.png';
+import WorldMapImage from '../assets/images/Campaign/WorldMap.webp';
 // BattleMapImage replaced by dynamic battle maps
 import io from 'socket.io-client';
 import { AttackModal } from './campaign/AttackModal';
