@@ -127,8 +127,6 @@ const getBattlefieldDistanceFeet = (
 // major: true => 5x base size (180px), default => 3x base size (108px)
 // playerCity: true => city has multiple images to cycle through
 const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolean; outline?: string; playerCity?: boolean }> = [
-  { name: 'North Pac',                x: 42.25,  y: 12},
-  { name: 'Northington',              x: 36,  y: 24 },
   { name: 'Westrock',                 x: 38,  y: 34},
   { name: 'Western Plain',            x: 31.5,  y: 35  },
   { name: 'Westreach',                x: 22.5,  y: 38,  major: true },
@@ -137,7 +135,6 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
   { name: 'Silva Umbra',              x: 37,  y: 50, playerCity: true },
   { name: 'Castellum in Montibus',    x: 41.5,  y: 46, playerCity: true},
   { name: 'Outreach',                 x: 18.2,  y: 60,  major: true },
-  { name: 'Morbi Haven',              x: 39,  y: 63},
   { name: "Belmont's Hold",           x: 11.25,  y: 54, playerCity: true },
   { name: 'Northreach',               x: 15,  y: 70 },
   { name: 'Southreach',               x: 18,  y: 74 },
@@ -145,10 +142,8 @@ const CITY_LOCATIONS: Array<{ name: string; x: number; y: number; major?: boolea
   { name: 'Gulltown',                 x: 38,  y: 69 },
   { name: 'Yllwyn',                   x: 43.5,  y: 78, playerCity: true },
   { name: 'Valerium',                 x: 37.25,  y: 85, major: true },
-  { name: 'Fairy Grove',              x: 28.2,  y: 75 },
   { name: 'Pass-Crown',               x: 50,  y: 46,  major: true },
   { name: "Ruk'da",                   x: 64,  y: 28 },
-  { name: "Massa Put",                x: 58,  y: 17 },
   { name: 'Eastreach',                x: 71.5,  y: 40,  major: true },
   { name: 'Ridagast',                 x: 83.25,  y: 46.5 },
   { name: 'Khairok',                  x: 74.5,  y: 49 },
