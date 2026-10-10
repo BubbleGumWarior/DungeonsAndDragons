@@ -2357,6 +2357,11 @@ export const kingdomAPI = {
     return response.data;
   },
 
+  deleteLegendaryCharacter: async (kingdomId: number, legendaryId: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/kingdoms/${kingdomId}/legendary-characters/${legendaryId}`);
+    return response.data;
+  },
+
   unassignLegendaryCharacter: async (
     fiefId: number,
     legendaryId: number

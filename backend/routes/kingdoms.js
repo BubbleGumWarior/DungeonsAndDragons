@@ -8386,6 +8386,46 @@ router.post('/:id/legendary-characters', authenticateToken, async (req, res) => 
   }
 });
 
+router.delete('/:id/legendary-characters/:legendaryId', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const kingdomId = Number(req.params.id);
+    const legendaryId = Number(req.params.legendaryId);
+    if (!Number.isFinite(kingdomId) || !Number.isFinite(legendaryId)) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const kingdom = await getKingdomContext(kingdomId);
+    if (!kingdom) return res.status(404).json({ error: 'Kingdom not found' });
+    if (Number(kingdom.dungeon_master_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    // Drop the fief assignment first so its bonuses stop applying, then the character itself.
+    await pool.query(
+      `DELETE FROM kingdom_legendary_assignments
+       WHERE legendary_id = $1
+         AND legendary_id IN (SELECT id FROM kingdom_legendary_characters WHERE id = $1 AND kingdom_id = $2)`,
+      [legendaryId, kingdomId]
+    );
+    const deleted = await pool.query(
+      `DELETE FROM kingdom_legendary_characters WHERE id = $1 AND kingdom_id = $2`,
+      [legendaryId, kingdomId]
+    );
+    if (!deleted.rowCount) return res.status(404).json({ error: 'Legendary character not found' });
+
+    if (req.io) {
+      req.io.to(`campaign_${kingdom.campaign_id}`).emit('kingdomDataChanged', { campaignId: kingdom.campaign_id, kingdomId });
+    }
+
+    res.json({ message: 'Legendary character removed' });
+  } catch (error) {
+    console.error('Error removing legendary character:', error);
+    res.status(500).json({ error: 'Failed to remove legendary character' });
+  }
+});
+
 router.post('/fiefs/:id/legendary-assignments', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {

@@ -2617,6 +2617,21 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const deleteLegendary = async (legendary: LegendaryCharacter) => {
+    if (!selectedKingdom) return;
+    if (!window.confirm(`Permanently remove ${legendary.name}? Any fief they are assigned to loses their bonuses.`)) return;
+    setBusy(`legendary-delete-${legendary.id}`);
+    try {
+      await kingdomAPI.deleteLegendaryCharacter(Number(selectedKingdom.id), legendary.id);
+      await fetchKingdomManagementData();
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to remove legendary character');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const castPrayer = async (prayerKey: string) => {
     if (!selectedKingdom) return;
     setBusy(`prayer-${prayerKey}`);
@@ -3209,6 +3224,18 @@ const KingdomTab: React.FC<Props> = ({
                                     </button>
                                   ) : <span />}
                                 </div>
+                                {isDungeonMaster && (
+                                  <div style={{ marginTop: '0.4rem', textAlign: 'right' }}>
+                                    <button
+                                      disabled={busy === `legendary-delete-${legendary.id}`}
+                                      onClick={() => deleteLegendary(legendary)}
+                                      title="DM: permanently remove this legendary character from the kingdom"
+                                      style={{ padding: '0.2rem 0.5rem', borderRadius: '0.34rem', border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: '#fca5a5', cursor: 'pointer', fontWeight: 700, fontSize: '0.72rem' }}
+                                    >
+                                      🗑️ Remove Character
+                                    </button>
+                                  </div>
+                                )}
                                 {selectedTargetFiefId > 0 && (
                                   <div style={{ marginTop: '0.22rem', color: selectedRemainingSlots <= 0 && !selectedIsCurrent ? '#fca5a5' : 'var(--text-muted)', fontSize: '0.72rem' }}>
                                     Remaining slots in target: {selectedRemainingSlots}
