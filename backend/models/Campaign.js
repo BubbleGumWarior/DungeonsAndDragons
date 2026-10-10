@@ -1393,39 +1393,29 @@ class Campaign {
 
     let generalUsed = nonOverflowUsed + foodOverflowKept + goldOverflowKept;
 
-    // Fills `stored[resource]` from `produced`, up to `dedicatedCap` first, then spills
-    // any remainder into the shared general pool (tracked via the closured generalUsed).
-    const fillDedicatedThenOverflow = (resource, produced, dedicatedCap) => {
-      if (produced <= 0) {
-        applied[resource] = 0;
-        return;
-      }
+    // Phase 1: food (Granary) and gold (Bank) fill their own dedicated pool only. Whatever does
+    // not fit is held back as a remainder and only spills into the Warehouse in phase 3, after
+    // wood/stone/minerals have claimed their room. Otherwise a food surplus (which the same day's
+    // consumption eats straight afterwards) would evict lumber from a nearly full Warehouse.
+    const fillDedicated = (resource, produced, dedicatedCap) => {
       let accepted = 0;
-      const currentStored = Math.max(0, Number(stored[resource]) || 0);
-      const roomInDedicated = Math.max(0, dedicatedCap - currentStored);
-      const toDedicated = Math.min(produced, roomInDedicated);
-      if (toDedicated > 0) {
-        stored[resource] = currentStored + toDedicated;
-        accepted += toDedicated;
-      }
-      const remainder = produced - toDedicated;
-      if (remainder > 0) {
-        const roomGeneral = Math.max(0, Number(capacity) - generalUsed);
-        const toGeneral = Math.min(remainder, roomGeneral);
-        if (toGeneral > 0) {
-          stored[resource] = (Number(stored[resource]) || 0) + toGeneral;
-          accepted += toGeneral;
-          generalUsed += toGeneral;
+      let remainder = 0;
+      if (produced > 0) {
+        const currentStored = Math.max(0, Number(stored[resource]) || 0);
+        const toDedicated = Math.min(produced, Math.max(0, dedicatedCap - currentStored));
+        if (toDedicated > 0) {
+          stored[resource] = currentStored + toDedicated;
+          accepted = toDedicated;
         }
+        remainder = produced - toDedicated;
       }
       applied[resource] = accepted;
+      return remainder;
     };
+    const foodRemainder = fillDedicated('food', Math.max(0, Number(normalizedProduced.food) || 0), foodCap);
+    const goldRemainder = fillDedicated('gold', Math.max(0, Number(normalizedProduced.gold) || 0), bankCap);
 
-    // Food (Granary) and gold (Bank) each get their dedicated pool first, then overflow.
-    fillDedicatedThenOverflow('food', Math.max(0, Number(normalizedProduced.food) || 0), foodCap);
-    fillDedicatedThenOverflow('gold', Math.max(0, Number(normalizedProduced.gold) || 0), bankCap);
-
-    // Everything else shares the general Warehouse pool only, same as before.
+    // Phase 2: wood/stone/minerals/etc. share the general Warehouse pool.
     for (const [resource, amountRaw] of Object.entries(normalizedProduced)) {
       if (resource === 'food' || resource === 'gold') continue;
       const amount = Math.max(0, Number(amountRaw) || 0);
@@ -1455,6 +1445,17 @@ class Campaign {
         generalUsed += accepted;
       }
       applied[resource] = accepted;
+    }
+
+    // Phase 3: Granary/Bank overflow takes whatever Warehouse room is still free.
+    for (const [resource, remainder] of [['food', foodRemainder], ['gold', goldRemainder]]) {
+      if (remainder <= 0) continue;
+      const toGeneral = Math.min(remainder, Math.max(0, Number(capacity) - generalUsed));
+      if (toGeneral > 0) {
+        stored[resource] = (Number(stored[resource]) || 0) + toGeneral;
+        applied[resource] = (Number(applied[resource]) || 0) + toGeneral;
+        generalUsed += toGeneral;
+      }
     }
 
     return { stored, applied };

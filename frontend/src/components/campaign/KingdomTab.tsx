@@ -4174,21 +4174,12 @@ const KingdomTab: React.FC<Props> = ({
                     { label: 'Minerals', amount: Math.max(0, Number(prodOutput.iron  || 0)) },
                   ];
 
-                  // Same fill-dedicated-then-overflow order as the backend: food, then gold,
-                  // then everything else shares whatever Warehouse room is left.
+                  // Same order as the backend: Granary/Bank fill first, then wood/stone/minerals claim
+                  // Warehouse room, and only then does leftover food/gold overflow into what remains.
                   let warehouseAvailable = Math.max(0, warehouseCap - warehouseStored);
 
-                  const foodDedicatedAvailable = Math.max(0, foodCap - foodStored);
-                  const foodToWarehouse = Math.max(0, grossFood - foodDedicatedAvailable);
-                  const foodToWarehouseAccepted = Math.min(foodToWarehouse, warehouseAvailable);
-                  warehouseAvailable = Math.max(0, warehouseAvailable - foodToWarehouseAccepted);
-                  const foodLost = Math.max(0, foodToWarehouse - foodToWarehouseAccepted);
-
-                  const goldDedicatedAvailable = Math.max(0, bankCap - goldStored);
-                  const goldToWarehouse = Math.max(0, grossGold - goldDedicatedAvailable);
-                  const goldToWarehouseAccepted = Math.min(goldToWarehouse, warehouseAvailable);
-                  warehouseAvailable = Math.max(0, warehouseAvailable - goldToWarehouseAccepted);
-                  const goldLost = Math.max(0, goldToWarehouse - goldToWarehouseAccepted);
+                  const foodToWarehouse = Math.max(0, grossFood - Math.max(0, foodCap - foodStored));
+                  const goldToWarehouse = Math.max(0, grossGold - Math.max(0, bankCap - goldStored));
 
                   const lostResources: { label: string; lost: number }[] = [];
                   for (const res of warehouseProd) {
@@ -4198,6 +4189,14 @@ const KingdomTab: React.FC<Props> = ({
                     warehouseAvailable = Math.max(0, warehouseAvailable - accepted);
                     if (lost > 0.05) lostResources.push({ label: res.label, lost });
                   }
+
+                  const foodToWarehouseAccepted = Math.min(foodToWarehouse, warehouseAvailable);
+                  warehouseAvailable = Math.max(0, warehouseAvailable - foodToWarehouseAccepted);
+                  const foodLost = Math.max(0, foodToWarehouse - foodToWarehouseAccepted);
+
+                  const goldToWarehouseAccepted = Math.min(goldToWarehouse, warehouseAvailable);
+                  warehouseAvailable = Math.max(0, warehouseAvailable - goldToWarehouseAccepted);
+                  const goldLost = Math.max(0, goldToWarehouse - goldToWarehouseAccepted);
 
                   const foodWillLose = foodLost > 0.05;
                   const goldWillLose = goldLost > 0.05;
