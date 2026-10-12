@@ -202,7 +202,7 @@ export const AddArmyDialog: React.FC<{
 
       <fieldset className="bf-field">
         <legend>Troops</legend>
-        <div><Stepper label="Troop count" min={1} max={100000} step={10} value={String(data.tempArmyTroops)}
+        <div><Stepper label="Troop count" min={1} step={10} value={String(data.tempArmyTroops)}
           onChange={v => onChange({ tempArmyTroops: parseInt(v, 10) || 1 })} /></div>
         <div className="bf-chips">
           {TROOP_QUICK.map(n => (

@@ -761,7 +761,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
 
   const saveDmEdit = async (currentTotal: number) => {
     if (!dmEdit) return;
-    const next = clampInt(dmEdit.value === '' ? 0 : dmEdit.value, 0, 999999);
+    const next = clampInt(dmEdit.value === '' ? 0 : dmEdit.value, 0, Number.MAX_SAFE_INTEGER);
     const delta = next - currentTotal;
     if (delta === 0) {
       setDmEdit(null);
@@ -785,7 +785,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
         </li>
       );
     }
-    const next = clampInt(dmEdit.value === '' ? 0 : dmEdit.value, 0, 999999);
+    const next = clampInt(dmEdit.value === '' ? 0 : dmEdit.value, 0, Number.MAX_SAFE_INTEGER);
     const delta = next - row.total;
     const fromReserve = Math.min(row.reserve, Math.max(0, -delta));
     const fromPosts = Math.max(0, -delta) - fromReserve;

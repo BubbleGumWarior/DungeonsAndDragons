@@ -67,7 +67,7 @@ interface StepperProps {
 
 const roundTo2 = (n: number) => Math.round(n * 100) / 100;
 
-export const Stepper: React.FC<StepperProps> = ({ value, onChange, min = 0, max = 9999, step = 1, suffix, disabled, label, size = 'md' }) => {
+export const Stepper: React.FC<StepperProps> = ({ value, onChange, min = 0, max = Number.MAX_SAFE_INTEGER, step = 1, suffix, disabled, label, size = 'md' }) => {
   const fractional = !Number.isInteger(step);
   const upper = Math.max(min, max);
   const clamp = (n: number) => Math.min(Math.max(fractional ? roundTo2(n) : Math.floor(n), min), upper);
@@ -90,7 +90,7 @@ export const Stepper: React.FC<StepperProps> = ({ value, onChange, min = 0, max 
         inputMode={fractional || min < 0 ? 'decimal' : 'numeric'}
         className="kt-ui-stepper-input"
         min={min}
-        max={max}
+        max={max === Number.MAX_SAFE_INTEGER ? undefined : max}
         step={fractional ? step : 1}
         value={value}
         disabled={disabled}

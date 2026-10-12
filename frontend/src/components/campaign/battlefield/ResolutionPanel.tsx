@@ -217,8 +217,8 @@ const ResolutionPanel: React.FC<ResolutionPanelProps> = ({ battle, goals, isDM, 
                   <div className="bf-edit">
                     {showCasualties && (
                       <>
-                        <label>Target casualties<Stepper label="Target casualties" size="sm" min={0} max={1000000} value={String(edit.casualties_target)} onChange={v => setEdit({ casualties_target: num(v) })} /></label>
-                        <label>Self casualties<Stepper label="Self casualties" size="sm" min={0} max={1000000} value={String(edit.casualties_self)} onChange={v => setEdit({ casualties_self: num(v) })} /></label>
+                        <label>Target casualties<Stepper label="Target casualties" size="sm" min={0} value={String(edit.casualties_target)} onChange={v => setEdit({ casualties_target: num(v) })} /></label>
+                        <label>Self casualties<Stepper label="Self casualties" size="sm" min={0} value={String(edit.casualties_self)} onChange={v => setEdit({ casualties_self: num(v) })} /></label>
                       </>
                     )}
                     {showScores && (
