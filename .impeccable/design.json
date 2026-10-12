@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-12T00:00:00.000Z",
+  "title": "Design System: Dungeons and Dragons Campaign Companion",
+  "extensions": {
+    "colorMeta": {
+      "accent-brass": { "role": "primary", "displayName": "Seasonal Brass", "canonical": "#d4c19c", "tonalRamp": ["#2e2719", "#4a3f29", "#6b5d3d", "#8f7e56", "#b09d74", "#d4c19c", "#e6d8b8", "#f4ecd9"] },
+      "accent-gold": { "role": "primary", "displayName": "Antique Gold", "canonical": "#c9a961", "tonalRamp": ["#2b2210", "#4a3a1a", "#6e5828", "#92763a", "#b09050", "#c9a961", "#e0cc96", "#f2e8cc"] },
+      "phase-plan-steel": { "role": "secondary", "displayName": "Planning Steel", "canonical": "rgb(132, 168, 204)", "tonalRamp": ["#17222e", "#273a50", "#3c5878", "#547799", "#6f94b8", "#84a8cc", "#b0c9e0", "#dce8f3"] },
+      "phase-resolve-crimson": { "role": "secondary", "displayName": "Resolution Crimson", "canonical": "rgb(226, 108, 98)", "tonalRamp": ["#341310", "#5a211c", "#82332c", "#a84840", "#c85c53", "#e26c62", "#efa099", "#f8d3cf"] },
+      "status-good": { "role": "tertiary", "displayName": "Good Green", "canonical": "rgb(124, 205, 143)", "tonalRamp": ["#14281a", "#21432b", "#336341", "#4a8559", "#62a674", "#7ccd8f", "#a7e0b4", "#d3f0da"] },
+      "status-bad": { "role": "tertiary", "displayName": "Bad Coral", "canonical": "rgb(238, 116, 106)", "tonalRamp": ["#341412", "#5c2420", "#843830", "#aa4d44", "#cc6258", "#ee746a", "#f4a59e", "#fad4d0"] },
+      "bf-ground": { "role": "neutral", "displayName": "Battlefield Ground", "canonical": "#1a160f", "tonalRamp": ["#0c0a07", "#1a160f", "#2a241a", "#3d352a", "#574d3e", "#7a6f5c", "#a29d90", "#d6d1c4"] },
+      "ink-primary": { "role": "neutral", "displayName": "Ink", "canonical": "#ffffff", "tonalRamp": ["#3a3a3a", "#5a5a5a", "#7f7f7f", "#a3a3a3", "#c4c4c4", "#e8e8e8", "#f4f4f4", "#ffffff"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Battle Title", "purpose": "Cinzel battle name in the rail head and field-manual heading." },
+      "headline": { "displayName": "Dialog Title", "purpose": "Cinzel titles for drawer dialogs and invite headings." },
+      "title": { "displayName": "Row Title", "purpose": "800-weight sans for team, army, goal and result names." },
+      "body": { "displayName": "Body", "purpose": "Descriptions, notes and form text at 0.78 to 0.88rem." },
+      "label": { "displayName": "Label", "purpose": "Tags, counts, counter bands and fact captions; sentence case." }
+    },
+    "shadows": [
+      { "name": "counter-rest", "value": "0 7px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1)", "purpose": "Army counter resting on the board." },
+      { "name": "stage-vignette", "value": "inset 0 0 90px rgba(0,0,0,0.65)", "purpose": "Stage edge darkening around the board." },
+      { "name": "board", "value": "0 18px 50px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.5)", "purpose": "Map board floating on the stage." },
+      { "name": "rail", "value": "0 14px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)", "purpose": "Command rail panel." },
+      { "name": "drawer", "value": "-24px 0 60px rgba(0,0,0,0.55), inset 1px 0 0 rgba(255,255,255,0.06)", "purpose": "Right-hand drawer dialog." },
+      { "name": "dialog-centred", "value": "0 30px 80px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.07)", "purpose": "Centred map picker and final scores." }
+    ],
+    "motion": [
+      { "name": "bf-ease", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Default easing for Battlefield transitions (0.12 to 0.45s)." },
+      { "name": "token-move", "value": "left 0.45s, top 0.45s", "purpose": "Counter travel between positions." },
+      { "name": "drawer-in", "value": "0.32s bf-drawer", "purpose": "Drawer slide-in; reduced-motion disables all animation." }
+    ],
+    "breakpoints": [
+      { "name": "manual-stack", "value": "860px" },
+      { "name": "rail-stack", "value": "1080px" },
+      { "name": "phone", "value": "720px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single flat accent action per phase.",
+      "html": "<button class=\"ds-btn-primary\">Advance to Resolution</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 2.15rem; padding: 0.35rem 0.8rem; border-radius: 8px; border: 1px solid rgb(var(--theme-accent-rgb, 212, 193, 156)); background: rgb(var(--theme-accent-rgb, 212, 193, 156)); color: #14110a; font: inherit; font-size: 0.9rem; font-weight: 800; cursor: pointer; transition: filter 0.18s cubic-bezier(0.16,1,0.3,1), transform 0.12s; } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid rgb(var(--theme-accent-rgb, 212, 193, 156)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Secondary action on dark translucent fill with an accent hairline.",
+      "html": "<button class=\"ds-btn\">Choose map</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.15rem; padding: 0.35rem 0.8rem; border-radius: 8px; border: 1px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.36); background: rgba(14,13,10,0.82); color: #e8e8e8; font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.18s, border-color 0.18s, color 0.18s; } .ds-btn:hover { background: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.09); border-color: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.6); color: #fff; } .ds-btn:focus-visible { outline: 2px solid rgb(var(--theme-accent-rgb, 212, 193, 156)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Pill choice with pressed state, used instead of dropdowns.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Archers</button>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; min-height: 2.1rem; padding: 0.3rem 0.8rem; border: 1px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.36); border-radius: 999px; background: transparent; color: #e8e8e8; font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; } .ds-chip:hover { border-color: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.65); color: #fff; } .ds-chip[aria-pressed='true'] { background: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.2); border-color: rgb(var(--theme-accent-rgb, 212, 193, 156)); color: #d4c19c; } .ds-chip:focus-visible { outline: 2px solid rgb(var(--theme-accent-rgb, 212, 193, 156)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "button-default",
+      "description": "Dark inset field with an accent hairline.",
+      "html": "<input class=\"ds-input\" placeholder=\"Battle name\" />",
+      "css": ".ds-input { width: 100%; box-sizing: border-box; padding: 0.55rem 0.7rem; border: 1px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.36); border-radius: 8px; background: rgba(0,0,0,0.4); color: #fff; font: inherit; font-size: 0.88rem; } .ds-input::placeholder { color: #7f7a6e; } .ds-input:focus { outline: 2px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.7); outline-offset: 1px; }"
+    },
+    {
+      "name": "Army Counter",
+      "kind": "custom",
+      "refersTo": "counter-face",
+      "description": "Square wargame counter: faction band, unit glyph, troop count, movement bar.",
+      "html": "<div class=\"ds-counter\"><span class=\"ds-counter-band\">1st Legion</span><span class=\"ds-counter-body\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/></svg><b>420</b></span><span class=\"ds-counter-move\"><i></i></span></div>",
+      "css": ".ds-counter { width: 3.7rem; overflow: hidden; border: 1.5px solid #3b82f6; border-radius: 6px; background: #15130e; box-shadow: 0 7px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1); text-align: center; transition: transform 0.18s cubic-bezier(0.16,1,0.3,1); } .ds-counter:hover { transform: translateY(-2px); } .ds-counter-band { display: block; padding: 0.18rem 0.3rem; background: #3b82f6; color: #fff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-counter-body { display: grid; justify-items: center; gap: 0.12rem; padding: 0.35rem 0.2rem 0.3rem; color: #f1ede2; } .ds-counter-body svg { color: #3b82f6; filter: brightness(1.35); } .ds-counter-body b { font-size: 0.8rem; font-weight: 800; line-height: 1; } .ds-counter-move { display: block; height: 4px; background: rgba(255,255,255,0.12); } .ds-counter-move i { display: block; width: 70%; height: 100%; background: rgb(124,205,143); }"
+    },
+    {
+      "name": "Round Track and Phase Steps",
+      "kind": "custom",
+      "refersTo": "rail",
+      "description": "Round segments plus three phase steps; the current one takes the phase tone.",
+      "html": "<div class=\"ds-round\"><span class=\"ds-round-label\">Round 2 <span>of 5</span></span><div class=\"ds-round-track\"><i data-state=\"done\"></i><i data-state=\"now\"></i><i></i><i></i><i></i></div></div><div class=\"ds-phases\"><span data-state=\"done\">Planning</span><span data-state=\"now\">Orders</span><span>Resolution</span></div>",
+      "css": ".ds-round { --phase-rgb: var(--theme-accent-rgb, 212, 193, 156); display: flex; align-items: center; gap: 0.8rem; color: #e8e8e8; font-size: 0.8rem; font-weight: 700; } .ds-round-label span { color: #a29d90; font-weight: 500; } .ds-round-track { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; } .ds-round-track i { height: 6px; border-radius: 2px; background: rgba(255,255,255,0.1); } .ds-round-track i[data-state='done'] { background: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.55); } .ds-round-track i[data-state='now'] { background: rgb(var(--phase-rgb)); box-shadow: 0 0 0 1px rgba(var(--phase-rgb), 0.4); } .ds-phases { --phase-rgb: var(--theme-accent-rgb, 212, 193, 156); display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; margin-top: 0.6rem; } .ds-phases span { position: relative; text-align: center; padding: 0.2rem 0.2rem 0.45rem; color: #a29d90; font-size: 0.78rem; font-weight: 600; } .ds-phases span::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px; background: rgba(255,255,255,0.12); } .ds-phases span[data-state='done'] { color: #e8e8e8; } .ds-phases span[data-state='done']::after { background: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.55); } .ds-phases span[data-state='now'] { color: rgb(var(--phase-rgb)); font-weight: 800; } .ds-phases span[data-state='now']::after { background: rgb(var(--phase-rgb)); }"
+    },
+    {
+      "name": "Goal Row",
+      "kind": "card",
+      "refersTo": "rail",
+      "description": "Pressed-state list button used for goals, targets, people and armies.",
+      "html": "<button class=\"ds-goal\" aria-pressed=\"true\"><span class=\"ds-goal-name\">Hold the line</span><span class=\"ds-goal-desc\">Defend current position this round.</span></button>",
+      "css": ".ds-goal { display: grid; gap: 0.2rem; width: 100%; padding: 0.7rem 0.75rem; border: 1px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.16); border-radius: 9px; background: rgba(255,255,255,0.035); color: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s, background 0.15s; } .ds-goal:hover { border-color: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.36); background: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.09); } .ds-goal[aria-pressed='true'] { border-color: rgb(var(--theme-accent-rgb, 212, 193, 156)); background: rgba(var(--theme-accent-rgb, 212, 193, 156), 0.13); } .ds-goal-name { color: #fff; font-size: 0.9rem; font-weight: 800; } .ds-goal-desc { color: #a29d90; font-size: 0.78rem; line-height: 1.45; } .ds-goal:focus-visible { outline: 2px solid rgb(var(--theme-accent-rgb, 212, 193, 156)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Tag",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Small outlined status label with good, bad, warn and info tones.",
+      "html": "<span class=\"ds-tag\" data-tone=\"good\">Locked</span>",
+      "css": ".ds-tag { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.45rem; border-radius: 4px; border: 1px solid rgba(var(--theme-accent-rgb, 212, 193, 156), 0.36); color: #e8e8e8; font-size: 0.74rem; font-weight: 700; } .ds-tag[data-tone='good'] { color: rgb(124,205,143); border-color: rgba(124,205,143,0.45); } .ds-tag[data-tone='bad'] { color: rgb(238,116,106); border-color: rgba(238,116,106,0.45); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The War Table",
+    "overview": "The app is a dark, warm-charcoal companion used in dim rooms, with one seasonal accent threaded through every border, focus ring and active state. The Battlefield tab is the clearest expression of it: the map is the table, and everything else (round track, phases, orders, dialogs) is a staff instrument at its edge. Colour is restrained; the accent means \"active\", steel means \"planning\", crimson means \"resolution\", and green/red are reserved for good/bad state. Numerals are tabular everywhere so troop counts and distances do not jitter.",
+    "keyCharacteristics": [
+      "One seasonal accent via --theme-accent-rgb; never hard-code the accent hex.",
+      "1px accent-tinted hairlines (16% rest, 36% strong) instead of filled borders.",
+      "Cinzel only for battle name, phase/dialog titles, and manual headings.",
+      "Armies are square wargame counters (faction band, lucide unit glyph, troop count, movement bar).",
+      "Cartographic details are drawn from real data: scale bar in feet, dashed movement ring, solid range ring.",
+      "Drawer dialogs keep the map visible; only catalogues and interruptions are centred."
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "The accent is the single decorative colour. Phase tones, good/bad and faction colours are information, never ornament.", "section": "colors" },
+      { "name": "The Variable Accent Rule", "body": "Accent colour is always rgb(var(--theme-accent-rgb)) or an alpha of it, so the season can re-tint the surface.", "section": "colors" },
+      { "name": "The No Gradient Buttons Rule", "body": "Buttons are flat fills. The theme's gold gradients exist for the wider app and do not appear on Battlefield controls.", "section": "colors" },
+      { "name": "The Cinzel Ration Rule", "body": "Cinzel appears only on names and titles (battle, dialog, manual, invite headings, empty-board caption). Never on buttons, tabs, table cells or figures.", "section": "typography" },
+      { "name": "The Tabular Figures Rule", "body": "Any number that changes (troops, feet, scores, rounds) sits in a tabular-numeral context.", "section": "typography" },
+      { "name": "The Seated Shadow Rule", "body": "Shadows are black, blurred and vertical; they say \"this sits on the table\". Colour glows are not used for depth.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do colour with rgb(var(--theme-accent-rgb)) and alphas of it; keep hairlines at 0.16 (rest) and 0.36 (strong).",
+      "Do keep one flat primary button per phase, with ink-on-accent text (#14110a).",
+      "Do use lucide icons at 11 to 19px, always paired with text or an accessible label.",
+      "Do use Cinzel for names and titles only, and the system sans for everything operational.",
+      "Do put task dialogs in the right drawer so the map stays visible; centre only catalogues and interruptions.",
+      "Do use steppers and pressed-state chips or list buttons for numeric and choice input.",
+      "Do show the state that decides a move (movement left, range, lock status) and respect the fog layer above the map."
+    ],
+    "donts": [
+      "Don't use emoji discs or circles for armies or factions; counters and swatches are square.",
+      "Don't use gradients on buttons or hard-offset shadows; shadows are soft, black and vertical.",
+      "Don't add new hues for status; use steel, crimson, green and coral as established.",
+      "Don't use bare number inputs or dropdowns where a stepper or chip row fits.",
+      "Don't hard-code the accent hex or the season; read it from the variable."
+    ]
+  }
+}

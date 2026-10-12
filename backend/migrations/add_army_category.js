@@ -14,6 +14,8 @@ const ALLOWED_CATEGORIES = [
   'Siege Laborer', 'Siege Apprentice', 'Ballista Crew', 'Heavy Ballista', 'Catapult Crew',
   'Trebuchet Crew', 'Siege Tower Operator', 'Bombard Crew', 'Grand Bombard',
   'Street Informant', 'Infiltrator', 'Scout', 'Master Scout', 'Spy', 'Master Spy', 'Assassin', 'Shadow Assassin',
+  // Mages and dragons
+  'Apprentice Mage', 'Battle Mage', 'Archmage', 'Wyrmling', 'Drake', 'Elder Dragon', 'Necromancer', 'Pyromancer',
 ];
 
 const toSqlStringList = (items) => items.map((c) => `'${String(c).replace(/'/g, "''")}'`).join(',\n        ');

@@ -42,16 +42,18 @@ class Battle {
         `SELECT bp.id, bp.battle_id, bp.army_id, bp.team_name, bp.faction_color, 
                 bp.is_temporary, bp.temp_army_name, bp.temp_army_category, bp.temp_army_stats,
                 bp.current_score, bp.base_score, bp.position_x, bp.position_y, bp.created_at,
-                bp.current_troops, bp.has_selected_goal,
+                bp.current_troops, bp.has_selected_goal, bp.is_summoned, bp.controller_user_id,
+                bp.current_morale, bp.max_morale, bp.has_fled, bp.fled_troops, bp.last_morale_check, bp.hidden_until_round,
                 a.name as army_name, a.category as army_category,
                 a.numbers, a.equipment, a.discipline, 
                 a.morale, a.command, a.logistics, a.player_id, 
                 COALESCE(a.total_troops, bp.temp_army_troops) as army_total_troops,
-                u.username as player_name, u.id as user_id,
+                COALESCE(u.username, cu.username) as player_name, COALESCE(u.id, bp.controller_user_id) as user_id,
                 ch.abilities as character_abilities
          FROM battle_participants bp
          LEFT JOIN armies a ON bp.army_id = a.id
          LEFT JOIN users u ON a.player_id = u.id
+         LEFT JOIN users cu ON bp.controller_user_id = cu.id
          LEFT JOIN characters ch ON ch.player_id = a.player_id AND ch.campaign_id = $2
          WHERE bp.battle_id = $1
          ORDER BY bp.team_name, bp.id`,
@@ -60,6 +62,8 @@ class Battle {
       
       battle.participants = participantsResult.rows.map(p => ({
         ...p,
+        // A hidden army cannot be seen or targeted until the round after its stealth check passes
+        is_hidden: p.hidden_until_round !== null && p.hidden_until_round !== undefined && p.hidden_until_round >= battle.current_round,
         // Ensure army_category is properly set (prefer armies table category over temp)
         army_category: p.army_category || p.temp_army_category || 'Swordsmen'
       }));
@@ -161,7 +165,10 @@ class Battle {
         );
       }
       
-      return result.rows[0];
+      await Battle.ensureMorale(battleId);
+      const advanced = result.rows[0];
+      advanced.morale_checks = await Battle.runMoraleChecks(battleId, advanced.current_round);
+      return advanced;
     } catch (error) {
       throw error;
     }
@@ -290,8 +297,15 @@ class Battle {
       casualties_self,
       score_change_target,
       score_change_self,
-      notes
+      notes,
+      morale_change_self,
+      morale_change_target
     } = updates;
+
+    // Manual (DM-ruled) goals can also shift morale; it rides along in roll_details and is applied with the goal
+    const moralePatch = {};
+    if (Number.isFinite(morale_change_self)) moralePatch.morale_change = morale_change_self;
+    if (Number.isFinite(morale_change_target)) moralePatch.morale_change_target = morale_change_target;
 
     try {
       const result = await pool.query(
@@ -301,10 +315,11 @@ class Battle {
              score_change_target = $4,
              score_change_self = $5,
              notes = COALESCE($6, notes),
+             roll_details = COALESCE(roll_details, '{}'::jsonb) || $7::jsonb,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1
          RETURNING *`,
-        [goalId, casualties_target, casualties_self, score_change_target, score_change_self, notes]
+        [goalId, casualties_target, casualties_self, score_change_target, score_change_self, notes, JSON.stringify(moralePatch)]
       );
 
       return result.rows[0];
@@ -323,6 +338,7 @@ class Battle {
 
       const goals = goalsResult.rows;
       const participantChanges = new Map();
+      const lossInfo = new Map();
 
       goals.forEach(goal => {
         const targetId = goal.target_participant_id;
@@ -365,6 +381,29 @@ class Battle {
            WHERE id = $1`,
           [participantId, finalTroops, nextScore]
         );
+        lossInfo.set(participantId, { before: currentTroops, after: finalTroops });
+      }
+
+      await Battle.applyMoraleFromGoals(battleId, goals, lossInfo);
+
+      // Stealth: a passed check hides the army for the next round; a strike gives the position away
+      for (const goal of goals) {
+        const details = goal.roll_details || {};
+        if (details.hidden) {
+          await pool.query(`UPDATE battle_participants SET hidden_until_round = $2 WHERE id = $1`, [goal.participant_id, roundNumber + 1]);
+        }
+        if (goal.goal_key === 'stealth_strike') {
+          await pool.query(`UPDATE battle_participants SET hidden_until_round = NULL WHERE id = $1`, [goal.participant_id]);
+        }
+      }
+
+      // Necromancers raise a share of what they killed as skeletons of the fallen unit line
+      const raiseNotes = await Battle.raiseDeadForGoals(battleId, goals);
+      for (const [goalId, note] of raiseNotes.entries()) {
+        await pool.query(
+          `UPDATE battle_goals SET notes = TRIM(CONCAT(COALESCE(notes, ''), ' ', $2::text)) WHERE id = $1`,
+          [goalId, note]
+        );
       }
 
       const appliedResult = await pool.query(
@@ -381,6 +420,185 @@ class Battle {
     }
   }
   
+  // Give every army without morale its starting value: a flat base plus a share per point of the morale stat.
+  static async ensureMorale(battleId) {
+    const { maxMoraleFor } = require('../utils/morale');
+    const rows = await pool.query(
+      `SELECT bp.id,
+              COALESCE(CASE WHEN bp.is_temporary THEN (bp.temp_army_stats->>'morale')::int ELSE a.morale END, 5) AS morale_stat
+       FROM battle_participants bp
+       LEFT JOIN armies a ON bp.army_id = a.id
+       WHERE bp.battle_id = $1 AND bp.current_morale IS NULL AND bp.is_summoned = FALSE`,
+      [battleId]
+    );
+    for (const row of rows.rows) {
+      const max = maxMoraleFor(row.morale_stat);
+      await pool.query(`UPDATE battle_participants SET current_morale = $2, max_morale = $2 WHERE id = $1`, [row.id, max]);
+    }
+  }
+
+  // Start-of-round saving throws. Only armies that have fallen below the break point roll; failing means they flee.
+  static async runMoraleChecks(battleId, round) {
+    const { BREAK_POINT, rollSave } = require('../utils/morale');
+    const rows = await pool.query(
+      `SELECT bp.id, bp.current_morale, bp.current_troops,
+              COALESCE(bp.temp_army_name, a.name, 'Army #' || bp.id) AS name,
+              COALESCE(CASE WHEN bp.is_temporary THEN (bp.temp_army_stats->>'morale')::int ELSE a.morale END, 5) AS morale_stat
+       FROM battle_participants bp
+       LEFT JOIN armies a ON bp.army_id = a.id
+       WHERE bp.battle_id = $1 AND bp.current_troops > 0 AND bp.is_summoned = FALSE
+         AND bp.has_fled = FALSE AND bp.current_morale IS NOT NULL AND bp.current_morale < $2`,
+      [battleId, BREAK_POINT]
+    );
+    const checks = [];
+    for (const row of rows.rows) {
+      const save = rollSave(row.current_morale, row.morale_stat);
+      const record = { round, roll: save.roll, needed: save.needed, passed: save.passed, morale: row.current_morale };
+      if (save.passed) {
+        await pool.query(`UPDATE battle_participants SET last_morale_check = $2 WHERE id = $1`, [row.id, JSON.stringify(record)]);
+      } else {
+        // The army leaves the field: no troops to command, no score to count
+        await pool.query(
+          `UPDATE battle_participants
+           SET last_morale_check = $2, has_fled = TRUE, fled_troops = current_troops, current_troops = 0, current_score = 0
+           WHERE id = $1`,
+          [row.id, JSON.stringify(record)]
+        );
+      }
+      checks.push({ participantId: row.id, name: row.name, ...record });
+    }
+    return checks;
+  }
+
+  // Morale after a round of resolved goals: losses and lost exchanges hurt, wins and quiet rounds help, rally goals restore.
+  static async applyMoraleFromGoals(battleId, goals, lossInfo) {
+    const { moraleLossForCasualties, moraleGainForKills } = require('../utils/morale');
+    const delta = new Map();
+    const add = (id, amount) => delta.set(id, (delta.get(id) || 0) + amount);
+
+    for (const [id, info] of lossInfo.entries()) {
+      const lost = info.before - info.after;
+      if (lost > 0) add(id, -moraleLossForCasualties(lost / Math.max(1, info.before)));
+    }
+
+    for (const goal of goals) {
+      const details = goal.roll_details || {};
+      if (details.morale_change) add(goal.participant_id, details.morale_change);
+      // Cutting down a large part of the enemy lifts the army that did it
+      if (goal.target_participant_id && goal.casualties_target > 0) {
+        const targetInfo = lossInfo.get(goal.target_participant_id);
+        if (targetInfo) add(goal.participant_id, moraleGainForKills(goal.casualties_target / Math.max(1, targetInfo.before)));
+      }
+      if (details.morale_change_target && goal.target_participant_id) add(goal.target_participant_id, details.morale_change_target);
+      if (goal.goal_type === 'attack' && goal.target_participant_id) {
+        const exec = lossInfo.get(goal.participant_id);
+        const target = lossInfo.get(goal.target_participant_id);
+        const execLoss = (goal.casualties_self || 0) / Math.max(1, exec ? exec.before : 1);
+        const targetLoss = (goal.casualties_target || 0) / Math.max(1, target ? target.before : 1);
+        const diff = targetLoss - execLoss;
+        if (Math.abs(diff) >= 0.03) {
+          add(diff > 0 ? goal.participant_id : goal.target_participant_id, 4);
+          add(diff > 0 ? goal.target_participant_id : goal.participant_id, -4);
+        }
+      }
+    }
+
+    // Armies that were not bloodied this round steady a little
+    const alive = await pool.query(
+      `SELECT id FROM battle_participants WHERE battle_id = $1 AND current_troops > 0 AND is_summoned = FALSE`,
+      [battleId]
+    );
+    for (const row of alive.rows) {
+      const info = lossInfo.get(row.id);
+      if (!info || info.before - info.after <= 0) add(row.id, 2);
+    }
+
+    for (const [id, amount] of delta.entries()) {
+      if (!amount) continue;
+      await pool.query(
+        `UPDATE battle_participants
+         SET current_morale = GREATEST(0, current_morale + $2)
+         WHERE id = $1 AND is_summoned = FALSE AND current_morale IS NOT NULL`,
+        [id, amount]
+      );
+    }
+  }
+
+  // Raise skeletons from the kills of resolved attack goals made by necromancers.
+  // Returns a Map of goalId -> note describing what was raised.
+  static async raiseDeadForGoals(battleId, goals) {
+    const { RAISE_DEAD } = require('../utils/battleGoals');
+    const { UNIT_TEMPLATES } = require('../utils/unitTemplates');
+    const notes = new Map();
+
+    for (const goal of goals) {
+      if (goal.goal_type !== 'attack' || !(goal.casualties_target > 0) || !goal.target_participant_id) continue;
+
+      const infoResult = await pool.query(
+        `SELECT ex.id, ex.team_name, ex.faction_color, ex.controller_user_id, ex.current_score,
+                CASE WHEN ex.is_temporary THEN ex.temp_army_category ELSE ea.category END AS category,
+                ea.player_id,
+                CASE WHEN tg.is_temporary THEN tg.temp_army_category ELSE ta.category END AS target_category,
+                tg.position_x AS target_x, tg.position_y AS target_y
+         FROM battle_participants ex
+         LEFT JOIN armies ea ON ex.army_id = ea.id
+         JOIN battle_participants tg ON tg.id = $2
+         LEFT JOIN armies ta ON tg.army_id = ta.id
+         WHERE ex.id = $1`,
+        [goal.participant_id, goal.target_participant_id]
+      );
+      const info = infoResult.rows[0];
+      if (!info || !RAISE_DEAD.categories.includes(info.category)) continue;
+
+      const raised = Math.floor(goal.casualties_target * RAISE_DEAD.percent);
+      if (raised < 1) continue;
+
+      const category = info.target_category || 'Recruit';
+      const base = (UNIT_TEMPLATES[category] && UNIT_TEMPLATES[category].stats) || { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 };
+      // Undead are poorly equipped and drilled compared with the living unit they were
+      const stats = { ...base, equipment: Math.max(1, base.equipment - 1), discipline: Math.max(1, base.discipline - 1) };
+      const statSum = stats.equipment + stats.discipline + stats.morale + stats.command + stats.logistics;
+      const scoreFor = (troops) => (Army.calculateNumbersStat(troops) * 5) + statSum;
+      const name = `Skeleton ${category}`;
+
+      const existing = await pool.query(
+        `SELECT id, current_troops FROM battle_participants
+         WHERE battle_id = $1 AND is_summoned = TRUE AND summoned_by_participant_id = $2
+           AND temp_army_category = $3 AND current_troops > 0
+         ORDER BY id LIMIT 1`,
+        [battleId, info.id, category]
+      );
+
+      if (existing.rows.length > 0) {
+        const row = existing.rows[0];
+        const nextTroops = row.current_troops + raised;
+        const delta = scoreFor(nextTroops) - scoreFor(row.current_troops);
+        await pool.query(
+          `UPDATE battle_participants
+           SET current_troops = $2, temp_army_troops = temp_army_troops + $3,
+               base_score = base_score + $4, current_score = current_score + $4
+           WHERE id = $1`,
+          [row.id, nextTroops, raised, delta]
+        );
+        notes.set(goal.id, `Raised ${raised} ${name} (reinforcing the existing skeleton army).`);
+      } else {
+        const score = scoreFor(raised);
+        await pool.query(
+          `INSERT INTO battle_participants
+             (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category,
+              temp_army_troops, temp_army_stats, position_x, position_y, base_score, current_score, current_troops,
+              is_summoned, controller_user_id, summoned_by_participant_id, current_morale, max_morale)
+           VALUES ($1, NULL, $2, $3, TRUE, $4, $5, $6, $7, $8, $9, $10, $10, $6, TRUE, $11, $12, 100, 100)`,
+          [battleId, info.team_name, info.faction_color, name, category, raised, JSON.stringify(stats),
+           Number.isFinite(Number(info.target_x)) ? Number(info.target_x) : 50, Number.isFinite(Number(info.target_y)) ? Number(info.target_y) : 50,
+           score, info.player_id || info.controller_user_id || null, info.id]
+        );
+        notes.set(goal.id, `Raised ${raised} ${name}.`);
+      }
+    }
+    return notes;
+  }
+
   // Add participant to battle
   static async addParticipant(participantData) {
     const {
@@ -437,6 +655,7 @@ class Battle {
   // Calculate and update base scores for all participants
   static async calculateBaseScores(battleId) {
     try {
+      await Battle.ensureMorale(battleId);
       // Get the current round to determine if this is the first scoring
       const battleResult = await pool.query(
         `SELECT current_round FROM battles WHERE id = $1`,
@@ -501,11 +720,37 @@ class Battle {
           );
         }
       }
+      if (isFirstRound) await Battle.applyStartingMorale(battleId);
     } catch (error) {
       throw error;
     }
   }
-  
+
+  // Compare the sides' strength once base scores exist: the stronger side starts bolder, the weaker side warier.
+  static async applyStartingMorale(battleId) {
+    const { startingMoraleShift, FLOOR_AT_START } = require('../utils/morale');
+    const rows = await pool.query(
+      `SELECT id, team_name, current_score, current_morale, max_morale, morale_shift
+       FROM battle_participants
+       WHERE battle_id = $1 AND current_troops > 0 AND is_summoned = FALSE AND current_morale IS NOT NULL`,
+      [battleId]
+    );
+    const teamStrength = {};
+    rows.rows.forEach(p => { teamStrength[p.team_name] = (teamStrength[p.team_name] || 0) + (Number(p.current_score) || 0); });
+    const teams = Object.keys(teamStrength);
+    if (teams.length < 2) return;
+    const total = teams.reduce((sum, t) => sum + teamStrength[t], 0);
+
+    for (const p of rows.rows) {
+      // The shift is applied once per army, so recalculating scores cannot stack it
+      if (p.morale_shift !== null && p.morale_shift !== undefined) continue;
+      const own = teamStrength[p.team_name];
+      const opposing = (total - own) / (teams.length - 1);
+      const shifted = Math.max(FLOOR_AT_START, p.max_morale + startingMoraleShift(own, opposing));
+      await pool.query(`UPDATE battle_participants SET current_morale = $2, max_morale = $2, morale_shift = $3 WHERE id = $1`, [p.id, shifted, shifted - p.max_morale]);
+    }
+  }
+
   // Get final battle results
   static async getBattleResults(battleId) {
     try {

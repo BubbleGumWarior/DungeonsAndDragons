@@ -51,6 +51,7 @@ async function run() {
       'Siege Laborer','Siege Apprentice','Ballista Crew','Heavy Ballista',
       'Catapult Crew','Trebuchet Crew','Siege Tower Operator','Bombard Crew','Grand Bombard',
       'Street Informant','Infiltrator','Scout','Master Scout','Spy','Master Spy','Assassin','Shadow Assassin',
+      'Apprentice Mage','Battle Mage','Archmage','Wyrmling','Drake','Elder Dragon','Necromancer','Pyromancer',
     ];
     await client.query(
       `UPDATE armies SET category = 'Recruit' WHERE category NOT IN (${validCategories.map((_, i) => `$${i + 1}`).join(',')})`,
@@ -66,7 +67,8 @@ async function run() {
           'Watchman','Guard','Shield Guard','Royal Guard','Axeman','Battle Axeman',
           'Siege Laborer','Siege Apprentice','Ballista Crew','Heavy Ballista',
           'Catapult Crew','Trebuchet Crew','Siege Tower Operator','Bombard Crew','Grand Bombard',
-          'Street Informant','Infiltrator','Scout','Master Scout','Spy','Master Spy','Assassin','Shadow Assassin'
+          'Street Informant','Infiltrator','Scout','Master Scout','Spy','Master Spy','Assassin','Shadow Assassin',
+          'Apprentice Mage','Battle Mage','Archmage','Wyrmling','Drake','Elder Dragon','Necromancer','Pyromancer'
         )
       )
     `);

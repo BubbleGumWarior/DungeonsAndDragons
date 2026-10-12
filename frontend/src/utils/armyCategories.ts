@@ -23,6 +23,7 @@ export const getArmyMovementSpeed = (category: string): number => {
   if (template.baseType === 'artillery') return 50;
   if (template.baseType === 'cavalry') return 300;
   if (template.baseType === 'covert') return 150;
+  if (template.baseType === 'dragon') return 500;
   return 100;
 };
 

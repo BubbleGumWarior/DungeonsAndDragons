@@ -8,6 +8,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { pool } = require('../models/database');
 const { BATTLE_GOALS, findGoalByKey, isGoalEligible, GOAL_TYPES } = require('../utils/battleGoals');
 const { UNIT_TEMPLATES } = require('../utils/unitTemplates');
+const { simulateEngagement, simulateLogistics, simulateVanish, rollArmy, expectedRoll, baseTypeOf } = require('../utils/battleSimulation');
 
 const getArmyMovementSpeed = (category) => {
   const template = UNIT_TEMPLATES[category];
@@ -15,6 +16,7 @@ const getArmyMovementSpeed = (category) => {
   if (template.baseType === 'artillery') return 50;
   if (template.baseType === 'cavalry') return 300;
   if (template.baseType === 'covert') return 150;
+  if (template.baseType === 'dragon') return 500;
   return 100;
 };
 
@@ -403,6 +405,15 @@ router.post('/battles/:id/advance-round', authenticateToken, async (req, res) =>
         status: updatedBattle.status,
         timestamp: new Date().toISOString()
       });
+
+      if (updatedBattle.morale_checks && updatedBattle.morale_checks.length > 0) {
+        io.to(roomName).emit('battleMoraleChecks', {
+          battleId,
+          round: updatedBattle.current_round,
+          checks: updatedBattle.morale_checks,
+          timestamp: new Date().toISOString()
+        });
+      }
       
       // Also emit that we've moved to goal selection phase
       io.to(roomName).emit('battleStatusUpdated', {
@@ -795,42 +806,15 @@ router.post('/battles/:id/calculate-base-scores', authenticateToken, async (req,
   }
 });
 
-const rollD100 = () => Math.floor(Math.random() * 100) + 1;
-
-const calculateCasualties = (roll, currentTroops) => {
-  if (!currentTroops || currentTroops <= 0) return 0;
-  const percent = Math.min(25, Math.max(5, Math.round((roll / 100) * 20)));
-  return Math.max(1, Math.floor(currentTroops * (percent / 100)));
-};
-
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-
-const getScoreRatioModifier = (winnerScore, loserScore) => {
-  const safeWinner = Number.isFinite(winnerScore) ? winnerScore : 0;
-  const safeLoser = Number.isFinite(loserScore) ? loserScore : 0;
-  const ratio = (safeWinner + 1) / (safeLoser + 1);
-  return clamp(ratio, 0.6, 1.4);
-};
-
-const isDecisiveWin = (rollMargin) => rollMargin >= 30;
-
 const BATTLEFIELD_FEET_PER_PERCENT = 20 / 3;
 
-const getRangeFeet = (category) => {
-  const artilleryTypes = ['Catapults', 'Trebuchets', 'Ballistae', 'Siege Towers', 'Bombards'];
-  if (artilleryTypes.includes(category)) return 300;
-
-  const archerTypes = ['Longbowmen', 'Crossbowmen', 'Skirmishers', 'Mounted Archers'];
-  if (archerTypes.includes(category)) return 150;
-
-  return 20;
-};
-
 const getBattlefieldDistanceFeet = (attackerX, attackerY, targetX, targetY) => {
-  const ax = Number.isFinite(attackerX) ? attackerX : 50;
-  const ay = Number.isFinite(attackerY) ? attackerY : 50;
-  const tx = Number.isFinite(targetX) ? targetX : 50;
-  const ty = Number.isFinite(targetY) ? targetY : 50;
+  // Postgres returns numeric columns as strings, so coerce before checking
+  const coord = (value) => (Number.isFinite(Number(value)) && value !== null && value !== undefined ? Number(value) : 50);
+  const ax = coord(attackerX);
+  const ay = coord(attackerY);
+  const tx = coord(targetX);
+  const ty = coord(targetY);
   const deltaX = ax - tx;
   const deltaY = ay - ty;
   const distancePercent = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -895,12 +879,22 @@ router.get('/battles/:id/goals', authenticateToken, async (req, res) => {
     const campaign = await Campaign.findById(battle.campaign_id);
     const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
 
-    if (isDM || battle.status === 'resolution' || battle.status === 'completed') {
-      return res.json(goals);
+    if (isDM) return res.json(goals);
+
+    if (battle.status === 'resolution' || battle.status === 'completed') {
+      // Everyone sees the round's goals, except covert operations that the enemy should not learn about
+      const myTeams = new Set(battle.participants.filter(p => p.user_id === req.user.id).map(p => p.team_name));
+      const teamOf = (participantId) => (battle.participants.find(p => p.id === participantId) || {}).team_name;
+      const visible = goals.filter(goal => {
+        if (goal.goal_key === 'vanish') return myTeams.has(goal.team_name);
+        if (goal.goal_key === 'stealth_strike') return myTeams.has(goal.team_name) || myTeams.has(teamOf(goal.target_participant_id));
+        return true;
+      });
+      return res.json(visible);
     }
 
     const allowedParticipantIds = battle.participants
-      .filter(p => !p.is_temporary && p.user_id === req.user.id)
+      .filter(p => (!p.is_temporary || p.is_summoned) && p.user_id === req.user.id)
       .map(p => p.id);
 
     const filtered = goals.filter(goal => allowedParticipantIds.includes(goal.participant_id));
@@ -949,12 +943,15 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized to select goal for this army' });
     }
 
-    if (participant.is_temporary && !isDM) {
+    if (participant.is_temporary && !participant.is_summoned && !isDM) {
       console.log(`❌ Temporary army, not DM`);
       return res.status(403).json({ error: 'Only the Dungeon Master can select goals for temporary armies' });
     }
 
     const goalTemplate = findGoalByKey(goal_key);
+    if (goalTemplate && goalTemplate.requires_hidden && !participant.is_hidden) {
+      return res.status(400).json({ error: 'This army must be hidden first. Use Melt into the Shadows.' });
+    }
     if (!goalTemplate) {
       console.log(`❌ Invalid goal: ${goal_key}`);
       return res.status(400).json({ error: 'Invalid goal selection' });
@@ -990,6 +987,17 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
       }
       if (target.team_name === participant.team_name) {
         return res.status(400).json({ error: 'Target must be an enemy army' });
+      }
+      if (target.is_hidden && target.team_name !== participant.team_name) {
+        return res.status(400).json({ error: 'That army is hidden and cannot be targeted' });
+      }
+      if (goalTemplate.target_base_types && goalTemplate.target_base_types.length > 0) {
+        const targetCategory = target.is_temporary
+          ? (target.temp_army_category || 'Recruit')
+          : (target.army_category || target.temp_army_category || 'Recruit');
+        if (!goalTemplate.target_base_types.includes(baseTypeOf(targetCategory))) {
+          return res.status(400).json({ error: `This goal can only target: ${goalTemplate.target_base_types.join(', ')}` });
+        }
       }
     }
 
@@ -1085,12 +1093,20 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
     const goalResult = await pool.query(
       `SELECT bg.*, bp.team_name as executor_team_name, bp.is_temporary, bp.army_id, bp.current_troops, bp.current_score as executor_score,
               bp.position_x as executor_position_x, bp.position_y as executor_position_y,
-              COALESCE(bp.temp_army_category, a.category, 'Swordsmen') as executor_category,
-              a.player_id as executor_player_id,
+              COALESCE(CASE WHEN bp.is_temporary THEN bp.temp_army_category ELSE a.category END, 'Recruit') as executor_category,
+              COALESCE(bp.temp_army_name, a.name, 'Attacker') as executor_name,
+              COALESCE(a.total_troops, bp.temp_army_troops, bp.current_troops) as executor_total_troops,
+              CASE WHEN bp.is_temporary THEN bp.temp_army_stats
+                   ELSE jsonb_build_object('equipment', a.equipment, 'discipline', a.discipline, 'morale', a.morale, 'command', a.command, 'logistics', a.logistics) END as executor_stats,
+              COALESCE(a.player_id, bp.controller_user_id) as executor_player_id,
               target_bp.current_troops as target_troops,
               target_bp.current_score as target_score,
               target_bp.position_x as target_position_x, target_bp.position_y as target_position_y,
-              COALESCE(target_bp.temp_army_category, a_target.category, 'Swordsmen') as target_category
+              COALESCE(CASE WHEN target_bp.is_temporary THEN target_bp.temp_army_category ELSE a_target.category END, 'Recruit') as target_category,
+              COALESCE(target_bp.temp_army_name, a_target.name, 'Defender') as target_name,
+              COALESCE(a_target.total_troops, target_bp.temp_army_troops, target_bp.current_troops) as target_total_troops,
+              CASE WHEN target_bp.is_temporary THEN target_bp.temp_army_stats
+                   ELSE jsonb_build_object('equipment', a_target.equipment, 'discipline', a_target.discipline, 'morale', a_target.morale, 'command', a_target.command, 'logistics', a_target.logistics) END as target_stats
        FROM battle_goals bg
        LEFT JOIN battle_participants bp ON bg.participant_id = bp.id
        LEFT JOIN armies a ON bp.army_id = a.id
@@ -1108,6 +1124,10 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
     const campaign = await Campaign.findById(battle.campaign_id);
     const isDM = req.user.role === 'Dungeon Master' && campaign.dungeon_master_id === req.user.id;
 
+    const ruledByDM = !!(findGoalByKey(goal.goal_key) || {}).manual;
+    if (ruledByDM && !isDM) {
+      return res.status(403).json({ error: 'Only the Dungeon Master can rule on this goal' });
+    }
     if (!isDM && goal.executor_player_id !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized to resolve this goal' });
     }
@@ -1129,7 +1149,25 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
       notes: ''
     };
 
-    if (goal.goal_type === GOAL_TYPES.ATTACK) {
+    // Both sides as the simulation sees them
+    const executorSide = {
+      name: goal.executor_name,
+      category: goal.executor_category,
+      troops: Number(goal.current_troops) || 0,
+      totalTroops: Number(goal.executor_total_troops) || Number(goal.current_troops) || 0,
+      score: Number(goal.executor_score) || 0,
+      stats: { ...(goal.executor_stats || {}), numbers: Army.calculateNumbersStat(Number(goal.current_troops) || 0) }
+    };
+    const targetSide = goal.target_participant_id ? {
+      name: goal.target_name,
+      category: goal.target_category,
+      troops: Number(goal.target_troops) || 0,
+      totalTroops: Number(goal.target_total_troops) || Number(goal.target_troops) || 0,
+      score: Number(goal.target_score) || 0,
+      stats: { ...(goal.target_stats || {}), numbers: Army.calculateNumbersStat(Number(goal.target_troops) || 0) }
+    } : null;
+
+    if (goal.goal_type === GOAL_TYPES.ATTACK && targetSide) {
       const targetDefend = await pool.query(
         `SELECT goal_key FROM battle_goals
          WHERE battle_id = $1 AND round_number = $2 AND participant_id = $3 AND goal_type = $4
@@ -1143,105 +1181,70 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         ? findGoalByKey(targetDefend.rows[0].goal_key)
         : null;
 
+      // Each side rolls a d100 shaped by its own stats (training, equipment, morale, leadership, supply, size),
+      // so a well-drilled army usually rolls high and a green one swings. A target that did not brace is caught
+      // off guard, so the attacker keeps the better of two rolls; a braced target does the same to the attacker.
       const attackerAdvantage = targetDefend.rows.length === 0;
-      const attackerRolls = attackerAdvantage ? [rollD100(), rollD100()] : [rollD100()];
-      const defenderRolls = attackerAdvantage ? [rollD100()] : [rollD100(), rollD100()];
+      const attackerRolls = attackerAdvantage ? [rollArmy(executorSide), rollArmy(executorSide)] : [rollArmy(executorSide)];
+      const defenderRolls = attackerAdvantage ? [rollArmy(targetSide)] : [rollArmy(targetSide), rollArmy(targetSide)];
 
       const clampRoll = (roll) => Math.max(1, Math.min(100, roll));
-      const attackBonus = attackTemplate?.attack_bonus || 0;
-      const defenseBonus = defenseTemplate?.defense_bonus || 0;
+      const attackerRoll = clampRoll(Math.max(...attackerRolls) + (attackTemplate?.attack_bonus || 0));
+      const defenderRoll = clampRoll(Math.max(...defenderRolls) + (defenseTemplate?.defense_bonus || 0));
 
-      const attackerRoll = clampRoll(Math.max(...attackerRolls) + attackBonus);
-      const defenderRoll = clampRoll(Math.max(...defenderRolls) + defenseBonus);
-
-      const attackerWins = attackerRoll >= defenderRoll;
-      const losingTroops = attackerWins ? goal.target_troops : goal.current_troops;
-      const baseCasualties = calculateCasualties(attackerWins ? attackerRoll : defenderRoll, losingTroops);
-
-      const casualtyMultiplier = attackerWins
-        ? (attackTemplate?.casualty_multiplier || 1)
-        : (defenseTemplate?.casualty_multiplier || 1);
-
-      const attackerScore = Number.isFinite(goal.executor_score) ? goal.executor_score : 0;
-      const targetScore = Number.isFinite(goal.target_score) ? goal.target_score : 0;
-      const winnerScore = attackerWins ? attackerScore : targetScore;
-      const loserScore = attackerWins ? targetScore : attackerScore;
-      const scoreCasualtyMultiplier = getScoreRatioModifier(winnerScore, loserScore);
-
-      const scaledCasualties = baseCasualties > 0
-        ? Math.max(1, Math.floor(baseCasualties * casualtyMultiplier * scoreCasualtyMultiplier))
-        : 0;
-
-      const guaranteedSelfCasualties = attackTemplate?.guaranteed_casualty || 0;
-      const isAssassinate = attackTemplate?.key === 'assassinate_commander';
-
-      let scoreChangeSelf = 0;
-      let scoreChangeTarget = 0;
-
-      // Only assassinate_commander goal applies score changes to attack goals
-      if (attackTemplate?.key === 'assassinate_commander' && attackTemplate?.effect === 'decrease_target_half_score' && attackerWins) {
-        const targetScore = Math.max(0, goal.target_score || 0);
-        scoreChangeTarget = -Math.floor(targetScore / 2);
-      }
-
-      const fixedTargetCasualties = isAssassinate
-        ? (attackerWins ? 1 : 0)
-        : (attackerWins ? scaledCasualties : 0);
-
-      const rollMargin = Math.abs(attackerRoll - defenderRoll);
-      const decisiveWin = isDecisiveWin(rollMargin);
-
-      const assassinateSelfCasualties = (() => {
-        if (!isAssassinate) return 0;
-        if (!attackerWins) return Math.max(1, scaledCasualties);
-        const inverseRoll = clampRoll(101 - attackerRoll);
-        const baseSelfCasualties = calculateCasualties(inverseRoll, goal.current_troops);
-        if (baseSelfCasualties <= 0) return 0;
-        const selfMultiplier = attackTemplate?.casualty_multiplier || 1;
-        const selfScoreMultiplier = getScoreRatioModifier(targetScore, attackerScore);
-        const scaledSelf = Math.floor(baseSelfCasualties * selfMultiplier * selfScoreMultiplier);
-        if (decisiveWin) return Math.max(0, scaledSelf);
-        return Math.max(1, scaledSelf);
-      })();
-
-      const baseSelfCasualties = (() => {
-        if (isAssassinate) return assassinateSelfCasualties;
-        if (!attackerWins) return Math.max(1, scaledCasualties);
-        const selfBase = calculateCasualties(defenderRoll, goal.current_troops);
-        if (selfBase <= 0) return 0;
-        const selfScoreMultiplier = getScoreRatioModifier(targetScore, attackerScore);
-        const scaledSelf = Math.floor(selfBase * 0.5 * selfScoreMultiplier);
-        if (decisiveWin) return Math.max(0, scaledSelf);
-        return Math.max(1, scaledSelf);
-      })();
-
-      const targetRangeFeet = getRangeFeet(goal.target_category || 'Swordsmen');
       const distanceFeet = getBattlefieldDistanceFeet(
         goal.executor_position_x,
         goal.executor_position_y,
         goal.target_position_x,
         goal.target_position_y
       );
-      const targetHasRange = distanceFeet <= targetRangeFeet;
 
-      const totalSelfCasualties = targetHasRange
-        ? baseSelfCasualties + (isAssassinate ? 0 : guaranteedSelfCasualties)
-        : 0;
+      const outcome = simulateEngagement({
+        attacker: executorSide,
+        defender: targetSide,
+        attackGoal: attackTemplate,
+        defendGoal: defenseTemplate,
+        distanceFeet,
+        attackerRoll,
+        defenderRoll
+      });
 
       resolution = {
         attacker_roll: attackerRoll,
         defender_roll: defenderRoll,
         logistics_roll: null,
-        roll_details: { attacker: attackerRolls, defender: defenderRolls },
+        roll_details: {
+          attacker: attackerRolls,
+          defender: defenderRolls,
+          expected: { attacker: expectedRoll(executorSide), defender: expectedRoll(targetSide) },
+          distance_feet: Math.round(distanceFeet),
+          first_contact_exchange: outcome.firstContact,
+          routed: outcome.routed,
+          log: outcome.log
+        },
         advantage: attackerAdvantage ? 'attacker' : 'defender',
-        casualties_target: fixedTargetCasualties,
-        casualties_self: totalSelfCasualties,
-        score_change_target: scoreChangeTarget,
-        score_change_self: scoreChangeSelf,
-        notes: attackerWins
-          ? 'Attacker wins the clash.'
-          : (targetHasRange ? 'Defender repels the attack.' : 'Defender out of range; no counter-casualties.')
+        casualties_target: outcome.casualties_target,
+        casualties_self: outcome.casualties_self,
+        score_change_target: outcome.score_change_target,
+        score_change_self: outcome.score_change_self,
+        notes: outcome.summary
       };
+    } else if (goal.goal_type === GOAL_TYPES.CUSTOM && (findGoalByKey(goal.goal_key) || {}).effect === 'stealth') {
+      const enemyRows = await pool.query(
+        `SELECT COALESCE(CASE WHEN bp.is_temporary THEN (bp.temp_army_stats->>'discipline')::int ELSE a.discipline END, 5) AS discipline
+         FROM battle_participants bp LEFT JOIN armies a ON bp.army_id = a.id
+         WHERE bp.battle_id = $1 AND bp.team_name <> $2 AND bp.current_troops > 0`,
+        [battle.id, goal.executor_team_name]
+      );
+      const enemies = enemyRows.rows.map(row => ({ stats: { discipline: row.discipline } }));
+      const rawRoll = rollArmy(executorSide);
+      const check = simulateVanish({ executor: executorSide, enemies, roll: rawRoll });
+      resolution.attacker_roll = check.total;
+      resolution.defender_roll = check.dc;
+      resolution.roll_details = { stealth: true, hidden: check.success, raw: rawRoll, dc: check.dc };
+      resolution.notes = check.success
+        ? 'The army vanishes from sight. It is hidden for the next round and can use Shadow Strike.'
+        : 'The enemy spots the movement. The army stays exposed.';
     } else if (goal.goal_type === GOAL_TYPES.DEFEND) {
       const attackers = await pool.query(
         `SELECT id FROM battle_goals
@@ -1253,28 +1256,25 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
         ? 'No attackers targeted this army. Defensive stance unused.'
         : 'Defensive stance applied during attacks.';
     } else if (goal.goal_type === GOAL_TYPES.LOGISTICS) {
-      const logRoll = rollD100();
-      const template = findGoalByKey(goal.goal_key);
-      const scoreMultiplier = template?.score_multiplier || 1;
-      const percent = 0.02 + ((logRoll / 100) * 0.04);
-      const executorScore = Number.isFinite(goal.executor_score) ? goal.executor_score : 0;
-      const targetScore = Number.isFinite(goal.target_score) ? goal.target_score : 0;
-
-      if (template && template.effect === 'decrease_target') {
-        const baseDelta = Math.max(1, Math.round(targetScore * percent));
-        const adjustedDelta = Math.max(1, Math.round(baseDelta * scoreMultiplier));
-        resolution.score_change_target = -adjustedDelta;
-        resolution.score_change_self = 0;
-        resolution.notes = 'Enemy logistics disrupted.';
-      } else {
-        const baseDelta = Math.max(1, Math.round(executorScore * percent));
-        const adjustedDelta = Math.max(1, Math.round(baseDelta * scoreMultiplier));
-        resolution.score_change_self = adjustedDelta;
-        resolution.score_change_target = 0;
-        resolution.notes = 'Army logistics improved.';
-      }
+      const logRoll = rollArmy(executorSide);
+      const outcome = simulateLogistics({
+        executor: executorSide,
+        target: targetSide,
+        goal: findGoalByKey(goal.goal_key),
+        roll: logRoll
+      });
+      resolution.score_change_self = outcome.score_change_self;
+      resolution.score_change_target = outcome.score_change_target;
+      resolution.notes = outcome.notes;
+      const moraleChange = outcome.moraleChange || 0;
       resolution.logistics_roll = logRoll;
-      resolution.roll_details = { logistics: [logRoll] };
+      resolution.roll_details = { logistics: [logRoll], ...(moraleChange ? { morale_change: moraleChange } : {}) };
+    }
+
+    // Command goals use no dice: they open for the DM, who sets casualties, score and morale by hand
+    if (ruledByDM) {
+      resolution.notes = 'The DM decides the outcome of this goal.';
+      resolution.roll_details = { manual: true };
     }
 
     const updatedGoal = await Battle.resolveGoal(goal.id, resolution);
@@ -1299,7 +1299,7 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
 router.patch('/battles/:id/goals/:goalId', authenticateToken, async (req, res) => {
   try {
     const { id, goalId } = req.params;
-    const { casualties_target, casualties_self, score_change_target, score_change_self, notes } = req.body;
+    const { casualties_target, casualties_self, score_change_target, score_change_self, notes, morale_change_self, morale_change_target } = req.body;
 
     const battle = await Battle.findById(id);
     if (!battle) {
@@ -1316,7 +1316,9 @@ router.patch('/battles/:id/goals/:goalId', authenticateToken, async (req, res) =
       casualties_self: casualties_self || 0,
       score_change_target: score_change_target || 0,
       score_change_self: score_change_self || 0,
-      notes: notes || ''
+      notes: notes || '',
+      morale_change_self,
+      morale_change_target
     });
 
     const io = req.app.get('io');

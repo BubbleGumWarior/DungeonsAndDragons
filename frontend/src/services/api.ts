@@ -830,6 +830,18 @@ export interface BattleParticipant {
   logistics?: number;
   character_abilities?: any;
   has_selected_goal?: boolean;
+  // Armies raised mid-battle (necromancer skeletons): run by a player, with no armies row
+  is_summoned?: boolean;
+  controller_user_id?: number | null;
+  // Covert armies that passed a stealth check: unseen and untargetable by the enemy until the end of the next round
+  is_hidden?: boolean;
+  hidden_until_round?: number | null;
+  // Morale: starts at a flat base plus a share per point of the morale stat; below the break point an army can desert
+  current_morale?: number | null;
+  max_morale?: number | null;
+  has_fled?: boolean;
+  fled_troops?: number;
+  last_morale_check?: { round: number; roll: number; needed: number; passed: boolean; morale: number } | null;
 }
 
 // Army API
@@ -937,7 +949,7 @@ export const battleAPI = {
     return response.data;
   },
 
-  updateGoalResult: async (battleId: number, goalId: number, updates: { casualties_target: number; casualties_self: number; score_change_target: number; score_change_self: number; notes?: string }): Promise<BattleGoal> => {
+  updateGoalResult: async (battleId: number, goalId: number, updates: { casualties_target: number; casualties_self: number; score_change_target: number; score_change_self: number; notes?: string; morale_change_self?: number; morale_change_target?: number }): Promise<BattleGoal> => {
     const response = await api.patch(`/armies/battles/${battleId}/goals/${goalId}`, updates);
     return response.data;
   },

@@ -18,7 +18,7 @@ export interface BuildingRequirement {
 
 export interface UnitTemplate {
   tier: number;
-  baseType: 'infantry' | 'archer' | 'cavalry' | 'guard' | 'artillery' | 'covert';
+  baseType: 'infantry' | 'archer' | 'cavalry' | 'guard' | 'artillery' | 'covert' | 'mage' | 'dragon';
   icon: string;
   parents: string[];
   children: string[];
@@ -341,6 +341,68 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     baseDays: 48, baseCost: { gold: 100, food: 16 },
     stats: { equipment: 8, discipline: 8, morale: 7, command: 7, logistics: 7 },
   },
+
+  // ─── Mages (Arcane Academy) ───────────────────────────────────────────────
+  // No building produces these yet, so they are DM-assigned or temporary armies only.
+  'Apprentice Mage': {
+    tier: 1, baseType: 'mage', icon: '🔮',
+    parents: [], children: ['Battle Mage'],
+    buildingRequirements: [{ type: 'arcane_academy', minLevel: 1 }],
+    baseDays: 6, baseCost: { gold: 12, food: 3 },
+    stats: { equipment: 2, discipline: 3, morale: 3, command: 3, logistics: 2 },
+  },
+  'Battle Mage': {
+    tier: 2, baseType: 'mage', icon: '🔮',
+    parents: ['Apprentice Mage'], children: ['Archmage', 'Necromancer', 'Pyromancer'],
+    buildingRequirements: [{ type: 'arcane_academy', minLevel: 2 }],
+    baseDays: 14, baseCost: { gold: 30, food: 6 },
+    stats: { equipment: 4, discipline: 5, morale: 5, command: 5, logistics: 3 },
+  },
+  'Archmage': {
+    tier: 3, baseType: 'mage', icon: '🔮',
+    parents: ['Battle Mage'], children: [],
+    buildingRequirements: [{ type: 'arcane_academy', minLevel: 3 }],
+    baseDays: 30, baseCost: { gold: 80, food: 10 },
+    stats: { equipment: 6, discipline: 7, morale: 7, command: 8, logistics: 4 },
+  },
+
+  'Necromancer': {
+    tier: 3, baseType: 'mage', icon: '💀',
+    parents: ['Battle Mage'], children: [],
+    buildingRequirements: [{ type: 'arcane_academy', minLevel: 3 }],
+    baseDays: 30, baseCost: { gold: 90, food: 10 },
+    stats: { equipment: 4, discipline: 5, morale: 7, command: 7, logistics: 5 },
+  },
+  'Pyromancer': {
+    tier: 3, baseType: 'mage', icon: '🔥',
+    parents: ['Battle Mage'], children: [],
+    buildingRequirements: [{ type: 'arcane_academy', minLevel: 3 }],
+    baseDays: 30, baseCost: { gold: 90, food: 10 },
+    stats: { equipment: 6, discipline: 4, morale: 7, command: 6, logistics: 3 },
+  },
+
+  // ─── Dragons (Dragon Roost) ────────────────────────────────────────────────
+  'Wyrmling': {
+    tier: 1, baseType: 'dragon', icon: '🐉',
+    parents: [], children: ['Drake'],
+    buildingRequirements: [{ type: 'dragon_roost', minLevel: 1 }],
+    baseDays: 20, baseCost: { gold: 150, food: 60 },
+    stats: { equipment: 6, discipline: 3, morale: 5, command: 3, logistics: 2 },
+  },
+  'Drake': {
+    tier: 2, baseType: 'dragon', icon: '🐉',
+    parents: ['Wyrmling'], children: ['Elder Dragon'],
+    buildingRequirements: [{ type: 'dragon_roost', minLevel: 2 }],
+    baseDays: 40, baseCost: { gold: 400, food: 120 },
+    stats: { equipment: 8, discipline: 5, morale: 7, command: 4, logistics: 3 },
+  },
+  'Elder Dragon': {
+    tier: 3, baseType: 'dragon', icon: '🐲',
+    parents: ['Drake'], children: [],
+    buildingRequirements: [{ type: 'dragon_roost', minLevel: 3 }],
+    baseDays: 90, baseCost: { gold: 1200, food: 300 },
+    stats: { equipment: 10, discipline: 6, morale: 9, command: 6, logistics: 4 },
+  },
 };
 
 /** Check whether a template is unlocked given a set of completed fief buildings. */
@@ -373,4 +435,6 @@ export const ARMY_CATEGORY_GROUPS: Record<string, string[]> = {
   'Guards':    ['Watchman', 'Guard', 'Shield Guard', 'Royal Guard', 'Axeman', 'Battle Axeman'],
   'Artillery': ['Siege Laborer', 'Siege Apprentice', 'Ballista Crew', 'Heavy Ballista', 'Catapult Crew', 'Trebuchet Crew', 'Siege Tower Operator', 'Bombard Crew', 'Grand Bombard'],
   'Covert':    ['Street Informant', 'Infiltrator', 'Scout', 'Master Scout', 'Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'],
+  'Mages':     ['Apprentice Mage', 'Battle Mage', 'Archmage', 'Necromancer', 'Pyromancer'],
+  'Dragons':   ['Wyrmling', 'Drake', 'Elder Dragon'],
 };

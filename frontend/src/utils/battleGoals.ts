@@ -18,6 +18,9 @@ export interface BattleGoalDefinition {
 	eligible_categories?: string[];
 	lock_reason?: string; // Reason why a unit can't use this goal
 	score_requirement?: ScoreRequirement; // Score delta required vs target
+	requires_hidden?: boolean; // only usable while the army is hidden
+	manual?: boolean; // no dice: the DM rules on the outcome
+	target_base_types?: string[]; // only armies of these unit lines can be targeted
 	guaranteed_casualty?: number; // Guaranteed casualties from this goal (e.g., assassinate always costs 1)
 }
 
@@ -95,6 +98,61 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			target_type: 'enemy',
 			eligible_categories: ['Pikeman', 'Greatsword Master', 'Knight', 'Heavy Cavalry', 'Royal Guard'],
 			score_requirement: { method: 'ahead', delta: 8 }
+		},
+		{
+			key: 'arcane_blast',
+			name: 'Arcane Blast',
+			description: 'Hurl a bolt of raw arcane force at a target within reach.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Apprentice Mage', 'Battle Mage', 'Archmage', 'Necromancer', 'Pyromancer'],
+			lock_reason: 'Requires mages'
+		},
+		{
+			key: 'chain_lightning',
+			name: 'Chain Lightning',
+			description: 'Lightning arcs through the enemy ranks, punishing a packed formation.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Battle Mage', 'Archmage', 'Necromancer', 'Pyromancer'],
+			lock_reason: 'Requires battle mages or better'
+		},
+		{
+			key: 'dragon_sweep',
+			name: 'Sweep Attack',
+			description: 'A wing and tail sweep across the front rank that scatters the line.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Wyrmling', 'Drake', 'Elder Dragon'],
+			lock_reason: 'Requires dragons'
+		},
+		{
+			key: 'fire_breath',
+			name: 'Fire Breath',
+			description: 'A cone of dragonfire that scorches everything in front of the dragon.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Drake', 'Elder Dragon'],
+			lock_reason: 'Requires a drake or elder dragon',
+			score_requirement: { method: 'ahead', delta: 4 }
+		},
+		{
+			key: 'necrotic_blast',
+			name: 'Necrotic Blast',
+			description: 'Blast the enemy with deathly energy. Roughly four in ten of the dead rise again as skeletons of their own unit line under your command.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Necromancer'],
+			lock_reason: 'Requires a necromancer'
+		},
+		{
+			key: 'cataclysmic_fireball',
+			name: 'Cataclysmic Fireball',
+			description: 'Detonate a colossal fireball over the enemy host. Devastating, but the blast scorches your own ranks too.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Pyromancer'],
+			lock_reason: 'Requires a pyromancer'
 		}
 	],
 	defending: [
@@ -157,6 +215,33 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			target_type: 'self',
 			eligible_categories: ['Scout', 'Master Scout', 'Lancer', 'Man-at-Arms', 'Skirmisher', 'Ranger', 'Mounted Archer', 'Horse Archer'],
 			lock_reason: 'Requires fast, mobile units'
+		},
+		{
+			key: 'arcane_ward',
+			name: 'Arcane Ward',
+			description: 'Weave a shimmering ward that absorbs the first blows of the enemy.',
+			goal_type: 'defend',
+			target_type: 'self',
+			eligible_categories: ['Apprentice Mage', 'Battle Mage', 'Archmage', 'Necromancer', 'Pyromancer'],
+			lock_reason: 'Requires mages'
+		},
+		{
+			key: 'dragon_hide',
+			name: 'Dragon Hide',
+			description: 'Scaled hide turns aside blades and arrows while the dragon stands its ground.',
+			goal_type: 'defend',
+			target_type: 'self',
+			eligible_categories: ['Wyrmling', 'Drake', 'Elder Dragon'],
+			lock_reason: 'Requires dragons'
+		},
+		{
+			key: 'bone_ward',
+			name: 'Bone Ward',
+			description: 'A rattling wall of bone shields the army and soaks up the enemy blows.',
+			goal_type: 'defend',
+			target_type: 'self',
+			eligible_categories: ['Necromancer'],
+			lock_reason: 'Requires a necromancer'
 		}
 	],
 	logistics: [
@@ -234,6 +319,14 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			target_type: 'self',
 			effect: 'increase_self',
 			eligible_categories: ['Knight', 'Royal Guard', 'Soldier', 'Shield Guard', 'Pikeman']
+		},
+		{
+			key: 'steady_the_ranks',
+			name: 'Steady the Ranks',
+			description: 'Rest, rations and rousing words restore the army\'s nerve. Use it before a wavering army breaks and flees.',
+			goal_type: 'logistics',
+			target_type: 'self',
+			eligible_categories: []
 		}
 	],
 	custom: [
@@ -246,8 +339,65 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			eligible_categories: []
 		}
 	],
-	commander: [],
+	commander: [
+		{
+			key: 'duel_commander',
+			name: 'Challenge the Commander to a Duel',
+			description: 'Call out the enemy commander for single combat in front of both armies. The DM rules on who falls, who yields and how the watching armies take it.',
+			goal_type: 'commander',
+			target_type: 'enemy',
+			manual: true,
+			eligible_categories: []
+		},
+		{
+			key: 'bodyguard_charge',
+			name: 'Bodyguard Charge',
+			description: 'Lead your commander\'s bodyguards in a charge straight at the enemy commander and the guards around them. The DM rules on the clash.',
+			goal_type: 'commander',
+			target_type: 'enemy',
+			manual: true,
+			eligible_categories: []
+		},
+		{
+			key: 'pick_off_stragglers',
+			name: 'Pick Off Stragglers',
+			description: 'Hunt down scattered, wounded and lagging enemies at the edge of their formation. The DM decides how many fall and what it costs.',
+			goal_type: 'commander',
+			target_type: 'enemy',
+			manual: true,
+			eligible_categories: []
+		},
+		{
+			key: 'slay_dragon',
+			name: 'Attack the Dragon',
+			description: 'Bring the full weight of the army to bear on a dragon with ballistae, spears and fire. The DM rules how the beast and its attackers fare.',
+			goal_type: 'commander',
+			target_type: 'enemy',
+			manual: true,
+			eligible_categories: [],
+			target_base_types: ['dragon']
+		}
+	],
 	unique: [
+		{
+			key: 'vanish',
+			name: 'Melt into the Shadows',
+			description: 'Slip out of sight. On a success the army is hidden for the next round: the enemy cannot see it or target it, and it can use Shadow Strike. Failing leaves it exposed.',
+			goal_type: 'custom',
+			target_type: 'self',
+			eligible_categories: ['Street Informant', 'Infiltrator', 'Scout', 'Master Scout', 'Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'],
+			lock_reason: 'Requires covert units'
+		},
+		{
+			key: 'stealth_strike',
+			name: 'Shadow Strike',
+			description: 'Strike from hiding with no warning and no defence. The deadliest goal in the game, and the higher the covert rank the worse it gets. Needs the army to be hidden first.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			requires_hidden: true,
+			eligible_categories: ['Street Informant', 'Infiltrator', 'Scout', 'Master Scout', 'Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'],
+			lock_reason: 'Requires covert units'
+		},
 		{
 			key: 'assassinate_commander',
 			name: 'Assassinate Commander',
@@ -278,6 +428,26 @@ export const BATTLE_GOALS: Record<BattleGoalSection, BattleGoalDefinition[]> = {
 			eligible_categories: ['Scout', 'Master Scout'],
 			lock_reason: 'Requires Scout units',
 			score_requirement: { method: 'ahead', delta: 6 }
+		},
+		{
+			key: 'meteor_swarm',
+			name: 'Meteor Swarm',
+			description: 'An archmage calls burning stones from the sky onto the enemy host.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Archmage'],
+			lock_reason: 'Requires an archmage',
+			score_requirement: { method: 'ahead', delta: 8 }
+		},
+		{
+			key: 'dragonfire_inferno',
+			name: 'Dragonfire Inferno',
+			description: 'An elder dragon engulfs the field in a sustained firestorm.',
+			goal_type: 'attack',
+			target_type: 'enemy',
+			eligible_categories: ['Elder Dragon'],
+			lock_reason: 'Requires an elder dragon',
+			score_requirement: { method: 'ahead', delta: 8 }
 		}
 	]
 };

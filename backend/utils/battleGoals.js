@@ -106,6 +106,74 @@ const BATTLE_GOALS = {
       score_multiplier: 1.2,
       attack_bonus: 6,
       score_requirement: { method: 'ahead', delta: 8 }
+    },
+    {
+      key: 'arcane_blast',
+      name: 'Arcane Blast',
+      description: 'Hurl a bolt of raw arcane force at a target within reach.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Apprentice Mage', 'Battle Mage', 'Archmage', 'Necromancer', 'Pyromancer'],
+      casualty_multiplier: 1.2,
+      score_multiplier: 1.1,
+      attack_bonus: 6
+    },
+    {
+      key: 'chain_lightning',
+      name: 'Chain Lightning',
+      description: 'Lightning arcs through the enemy ranks, punishing a packed formation.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Battle Mage', 'Archmage', 'Necromancer', 'Pyromancer'],
+      casualty_multiplier: 1.5,
+      score_multiplier: 1.3,
+      attack_bonus: 8
+    },
+    {
+      key: 'dragon_sweep',
+      name: 'Sweep Attack',
+      description: 'A wing and tail sweep across the front rank that scatters the line.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Wyrmling', 'Drake', 'Elder Dragon'],
+      casualty_multiplier: 1.4,
+      score_multiplier: 1.2,
+      attack_bonus: 7
+    },
+    {
+      key: 'fire_breath',
+      name: 'Fire Breath',
+      description: 'A cone of dragonfire that scorches everything in front of the dragon.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Drake', 'Elder Dragon'],
+      casualty_multiplier: 1.8,
+      score_multiplier: 1.6,
+      attack_bonus: 9,
+      score_requirement: { method: 'ahead', delta: 4 }
+    },
+    {
+      key: 'necrotic_blast',
+      name: 'Necrotic Blast',
+      description: 'Blast the enemy with deathly energy. Roughly four in ten of the dead rise again as skeletons of their own unit line under your command.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Necromancer'],
+      casualty_multiplier: 1.3,
+      score_multiplier: 1.2,
+      attack_bonus: 6
+    },
+    {
+      key: 'cataclysmic_fireball',
+      name: 'Cataclysmic Fireball',
+      description: 'Detonate a colossal fireball over the enemy host. Devastating, but the blast scorches your own ranks too.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Pyromancer'],
+      casualty_multiplier: 3,
+      score_multiplier: 2.6,
+      attack_bonus: 14,
+      guaranteed_casualty: 2
     }
   ],
   defending: [
@@ -185,6 +253,39 @@ const BATTLE_GOALS = {
       casualty_multiplier: 0.4,
       score_multiplier: 0.7,
       defense_bonus: 14
+    },
+    {
+      key: 'arcane_ward',
+      name: 'Arcane Ward',
+      description: 'Weave a shimmering ward that absorbs the first blows of the enemy.',
+      goal_type: GOAL_TYPES.DEFEND,
+      target_type: 'self',
+      eligible_categories: ['Apprentice Mage', 'Battle Mage', 'Archmage', 'Necromancer', 'Pyromancer'],
+      casualty_multiplier: 0.65,
+      score_multiplier: 0.75,
+      defense_bonus: 6
+    },
+    {
+      key: 'dragon_hide',
+      name: 'Dragon Hide',
+      description: 'Scaled hide turns aside blades and arrows while the dragon stands its ground.',
+      goal_type: GOAL_TYPES.DEFEND,
+      target_type: 'self',
+      eligible_categories: ['Wyrmling', 'Drake', 'Elder Dragon'],
+      casualty_multiplier: 0.6,
+      score_multiplier: 0.7,
+      defense_bonus: 7
+    },
+    {
+      key: 'bone_ward',
+      name: 'Bone Ward',
+      description: 'A rattling wall of bone shields the army and soaks up the enemy blows.',
+      goal_type: GOAL_TYPES.DEFEND,
+      target_type: 'self',
+      eligible_categories: ['Necromancer'],
+      casualty_multiplier: 0.65,
+      score_multiplier: 0.75,
+      defense_bonus: 6
     }
   ],
   logistics: [
@@ -267,6 +368,16 @@ const BATTLE_GOALS = {
       effect: 'increase_self',
       eligible_categories: ['Knight', 'Royal Guard', 'Soldier', 'Shield Guard', 'Pikeman'],
       score_multiplier: 1
+    },
+    {
+      key: 'steady_the_ranks',
+      name: 'Steady the Ranks',
+      description: 'Rest, rations and rousing words restore the army\'s nerve. Use it before a wavering army breaks and flees.',
+      goal_type: GOAL_TYPES.LOGISTICS,
+      target_type: 'self',
+      effect: 'restore_morale',
+      eligible_categories: [],
+      score_multiplier: 0
     }
   ],
   custom: [
@@ -281,8 +392,68 @@ const BATTLE_GOALS = {
       score_multiplier: 0
     }
   ],
-  commander: [],
+  commander: [
+    {
+      key: 'duel_commander',
+      name: 'Challenge the Commander to a Duel',
+      description: 'Call out the enemy commander for single combat in front of both armies. The DM rules on who falls, who yields and how the watching armies take it.',
+      goal_type: GOAL_TYPES.COMMANDER,
+      target_type: 'enemy',
+      manual: true, // no dice: the DM rules on the outcome
+      eligible_categories: []
+    },
+    {
+      key: 'bodyguard_charge',
+      name: 'Bodyguard Charge',
+      description: 'Lead your commander\'s bodyguards in a charge straight at the enemy commander and the guards around them. The DM rules on the clash.',
+      goal_type: GOAL_TYPES.COMMANDER,
+      target_type: 'enemy',
+      manual: true, // no dice: the DM rules on the outcome
+      eligible_categories: []
+    },
+    {
+      key: 'pick_off_stragglers',
+      name: 'Pick Off Stragglers',
+      description: 'Hunt down scattered, wounded and lagging enemies at the edge of their formation. The DM decides how many fall and what it costs.',
+      goal_type: GOAL_TYPES.COMMANDER,
+      target_type: 'enemy',
+      manual: true, // no dice: the DM rules on the outcome
+      eligible_categories: []
+    },
+    {
+      key: 'slay_dragon',
+      name: 'Attack the Dragon',
+      description: 'Bring the full weight of the army to bear on a dragon with ballistae, spears and fire. The DM rules how the beast and its attackers fare.',
+      goal_type: GOAL_TYPES.COMMANDER,
+      target_type: 'enemy',
+      manual: true, // no dice: the DM rules on the outcome
+      eligible_categories: [],
+      target_base_types: ['dragon']
+    }
+  ],
   unique: [
+    {
+      key: 'vanish',
+      name: 'Melt into the Shadows',
+      description: 'Slip out of sight. On a success the army is hidden for the next round: the enemy cannot see it or target it, and it can use Shadow Strike. Failing leaves it exposed.',
+      goal_type: GOAL_TYPES.CUSTOM,
+      target_type: 'self',
+      effect: 'stealth',
+      eligible_categories: ['Street Informant', 'Infiltrator', 'Scout', 'Master Scout', 'Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'],
+      score_multiplier: 0
+    },
+    {
+      key: 'stealth_strike',
+      name: 'Shadow Strike',
+      description: 'Strike from hiding with no warning and no defence. The deadliest goal in the game, and the higher the covert rank the worse it gets. Needs the army to be hidden first.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      requires_hidden: true,
+      stealth: true,
+      eligible_categories: ['Street Informant', 'Infiltrator', 'Scout', 'Master Scout', 'Spy', 'Master Spy', 'Assassin', 'Shadow Assassin'],
+      casualty_multiplier: 6,
+      score_multiplier: 3
+    },
     {
       key: 'assassinate_commander',
       name: 'Assassinate Commander',
@@ -319,9 +490,36 @@ const BATTLE_GOALS = {
       score_multiplier: 1.8,
       attack_bonus: 14,
       score_requirement: { method: 'ahead', delta: 6 }
+    },
+    {
+      key: 'meteor_swarm',
+      name: 'Meteor Swarm',
+      description: 'An archmage calls burning stones from the sky onto the enemy host.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Archmage'],
+      casualty_multiplier: 2,
+      score_multiplier: 2.2,
+      attack_bonus: 12,
+      score_requirement: { method: 'ahead', delta: 8 }
+    },
+    {
+      key: 'dragonfire_inferno',
+      name: 'Dragonfire Inferno',
+      description: 'An elder dragon engulfs the field in a sustained firestorm.',
+      goal_type: GOAL_TYPES.ATTACK,
+      target_type: 'enemy',
+      eligible_categories: ['Elder Dragon'],
+      casualty_multiplier: 2.5,
+      score_multiplier: 2.5,
+      attack_bonus: 14,
+      score_requirement: { method: 'ahead', delta: 8 }
     }
   ]
 };
+
+// Necromancers turn a share of the troops their attacks kill into skeletons of the same unit line
+const RAISE_DEAD = { categories: ['Necromancer'], percent: 0.4 };
 
 const flattenGoals = () => Object.values(BATTLE_GOALS).flat();
 
@@ -337,6 +535,7 @@ module.exports = {
   GOAL_TYPES,
   GOAL_CATEGORIES,
   BATTLE_GOALS,
+  RAISE_DEAD,
   findGoalByKey,
   isGoalEligible
 };
