@@ -17,9 +17,10 @@ class Campaign {
   static WORKER_CAP_BUILDING_MAP = {
     wood: ['lumber_mill', 'timber_mill', 'advanced_timber_mill', 'sawmill_complex', 'industrial_sawmill', 'great_lumber_works'],
     meat: ['hunters_guild', 'hunting_lodge', 'hunters_lodge_advanced', 'tracker_lodge', 'ranger_hall', 'beastmaster_hall', 'warden_lodge', 'great_hunters_keep'],
-    // Animal Stable/Farm chains also raise the farming worker cap by +20 each —
-    // more animal infrastructure means more hands are needed to tend the herds.
-    vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault', 'animal_stable', 'grand_stable', 'royal_stud_farm', 'imperial_stud_farm', 'animal_farm', 'grand_pasture', 'livestock_ranch', 'grand_stockyards'],
+    vegetables: ['farm', 'irrigated_farm', 'granary', 'farm_advanced', 'terrace_fields', 'orchard_farms', 'fertile_estates', 'greenhouse_complex', 'hydroponic_conservatory', 'reinforced_granary', 'cold_cellar_granary', 'regional_granary', 'central_food_reserve', 'preservation_complex', 'nutrient_reserve_hall', 'strategic_food_vault', 'eternal_harvest_vault'],
+    // Herding lane: produces no resource, it only tends the herds (see ANIMALS_PER_HERDER).
+    // The Animal Stable/Farm chains raise its cap by +20 each.
+    herding: ['animal_stable', 'grand_stable', 'royal_stud_farm', 'imperial_stud_farm', 'animal_farm', 'grand_pasture', 'livestock_ranch', 'grand_stockyards'],
     stone: ['quarry', 'quarry_advanced', 'reinforced_quarry', 'deepstone_quarry', 'heavy_quarry_works', 'industrial_quarry', 'grand_quarry_complex', 'earthsplit_quarry', 'titan_quarry'],
     iron: ['mine', 'mine_advanced', 'reinforced_mine', 'crystal_mine', 'industrial_mine', 'great_foundry_mine', 'abyssal_mine', 'mythril_mine', 'primordial_core_mine'],
     gold: ['trade_post', 'market_hall', 'merchant_exchange', 'grand_bazaar', 'great_market', 'trade_consortium', 'royal_exchange', 'imperial_trade_forum'],
@@ -53,6 +54,10 @@ class Campaign {
   };
   // Breedable like any other animal, but can never be slaughtered (see the manual and
   // auto-slaughter routes in routes/kingdoms.js, which block it the same way).
+  // Every herder on the Herding lane tends this many animals (any stage). A farmer used to
+  // tend only 10, but a herder produces no food at all, so each one is worth double.
+  // Mirrored by ANIMALS_PER_HERDER in the frontend KingdomTab.
+  static ANIMALS_PER_HERDER = 20;
   static ANIMAL_UNSLAUGHTERABLE_TYPES = new Set([
     'wolf',
     'dragon', 'spinosaurus', 't_rex', 'triceratops', 'pteranodon', 'quetzalcoatlus', 'raptor',
@@ -572,7 +577,7 @@ class Campaign {
     let total = Object.values(assignments).reduce((s, v) => s + Math.max(0, Number(v) || 0), 0);
     if (total <= target) return assignments;
 
-    const removeOrder = ['building', 'research', 'faith', 'iron', 'stone', 'wood', 'vegetables', 'meat'];
+    const removeOrder = ['building', 'research', 'faith', 'iron', 'stone', 'wood', 'herding', 'vegetables', 'meat'];
     for (const lane of removeOrder) {
       if (total <= target) break;
       const current = Math.max(0, Number(assignments[lane] || 0));
@@ -853,18 +858,24 @@ class Campaign {
   // Each worker in a refining lane turns REFINING_RAW_PER_UNIT of the raw resource into one refined
   // good, REFINING_UNITS_PER_WORKER times a day. Limited by the raw stock on hand; the raw is spent
   // so a staffed workshop eats stock. Returns { lane: unitsMade }.
-  static applyRefining(storedResources, workerAssignments, tier) {
+  // Logistics buildings also boost refined goods, at only a quarter of the +5% per building they give raw
+  // lanes. The bonus is extra yield from the same raw input (the raw spent is for the base units only).
+  static LOGISTICS_REFINED_EFFECTIVENESS = 0.25;
+
+  static applyRefining(storedResources, workerAssignments, tier, logisticsLevel = 0) {
     const made = {};
     const stored = storedResources;
     const multiplier = Campaign.getTierWorkerYieldMultiplier(tier);
+    const logisticsYield = 1 + (Math.max(0, Number(logisticsLevel) || 0) * 0.05 * Campaign.LOGISTICS_REFINED_EFFECTIVENESS);
     for (const [lane, config] of Object.entries(REFINING_LANES)) {
       const workers = Math.max(0, Number((workerAssignments || {})[lane] || 0));
       if (workers <= 0) continue;
       const wanted = workers * REFINING_UNITS_PER_WORKER * multiplier;
       const rawOnHand = Math.max(0, Number(stored[config.raw] || 0));
-      const units = Math.min(wanted, rawOnHand / REFINING_RAW_PER_UNIT);
-      if (units <= 0) continue;
-      stored[config.raw] = rawOnHand - (units * REFINING_RAW_PER_UNIT);
+      const baseUnits = Math.min(wanted, rawOnHand / REFINING_RAW_PER_UNIT);
+      if (baseUnits <= 0) continue;
+      const units = baseUnits * logisticsYield;
+      stored[config.raw] = rawOnHand - (baseUnits * REFINING_RAW_PER_UNIT);
       stored[lane] = Math.max(0, Number(stored[lane] || 0)) + units;
       made[lane] = units;
     }
@@ -899,6 +910,7 @@ class Campaign {
         ...Object.keys(Campaign.HOUSING_CAPACITY_BY_TYPE),
         ...(Campaign.WORKER_CAP_BUILDING_MAP.meat || []),
         ...(Campaign.WORKER_CAP_BUILDING_MAP.vegetables || []),
+        ...(Campaign.WORKER_CAP_BUILDING_MAP.herding || []),
       ]);
     }
     return Campaign._foodPriorityTypes.has(String(buildingType || ''));
@@ -2149,7 +2161,7 @@ class Campaign {
           const slaveOutputMultiplier = 1 + (Campaign.getSlaveOutputBonusPct(completed) / 100);
 
           const effectiveAssignments = { ...(fief.workerAssignments || {}) };
-          for (const lane of ['meat', 'vegetables', 'wood', 'stone', 'iron', 'gold']) {
+          for (const lane of ['meat', 'vegetables', 'herding', 'wood', 'stone', 'iron', 'gold']) {
             effectiveAssignments[lane] =
               Math.max(0, Number(effectiveAssignments[lane] || 0))
               + (Math.max(0, Number((fief.slaveWorkerAssignments || {})[lane] || 0)) * slaveOutputMultiplier);
@@ -2312,7 +2324,7 @@ class Campaign {
           fief.storedResources = capacityApplied.stored;
 
           // Tier 6: workshops turn today's raw stock into refined goods.
-          const refined = Campaign.applyRefining(fief.storedResources, fief.workerAssignments, fief.tier);
+          const refined = Campaign.applyRefining(fief.storedResources, fief.workerAssignments, fief.tier, logisticsLevel);
           for (const [lane, units] of Object.entries(refined)) {
             resourcesGained[fief.id][lane] = (Number(resourcesGained[fief.id][lane]) || 0) + units;
           }
@@ -2444,26 +2456,17 @@ class Campaign {
             }
           }
 
-          // Animal Management: every 10 animals in this fief need 1 worker assigned to the
-          // Farming lane (the vegetables key). An understaffed herd never dies — it just can't
-          // breed or give birth (pregnancies stay overdue) until enough farmers are allocated.
-          // Slave-assigned farmers count too (see effectiveAssignments above), same as they do
-          // for production, and so do farmers locked into a growing/harvesting cycle (the lane
-          // reads as closed while locked, but those workers are still tending the herd).
+          // Animal Management: every ANIMALS_PER_HERDER animals in this fief need 1 worker
+          // assigned to the Herding lane. The lane produces no food, so herders are worth
+          // more than the farmers who used to tend herds (10 animals each). An understaffed
+          // herd never dies — it just can't breed or give birth (pregnancies stay overdue)
+          // until enough herders are allocated. Slave-assigned herders count too (see
+          // effectiveAssignments above), same as they do for production.
           let fiefAnimals = animalsByFief.get(fief.id) || [];
           let herdUnderstaffed = false;
           if (fiefAnimals.length > 0) {
-            const requiredFarmingWorkers = Math.ceil(fiefAnimals.length / 10);
-            const vegState = fief.vegetableHarvestState || {};
-            const lockedFarmingWorkers = vegState.phase && vegState.phase !== 'assigning'
-              ? Math.max(0, Number(vegState.lockedWorkers || 0))
-              : 0;
-            const assignedFarmingWorkers = Math.max(
-              0,
-              Number(effectiveAssignments.vegetables || 0),
-              lockedFarmingWorkers
-            );
-            herdUnderstaffed = assignedFarmingWorkers < requiredFarmingWorkers;
+            const requiredHerders = Math.ceil(fiefAnimals.length / Campaign.ANIMALS_PER_HERDER);
+            herdUnderstaffed = Math.max(0, Number(effectiveAssignments.herding || 0)) < requiredHerders;
           }
 
           // Animal Management — long-rest breeding cycle:
@@ -2490,7 +2493,7 @@ class Campaign {
               .filter((a) => ageOf(a.bornOnDay) < Campaign.ANIMAL_ADULT_AGE_DAYS)
               .reduce((sum, a) => sum + Campaign.getNurseryWeight(a.animalType), 0);
             for (const mother of fiefAnimals) {
-              if (herdUnderstaffed) break; // no farmers: births are put on hold, pregnancies stay overdue
+              if (herdUnderstaffed) break; // no herders: births are put on hold, pregnancies stay overdue
               if (mother.sex !== 'female' || mother.pregnantDueDay == null || mother.pregnantDueDay > dayNumber) continue;
               const avgQuality = Number.isFinite(mother.pregnancyAvgQuality) ? mother.pregnancyAvgQuality : mother.quality;
               const litterSize = Campaign.getAnimalLitterSize(mother.animalType, avgQuality);
@@ -2529,7 +2532,7 @@ class Campaign {
             for (const pair of fiefPairs) {
               pairedIds.add(pair.maleAnimalId);
               pairedIds.add(pair.femaleAnimalId);
-              if (herdUnderstaffed) continue; // no farmers: no new pregnancies
+              if (herdUnderstaffed) continue; // no herders: no new pregnancies
               const male = animalById.get(pair.maleAnimalId);
               const female = animalById.get(pair.femaleAnimalId);
               if (!male || !female || female.pregnantDueDay != null) continue;
@@ -2561,7 +2564,7 @@ class Campaign {
               else if (a.sex === 'female') bucket.females.push(a);
             }
             for (const bucket of byType.values()) {
-              if (herdUnderstaffed) break; // no farmers: no new pregnancies
+              if (herdUnderstaffed) break; // no herders: no new pregnancies
               const eligibleFemales = bucket.females.filter((f) => f.pregnantDueDay == null && (f.cooldownUntilDay == null || f.cooldownUntilDay <= dayNumber));
               if (bucket.males.length === 0 || eligibleFemales.length === 0) continue;
               const male = bucket.males[Math.floor(Math.random() * bucket.males.length)];

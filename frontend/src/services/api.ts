@@ -2235,6 +2235,7 @@ export const kingdomAPI = {
     adultAgeDays: number;
     pregnancyDays: number;
     postpartumCooldownDays: number;
+    animalsPerHerder?: number;
     currentDay: number;
     fiefs: FiefAnimalsSummary[];
   }> => {

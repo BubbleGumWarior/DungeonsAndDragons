@@ -309,6 +309,7 @@ const RESOURCE_ICONS: Record<string, string> = {
   gold: '🪙',
   meat: '🥩',
   vegetables: '🥕',
+  herding: '🐑',
   building: '🏗️',
   planks: '🪵',
   dressed_stone: '🧱',
@@ -320,6 +321,7 @@ const RESOURCE_ICONS: Record<string, string> = {
 // everywhere (DB, API payloads, calculations) — only the label shown to players changes.
 const RESOURCE_LABEL_OVERRIDES: Record<string, string> = {
   vegetables: 'Farming',
+  herding: 'Herding',
   planks: 'Planks',
   dressed_stone: 'Dressed Stone',
   steel: 'Steel',
@@ -452,8 +454,12 @@ const LOGISTICS_BUILDING_TYPES = new Set([
   'trade_route_office',
 ]);
 
-const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'meat', 'gold', 'tavern', 'research', 'faith', 'planks', 'dressed_stone', 'steel', 'mana'];
-const SLAVE_RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables'];
+const RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'herding', 'meat', 'gold', 'tavern', 'research', 'faith', 'planks', 'dressed_stone', 'steel', 'mana'];
+const SLAVE_RESOURCE_CANONICAL_ORDER = ['building', 'wood', 'iron', 'stone', 'vegetables', 'herding'];
+
+// Herding lane: each herder tends this many animals and produces no food.
+// Mirrors Campaign.ANIMALS_PER_HERDER (the server also sends it with the animals payload).
+const ANIMALS_PER_HERDER = 20;
 
 // Tier 6 refining lanes and the tier 8 mana lane. Mirrors backend/utils/kingdomTier68.js.
 const REFINING_LANES: Record<string, { raw: string }> = {
@@ -463,12 +469,14 @@ const REFINING_LANES: Record<string, { raw: string }> = {
 };
 const REFINING_RAW_PER_UNIT = 3;
 const REFINING_UNITS_PER_WORKER = 2;
+// Logistics buildings boost refined goods at a quarter of their normal +5% each (Campaign.LOGISTICS_REFINED_EFFECTIVENESS).
+const LOGISTICS_REFINED_EFFECTIVENESS = 0.25;
 const MANA_WELL_CHAIN = [
   { type: 'ley_font', rate: 8, capacity: 20 },
   { type: 'deep_mana_well', rate: 6, capacity: 20 },
   { type: 'mana_well', rate: 4, capacity: 20 },
 ];
-const EXPLICIT_UNLOCK_LANES = new Set(['meat', 'gold', 'tavern', 'planks', 'dressed_stone', 'steel', 'mana']);
+const EXPLICIT_UNLOCK_LANES = new Set(['meat', 'herding', 'gold', 'tavern', 'planks', 'dressed_stone', 'steel', 'mana']);
 
 const sortByCanonicalOrder = (keys: string[], order: string[]) =>
   [...keys].sort((a, b) => {
@@ -636,6 +644,7 @@ const KingdomTab: React.FC<Props> = ({
   const [animalFiefs, setAnimalFiefs] = useState<FiefAnimalsSummary[]>([]);
   const [currentAnimalDay, setCurrentAnimalDay] = useState(0);
   const [adultAgeDays, setAdultAgeDays] = useState(365);
+  const [animalsPerHerder, setAnimalsPerHerder] = useState(ANIMALS_PER_HERDER);
   const [pregnancyDays, setPregnancyDays] = useState(30);
   const [postpartumCooldownDays, setPostpartumCooldownDays] = useState(183);
   const [animalPurchaseForm, setAnimalPurchaseForm] = useState<Record<number, { animalType: string; qty: number }>>({});
@@ -654,9 +663,10 @@ const KingdomTab: React.FC<Props> = ({
   // Auto-slaughter: keyed by `${fiefId}:${animalType}` — tracks the inline edit popover
   // (open/value) for "keep this many adults" per fief+type group.
   const [autoSlaughterEditingKey, setAutoSlaughterEditingKey] = useState<string | null>(null);
-  // `${fiefId}:${animalType}` keys whose individual animal cards are collapsed to just the header.
-  const [collapsedAnimalGroups, setCollapsedAnimalGroups] = useState<Set<string>>(new Set());
-  const toggleAnimalGroup = (key: string) => setCollapsedAnimalGroups((prev) => {
+  // `${fiefId}:${animalType}` keys whose individual animal cards are expanded. Groups start
+  // collapsed to just the header so big herds don't render thousands of cards until opened.
+  const [expandedAnimalGroups, setExpandedAnimalGroups] = useState<Set<string>>(new Set());
+  const toggleAnimalGroup = (key: string) => setExpandedAnimalGroups((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
@@ -1060,6 +1070,7 @@ const KingdomTab: React.FC<Props> = ({
       setAnimalFiefs(res.fiefs || []);
       setCurrentAnimalDay(Number(res.currentDay || 0));
       setAdultAgeDays(Number(res.adultAgeDays || 365));
+      setAnimalsPerHerder(Math.max(1, Number(res.animalsPerHerder || ANIMALS_PER_HERDER)));
       setPregnancyDays(Number(res.pregnancyDays || 30));
       setPostpartumCooldownDays(Number(res.postpartumCooldownDays || 183));
     } catch (e: any) {
@@ -1729,6 +1740,7 @@ const KingdomTab: React.FC<Props> = ({
     const output: Record<string, number> = {
       meat: 0,
       vegetables: 0,
+      herding: 0,
       wood: 0,
       stone: 0,
       iron: 0,
@@ -1878,7 +1890,8 @@ const KingdomTab: React.FC<Props> = ({
     for (const [lane, cfg] of Object.entries(REFINING_LANES)) {
       const refiners = Math.max(0, Number(assignments[lane] || 0));
       const rawOnHand = Math.max(0, Number((fiefDetails.stored_resources as Record<string, number>)?.[cfg.raw] || 0));
-      output[lane] = Math.min(refiners * REFINING_UNITS_PER_WORKER * tierWorkerYieldMultiplier, rawOnHand / REFINING_RAW_PER_UNIT);
+      output[lane] = Math.min(refiners * REFINING_UNITS_PER_WORKER * tierWorkerYieldMultiplier, rawOnHand / REFINING_RAW_PER_UNIT)
+        * (1 + logisticsBonus * LOGISTICS_REFINED_EFFECTIVENESS);
     }
 
     for (const building of completedBuildings) {
@@ -3545,22 +3558,14 @@ const KingdomTab: React.FC<Props> = ({
                       .reduce((sum, a) => sum + (animalTypes[a.animal_type]?.nurseryWeight ?? 1), 0);
                     const juvenileUsed = Math.round(juvenileUsedUnitsRaw * 100) / 100;
 
-                    // Every 10 animals (any stage) need 1 worker on the Farming lane or the
-                    // herd can't breed or give birth (see Campaign.advanceDays).
-                    const rawFiefForFarmers = (selectedKingdom?.fiefs || []).find((f) => Number(f.id) === fief.fief_id);
-                    // Farmers locked into a growing/harvesting cycle still count, even while the lane reads as closed.
-                    const farmerState = (rawFiefForFarmers as any)?.vegetable_harvest_state;
-                    const lockedFarmers = farmerState && String(farmerState.phase || 'assigning').toLowerCase() !== 'assigning'
-                      ? Math.max(0, Number(farmerState.locked_workers || 0))
-                      : 0;
-                    const assignedFarmers = Math.max(
-                      Math.max(0, Number(rawFiefForFarmers?.worker_assignments?.vegetables || 0))
-                        + Math.max(0, Number(rawFiefForFarmers?.slave_worker_assignments?.vegetables || 0)),
-                      lockedFarmers
-                    );
-                    const requiredFarmers = Math.ceil(fief.animals.length / 10);
-                    const farmerCoveragePct = requiredFarmers > 0 ? Math.min(1, assignedFarmers / requiredFarmers) : 1;
-                    const farmersUnderstaffed = requiredFarmers > 0 && assignedFarmers < requiredFarmers;
+                    // Every `animalsPerHerder` animals (any stage) need 1 worker on the Herding lane or
+                    // the herd can't breed or give birth (see Campaign.advanceDays).
+                    const rawFiefForHerders = (selectedKingdom?.fiefs || []).find((f) => Number(f.id) === fief.fief_id);
+                    const assignedHerders = Math.max(0, Number(rawFiefForHerders?.worker_assignments?.herding || 0))
+                      + Math.max(0, Number(rawFiefForHerders?.slave_worker_assignments?.herding || 0));
+                    const requiredHerders = Math.ceil(fief.animals.length / animalsPerHerder);
+                    const herderCoveragePct = requiredHerders > 0 ? Math.min(1, assignedHerders / requiredHerders) : 1;
+                    const herdersUnderstaffed = requiredHerders > 0 && assignedHerders < requiredHerders;
 
                     const purchaseForm = getAnimalPurchaseForm(fief.fief_id, 'sheep');
                     const purchaseDef = animalTypes[purchaseForm.animalType];
@@ -3611,18 +3616,18 @@ const KingdomTab: React.FC<Props> = ({
                           </div>
                         </div>
 
-                        {requiredFarmers > 0 && (
+                        {requiredHerders > 0 && (
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
-                              <span>🌾 Farming Coverage</span>
-                              <span style={{ color: farmersUnderstaffed ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{assignedFarmers} / {requiredFarmers} farmers</span>
+                              <span>🐑 Herding Coverage</span>
+                              <span style={{ color: herdersUnderstaffed ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{assignedHerders} / {requiredHerders} herders</span>
                             </div>
                             <div className="kt-bar-track" style={{ height: '9px', borderRadius: '5px', background: 'rgba(255,255,255,0.06)' }}>
-                              <div className="kt-bar-fill" style={{ height: '100%', width: `${farmerCoveragePct * 100}%`, color: farmersUnderstaffed ? '#ef4444' : '#22c55e', borderRadius: '5px', transition: 'width 0.3s ease' }} />
+                              <div className="kt-bar-fill" style={{ height: '100%', width: `${herderCoveragePct * 100}%`, color: herdersUnderstaffed ? '#ef4444' : '#22c55e', borderRadius: '5px', transition: 'width 0.3s ease' }} />
                             </div>
-                            {farmersUnderstaffed && (
+                            {herdersUnderstaffed && (
                               <div style={{ fontSize: '0.72rem', color: '#fca5a5', fontStyle: 'italic', marginTop: '0.25rem' }}>
-                                ⚠️ Understaffed — animals can't breed or give birth until enough workers are assigned to the Farming lane (1 per 10 animals).
+                                ⚠️ Understaffed — animals can't breed or give birth until enough workers are assigned to the Herding lane (1 per {animalsPerHerder} animals).
                               </div>
                             )}
                           </div>
@@ -3679,7 +3684,7 @@ const KingdomTab: React.FC<Props> = ({
                               const isEditingAuto = autoSlaughterEditingKey === autoKey;
                               const autoBusyKey = `animal-auto-slaughter-${autoKey}`;
                               const adultCount = animals.filter((a) => a.is_adult).length;
-                              const isCollapsed = collapsedAnimalGroups.has(autoKey);
+                              const isCollapsed = !expandedAnimalGroups.has(autoKey);
                               return (
                                 <div key={type} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem', padding: '0.6rem 0.7rem' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isCollapsed ? 0 : '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
@@ -3791,7 +3796,7 @@ const KingdomTab: React.FC<Props> = ({
                                             </span>
                                             {boundTo && (
                                               <span
-                                                title={`Locked to your ${boundTo} troops: can't breed or be slaughtered, but still eats and needs farmers.`}
+                                                title={`Locked to your ${boundTo} troops: can't breed or be slaughtered, but still eats and needs herders.`}
                                                 style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '1rem', color: '#fcd34d', border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(120,53,15,0.35)' }}
                                               >
                                                 ⚔️ {boundTo}
@@ -4648,6 +4653,18 @@ const KingdomTab: React.FC<Props> = ({
                     );
                   }
 
+                  if (REFINING_LANES[key]) {
+                    const logisticsLevel = Math.max(0, Number(productionByLane.foodBreakdown.logisticsLevel || 0));
+                    if (logisticsLevel > 0) {
+                      const refinedPct = Math.round(logisticsLevel * 5 * LOGISTICS_REFINED_EFFECTIVENESS * 100) / 100;
+                      badges.push(
+                        <span key="log" title="Logistics buildings boost refined goods at 25% of their normal effect" style={{ color: '#22c55e', fontSize: '0.72rem', fontWeight: 600, cursor: 'help' }}>
+                          🏭 +{refinedPct}% logistics
+                        </span>
+                      );
+                    }
+                  }
+
                   if (currentCampaignDay && RESOURCE_KEYS.includes(key)) {
                     const logisticsLevel = Math.max(0, Number(productionByLane.foodBreakdown.logisticsLevel || 0));
                     // Logistics badge (green) — resource keys only
@@ -4758,6 +4775,23 @@ const KingdomTab: React.FC<Props> = ({
                 );
 
                 const totalCell = (key: string) => {
+                  if (key === 'herding') {
+                    // Produces nothing — show how many animals the assigned herders can tend vs the herd size.
+                    const herders = Math.max(0, Number((fiefDetails?.worker_assignments as Record<string, number> | undefined)?.herding || 0))
+                      + Math.max(0, Number((fiefDetails?.slave_worker_assignments as Record<string, number> | undefined)?.herding || 0));
+                    const tended = herders * animalsPerHerder;
+                    const herdSize = animalFiefs.find((f) => Number(f.fief_id) === Number(fiefDetails?.id))?.animals.length ?? null;
+                    const understaffed = herdSize != null && herdSize > tended;
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.1rem', padding: '0.4rem 0.6rem', height: '100%' }}>
+                        <span style={{ color: understaffed ? '#ef4444' : tended > 0 ? '#22c55e' : 'var(--text-muted)', fontWeight: 700, fontSize: '1.05rem' }}>
+                          {herdSize != null ? `${Math.min(tended, herdSize)}/${herdSize}` : tended}
+                        </span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }} title={`Each herder tends ${animalsPerHerder} animals`}>animals tended</span>
+                        <div style={{ minHeight: '1.15rem' }} />
+                      </div>
+                    );
+                  }
                   const output = Number(productionByLane.output[key] || 0);
                   const outputColor = output > 0 ? '#22c55e' : output < 0 ? '#ef4444' : 'var(--text-muted)';
                   const suffix = key === 'building' ? 'build/day' : key === 'vegetables' ? 'food/cycle' : '/day';
@@ -5570,9 +5604,9 @@ const KingdomTab: React.FC<Props> = ({
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600 }}>Count</span>
                         <input
-                          type="number" min={1} max={200} step={1}
+                          type="number" min={1} step={1}
                           value={form.count}
-                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, count: Math.max(1, Math.min(200, Math.floor(Number(e.target.value) || 1))) }))}
+                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, count: Math.max(1, Math.floor(Number(e.target.value) || 1)) }))}
                           style={numberInputStyle}
                         />
                       </label>
@@ -5600,9 +5634,9 @@ const KingdomTab: React.FC<Props> = ({
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600 }}>Count</span>
                         <input
-                          type="number" min={1} max={200} step={1}
+                          type="number" min={1} step={1}
                           value={form.count}
-                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, count: Math.max(1, Math.min(200, Math.floor(Number(e.target.value) || 1))) }))}
+                          onChange={(e) => setDmAddAnimalForm((prev) => ({ ...prev, count: Math.max(1, Math.floor(Number(e.target.value) || 1)) }))}
                           style={numberInputStyle}
                         />
                       </label>

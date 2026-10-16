@@ -449,6 +449,7 @@ const startServer = async () => {
         { name: 'addProvinces', fn: require('./migrations/add_provinces') },
         { name: 'addUnitAnimalRequirements', fn: require('./migrations/add_unit_animal_requirements') },
         { name: 'addUnitAwaitingAnimals', fn: require('./migrations/add_unit_awaiting_animals') },
+        { name: 'moveAnimalFarmersToHerding', fn: require('./migrations/move_animal_farmers_to_herding') },
       ];
       
       const failedMigrations = [];

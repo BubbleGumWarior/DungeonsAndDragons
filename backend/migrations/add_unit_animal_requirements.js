@@ -7,7 +7,7 @@ async function migrate() {
 
     // Mounted / beast-bonded troops lock an animal when they are trained. assigned_unit_type is
     // the troop the animal is bound to; while it is set the animal cannot breed, be paired in a
-    // breeding pen or be slaughtered, but it still eats and still needs farmers.
+    // breeding pen or be slaughtered, but it still eats and still needs herders.
     await client.query(`
       ALTER TABLE fief_animals
         ADD COLUMN IF NOT EXISTS assigned_unit_type TEXT
