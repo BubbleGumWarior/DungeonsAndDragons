@@ -13,6 +13,7 @@ import {
   getFogState,
   getMoraleLevel,
   goneKind,
+  isDmRun,
   isGone,
   MORALE_LABEL,
   MORALE_TONE,
@@ -191,7 +192,7 @@ const BattleMapStage: React.FC<BattleMapStageProps> = ({
   }, []);
 
   const canControl = useCallback((p: BattleParticipant) =>
-    isDM || (p.user_id === userId && (!p.is_temporary || !!p.is_summoned)), [isDM, userId]);
+    isDM || (!isDmRun(p) && p.user_id === userId), [isDM, userId]);
 
   /* ── Army drag (pointer events: works with mouse, pen and touch) ───────── */
   const handleTokenDown = (e: React.PointerEvent<HTMLButtonElement>, p: BattleParticipant) => {
@@ -479,7 +480,7 @@ const BattleMapStage: React.FC<BattleMapStageProps> = ({
               data-dragging={dragging?.id === p.id ? 'true' : undefined}
               data-selected={isSelected ? 'true' : undefined}
               data-undead={p.is_summoned ? 'true' : undefined}
-              data-hidden={p.is_hidden ? 'true' : undefined}
+              data-hidden={p.is_hidden || p.dm_hidden ? 'true' : undefined}
               data-inreach={inReachIds.has(p.id) ? 'true' : undefined}
               data-hover={hoveredId === p.id ? 'true' : undefined}
               style={{ left: `${pos.x}%`, top: `${pos.y}%`, ['--faction' as any]: color, ['--on-faction' as any]: readableOn(color) }}
@@ -511,8 +512,8 @@ const BattleMapStage: React.FC<BattleMapStageProps> = ({
                   <HeartCrack size={12} aria-label={`Morale ${MORALE_LABEL[worried]}`} />
                 </span>
               )}
-              {p.is_hidden && (
-                <span className="bf-token-hidden" title="Hidden from the enemy"><EyeOff size={12} aria-label="Hidden from the enemy" /></span>
+              {(p.is_hidden || p.dm_hidden) && (
+                <span className="bf-token-hidden" title={p.dm_hidden ? 'Unseen by the other factions' : 'Hidden from the enemy'}><EyeOff size={12} aria-label={p.dm_hidden ? 'Unseen by the other factions' : 'Hidden from the enemy'} /></span>
               )}
               {inReachIds.has(p.id) && (
                 <span className="bf-token-reach"><ReachIcon size={11} aria-hidden="true" /> In reach</span>

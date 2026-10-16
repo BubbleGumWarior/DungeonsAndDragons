@@ -4,7 +4,7 @@ import { battleAPI } from '../../../services/api';
 import type { Battle, BattleGoal } from '../../../services/api';
 import { Stepper } from '../kingdomUi';
 import { findGoalByKey } from '../../../utils/battleGoals';
-import { getFactionColor, getParticipantName } from './battlefieldHelpers';
+import { getFactionColor, getParticipantName, isDmRun } from './battlefieldHelpers';
 
 export interface GoalEdit {
   casualties_target: number;
@@ -63,7 +63,7 @@ const ResolutionPanel: React.FC<ResolutionPanelProps> = ({ battle, goals, isDM, 
   // Whose side the viewer is on: a player's own armies, or the DM's temporary armies. Roll colours follow this side.
   const viewerTeams = new Set(
     participants
-      .filter(p => (isDM ? p.is_temporary && !p.is_summoned : p.user_id === userId))
+      .filter(p => (isDM ? isDmRun(p) : p.user_id === userId))
       .map(p => p.team_name)
   );
 

@@ -467,6 +467,8 @@ button.bf-terrain:hover { color: var(--bf-ink-2); }
 .bf-army-bar i { display: block; height: 100%; background: var(--faction); border-radius: 2px; }
 .bf-army-bar[data-low='true'] i { background: rgb(var(--bf-bad-rgb)); }
 .bf-army-detail { margin: 0.1rem 0.5rem 0.6rem 3.3rem; padding: 0.6rem 0 0.1rem; border-top: 1px dashed var(--bf-line); display: grid; gap: 0.55rem; }
+.bf-army-detail .bf-field > legend { color: var(--bf-ink-2); font-size: 0.78rem; }
+.bf-army-detail .bf-chip { font-size: 0.78rem; }
 .bf-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin: 0; }
 .bf-facts div { min-width: 0; }
 .bf-facts dt { color: var(--bf-ink-3); font-size: 0.7rem; }

@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Check, Crown, Flame, Mail, Package, Plus, Shield, Swords, Trash2, Upload, UserPlus, VenetianMask, X, Trophy } from 'lucide-react';
+import { Check, Crown, EyeOff, Flame, Mail, Package, Plus, Shield, Swords, Trash2, Upload, UserPlus, VenetianMask, X, Trophy } from 'lucide-react';
 import '../../../styles/battlefield.css';
 import { ARMY_CATEGORY_GROUPS } from '../../../utils/unitTemplates';
 import { Stepper } from '../kingdomUi';
-import { BASE_TYPE_GLYPH, formatCount, getArmyBaseType } from './battlefieldHelpers';
+import { BASE_TYPE_GLYPH, formatCount, getArmyBaseType, type BattlePlayer } from './battlefieldHelpers';
 
 /* ── Shell ─────────────────────────────────────────────────────────────────── */
 
@@ -71,6 +71,25 @@ const FactionPicker: React.FC<FactionPickerProps> = ({ factions, mode, selection
   </fieldset>
 );
 
+/* Who commands a DM army: the DM, or a player who has brought armies (the army then joins that player's faction) */
+export const CommanderPicker: React.FC<{
+  players: BattlePlayer[];
+  value: number | null;
+  onChange: (userId: number | null) => void;
+  label?: string;
+}> = ({ players, value, onChange, label = 'Commanded by' }) => (
+  <div className="bf-chips" role="group" aria-label={label}>
+    <button type="button" className="bf-chip" aria-pressed={value === null} onClick={() => onChange(null)}>
+      {value === null ? <Check size={13} aria-hidden="true" /> : null}Dungeon Master
+    </button>
+    {players.map(p => (
+      <button key={p.userId} type="button" className="bf-chip" aria-pressed={value === p.userId} onClick={() => onChange(p.userId)}>
+        {value === p.userId ? <Check size={13} aria-hidden="true" /> : null}{p.name}
+      </button>
+    ))}
+  </div>
+);
+
 /* ── Start a battle ────────────────────────────────────────────────────────── */
 
 export interface BattleSetupData { name: string; terrain_description: string; total_rounds: number }
@@ -124,6 +143,10 @@ export interface AiArmyData {
   tempArmyCategory: string;
   tempArmyTroops: number;
   tempArmyStats: { equipment: number; discipline: number; morale: number; command: number; logistics: number };
+  // Concealed from every faction but the DM (and the faction commanding it) until it has locked a goal
+  dmHidden: boolean;
+  // A player the army is handed to; it then fights for that player's faction. Null means the DM runs it.
+  controllerUserId: number | null;
 }
 
 const STAT_ROWS: Array<{ key: keyof AiArmyData['tempArmyStats']; label: string; Icon: typeof Swords }> = [
@@ -139,6 +162,7 @@ const TROOP_QUICK = [50, 100, 250, 500, 1000, 5000];
 export const AddArmyDialog: React.FC<{
   open: boolean;
   factions: string[];
+  players: BattlePlayer[];
   teamMode: 'existing' | 'new';
   teamSelection: string;
   data: AiArmyData;
@@ -149,10 +173,11 @@ export const AddArmyDialog: React.FC<{
   onCategory: (category: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
-}> = ({ open, factions, teamMode, teamSelection, data, onPickExisting, onPickNew, onTeamName, onChange, onCategory, onSubmit, onCancel }) => {
+}> = ({ open, factions, players, teamMode, teamSelection, data, onPickExisting, onPickNew, onTeamName, onChange, onCategory, onSubmit, onCancel }) => {
   const groupOf = (category: string) => Object.keys(ARMY_CATEGORY_GROUPS).find(g => ARMY_CATEGORY_GROUPS[g].includes(category)) || 'Infantry';
   const [group, setGroup] = useState(() => groupOf(data.tempArmyCategory));
-  const ready = !!data.tempArmyName.trim() && !!data.team.trim();
+  const commander = players.find(pl => pl.userId === data.controllerUserId) || null;
+  const ready = !!data.tempArmyName.trim() && (!!commander || !!data.team.trim());
 
   return (
     <DialogShell
@@ -169,8 +194,34 @@ export const AddArmyDialog: React.FC<{
         </>
       }
     >
-      <FactionPicker factions={factions} mode={teamMode} selection={teamSelection} name={data.team}
-        onPickExisting={onPickExisting} onPickNew={onPickNew} onNameChange={onTeamName} />
+      <fieldset className="bf-field">
+        <legend>Commanded by</legend>
+        <CommanderPicker players={players} value={commander ? commander.userId : null} onChange={(userId) => onChange({ controllerUserId: userId })} />
+        <p className="bf-hintline">
+          {commander
+            ? `${commander.name} controls this army and it fights for team ${commander.team}.`
+            : 'You run this army. Hand it to a player who has joined the battle and they command it instead.'}
+        </p>
+      </fieldset>
+
+      {!commander && (
+        <FactionPicker factions={factions} mode={teamMode} selection={teamSelection} name={data.team}
+          onPickExisting={onPickExisting} onPickNew={onPickNew} onNameChange={onTeamName} />
+      )}
+
+      <fieldset className="bf-field">
+        <legend>Visibility</legend>
+        <div className="bf-chips">
+          <button type="button" className="bf-chip" aria-pressed={data.dmHidden} onClick={() => onChange({ dmHidden: !data.dmHidden })}>
+            <EyeOff size={13} aria-hidden="true" /> Hidden from other factions
+          </button>
+        </div>
+        <p className="bf-hintline">
+          {data.dmHidden
+            ? 'Only you and the army’s own faction can see it, and no one can target it. It appears when the battle moves to resolution after its goal is locked.'
+            : 'Visible to everyone on the map.'}
+        </p>
+      </fieldset>
 
       <div className="bf-field">
         <label className="bf-label" htmlFor="bf-ai-name">Army name</label>

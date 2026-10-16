@@ -378,6 +378,7 @@ const startServer = async () => {
         { name: 'addSummonedParticipants', fn: require('./migrations/add_summoned_participants') },
         { name: 'addBattleMorale', fn: require('./migrations/add_battle_morale') },
         { name: 'addParticipantStealth', fn: require('./migrations/add_participant_stealth') },
+        { name: 'addDmHiddenParticipants', fn: require('./migrations/add_dm_hidden_participants') },
         { name: 'addArmyGarrisonColumn', fn: require('./migrations/add_army_garrison_column') },
         { name: 'addCombatSystem', fn: addCombatSystem },
         { name: 'addCampaignChat', fn: require('./migrations/add_campaign_chat') },

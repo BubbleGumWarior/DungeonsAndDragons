@@ -6,7 +6,7 @@ import { useCampaign } from '../contexts/CampaignContext';
 import { characterAPI, inventoryAPI, monsterAPI, monsterInstanceAPI, InventoryItem, Monster, armyAPI, battleAPI, Army, Battle, BattleParticipant, BattleGoal, skillAPI, Skill, beastAPI, Beast, shadowAPI, Shadow, Character, mountAPI, Mount, petAPI, Pet, petFoodAPI, FoodStockpileRow, FoodMarketSettings, companionArmorAPI, CompanionArmorItem, campaignAPI, AdvanceDaysSummary, battleMapsAPI, BattleMap, npcAPI, kingdomAPI, CharacterFeatState } from '../services/api';
 import BattlefieldTab from './campaign/battlefield/BattlefieldTab';
 import { AddArmyDialog, BattleInvitationsDialog, BattleSetupDialog, BattleSummaryDialog, InvitePlayersDialog, MapPickerDialog } from './campaign/battlefield/BattleDialogs';
-import { BATTLEFIELD_FEET_PER_PERCENT, getArmyMovementSpeed, getParticipantCategory } from './campaign/battlefield/battlefieldHelpers';
+import { BATTLEFIELD_FEET_PER_PERCENT, getArmyMovementSpeed, getBattlePlayers, getParticipantCategory, isDmRun } from './campaign/battlefield/battlefieldHelpers';
 import { UNIT_TEMPLATES, ARMY_CATEGORY_GROUPS } from '../utils/unitTemplates';
 import ConfirmationModal from './ConfirmationModal';
 import { canLevelUp, getRequiredExpForNextLevel, getLevelProgress } from '../utils/experienceUtils';
@@ -120,7 +120,7 @@ const getCityImageFilename = (cityName: string): string =>
   cityName.replace(/'/g, '').replace(/\s+/g, '_');
 
 // Bump when city art is replaced under the same file name, so browsers drop their cached copy.
-const CITY_ART_VERSION = 2;
+const CITY_ART_VERSION = 3;
 
 // City pictures are shipped as optimised WebP (see frontend/scripts/optimize-images.js).
 const getCityImagePath = (cityName: string): string =>
@@ -977,7 +977,9 @@ const CampaignView: React.FC = () => {
       morale: 5,
       command: 5,
       logistics: 5
-    }
+    },
+    dmHidden: false,
+    controllerUserId: null as number | null
   });
   const [newParticipantTeamMode, setNewParticipantTeamMode] = useState<'existing' | 'new'>('existing');
   const [newParticipantTeamSelection, setNewParticipantTeamSelection] = useState<string>('');
@@ -1227,7 +1229,7 @@ const CampaignView: React.FC = () => {
     if (!activeBattle || !activeBattle.participants) return [];
     return activeBattle.participants.filter(p => {
       if ((p.current_troops || 0) <= 0) return false;
-      if (p.is_temporary && !p.is_summoned) return user?.role === 'Dungeon Master';
+      if (isDmRun(p)) return user?.role === 'Dungeon Master';
       return p.user_id === user?.id;
     });
   }, [activeBattle, user]);
@@ -1238,6 +1240,8 @@ const CampaignView: React.FC = () => {
       .filter((name): name is string => Boolean(name));
     return Array.from(new Set(names));
   }, [activeBattle?.participants]);
+
+  const battlePlayers = useMemo(() => getBattlePlayers(activeBattle?.participants || []), [activeBattle?.participants]);
 
   useEffect(() => {
     if (!showAddParticipantModal) return;
@@ -2263,7 +2267,7 @@ const CampaignView: React.FC = () => {
 
     const selectable = activeBattle.participants?.filter(p => {
       if ((p.current_troops || 0) <= 0) return false;
-      if (p.is_temporary && !p.is_summoned) return user?.role === 'Dungeon Master';
+      if (isDmRun(p)) return user?.role === 'Dungeon Master';
       return p.user_id === user?.id;
     }) || [];
 
@@ -2531,6 +2535,17 @@ const CampaignView: React.FC = () => {
     } catch (error) {
       console.error('Error updating position:', error);
       await refreshBattle(activeBattle.id);
+    }
+  };
+
+  const handleAssignBattleArmy = async (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }) => {
+    if (!activeBattle) return;
+    try {
+      await battleAPI.assignParticipant(participantId, patch);
+      await refreshActiveBattle(activeBattle.id);
+    } catch (error: any) {
+      console.error('Error assigning army:', error);
+      toast(error?.response?.data?.error || 'Failed to update the army');
     }
   };
 
@@ -4821,6 +4836,11 @@ const CampaignView: React.FC = () => {
         refreshActiveBattle(data.battleId);
       });
 
+      // An army was handed to a player or concealed/revealed: refetch what this viewer may see
+      newSocket.on('battleParticipantUpdated', (data: { battleId: number; timestamp: string }) => {
+        refreshActiveBattle(data.battleId);
+      });
+
       // Listen for battle completed
       newSocket.on('battleCompleted', (data: { battleId: number; battleName: string; results: BattleParticipant[]; summary?: any; timestamp: string }) => {
         const currentBattle = activeBattleRef.current;
@@ -5183,9 +5203,8 @@ const CampaignView: React.FC = () => {
             });
             return updated;
           });
-          setActiveBattle(prev => prev && prev.id === data.battleId
-            ? { ...prev, participants: data.participants }
-            : prev);
+          // The payload leaves out DM-concealed armies, so refetch this viewer's own picture of the battle
+          refreshActiveBattle(data.battleId);
         }
       });
 
@@ -9339,6 +9358,7 @@ const CampaignView: React.FC = () => {
                   completeBattle: handleCompleteBattle,
                   endBattle: handleEndBattle,
                   moveArmy: handleMoveBattleArmy,
+                  assignArmy: handleAssignBattleArmy,
                   placeNode: handlePlaceBattlefieldNode,
                   moveNode: handleMoveBattlefieldNode,
                 }}
@@ -18355,6 +18375,7 @@ const CampaignView: React.FC = () => {
         <AddArmyDialog
           open={showAddParticipantModal}
           factions={existingFactions}
+          players={battlePlayers}
           teamMode={newParticipantTeamMode}
           teamSelection={newParticipantTeamSelection}
           data={newParticipantData}
@@ -18384,14 +18405,20 @@ const CampaignView: React.FC = () => {
               tempArmyName: '',
               tempArmyCategory: 'Recruit',
               tempArmyTroops: 100,
-              tempArmyStats: { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 }
+              tempArmyStats: { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 },
+              dmHidden: false,
+              controllerUserId: null
             });
           }}
           onSubmit={async () => {
-            if (!activeBattle || !newParticipantData.tempArmyName.trim() || !newParticipantData.team.trim()) return;
+            const commander = battlePlayers.find(pl => pl.userId === newParticipantData.controllerUserId);
+            const teamName = commander ? commander.team : newParticipantData.team.trim();
+            if (!activeBattle || !newParticipantData.tempArmyName.trim() || !teamName) return;
             try {
               await battleAPI.addParticipant(activeBattle.id, {
-                team_name: newParticipantData.team,
+                team_name: teamName,
+                controller_user_id: commander ? commander.userId : null,
+                dm_hidden: newParticipantData.dmHidden,
                 temp_army_name: newParticipantData.tempArmyName,
                 temp_army_category: newParticipantData.tempArmyCategory,
                 temp_army_troops: newParticipantData.tempArmyTroops,
@@ -18408,7 +18435,9 @@ const CampaignView: React.FC = () => {
                 tempArmyName: '',
                 tempArmyCategory: 'Recruit',
                 tempArmyTroops: 100,
-                tempArmyStats: { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 }
+                tempArmyStats: { equipment: 5, discipline: 5, morale: 5, command: 5, logistics: 5 },
+                dmHidden: false,
+                controllerUserId: null
               });
               toast(`AI Army "${newParticipantData.tempArmyName}" added!`);
             } catch (error) {

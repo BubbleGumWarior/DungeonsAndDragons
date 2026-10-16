@@ -43,7 +43,7 @@ class Battle {
                 bp.is_temporary, bp.temp_army_name, bp.temp_army_category, bp.temp_army_stats,
                 bp.current_score, bp.base_score, bp.position_x, bp.position_y, bp.created_at,
                 bp.current_troops, bp.has_selected_goal, bp.is_summoned, bp.controller_user_id,
-                bp.current_morale, bp.max_morale, bp.has_fled, bp.fled_troops, bp.last_morale_check, bp.hidden_until_round,
+                bp.current_morale, bp.max_morale, bp.has_fled, bp.fled_troops, bp.last_morale_check, bp.hidden_until_round, bp.dm_hidden,
                 a.name as army_name, a.category as army_category,
                 a.numbers, a.equipment, a.discipline, 
                 a.morale, a.command, a.logistics, a.player_id, 
@@ -64,6 +64,8 @@ class Battle {
         ...p,
         // A hidden army cannot be seen or targeted until the round after its stealth check passes
         is_hidden: p.hidden_until_round !== null && p.hidden_until_round !== undefined && p.hidden_until_round >= battle.current_round,
+        // A temporary army nobody commands is run by the DM; giving it a controller hands it to that player
+        is_dm_run: !!p.is_temporary && !p.is_summoned && !p.controller_user_id,
         // Ensure army_category is properly set (prefer armies table category over temp)
         army_category: p.army_category || p.temp_army_category || 'Swordsmen'
       }));
@@ -113,11 +115,68 @@ class Battle {
          RETURNING *`,
         [battleId, status]
       );
-      
+
+      // DM-concealed armies stay unseen while orders are chosen, then show themselves once orders are locked
+      if (status === 'resolution' && result.rows[0]) {
+        await Battle.revealDmHidden(battleId, result.rows[0].current_round);
+      }
+
       return result.rows[0];
     } catch (error) {
       throw error;
     }
+  }
+
+  // Reveal DM-concealed armies that have locked a goal this round. With no round, reveal every one.
+  static async revealDmHidden(battleId, roundNumber = null) {
+    if (roundNumber === null) {
+      await pool.query(`UPDATE battle_participants SET dm_hidden = FALSE WHERE battle_id = $1 AND dm_hidden = TRUE`, [battleId]);
+      return;
+    }
+    await pool.query(
+      `UPDATE battle_participants bp SET dm_hidden = FALSE
+       WHERE bp.battle_id = $1 AND bp.dm_hidden = TRUE
+         AND EXISTS (SELECT 1 FROM battle_goals g WHERE g.participant_id = bp.id AND g.battle_id = $1 AND g.round_number = $2)`,
+      [battleId, roundNumber]
+    );
+  }
+
+  // What a player is allowed to see: DM-concealed armies exist only for the faction that commands them
+  static concealFrom(battle, userId) {
+    if (!battle || !battle.participants) return battle;
+    const myTeams = new Set(battle.participants.filter(p => p.user_id === userId).map(p => p.team_name));
+    return { ...battle, participants: battle.participants.filter(p => !p.dm_hidden || myTeams.has(p.team_name)) };
+  }
+
+  // Hand a temporary army to a player (taking on that player's faction) or back to the DM, and/or conceal or reveal it
+  static async updateAssignment(participantId, { controller_user_id, dm_hidden }) {
+    const sets = [];
+    const values = [participantId];
+    if (controller_user_id !== undefined) {
+      values.push(controller_user_id);
+      sets.push(`controller_user_id = $${values.length}`);
+    }
+    if (dm_hidden !== undefined) {
+      values.push(!!dm_hidden);
+      sets.push(`dm_hidden = $${values.length}`);
+    }
+    if (sets.length === 0) return null;
+    const result = await pool.query(`UPDATE battle_participants SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, values);
+    return result.rows[0];
+  }
+
+  // The faction a player fights for in this battle, taken from the armies they already brought
+  static async findPlayerFaction(battleId, userId) {
+    const result = await pool.query(
+      `SELECT bp.team_name, bp.faction_color
+       FROM battle_participants bp
+       LEFT JOIN armies a ON bp.army_id = a.id
+       WHERE bp.battle_id = $1 AND COALESCE(a.player_id, bp.controller_user_id) = $2
+       ORDER BY bp.is_temporary, bp.id
+       LIMIT 1`,
+      [battleId, userId]
+    );
+    return result.rows[0] || null;
   }
   
   // Advance to next round
@@ -612,9 +671,11 @@ class Battle {
       temp_army_stats,
       temp_army_troops = 100,
       position_x = 50,
-      position_y = 50
+      position_y = 50,
+      dm_hidden = false,
+      controller_user_id = null
     } = participantData;
-    
+
     // Get troop count from army if not temporary
     let current_troops = temp_army_troops;
     if (!is_temporary && army_id) {
@@ -627,11 +688,12 @@ class Battle {
     try {
       const result = await pool.query(
         `INSERT INTO battle_participants 
-         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_troops, temp_army_stats, position_x, position_y, base_score, current_score, current_troops)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12)
+         (battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category, temp_army_troops, temp_army_stats, position_x, position_y, base_score, current_score, current_troops, dm_hidden, controller_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, $13, $14)
          RETURNING *`,
         [battle_id, army_id, team_name, faction_color, is_temporary, temp_army_name, temp_army_category,
-         temp_army_troops, temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y, current_troops]
+         temp_army_troops, temp_army_stats ? JSON.stringify(temp_army_stats) : null, position_x, position_y, current_troops,
+         !!dm_hidden, controller_user_id]
       );
       
       return result.rows[0];

@@ -86,7 +86,7 @@ const OrdersPanel: React.FC<OrdersPanelProps> = ({
   const sectionKey: GoalSection = selection.activeTab || 'attacking';
   const lockedGoal = goals.find(g => g.participant_id === active.id);
   // Hidden armies cannot be picked as targets
-  const enemies = participants.filter(p => p.team_name !== active.team_name && (p.current_troops || 0) > 0 && !p.is_hidden);
+  const enemies = participants.filter(p => p.team_name !== active.team_name && (p.current_troops || 0) > 0 && !p.is_hidden && !p.dm_hidden);
   const hiddenOk = (goal: BattleGoalDefinition) => !goal.requires_hidden || !!active.is_hidden;
   // Some goals only make sense against certain unit lines (attacking a dragon)
   const candidatesFor = (goal: BattleGoalDefinition) =>

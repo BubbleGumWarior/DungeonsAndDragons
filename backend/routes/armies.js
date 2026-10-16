@@ -27,6 +27,19 @@ const getParticipantCategory = (participant) => {
   return participant.army_category || participant.temp_army_category || 'Recruit';
 };
 
+const isCampaignDM = (user, campaign) =>
+  !!campaign && user.role === 'Dungeon Master' && campaign.dungeon_master_id === user.id;
+
+// A battle as the requesting user may see it: players never receive DM-concealed armies of other factions
+const battleForViewer = async (battle, user) => {
+  if (!battle) return battle;
+  const campaign = await Campaign.findById(battle.campaign_id);
+  return isCampaignDM(user, campaign) ? battle : Battle.concealFrom(battle, user.id);
+};
+
+// Participants safe to broadcast to the whole campaign room (clients refetch their own view for the rest)
+const publicParticipants = (participants) => (participants || []).filter(p => !p.dm_hidden);
+
 // Get all armies for a player in a campaign
 router.get('/campaign/:campaignId/player/:playerId', authenticateToken, async (req, res) => {
   try {
@@ -296,7 +309,7 @@ router.get('/battles/campaign/:campaignId/active', authenticateToken, async (req
     }
     
     const battle = await Battle.findActiveByCampaign(campaignId);
-    res.json(battle);
+    res.json(await battleForViewer(battle, req.user));
   } catch (error) {
     console.error('Error fetching active battle:', error);
     res.status(500).json({ error: 'Failed to fetch active battle' });
@@ -312,8 +325,8 @@ router.get('/battles/:id', authenticateToken, async (req, res) => {
     if (!battle) {
       return res.status(404).json({ error: 'Battle not found' });
     }
-    
-    res.json(battle);
+
+    res.json(await battleForViewer(battle, req.user));
   } catch (error) {
     console.error('Error fetching battle:', error);
     res.status(500).json({ error: 'Failed to fetch battle' });
@@ -458,7 +471,27 @@ router.post('/battles/:id/participants', authenticateToken, async (req, res) => 
       return res.status(404).json({ error: 'Battle not found' });
     }
     
+    const campaign = await Campaign.findById(battle.campaign_id);
+    if (!isCampaignDM(req.user, campaign)) {
+      return res.status(403).json({ error: 'Only Dungeon Master can add armies to a battle' });
+    }
+
     participantData.battle_id = id;
+    participantData.dm_hidden = !!participantData.dm_hidden && !!participantData.is_temporary;
+
+    // A temporary army can be handed to a player: it then fights for that player's faction
+    const controllerId = participantData.is_temporary ? parseInt(participantData.controller_user_id, 10) : NaN;
+    if (Number.isInteger(controllerId)) {
+      const faction = await Battle.findPlayerFaction(id, controllerId);
+      if (!faction) {
+        return res.status(400).json({ error: 'That player has not joined this battle yet' });
+      }
+      participantData.controller_user_id = controllerId;
+      participantData.team_name = faction.team_name;
+      participantData.faction_color = faction.faction_color;
+    } else {
+      participantData.controller_user_id = null;
+    }
 
     // Resolve faction color automatically if not explicitly provided
     if (!participantData.faction_color) {
@@ -466,15 +499,15 @@ router.post('/battles/:id/participants', authenticateToken, async (req, res) => 
     }
 
     const participant = await Battle.addParticipant(participantData);
-    
-    // Emit socket event
+
+    // Emit socket event; a concealed army is not described to the room, clients just refetch what they may see
     const io = req.app.get('io');
     if (io) {
       const roomName = `campaign_${battle.campaign_id}`;
       console.log(`📢 Emitting battleParticipantAdded to room: ${roomName}`);
       io.to(roomName).emit('battleParticipantAdded', {
         battleId: id,
-        participant,
+        participant: participant.dm_hidden ? null : participant,
         timestamp: new Date().toISOString()
       });
     }
@@ -655,6 +688,70 @@ router.put('/battles/participants/:participantId/position', authenticateToken, a
   }
 });
 
+// Hand a temporary army to a player (or back to the DM) and/or conceal or reveal it (DM only)
+router.put('/battles/participants/:participantId/assignment', authenticateToken, async (req, res) => {
+  try {
+    const participantId = parseInt(req.params.participantId, 10);
+    const { controller_user_id, dm_hidden } = req.body;
+
+    const found = await pool.query('SELECT * FROM battle_participants WHERE id = $1', [participantId]);
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+    const participant = found.rows[0];
+
+    const battle = await Battle.findById(participant.battle_id);
+    const campaign = await Campaign.findById(battle.campaign_id);
+    if (!isCampaignDM(req.user, campaign)) {
+      return res.status(403).json({ error: 'Only Dungeon Master can assign armies' });
+    }
+    if (!participant.is_temporary || participant.is_summoned) {
+      return res.status(400).json({ error: 'Only the DM’s temporary armies can be assigned or concealed' });
+    }
+
+    const patch = {};
+    if (dm_hidden !== undefined) patch.dm_hidden = !!dm_hidden;
+
+    let teamChange = null;
+    if (controller_user_id !== undefined) {
+      if (controller_user_id === null) {
+        patch.controller_user_id = null;
+      } else {
+        const playerId = parseInt(controller_user_id, 10);
+        const faction = Number.isInteger(playerId) ? await Battle.findPlayerFaction(battle.id, playerId) : null;
+        if (!faction) {
+          return res.status(400).json({ error: 'That player has not joined this battle yet' });
+        }
+        patch.controller_user_id = playerId;
+        teamChange = faction;
+      }
+    }
+
+    await Battle.updateAssignment(participantId, patch);
+    if (teamChange) {
+      await pool.query(
+        'UPDATE battle_participants SET team_name = $2, faction_color = $3 WHERE id = $1',
+        [participantId, teamChange.team_name, teamChange.faction_color]
+      );
+    }
+
+    const updated = (await Battle.findById(battle.id)).participants.find(p => p.id === participantId);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleParticipantUpdated', {
+        battleId: battle.id,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error assigning battle participant:', error);
+    res.status(500).json({ error: 'Failed to assign army' });
+  }
+});
+
 // Update participant troops (casualties/reinforcements)
 router.put('/battles/participants/:participantId/troops', authenticateToken, async (req, res) => {
   try {
@@ -794,11 +891,11 @@ router.post('/battles/:id/calculate-base-scores', authenticateToken, async (req,
     if (io) {
       io.to(`campaign_${battle.campaign_id}`).emit('battleScoresCalculated', {
         battleId: id,
-        participants: updatedBattle.participants,
+        participants: publicParticipants(updatedBattle.participants),
         timestamp: new Date().toISOString()
       });
     }
-    
+
     res.json(updatedBattle);
   } catch (error) {
     console.error('Error calculating base scores:', error);
@@ -894,7 +991,7 @@ router.get('/battles/:id/goals', authenticateToken, async (req, res) => {
     }
 
     const allowedParticipantIds = battle.participants
-      .filter(p => (!p.is_temporary || p.is_summoned) && p.user_id === req.user.id)
+      .filter(p => !p.is_dm_run && p.user_id === req.user.id)
       .map(p => p.id);
 
     const filtered = goals.filter(goal => allowedParticipantIds.includes(goal.participant_id));
@@ -943,7 +1040,7 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized to select goal for this army' });
     }
 
-    if (participant.is_temporary && !participant.is_summoned && !isDM) {
+    if (participant.is_dm_run && !isDM) {
       console.log(`❌ Temporary army, not DM`);
       return res.status(403).json({ error: 'Only the Dungeon Master can select goals for temporary armies' });
     }
@@ -988,7 +1085,7 @@ router.post('/battles/:id/goals', authenticateToken, async (req, res) => {
       if (target.team_name === participant.team_name) {
         return res.status(400).json({ error: 'Target must be an enemy army' });
       }
-      if (target.is_hidden && target.team_name !== participant.team_name) {
+      if ((target.is_hidden || target.dm_hidden) && target.team_name !== participant.team_name) {
         return res.status(400).json({ error: 'That army is hidden and cannot be targeted' });
       }
       if (goalTemplate.target_base_types && goalTemplate.target_base_types.length > 0) {
@@ -1360,7 +1457,7 @@ router.post('/battles/:id/goals/apply', authenticateToken, async (req, res) => {
       io.to(`campaign_${battle.campaign_id}`).emit('battleGoalsApplied', {
         battleId: battle.id,
         goals: appliedGoals,
-        participants: updatedBattle.participants,
+        participants: publicParticipants(updatedBattle.participants),
         timestamp: new Date().toISOString()
       });
       io.to(`campaign_${battle.campaign_id}`).emit('goalsPhaseCompleted', {
@@ -1406,6 +1503,9 @@ router.post('/battles/:id/complete', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Only Dungeon Master can complete battles' });
     }
     
+    // Nothing stays concealed once the fight is over
+    await Battle.revealDmHidden(id);
+
     // Get final results
     const participants = await Battle.getBattleResults(id);
     

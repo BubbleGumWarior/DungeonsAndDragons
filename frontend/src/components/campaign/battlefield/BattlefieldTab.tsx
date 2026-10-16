@@ -6,7 +6,7 @@ import BattleMapStage, { BoardLightingNode } from './BattleMapStage';
 import RosterPanel from './RosterPanel';
 import OrdersPanel, { GoalSelections } from './OrdersPanel';
 import ResolutionPanel, { GoalEdits } from './ResolutionPanel';
-import { ArmyBaseType, BASE_TYPE_GLYPH, getMoraleLevel, MORALE_BREAK_POINT, MORALE_TONE, UNIT_LINES } from './battlefieldHelpers';
+import { ArmyBaseType, BASE_TYPE_GLYPH, getMoraleLevel, isDmRun, MORALE_BREAK_POINT, MORALE_TONE, UNIT_LINES } from './battlefieldHelpers';
 
 export interface BattlefieldActions {
   openSetup: () => void;
@@ -22,6 +22,7 @@ export interface BattlefieldActions {
   completeBattle: () => void;
   endBattle: () => void;
   moveArmy: (participantId: number, x: number, y: number) => void;
+  assignArmy: (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }) => void;
   placeNode: (x: number, y: number) => void;
   moveNode: (id: string, x: number, y: number) => void;
 }
@@ -104,7 +105,7 @@ const BattlefieldTab: React.FC<BattlefieldTabProps> = (props) => {
     if (!battle?.participants) return [];
     return battle.participants.filter(p => {
       if ((p.current_troops || 0) <= 0) return false;
-      if (p.is_temporary && !p.is_summoned) return isDM;
+      if (isDmRun(p)) return isDM;
       return p.user_id === userId;
     });
   }, [battle?.participants, isDM, userId]);
@@ -323,6 +324,7 @@ const BattlefieldTab: React.FC<BattlefieldTabProps> = (props) => {
               onHover={setHoveredId}
               onInvite={actions.openInvite}
               onAddArmy={actions.openAddArmy}
+              onAssign={actions.assignArmy}
             />
           ) : battle.status === 'goal_selection' ? (
             <OrdersPanel

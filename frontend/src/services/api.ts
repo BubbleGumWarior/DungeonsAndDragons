@@ -836,6 +836,11 @@ export interface BattleParticipant {
   // Covert armies that passed a stealth check: unseen and untargetable by the enemy until the end of the next round
   is_hidden?: boolean;
   hidden_until_round?: number | null;
+  // Armies the DM concealed: only the DM and the faction that commands them see them, and nobody can target them.
+  // They are revealed when the battle moves to resolution after their owner locked a goal.
+  dm_hidden?: boolean;
+  // A temporary army with nobody assigned to command it: the DM runs it
+  is_dm_run?: boolean;
   // Morale: starts at a flat base plus a share per point of the morale stat; below the break point an army can desert
   current_morale?: number | null;
   max_morale?: number | null;
@@ -911,6 +916,11 @@ export const battleAPI = {
 
   addParticipant: async (battleId: number, participantData: Partial<BattleParticipant>): Promise<BattleParticipant> => {
     const response = await api.post(`/armies/battles/${battleId}/participants`, participantData);
+    return response.data;
+  },
+
+  assignParticipant: async (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }): Promise<BattleParticipant> => {
+    const response = await api.put(`/armies/battles/participants/${participantId}/assignment`, patch);
     return response.data;
   },
 

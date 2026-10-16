@@ -1,12 +1,15 @@
 import React from 'react';
 import { EyeOff, Footprints, HeartCrack, Target, User, UserPlus, Users, VenetianMask } from 'lucide-react';
 import type { Battle, BattleParticipant } from '../../../services/api';
+import { CommanderPicker } from './BattleDialogs';
 import {
   BASE_TYPE_GLYPH,
   BASE_TYPE_LABEL,
   getMoraleLevel,
   goneKind,
+  getBattlePlayers,
   isConcealedFrom,
+  isDmRun,
   isGone,
   MORALE_BREAK_POINT,
   MORALE_LABEL,
@@ -32,14 +35,16 @@ interface RosterPanelProps {
   onHover: (id: number | null) => void;
   onInvite: () => void;
   onAddArmy: () => void;
+  onAssign: (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }) => void;
 }
 
 const RosterPanel: React.FC<RosterPanelProps> = ({
-  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy,
+  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy, onAssign,
 }) => {
   // Hidden enemy armies are not on anyone's roster but their own side's
   const participants = (battle.participants || []).filter(p => !isConcealedFrom(p, battle.participants || [], userId, isDM));
   const planning = battle.status === 'planning';
+  const players = getBattlePlayers(battle.participants || []);
 
   const teams: Array<{ name: string; members: BattleParticipant[] }> = [];
   participants.forEach(p => {
@@ -118,6 +123,7 @@ const RosterPanel: React.FC<RosterPanelProps> = ({
                       <span className="bf-army-main">
                         <span className="bf-army-name">{getParticipantName(p)}</span>
                         {p.is_hidden && <span className="bf-tag" data-tone="info" style={{ marginTop: '0.25rem', marginRight: '0.3rem' }}><EyeOff size={11} aria-hidden="true" /> Hidden</span>}
+                        {p.dm_hidden && <span className="bf-tag" data-tone="info" style={{ marginTop: '0.25rem', marginRight: '0.3rem' }}><EyeOff size={11} aria-hidden="true" /> {isDM ? 'Unseen by other factions' : 'Hidden from the enemy'}</span>}
                         {moraleLevel && moraleLevel !== 'steady' && (
                           <span className="bf-tag" data-tone={MORALE_TONE[moraleLevel]} style={{ marginTop: '0.25rem' }}>
                             <HeartCrack size={11} aria-hidden="true" /> {MORALE_LABEL[moraleLevel]}
@@ -168,10 +174,34 @@ const RosterPanel: React.FC<RosterPanelProps> = ({
                           <li><Target size={14} aria-hidden="true" /> {BASE_TYPE_LABEL[baseType]} · {getArmyRangeLabel(category)}</li>
                           <li><Footprints size={14} aria-hidden="true" /> {Math.round(left)} of {getArmyMovementSpeed(category)} ft movement left this round</li>
                           <li>
-                            {p.is_temporary && !p.is_summoned ? <Users size={14} aria-hidden="true" /> : <User size={14} aria-hidden="true" />}
-                            {p.is_summoned ? `Raised undead, commanded by ${p.player_name || 'its master'}` : p.is_temporary ? 'Temporary army run by the DM' : `Commanded by ${p.player_name || 'a player'}`}
+                            {isDmRun(p) ? <Users size={14} aria-hidden="true" /> : <User size={14} aria-hidden="true" />}
+                            {p.is_summoned
+                              ? `Raised undead, commanded by ${p.player_name || 'its master'}`
+                              : isDmRun(p) ? 'Temporary army run by the DM'
+                              : p.is_temporary ? `Temporary army, commanded by ${p.player_name || 'a player'}`
+                              : `Commanded by ${p.player_name || 'a player'}`}
                           </li>
+                          {p.dm_hidden && (
+                            <li><EyeOff size={14} aria-hidden="true" /> {isDM ? 'Other factions cannot see or target it. It is revealed in the resolution phase once its goal is locked.' : 'Other factions cannot see or target it yet.'}</li>
+                          )}
                         </ul>
+                        {isDM && p.is_temporary && !p.is_summoned && !wiped && (
+                          <>
+                            <fieldset className="bf-field">
+                              <legend>Commanded by</legend>
+                              <CommanderPicker players={players} value={p.controller_user_id ?? null} onChange={(id) => onAssign(p.id, { controller_user_id: id })} />
+                              {players.length === 0 && <p className="bf-hintline">No players have joined yet. Invite some to hand this army over.</p>}
+                            </fieldset>
+                            <fieldset className="bf-field">
+                              <legend>Visibility</legend>
+                              <div className="bf-chips">
+                                <button type="button" className="bf-chip" aria-pressed={!!p.dm_hidden} onClick={() => onAssign(p.id, { dm_hidden: !p.dm_hidden })}>
+                                  <EyeOff size={13} aria-hidden="true" /> Hidden from other factions
+                                </button>
+                              </div>
+                            </fieldset>
+                          </>
+                        )}
                       </div>
                     )}
                   </li>

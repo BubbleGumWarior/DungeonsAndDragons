@@ -84,14 +84,30 @@ export const readableOn = (color: string): string => {
 
 export type FogState = 'visible' | 'silhouette' | 'hidden';
 
-// A hidden covert army is invisible to everyone except the DM and the team it fights for
+// A temporary army that no player was assigned to is run by the DM
+export const isDmRun = (p: Pick<BattleParticipant, 'is_temporary' | 'is_summoned' | 'controller_user_id' | 'is_dm_run'>): boolean =>
+  p.is_dm_run ?? (!!p.is_temporary && !p.is_summoned && !p.controller_user_id);
+
+export interface BattlePlayer { userId: number; name: string; team: string }
+
+// Players who brought armies into the battle: the ones a DM army can be handed to
+export const getBattlePlayers = (participants: BattleParticipant[]): BattlePlayer[] => {
+  const seen = new Map<number, BattlePlayer>();
+  participants.forEach(p => {
+    if (p.user_id == null || seen.has(p.user_id)) return;
+    seen.set(p.user_id, { userId: p.user_id, name: p.player_name || 'Player', team: p.team_name });
+  });
+  return Array.from(seen.values());
+};
+
+// A hidden covert army, or one the DM concealed, is invisible to everyone except the DM and the team it fights for
 export const isConcealedFrom = (
   participant: BattleParticipant,
   all: BattleParticipant[],
   viewerUserId: number | undefined,
   isDM: boolean
 ): boolean => {
-  if (!participant.is_hidden || isDM) return false;
+  if ((!participant.is_hidden && !participant.dm_hidden) || isDM) return false;
   return !all.some(o => o.user_id === viewerUserId && o.team_name === participant.team_name);
 };
 
