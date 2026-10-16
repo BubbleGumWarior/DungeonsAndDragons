@@ -903,7 +903,8 @@ router.post('/battles/:id/calculate-base-scores', authenticateToken, async (req,
   }
 });
 
-const BATTLEFIELD_FEET_PER_PERCENT = 20 / 3;
+// Kept in sync with BATTLEFIELD_FEET_PER_PERCENT in frontend battlefieldHelpers.ts.
+const BATTLEFIELD_FEET_PER_PERCENT = 80 / 3;
 
 const getBattlefieldDistanceFeet = (attackerX, attackerY, targetX, targetY) => {
   // Postgres returns numeric columns as strings, so coerce before checking

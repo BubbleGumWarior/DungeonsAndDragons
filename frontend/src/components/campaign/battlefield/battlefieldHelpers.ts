@@ -3,9 +3,11 @@ import { UNIT_TEMPLATES } from '../../../utils/unitTemplates';
 import type { BattleParticipant } from '../../../services/api';
 
 // Map positions are stored as % of the board; one % is this many feet in both axes.
-export const BATTLEFIELD_FEET_PER_PERCENT = 20 / 3;
-// How far an army sees at darkness 0: 150 ft. Partial silhouette extends to twice that.
-export const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT;
+// Kept in sync with BATTLEFIELD_FEET_PER_PERCENT in backend/routes/armies.js.
+export const BATTLEFIELD_FEET_PER_PERCENT = 80 / 3;
+// How far an army sees at darkness 0, as % of the board (22.5%). Partial silhouette extends to twice that.
+// Independent of the feet scale so shrinking reach/movement on the map doesn't shrink sight.
+export const BASE_ARMY_VISION_RADIUS_PCT = 22.5;
 
 export type ArmyBaseType = 'infantry' | 'archer' | 'cavalry' | 'guard' | 'artillery' | 'covert' | 'mage' | 'dragon';
 

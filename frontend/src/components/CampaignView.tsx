@@ -1592,7 +1592,7 @@ const CampaignView: React.FC = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const isDM = user?.role === 'Dungeon Master';
-      const BASE_ARMY_VISION_RADIUS_PCT = 150 / BATTLEFIELD_FEET_PER_PERCENT; // ≈22.5%
+      const BASE_ARMY_VISION_RADIUS_PCT = 22.5; // 150ft at the old scale; sight is independent of the feet scale
       const DM_FOG_OPACITY = 0.55;
       const PLAYER_FOG_OPACITY = 1;
       // Vision radius shrinks as darkness increases — same formula as combat overlay
