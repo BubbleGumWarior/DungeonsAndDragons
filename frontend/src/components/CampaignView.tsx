@@ -120,7 +120,7 @@ const getCityImageFilename = (cityName: string): string =>
   cityName.replace(/'/g, '').replace(/\s+/g, '_');
 
 // Bump when city art is replaced under the same file name, so browsers drop their cached copy.
-const CITY_ART_VERSION = 3;
+const CITY_ART_VERSION = 4;
 
 // City pictures are shipped as optimised WebP (see frontend/scripts/optimize-images.js).
 const getCityImagePath = (cityName: string): string =>
