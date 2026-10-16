@@ -115,7 +115,7 @@ const RESEARCH_CATALOG = {
   tier1_smithy: {
     id: 'tier1_smithy',
     name: 'Tier 1 Smithy',
-    description: 'Upgrade the Smithy into a Forge with hardened production methods for higher-quality equipment.',
+    description: 'Upgrade the Smithy into a Smelting Furnace that turns more raw ore into iron bars and steel stock.',
     pointsRequired: 120,
     tierRequired: 3,
     prerequisites: [],
@@ -123,7 +123,7 @@ const RESEARCH_CATALOG = {
   tier2_smithy: {
     id: 'tier2_smithy',
     name: 'Tier 2 Smithy',
-    description: 'Upgrade the Forge into a Master Smithy where craftsmen significantly improve output quality and consistency.',
+    description: 'Upgrade the Smelting Furnace into an Ore Refinery where master smelters produce purer, more consistent bars.',
     pointsRequired: 150,
     tierRequired: 3,
     prerequisites: ['tier1_smithy'],
@@ -447,7 +447,7 @@ const RESEARCH_CATALOG = {
   tier3_smithy: {
     id: 'tier3_smithy',
     name: 'Tier 3 Smithy',
-    description: 'Upgrade the Master Smithy into a Royal Forge with royal contracts standardising superior arms and armor.',
+    description: 'Upgrade the Ore Refinery into a Steel Mill with royal contracts standardising high-grade steel bars.',
     pointsRequired: 160,
     tierRequired: 4,
     prerequisites: ['tier2_smithy'],
@@ -455,7 +455,7 @@ const RESEARCH_CATALOG = {
   tier4_smithy: {
     id: 'tier4_smithy',
     name: 'Tier 4 Smithy',
-    description: 'Upgrade the Royal Forge into a Grand Forge with heavy industrial furnaces for mass production and advanced alloys.',
+    description: 'Upgrade the Steel Mill into an Alloy Smeltery with heavy industrial furnaces for mass smelting and advanced alloys.',
     pointsRequired: 180,
     tierRequired: 5,
     prerequisites: ['tier3_smithy'],
@@ -463,7 +463,7 @@ const RESEARCH_CATALOG = {
   tier5_smithy: {
     id: 'tier5_smithy',
     name: 'Tier 5 Smithy',
-    description: 'Upgrade the Grand Forge into a War Smithy for dedicated wartime manufacture of elite offensive and defensive gear.',
+    description: 'Upgrade the Alloy Smeltery into a Grand Smeltery that prioritizes bulk metal stock for the army\'s arms and armor.',
     pointsRequired: 200,
     tierRequired: 6,
     prerequisites: ['tier4_smithy'],
@@ -471,7 +471,7 @@ const RESEARCH_CATALOG = {
   tier6_smithy: {
     id: 'tier6_smithy',
     name: 'Tier 6 Smithy',
-    description: 'Upgrade the War Smithy into an Imperial Forge with top-tier military metallurgy and strategic arms output.',
+    description: 'Upgrade the Grand Smeltery into an Imperial Smeltery with top-tier metallurgy for rare alloys and premium bars.',
     pointsRequired: 220,
     tierRequired: 7,
     prerequisites: ['tier5_smithy'],

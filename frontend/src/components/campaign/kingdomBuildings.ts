@@ -61,6 +61,7 @@ export const getBuildingCategory = (building: any): BuildTabId => {
        'militia_camp', 'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
        'stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables',
        'archer_range', 'bowyer_hall', 'master_fletcher_range', 'elite_fletching_hall', 'royal_marksman_range',
+       'blacksmith', 'armorers_forge', 'master_blacksmith', 'royal_blacksmith', 'grand_weaponworks', 'imperial_armorworks',
        'swordsmith_hall', 'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge',
        'spear_drill_yard', 'pike_yard', 'formation_citadel', 'shieldwall_hall', 'phalanx_command',
        'armory', 'expanded_armory', 'royal_armory', 'grand_armory', 'war_arsenal',

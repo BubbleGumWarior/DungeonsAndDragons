@@ -214,7 +214,7 @@ const BUILDING_CATALOG = {
   smithy: {
     key: 'smithy',
     name: 'Smithy',
-    description: 'Forges weapons, armor, and tools to sustain military growth and heavy industry.',
+    description: 'Smelts raw ore and minerals into iron bars and other refined metals for the kingdom\'s heavy industry.',
     tierRequired: 3,
     cost: { wood: 18, stone: 14, iron: 10 },
     days: 4,
@@ -387,8 +387,8 @@ Object.assign(BUILDING_CATALOG, {
 
   forge: {
     key: 'forge',
-    name: 'Forge',
-    description: 'A hardened production forge for higher-quality tools and military equipment.',
+    name: 'Smelting Furnace',
+    description: 'A hotter, larger furnace that turns more raw ore into iron bars and steel stock.',
     tierRequired: 4,
     cost: { wood: 24, stone: 20, iron: 14 },
     days: 5,
@@ -397,8 +397,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   master_smithy: {
     key: 'master_smithy',
-    name: 'Master Smithy',
-    description: 'Master craftsmen significantly improve output quality and consistency.',
+    name: 'Ore Refinery',
+    description: 'Master smelters refine ore into purer, more consistent bars and ingots.',
     tierRequired: 5,
     cost: { wood: 30, stone: 24, iron: 18 },
     days: 6,
@@ -407,8 +407,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   royal_forge: {
     key: 'royal_forge',
-    name: 'Royal Forge',
-    description: 'Royal contracts standardize superior arms and armor production.',
+    name: 'Steel Mill',
+    description: 'Royal contracts standardize the supply of high-grade steel bars and ingots.',
     tierRequired: 6,
     cost: { wood: 36, stone: 30, iron: 24 },
     days: 7,
@@ -417,8 +417,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   grand_forge: {
     key: 'grand_forge',
-    name: 'Grand Forge',
-    description: 'Heavy industrial furnaces support mass production and advanced alloys.',
+    name: 'Alloy Smeltery',
+    description: 'Heavy industrial furnaces mass-smelt ore and cast advanced alloys.',
     tierRequired: 7,
     cost: { wood: 44, stone: 36, iron: 30 },
     days: 8,
@@ -427,8 +427,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   war_smithy: {
     key: 'war_smithy',
-    name: 'War Smithy',
-    description: 'Dedicated wartime manufacture for elite offensive and defensive gear.',
+    name: 'Grand Smeltery',
+    description: 'Wartime smelting works that prioritize bulk metal stock for the army\'s arms and armor.',
     tierRequired: 8,
     cost: { wood: 52, stone: 44, iron: 38 },
     days: 9,
@@ -437,8 +437,8 @@ Object.assign(BUILDING_CATALOG, {
   },
   imperial_forge: {
     key: 'imperial_forge',
-    name: 'Imperial Forge',
-    description: 'Top-tier military metallurgy and strategic arms output.',
+    name: 'Imperial Smeltery',
+    description: 'Top-tier metallurgy: the kingdom\'s finest smelting works for rare alloys and premium bars.',
     tierRequired: 9,
     cost: { wood: 62, stone: 52, iron: 46 },
     days: 10,
@@ -1021,7 +1021,7 @@ Object.assign(BUILDING_CATALOG, {
   swordsmith_hall: {
     key: 'swordsmith_hall',
     name: 'Swordsmith Hall',
-    description: 'Melee infantry support line for blade production and training quality.',
+    description: 'Forges iron bars into swords and blades for melee infantry.',
     tierRequired: 3,
     cost: { wood: 22, stone: 14, iron: 8 },
     days: 4,
@@ -1031,7 +1031,7 @@ Object.assign(BUILDING_CATALOG, {
   blade_hall: {
     key: 'blade_hall',
     name: 'Blade Hall',
-    description: 'Expanded melee equipment and advanced blade drills.',
+    description: 'Expanded weapon and armor forging for melee equipment, using refined bars.',
     tierRequired: 4,
     cost: { wood: 28, stone: 20, iron: 12 },
     days: 5,
@@ -1041,7 +1041,7 @@ Object.assign(BUILDING_CATALOG, {
   champion_forge: {
     key: 'champion_forge',
     name: 'Champion Forge',
-    description: 'Champion-grade forging and training support for frontline elites.',
+    description: 'Champion-grade weapon and armor forging for frontline elites.',
     tierRequired: 5,
     cost: { wood: 34, stone: 26, iron: 16 },
     days: 6,
@@ -1051,7 +1051,7 @@ Object.assign(BUILDING_CATALOG, {
   veteran_bladesmith_hall: {
     key: 'veteran_bladesmith_hall',
     name: 'Veteran Bladesmith Hall',
-    description: 'Veteran smith coordination improves battle-ready melee kit quality.',
+    description: 'Veteran smiths turn steel bars into battle-ready melee weapons and armor.',
     tierRequired: 6,
     cost: { wood: 42, stone: 34, iron: 22 },
     days: 7,
@@ -1061,7 +1061,7 @@ Object.assign(BUILDING_CATALOG, {
   royal_blade_forge: {
     key: 'royal_blade_forge',
     name: 'Royal Blade Forge',
-    description: 'Royal-grade blade production line for top-tier melee forces.',
+    description: 'Royal-grade production line forging premium alloy bars into top-tier weapons and armor.',
     tierRequired: 7,
     cost: { wood: 50, stone: 42, iron: 30 },
     days: 8,
@@ -1353,9 +1353,39 @@ Object.assign(BUILDING_CATALOG, {
   },
   blacksmith: {
     key: 'blacksmith', name: 'Blacksmith',
-    description: 'Dedicated bladesmithing support for heavier guard weaponry.',
+    description: 'Hammers the Smithy\'s iron bars into basic weapons and armor.',
     tierRequired: 3, cost: { wood: 16, stone: 12, iron: 12 }, days: 4, resourceOutput: {},
     prerequisites: [{ type: 'smithy', minCount: 1 }],
+  },
+  armorers_forge: {
+    key: 'armorers_forge', name: "Armorer's Forge",
+    description: 'Dedicated armorers shape steel bars into plate, mail, and shields alongside finer weapons.',
+    tierRequired: 4, cost: { wood: 22, stone: 18, iron: 16 }, days: 5, resourceOutput: {},
+    prerequisites: [{ type: 'blacksmith', minCount: 1 }],
+  },
+  master_blacksmith: {
+    key: 'master_blacksmith', name: 'Master Blacksmith',
+    description: 'Master smiths turn refined bars into consistently high-quality weapons and armor.',
+    tierRequired: 5, cost: { wood: 28, stone: 24, iron: 22 }, days: 6, resourceOutput: {},
+    prerequisites: [{ type: 'armorers_forge', minCount: 1 }],
+  },
+  royal_blacksmith: {
+    key: 'royal_blacksmith', name: 'Royal Blacksmith',
+    description: 'Royal smiths forge superior arms and armor from high-grade steel for the crown\'s forces.',
+    tierRequired: 6, cost: { wood: 34, stone: 30, iron: 28 }, days: 7, resourceOutput: {},
+    prerequisites: [{ type: 'master_blacksmith', minCount: 1 }],
+  },
+  grand_weaponworks: {
+    key: 'grand_weaponworks', name: 'Grand Weaponworks',
+    description: 'Large-scale workshops that mass-produce weapons and armor from alloy bars.',
+    tierRequired: 7, cost: { wood: 42, stone: 36, iron: 36 }, days: 8, resourceOutput: {},
+    prerequisites: [{ type: 'royal_blacksmith', minCount: 1 }],
+  },
+  imperial_armorworks: {
+    key: 'imperial_armorworks', name: 'Imperial Armorworks',
+    description: 'The realm\'s finest arms and armor, forged from rare alloy bars by legendary smiths.',
+    tierRequired: 8, cost: { wood: 50, stone: 44, iron: 44 }, days: 9, resourceOutput: {},
+    prerequisites: [{ type: 'grand_weaponworks', minCount: 1 }],
   },
 
   // ── Thieves Guild chain (Street Informant → Infiltrator) + branches ───────
@@ -2393,6 +2423,12 @@ Object.assign(BUILDING_UPGRADE_MAP, {
   master_fletcher_range: { researchRequired: null, upgradedBuilding: 'elite_fletching_hall', tier3: 'elite_fletching_hall' },
   elite_fletching_hall: { researchRequired: null, upgradedBuilding: 'royal_marksman_range', tier3: 'royal_marksman_range' },
 
+  blacksmith: { researchRequired: null, upgradedBuilding: 'armorers_forge', tier3: 'armorers_forge' },
+  armorers_forge: { researchRequired: null, upgradedBuilding: 'master_blacksmith', tier3: 'master_blacksmith' },
+  master_blacksmith: { researchRequired: null, upgradedBuilding: 'royal_blacksmith', tier3: 'royal_blacksmith' },
+  royal_blacksmith: { researchRequired: null, upgradedBuilding: 'grand_weaponworks', tier3: 'grand_weaponworks' },
+  grand_weaponworks: { researchRequired: null, upgradedBuilding: 'imperial_armorworks', tier3: 'imperial_armorworks' },
+
   swordsmith_hall: { researchRequired: null, upgradedBuilding: 'blade_hall', tier3: 'blade_hall' },
   blade_hall: { researchRequired: null, upgradedBuilding: 'champion_forge', tier3: 'champion_forge' },
   champion_forge: { researchRequired: null, upgradedBuilding: 'veteran_bladesmith_hall', tier3: 'veteran_bladesmith_hall' },
@@ -2595,6 +2631,7 @@ const UPGRADE_ONLY_BUILDING_TYPES = new Set([
   'militia_barracks', 'veteran_barracks', 'elite_garrison', 'war_garrison', 'legion_garrison', 'imperial_muster_hall',
   'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables',
   'bowyer_hall', 'master_fletcher_range', 'elite_fletching_hall', 'royal_marksman_range',
+  'armorers_forge', 'master_blacksmith', 'royal_blacksmith', 'grand_weaponworks', 'imperial_armorworks',
   'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge',
   'pike_yard', 'formation_citadel', 'shieldwall_hall', 'phalanx_command',
   'expanded_armory', 'royal_armory', 'grand_armory', 'war_arsenal',
@@ -2916,6 +2953,7 @@ const ARCHER_LINE_BUILDINGS = ['archer_range', 'bowyer_hall', 'master_fletcher_r
 const CAVALRY_LINE_BUILDINGS = ['stables', 'war_stables', 'royal_stables', 'elite_stables', 'royal_cavalry_stables'];
 const SWORDSMEN_LINE_BUILDINGS = ['swordsmith_hall', 'blade_hall', 'champion_forge', 'veteran_bladesmith_hall', 'royal_blade_forge'];
 const SPEARMEN_LINE_BUILDINGS = ['spear_drill_yard', 'pike_yard', 'formation_citadel', 'shieldwall_hall', 'phalanx_command'];
+const BLACKSMITH_BUILDING_CHAIN = ['blacksmith', 'armorers_forge', 'master_blacksmith', 'royal_blacksmith', 'grand_weaponworks', 'imperial_armorworks'];
 const SIEGE_LINE_BUILDINGS = ['siege_engine_workshop', 'siege_foundry', 'war_engine_forge', 'advanced_siege_workshop', 'imperial_siege_hall'];
 const GUARD_LINE_BUILDINGS = ['guard_post', 'guard_barracks', 'shield_hall', 'royal_guard_citadel'];
 const COVERT_LINE_BUILDINGS = ['thieves_guild', 'thieves_den'];
@@ -3171,6 +3209,7 @@ const registerBuildingChain = (chain) => {
   SIEGE_LINE_BUILDINGS,
   GUARD_LINE_BUILDINGS,
   COVERT_LINE_BUILDINGS,
+  BLACKSMITH_BUILDING_CHAIN,
 ].forEach(registerBuildingChain);
 
 // A building-chain entry is normally a single building type, but some unit tiers (e.g.
@@ -4255,6 +4294,17 @@ const countSatisfying = (requiredType, byTypeCount) => {
   return total;
 };
 
+// Buildings that count toward prerequisites: every completed building, plus any building
+// mid-upgrade. An upgrade flips the row to is_complete = false (with its new building_type), but
+// the structure it was upgraded from still stands, so it keeps satisfying prerequisites as its
+// previous type instead of un-building e.g. the Smithy that a Blacksmith requires.
+const getPrerequisiteBuildings = (buildingRows) =>
+  (buildingRows || []).flatMap((b) => {
+    if (b?.is_complete) return [b];
+    const previousType = String(b?.previous_building_type || '');
+    return previousType ? [{ ...b, building_type: previousType }] : [];
+  });
+
 const hasPrerequisites = (catalogEntry, completedBuildings) => {
   const list = Array.isArray(catalogEntry.prerequisites) ? catalogEntry.prerequisites : [];
   const byTypeCount = {};
@@ -4973,6 +5023,7 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
     }));
 
     const completedBuildings = buildingsResult.rows.filter((b) => Boolean(b?.is_complete));
+    const prerequisiteBuildings = getPrerequisiteBuildings(buildingsResult.rows);
     const fiefTier = getNumber(fief.tier || 1);
     const storedForCostChecks = normalizeStoredResources(fief?.stored_resources);
     const customBuildingRows = await customBuildingRowsPromise;
@@ -5004,10 +5055,10 @@ router.get('/fiefs/:id', authenticateToken, async (req, res) => {
         };
       }
 
-      if (!hasPrerequisites(entry, completedBuildings)) {
+      if (!hasPrerequisites(entry, prerequisiteBuildings)) {
         const prereqList = Array.isArray(entry.prerequisites) ? entry.prerequisites : [];
         const byTypeCount = {};
-        for (const b of completedBuildings) {
+        for (const b of prerequisiteBuildings) {
           const t = String(b.building_type || '');
           byTypeCount[t] = (byTypeCount[t] || 0) + 1;
         }
@@ -6493,13 +6544,13 @@ router.post('/fiefs/:id/buildings', authenticateToken, async (req, res) => {
     }
 
     const completedBuildings = await client.query(
-      `SELECT building_type
+      `SELECT building_type, previous_building_type, is_complete
        FROM fief_buildings
-       WHERE fief_id = $1 AND is_complete = true`,
+       WHERE fief_id = $1 AND (is_complete = true OR previous_building_type IS NOT NULL)`,
       [fiefId]
     );
 
-    if (!hasPrerequisites(blueprint, completedBuildings.rows)) {
+    if (!hasPrerequisites(blueprint, getPrerequisiteBuildings(completedBuildings.rows))) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Building prerequisites are not met' });
     }
