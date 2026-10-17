@@ -100,7 +100,8 @@ const BattlefieldTab: React.FC<BattlefieldTabProps> = (props) => {
 
   useEffect(() => {
     if (!battle) { setSelectedId(null); return; }
-    if (selectedId && !(battle.participants || []).some(p => p.id === selectedId && (p.current_troops || 0) > 0)) setSelectedId(null);
+    // A fallen army stays selected so the roster can keep its detail open (the DM revives from there)
+    if (selectedId && !(battle.participants || []).some(p => p.id === selectedId)) setSelectedId(null);
   }, [battle, selectedId]);
 
   const selectable: BattleParticipant[] = useMemo(() => {
