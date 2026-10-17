@@ -66,6 +66,7 @@ const OrdersPanel: React.FC<OrdersPanelProps> = ({
   battle, goals, selectable, selectedArmyId, goalSelections, setGoalSelections, onPickArmy, setBattle, setGoals, notify,
 }) => {
   const paneRef = useRef<HTMLDivElement | null>(null);
+  const targetRef = useRef<HTMLHeadingElement | null>(null);
   const participants = battle.participants || [];
   const active = selectable.find(p => p.id === selectedArmyId) || selectable[0];
 
@@ -143,6 +144,15 @@ const OrdersPanel: React.FC<OrdersPanelProps> = ({
   const scrollToTop = () => {
     const scroller = paneRef.current?.closest('.bf-body');
     if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Picking a goal that needs a target brings the target list into view once it has rendered
+  const pickGoal = (goal: BattleGoalDefinition) => {
+    patch({ goalKey: goal.key });
+    if (goal.target_type !== 'enemy') return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
   };
 
   const lockIn = async () => {
@@ -265,7 +275,7 @@ const OrdersPanel: React.FC<OrdersPanelProps> = ({
             return (
               <li key={goal.key}>
                 <button type="button" className="bf-goal" aria-pressed={picked} disabled={!eligible}
-                  onClick={() => patch({ goalKey: goal.key })}>
+                  onClick={() => pickGoal(goal)}>
                   <span className="bf-radio" aria-hidden="true">{picked && <Check size={11} strokeWidth={3} />}</span>
                   <span>
                     <span className="bf-goal-name">{goal.name}</span>
@@ -293,7 +303,7 @@ const OrdersPanel: React.FC<OrdersPanelProps> = ({
 
       {needsTarget && chosenGoal && (
         <>
-          <h4 className="bf-sub">Choose a target <small>within {rangeFeet} ft</small></h4>
+          <h4 className="bf-sub" ref={targetRef}>Choose a target<small>within {rangeFeet} ft</small></h4>
           {candidatesFor(chosenGoal).length === 0 ? (
             <div className="bf-empty-note">No enemy armies are on the field.</div>
           ) : (

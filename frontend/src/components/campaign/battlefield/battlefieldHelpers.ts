@@ -86,9 +86,9 @@ export const readableOn = (color: string): string => {
 
 export type FogState = 'visible' | 'silhouette' | 'hidden';
 
-// A temporary army that no player was assigned to is run by the DM
-export const isDmRun = (p: Pick<BattleParticipant, 'is_temporary' | 'is_summoned' | 'controller_user_id' | 'is_dm_run'>): boolean =>
-  p.is_dm_run ?? (!!p.is_temporary && !p.is_summoned && !p.controller_user_id);
+// A temporary army that no player was assigned to is run by the DM (raised skeletons of a DM necromancer included)
+export const isDmRun = (p: Pick<BattleParticipant, 'is_temporary' | 'controller_user_id' | 'is_dm_run'>): boolean =>
+  p.is_dm_run ?? (!!p.is_temporary && !p.controller_user_id);
 
 export interface BattlePlayer { userId: number; name: string; team: string }
 

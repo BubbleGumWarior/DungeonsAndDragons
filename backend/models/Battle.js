@@ -64,8 +64,9 @@ class Battle {
         ...p,
         // A hidden army cannot be seen or targeted until the round after its stealth check passes
         is_hidden: p.hidden_until_round !== null && p.hidden_until_round !== undefined && p.hidden_until_round >= battle.current_round,
-        // A temporary army nobody commands is run by the DM; giving it a controller hands it to that player
-        is_dm_run: !!p.is_temporary && !p.is_summoned && !p.controller_user_id,
+        // A temporary army nobody commands is run by the DM (including skeletons raised by a DM necromancer);
+        // giving it a controller hands it to that player
+        is_dm_run: !!p.is_temporary && !p.controller_user_id,
         // Ensure army_category is properly set (prefer armies table category over temp)
         army_category: p.army_category || p.temp_army_category || 'Swordsmen'
       }));
