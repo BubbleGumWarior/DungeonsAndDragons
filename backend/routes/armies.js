@@ -798,6 +798,61 @@ router.put('/battles/participants/:participantId/morale', authenticateToken, asy
   }
 });
 
+// Bring a fallen or fled army back at full strength: all troops, starting score and starting morale (DM only)
+router.put('/battles/participants/:participantId/revive', authenticateToken, async (req, res) => {
+  try {
+    const participantId = parseInt(req.params.participantId, 10);
+
+    const found = await pool.query(
+      `SELECT bp.*, COALESCE(a.total_troops, bp.temp_army_troops) AS full_troops
+       FROM battle_participants bp
+       LEFT JOIN armies a ON bp.army_id = a.id
+       WHERE bp.id = $1`,
+      [participantId]
+    );
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+    const participant = found.rows[0];
+
+    const battle = await Battle.findById(participant.battle_id);
+    const campaign = await Campaign.findById(battle.campaign_id);
+    if (!isCampaignDM(req.user, campaign)) {
+      return res.status(403).json({ error: 'Only Dungeon Master can revive armies' });
+    }
+    if (battle.status === 'completed') {
+      return res.status(400).json({ error: 'This battle is already over' });
+    }
+    if ((participant.current_troops || 0) > 0) {
+      return res.status(400).json({ error: 'This army is still on the field' });
+    }
+
+    await pool.query(
+      `UPDATE battle_participants
+       SET current_troops = $2, current_score = base_score, has_fled = FALSE, fled_troops = 0,
+           last_morale_check = NULL,
+           current_morale = COALESCE(max_morale, current_morale)
+       WHERE id = $1`,
+      [participantId, participant.full_troops || 1]
+    );
+
+    const updated = (await Battle.findById(battle.id)).participants.find(p => p.id === participantId);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleParticipantUpdated', {
+        battleId: battle.id,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error reviving battle participant:', error);
+    res.status(500).json({ error: 'Failed to revive army' });
+  }
+});
+
 // Update participant troops (casualties/reinforcements)
 router.put('/battles/participants/:participantId/troops', authenticateToken, async (req, res) => {
   try {

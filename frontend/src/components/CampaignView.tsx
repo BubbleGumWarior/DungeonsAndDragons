@@ -2560,6 +2560,17 @@ const CampaignView: React.FC = () => {
     }
   };
 
+  const handleReviveBattleArmy = async (participantId: number) => {
+    if (!activeBattle) return;
+    try {
+      await battleAPI.reviveParticipant(participantId);
+      await refreshActiveBattle(activeBattle.id);
+    } catch (error: any) {
+      console.error('Error reviving army:', error);
+      toast(error?.response?.data?.error || 'Failed to revive the army');
+    }
+  };
+
   const handlePlaceBattlefieldNode = (x: number, y: number) => {
     if (!pendingPlacementNode || pendingPlacementNode.tab !== 'battlefield') return;
     const newNode: LightingNode = {
@@ -9374,6 +9385,7 @@ const CampaignView: React.FC = () => {
                   moveArmy: handleMoveBattleArmy,
                   assignArmy: handleAssignBattleArmy,
                   setMorale: handleSetBattleArmyMorale,
+                  reviveArmy: handleReviveBattleArmy,
                   placeNode: handlePlaceBattlefieldNode,
                   moveNode: handleMoveBattlefieldNode,
                 }}

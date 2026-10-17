@@ -1,5 +1,5 @@
 import React from 'react';
-import { EyeOff, Footprints, HeartCrack, Target, User, UserPlus, Users, VenetianMask } from 'lucide-react';
+import { EyeOff, Footprints, HeartCrack, HeartPulse, Target, User, UserPlus, Users, VenetianMask } from 'lucide-react';
 import type { Battle, BattleParticipant } from '../../../services/api';
 import { CommanderPicker } from './BattleDialogs';
 import {
@@ -70,10 +70,11 @@ interface RosterPanelProps {
   onAddArmy: () => void;
   onAssign: (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }) => void;
   onSetMorale: (participantId: number, morale: number) => void;
+  onRevive: (participantId: number) => void;
 }
 
 const RosterPanel: React.FC<RosterPanelProps> = ({
-  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy, onAssign, onSetMorale,
+  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy, onAssign, onSetMorale, onRevive,
 }) => {
   // Hidden enemy armies are not on anyone's roster but their own side's
   const participants = (battle.participants || []).filter(p => !isConcealedFrom(p, battle.participants || [], userId, isDM));
@@ -201,6 +202,11 @@ const RosterPanel: React.FC<RosterPanelProps> = ({
                             <small>Below {MORALE_BREAK_POINT} the army risks deserting at the start of a round.</small>
                             {isDM && <MoraleEditor value={p.current_morale} onCommit={(morale) => onSetMorale(p.id, morale)} />}
                           </div>
+                        )}
+                        {isDM && wiped && !p.is_summoned && battle.status !== 'completed' && (
+                          <button type="button" className="bf-btn" data-variant="primary" onClick={() => onRevive(p.id)}>
+                            <HeartPulse size={14} aria-hidden="true" /> Revive at full strength
+                          </button>
                         )}
                         {wiped && gone === 'fled' && p.last_morale_check && (
                           <p className="bf-hintline">Failed its morale save in round {p.last_morale_check.round}: rolled {p.last_morale_check.roll}, needed {p.last_morale_check.needed} or less.</p>
