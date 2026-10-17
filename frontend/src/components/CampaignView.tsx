@@ -2549,6 +2549,17 @@ const CampaignView: React.FC = () => {
     }
   };
 
+  const handleSetBattleArmyMorale = async (participantId: number, morale: number) => {
+    if (!activeBattle) return;
+    try {
+      await battleAPI.setParticipantMorale(participantId, morale);
+      await refreshActiveBattle(activeBattle.id);
+    } catch (error: any) {
+      console.error('Error setting army morale:', error);
+      toast(error?.response?.data?.error || 'Failed to update morale');
+    }
+  };
+
   const handlePlaceBattlefieldNode = (x: number, y: number) => {
     if (!pendingPlacementNode || pendingPlacementNode.tab !== 'battlefield') return;
     const newNode: LightingNode = {
@@ -9362,6 +9373,7 @@ const CampaignView: React.FC = () => {
                   endBattle: handleEndBattle,
                   moveArmy: handleMoveBattleArmy,
                   assignArmy: handleAssignBattleArmy,
+                  setMorale: handleSetBattleArmyMorale,
                   placeNode: handlePlaceBattlefieldNode,
                   moveNode: handleMoveBattlefieldNode,
                 }}

@@ -919,6 +919,11 @@ export const battleAPI = {
     return response.data;
   },
 
+  setParticipantMorale: async (participantId: number, morale: number): Promise<BattleParticipant> => {
+    const response = await api.put(`/armies/battles/participants/${participantId}/morale`, { morale });
+    return response.data;
+  },
+
   assignParticipant: async (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }): Promise<BattleParticipant> => {
     const response = await api.put(`/armies/battles/participants/${participantId}/assignment`, patch);
     return response.data;

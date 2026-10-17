@@ -23,6 +23,7 @@ export interface BattlefieldActions {
   endBattle: () => void;
   moveArmy: (participantId: number, x: number, y: number) => void;
   assignArmy: (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }) => void;
+  setMorale: (participantId: number, morale: number) => void;
   placeNode: (x: number, y: number) => void;
   moveNode: (id: string, x: number, y: number) => void;
 }
@@ -325,6 +326,7 @@ const BattlefieldTab: React.FC<BattlefieldTabProps> = (props) => {
               onInvite={actions.openInvite}
               onAddArmy={actions.openAddArmy}
               onAssign={actions.assignArmy}
+              onSetMorale={actions.setMorale}
             />
           ) : battle.status === 'goal_selection' ? (
             <OrdersPanel

@@ -755,6 +755,49 @@ router.put('/battles/participants/:participantId/assignment', authenticateToken,
   }
 });
 
+// Set an army's current morale by hand (DM only). Morale has no ceiling, but it never drops below 0.
+router.put('/battles/participants/:participantId/morale', authenticateToken, async (req, res) => {
+  try {
+    const participantId = parseInt(req.params.participantId, 10);
+    const morale = Math.round(Number(req.body.morale));
+    if (!Number.isFinite(morale)) {
+      return res.status(400).json({ error: 'morale must be a number' });
+    }
+
+    const found = await pool.query('SELECT * FROM battle_participants WHERE id = $1', [participantId]);
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+    const participant = found.rows[0];
+
+    const battle = await Battle.findById(participant.battle_id);
+    const campaign = await Campaign.findById(battle.campaign_id);
+    if (!isCampaignDM(req.user, campaign)) {
+      return res.status(403).json({ error: 'Only Dungeon Master can edit morale' });
+    }
+    if (participant.is_summoned || participant.current_morale === null || participant.current_morale === undefined) {
+      return res.status(400).json({ error: 'This army has no morale to edit yet' });
+    }
+
+    await pool.query('UPDATE battle_participants SET current_morale = $2 WHERE id = $1', [participantId, Math.max(0, morale)]);
+
+    const updated = (await Battle.findById(battle.id)).participants.find(p => p.id === participantId);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleParticipantUpdated', {
+        battleId: battle.id,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating participant morale:', error);
+    res.status(500).json({ error: 'Failed to update morale' });
+  }
+});
+
 // Update participant troops (casualties/reinforcements)
 router.put('/battles/participants/:participantId/troops', authenticateToken, async (req, res) => {
   try {

@@ -24,6 +24,39 @@ import {
   readableOn,
 } from './battlefieldHelpers';
 
+// DM stepper for an army's morale: the typed number is committed on blur or Enter, the buttons nudge it at once
+const MoraleEditor: React.FC<{ value: number; onCommit: (morale: number) => void }> = ({ value, onCommit }) => {
+  const [draft, setDraft] = React.useState(String(value));
+  React.useEffect(() => { setDraft(String(value)); }, [value]);
+
+  const commit = (next: number) => {
+    const morale = Math.max(0, Math.round(next));
+    if (Number.isFinite(morale) && morale !== value) onCommit(morale);
+    else setDraft(String(value));
+  };
+
+  return (
+    <div className="bf-morale-edit">
+      <span>Set morale</span>
+      <button type="button" className="bf-btn" data-size="sm" aria-label="Lower morale by 5" onClick={() => commit(value - 5)}>−5</button>
+      <button type="button" className="bf-btn" data-size="sm" aria-label="Lower morale by 1" onClick={() => commit(value - 1)}>−1</button>
+      <input
+        className="bf-input"
+        type="number"
+        min={0}
+        inputMode="numeric"
+        aria-label="Army morale"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => commit(Number(draft))}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      />
+      <button type="button" className="bf-btn" data-size="sm" aria-label="Raise morale by 1" onClick={() => commit(value + 1)}>+1</button>
+      <button type="button" className="bf-btn" data-size="sm" aria-label="Raise morale by 5" onClick={() => commit(value + 5)}>+5</button>
+    </div>
+  );
+};
+
 interface RosterPanelProps {
   battle: Battle;
   isDM: boolean;
@@ -36,10 +69,11 @@ interface RosterPanelProps {
   onInvite: () => void;
   onAddArmy: () => void;
   onAssign: (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }) => void;
+  onSetMorale: (participantId: number, morale: number) => void;
 }
 
 const RosterPanel: React.FC<RosterPanelProps> = ({
-  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy, onAssign,
+  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy, onAssign, onSetMorale,
 }) => {
   // Hidden enemy armies are not on anyone's roster but their own side's
   const participants = (battle.participants || []).filter(p => !isConcealedFrom(p, battle.participants || [], userId, isDM));
@@ -165,6 +199,7 @@ const RosterPanel: React.FC<RosterPanelProps> = ({
                               <u style={{ left: `${(MORALE_BREAK_POINT / moraleMax) * 100}%` }} />
                             </div>
                             <small>Below {MORALE_BREAK_POINT} the army risks deserting at the start of a round.</small>
+                            {isDM && <MoraleEditor value={p.current_morale} onCommit={(morale) => onSetMorale(p.id, morale)} />}
                           </div>
                         )}
                         {wiped && gone === 'fled' && p.last_morale_check && (
