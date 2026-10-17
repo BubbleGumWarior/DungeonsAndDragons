@@ -1200,6 +1200,8 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
               CASE WHEN bp.is_temporary THEN bp.temp_army_stats
                    ELSE jsonb_build_object('equipment', a.equipment, 'discipline', a.discipline, 'morale', a.morale, 'command', a.command, 'logistics', a.logistics) END as executor_stats,
               COALESCE(a.player_id, bp.controller_user_id) as executor_player_id,
+              bp.is_summoned as executor_is_summoned,
+              target_bp.is_summoned as target_is_summoned,
               target_bp.current_troops as target_troops,
               target_bp.current_score as target_score,
               target_bp.position_x as target_position_x, target_bp.position_y as target_position_y,
@@ -1255,7 +1257,9 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
       name: goal.executor_name,
       category: goal.executor_category,
       troops: Number(goal.current_troops) || 0,
-      totalTroops: Number(goal.executor_total_troops) || Number(goal.current_troops) || 0,
+      undead: !!goal.executor_is_summoned,
+      // A raised army's recorded total is everything ever raised, which would make it look shattered
+      totalTroops: goal.executor_is_summoned ? Number(goal.current_troops) || 0 : Number(goal.executor_total_troops) || Number(goal.current_troops) || 0,
       score: Number(goal.executor_score) || 0,
       stats: { ...(goal.executor_stats || {}), numbers: Army.calculateNumbersStat(Number(goal.current_troops) || 0) }
     };
@@ -1263,7 +1267,8 @@ router.post('/battles/:id/goals/:goalId/resolve', authenticateToken, async (req,
       name: goal.target_name,
       category: goal.target_category,
       troops: Number(goal.target_troops) || 0,
-      totalTroops: Number(goal.target_total_troops) || Number(goal.target_troops) || 0,
+      undead: !!goal.target_is_summoned,
+      totalTroops: goal.target_is_summoned ? Number(goal.target_troops) || 0 : Number(goal.target_total_troops) || Number(goal.target_troops) || 0,
       score: Number(goal.target_score) || 0,
       stats: { ...(goal.target_stats || {}), numbers: Army.calculateNumbersStat(Number(goal.target_troops) || 0) }
     } : null;

@@ -21,6 +21,7 @@ const { UNIT_TEMPLATES } = require('./unitTemplates');
 const TICKS = 4; // exchanges per resolution
 const BASE_KILL_RATE = 0.045; // share of fighting strength converted into kills per exchange
 const MAX_TICK_FRACTION = 0.3; // no army loses more than this share of its troops in one exchange
+const MIN_TICK_LOSS = 2; // ...unless the army is smaller than this, so tiny armies are not untouchable
 const MELEE_FEET = 40; // reach at or below this is melee
 
 // Keep reach and movement in sync with UNIT_LINES in frontend battlefieldHelpers.ts
@@ -98,7 +99,8 @@ const rollArmy = (army, rng = Math.random) => {
 
 // The d100 becomes a luck multiplier around 1.0 for the engagement
 const luckFromRoll = (roll) => 0.5 + clamp(roll, 1, 100) / 100;
-const routThreshold = (army) => clamp(0.3 - 0.02 * stat(army, 'morale'), 0.08, 0.3);
+// Undead are mindless and fight to the last bone
+const routThreshold = (army) => (army.undead ? 0 : clamp(0.3 - 0.02 * stat(army, 'morale'), 0.08, 0.3));
 
 const roundKills = (raw, available) => {
   if (raw <= 0 || available <= 0) return 0;
@@ -217,8 +219,9 @@ function simulateEngagement({ attacker, defender, attackGoal, defendGoal, distan
     const rawToD = aFires ? strike(attacker, defender, aType, dType, troopsA, troopsD, luckA, goalPower, inMelee) * bracing : 0;
     const rawToA = dFires ? strike(defender, attacker, dType, aType, troopsD, troopsA, luckD, 1, inMelee) : 0;
 
-    const lossD = Math.min(rawToD, troopsD * MAX_TICK_FRACTION);
-    const lossA = Math.min(rawToA, troopsA * MAX_TICK_FRACTION);
+    // Small armies can still be overrun: the cap never drops below a couple of troops per exchange
+    const lossD = Math.min(rawToD, Math.max(troopsD * MAX_TICK_FRACTION, Math.min(troopsD, MIN_TICK_LOSS)));
+    const lossA = Math.min(rawToA, Math.max(troopsA * MAX_TICK_FRACTION, Math.min(troopsA, MIN_TICK_LOSS)));
     killedD += lossD;
     killedA += lossA;
     troopsD = Math.max(0, troopsD - lossD);
