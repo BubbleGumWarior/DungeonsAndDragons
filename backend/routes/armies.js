@@ -140,6 +140,9 @@ router.post('/', authenticateToken, async (req, res) => {
       if (!total_troops || total_troops < 1) {
         return res.status(400).json({ error: 'total_troops is required and must be at least 1' });
       }
+      if (category && !UNIT_TEMPLATES[category]) {
+        return res.status(400).json({ error: `Unknown army category: ${category}` });
+      }
       armyData = { player_id, campaign_id, name, category, total_troops, equipment, discipline, morale, command, logistics, is_garrisoned: false };
     }
     

@@ -939,7 +939,7 @@ const CampaignView: React.FC = () => {
     logistics: number;
   }>({
     name: '',
-    category: 'Swordsmen',
+    category: 'Recruit',
     total_troops: 100,
     equipment: 5,
     discipline: 5,
@@ -2793,6 +2793,7 @@ const CampaignView: React.FC = () => {
   }, []);
 
   const loadCharacterSkills = useCallback(async (characterId: number) => {
+    if (!Number.isInteger(characterId)) return;
     try {
       const skills = await skillAPI.getCharacterSkills(characterId);
       setCharacterSkills(prev => ({ ...prev, [characterId]: skills }));
@@ -2887,6 +2888,8 @@ const CampaignView: React.FC = () => {
     combatants.forEach(c => {
       if (c.isMonster) return;
       const id = Number(c.characterId);
+      // Allies, summons and NPCs carry non-numeric ids — they have no character_skills rows
+      if (!Number.isInteger(id)) return;
       if (!characterSkills[id]) {
         loadCharacterSkills(id);
       }
@@ -18183,7 +18186,7 @@ const CampaignView: React.FC = () => {
                   Army Type *
                 </label>
                 <select
-                  value={newArmyData.category || 'Swordsmen'}
+                  value={newArmyData.category || 'Recruit'}
                   onChange={(e) => {
                     const presets = getArmyCategoryPresets(e.target.value);
                     setNewArmyData({ ...newArmyData, category: e.target.value, ...presets });
@@ -18285,7 +18288,7 @@ const CampaignView: React.FC = () => {
                     setShowAddArmyModal(false);
                     setNewArmyData({
                       name: '',
-                      category: 'Swordsmen',
+                      category: 'Recruit',
                       total_troops: 100,
                       equipment: 5,
                       discipline: 5,
@@ -18327,7 +18330,7 @@ const CampaignView: React.FC = () => {
                       setShowAddArmyModal(false);
                       setNewArmyData({
                         name: '',
-                        category: 'Swordsmen',
+                        category: 'Recruit',
                         total_troops: 100,
                         equipment: 5,
                         discipline: 5,

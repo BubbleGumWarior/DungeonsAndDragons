@@ -161,7 +161,10 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/characters/:characterId', authenticateToken, async (req, res) => {
   try {
     const { characterId } = req.params;
-    
+    if (!/^\d+$/.test(characterId)) {
+      return res.status(400).json({ error: 'Invalid character id' });
+    }
+
     const result = await pool.query(`
       SELECT s.*, cs.acquired_at
       FROM character_skills cs
