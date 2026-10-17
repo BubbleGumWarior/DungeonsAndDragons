@@ -24,35 +24,36 @@ import {
   readableOn,
 } from './battlefieldHelpers';
 
-// DM stepper for an army's morale: the typed number is committed on blur or Enter, the buttons nudge it at once
-const MoraleEditor: React.FC<{ value: number; onCommit: (morale: number) => void }> = ({ value, onCommit }) => {
+// DM stepper for one of an army's numbers: the typed value is committed on blur or Enter, the buttons nudge it at once
+const NumberEditor: React.FC<{ label: string; value: number; big: number; small: number; onCommit: (value: number) => void }> = ({ label, value, big, small, onCommit }) => {
   const [draft, setDraft] = React.useState(String(value));
   React.useEffect(() => { setDraft(String(value)); }, [value]);
 
   const commit = (next: number) => {
-    const morale = Math.max(0, Math.round(next));
-    if (Number.isFinite(morale) && morale !== value) onCommit(morale);
+    const clean = Math.max(0, Math.round(next));
+    if (Number.isFinite(clean) && clean !== value) onCommit(clean);
     else setDraft(String(value));
   };
+  const noun = label.toLowerCase();
 
   return (
     <div className="bf-morale-edit">
-      <span>Set morale</span>
-      <button type="button" className="bf-btn" data-size="sm" aria-label="Lower morale by 5" onClick={() => commit(value - 5)}>−5</button>
-      <button type="button" className="bf-btn" data-size="sm" aria-label="Lower morale by 1" onClick={() => commit(value - 1)}>−1</button>
+      <span>Set {noun}</span>
+      <button type="button" className="bf-btn" data-size="sm" aria-label={`Lower ${noun} by ${big}`} onClick={() => commit(value - big)}>−{big}</button>
+      <button type="button" className="bf-btn" data-size="sm" aria-label={`Lower ${noun} by ${small}`} onClick={() => commit(value - small)}>−{small}</button>
       <input
         className="bf-input"
         type="number"
         min={0}
         inputMode="numeric"
-        aria-label="Army morale"
+        aria-label={`Army ${noun}`}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => commit(Number(draft))}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
       />
-      <button type="button" className="bf-btn" data-size="sm" aria-label="Raise morale by 1" onClick={() => commit(value + 1)}>+1</button>
-      <button type="button" className="bf-btn" data-size="sm" aria-label="Raise morale by 5" onClick={() => commit(value + 5)}>+5</button>
+      <button type="button" className="bf-btn" data-size="sm" aria-label={`Raise ${noun} by ${small}`} onClick={() => commit(value + small)}>+{small}</button>
+      <button type="button" className="bf-btn" data-size="sm" aria-label={`Raise ${noun} by ${big}`} onClick={() => commit(value + big)}>+{big}</button>
     </div>
   );
 };
@@ -70,11 +71,12 @@ interface RosterPanelProps {
   onAddArmy: () => void;
   onAssign: (participantId: number, patch: { controller_user_id?: number | null; dm_hidden?: boolean }) => void;
   onSetMorale: (participantId: number, morale: number) => void;
+  onSetTroops: (participantId: number, troops: number) => void;
   onRevive: (participantId: number) => void;
 }
 
 const RosterPanel: React.FC<RosterPanelProps> = ({
-  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy, onAssign, onSetMorale, onRevive,
+  battle, isDM, userId, selectedId, hoveredId, remainingMovement, onSelect, onHover, onInvite, onAddArmy, onAssign, onSetMorale, onSetTroops, onRevive,
 }) => {
   // Hidden enemy armies are not on anyone's roster but their own side's
   const participants = (battle.participants || []).filter(p => !isConcealedFrom(p, battle.participants || [], userId, isDM));
@@ -200,7 +202,14 @@ const RosterPanel: React.FC<RosterPanelProps> = ({
                               <u style={{ left: `${(MORALE_BREAK_POINT / moraleMax) * 100}%` }} />
                             </div>
                             <small>Below {MORALE_BREAK_POINT} the army risks deserting at the start of a round.</small>
-                            {isDM && <MoraleEditor value={p.current_morale} onCommit={(morale) => onSetMorale(p.id, morale)} />}
+                          </div>
+                        )}
+                        {isDM && !wiped && (
+                          <div className="bf-dm-edit">
+                            <NumberEditor label="Unit count" value={troops} big={100} small={10} onCommit={(count) => onSetTroops(p.id, count)} />
+                            {moraleLevel && p.current_morale !== null && p.current_morale !== undefined && (
+                              <NumberEditor label="Morale" value={p.current_morale} big={5} small={1} onCommit={(morale) => onSetMorale(p.id, morale)} />
+                            )}
                           </div>
                         )}
                         {isDM && wiped && !p.is_summoned && battle.status !== 'completed' && (

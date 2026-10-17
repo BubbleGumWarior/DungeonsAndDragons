@@ -2560,6 +2560,17 @@ const CampaignView: React.FC = () => {
     }
   };
 
+  const handleSetBattleArmyTroops = async (participantId: number, troops: number) => {
+    if (!activeBattle) return;
+    try {
+      await battleAPI.setParticipantTroops(participantId, troops);
+      await refreshActiveBattle(activeBattle.id);
+    } catch (error: any) {
+      console.error('Error setting army unit count:', error);
+      toast(error?.response?.data?.error || 'Failed to update the unit count');
+    }
+  };
+
   const handleReviveBattleArmy = async (participantId: number) => {
     if (!activeBattle) return;
     try {
@@ -9385,6 +9396,7 @@ const CampaignView: React.FC = () => {
                   moveArmy: handleMoveBattleArmy,
                   assignArmy: handleAssignBattleArmy,
                   setMorale: handleSetBattleArmyMorale,
+                  setTroops: handleSetBattleArmyTroops,
                   reviveArmy: handleReviveBattleArmy,
                   placeNode: handlePlaceBattlefieldNode,
                   moveNode: handleMoveBattlefieldNode,

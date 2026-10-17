@@ -837,6 +837,7 @@ button.bf-terrain:hover { color: var(--bf-ink-2); }
 .bf-morale-bar i { position: absolute; inset: 0; border-radius: 4px; background: rgb(var(--tone)); transform-origin: left; transition: transform 0.4s var(--bf-ease); }
 .bf-morale-bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--bf-ink); border-radius: 1px; text-decoration: none; }
 .bf-morale small { color: var(--bf-ink-3); font-size: 0.76rem; line-height: 1.4; }
+.bf-dm-edit { display: grid; gap: 0.6rem; }
 .bf-morale-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.15rem; font-size: 0.76rem; color: var(--bf-ink-3); }
 .bf-morale-edit > span { flex: 1 0 100%; }
 .bf-morale-edit .bf-input { width: 4.2rem; min-height: 1.8rem; padding: 0.2rem 0.4rem; text-align: center; }

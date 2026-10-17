@@ -798,6 +798,49 @@ router.put('/battles/participants/:participantId/morale', authenticateToken, asy
   }
 });
 
+// Set an army's troop count by hand (DM only). Zero takes it off the field as fallen.
+router.put('/battles/participants/:participantId/troop-count', authenticateToken, async (req, res) => {
+  try {
+    const participantId = parseInt(req.params.participantId, 10);
+    const troops = Math.round(Number(req.body.troops));
+    if (!Number.isFinite(troops)) {
+      return res.status(400).json({ error: 'troops must be a number' });
+    }
+
+    const found = await pool.query('SELECT * FROM battle_participants WHERE id = $1', [participantId]);
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+    const participant = found.rows[0];
+
+    const battle = await Battle.findById(participant.battle_id);
+    const campaign = await Campaign.findById(battle.campaign_id);
+    if (!isCampaignDM(req.user, campaign)) {
+      return res.status(403).json({ error: 'Only Dungeon Master can edit unit counts' });
+    }
+    if ((participant.current_troops || 0) <= 0) {
+      return res.status(400).json({ error: 'Revive this army before editing its unit count' });
+    }
+
+    await pool.query('UPDATE battle_participants SET current_troops = $2 WHERE id = $1', [participantId, Math.max(0, troops)]);
+
+    const updated = (await Battle.findById(battle.id)).participants.find(p => p.id === participantId);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`campaign_${battle.campaign_id}`).emit('battleParticipantUpdated', {
+        battleId: battle.id,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating participant troop count:', error);
+    res.status(500).json({ error: 'Failed to update unit count' });
+  }
+});
+
 // Bring a fallen or fled army back at full strength: all troops, starting score and starting morale (DM only)
 router.put('/battles/participants/:participantId/revive', authenticateToken, async (req, res) => {
   try {

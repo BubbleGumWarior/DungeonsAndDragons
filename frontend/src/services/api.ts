@@ -924,6 +924,11 @@ export const battleAPI = {
     return response.data;
   },
 
+  setParticipantTroops: async (participantId: number, troops: number): Promise<BattleParticipant> => {
+    const response = await api.put(`/armies/battles/participants/${participantId}/troop-count`, { troops });
+    return response.data;
+  },
+
   reviveParticipant: async (participantId: number): Promise<BattleParticipant> => {
     const response = await api.put(`/armies/battles/participants/${participantId}/revive`);
     return response.data;
