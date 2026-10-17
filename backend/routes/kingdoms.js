@@ -7935,6 +7935,43 @@ router.patch('/fiefs/:id/location-modifiers', authenticateToken, async (req, res
   }
 });
 
+// ─── DM: Place a Fief Under Siege / Lift the Siege ────────────────────────────
+// While besieged: unrest climbs 10x faster, all production is halved (after every
+// other bonus) and population growth stalls. Applied by Campaign.advanceDays.
+router.patch('/fiefs/:id/siege', authenticateToken, async (req, res) => {
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+    if (typeof req.body?.underSiege !== 'boolean') {
+      return res.status(400).json({ error: 'underSiege must be a boolean' });
+    }
+    const underSiege = req.body.underSiege;
+
+    const result = await pool.query(
+      `UPDATE fiefs SET is_under_siege = $2 WHERE id = $1 RETURNING id, kingdom_id`,
+      [fiefId, underSiege]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Fief not found' });
+
+    const campaignResult = await pool.query(
+      `SELECT campaign_id FROM kingdoms WHERE id = $1`,
+      [result.rows[0].kingdom_id]
+    );
+    const campaignId = campaignResult.rows[0]?.campaign_id;
+
+    if (req.io && campaignId) {
+      req.io.to(`campaign_${campaignId}`).emit('kingdomDataChanged', { campaignId, fiefId });
+    }
+
+    res.json({ fiefId, underSiege });
+  } catch (error) {
+    console.error('Error toggling fief siege:', error);
+    res.status(500).json({ error: 'Failed to update fief siege' });
+  }
+});
+
 const PRAYER_DEFINITIONS = [
   {
     key: 'harvest_rite',

@@ -1457,6 +1457,7 @@ export interface KingdomFief {
   tier_upgrade_target?: number;
   consecutive_gold_shortage_days?: number;
   unrest?: number;
+  is_under_siege?: boolean;
   population: number;
   assignable_population?: number;
   underage_population?: number;
@@ -2227,6 +2228,14 @@ export const kingdomAPI = {
     payload: { locationModifiers: Record<string, number>; travelDays: number }
   ): Promise<{ fiefId: number; locationModifiers: Record<string, number>; travelDays: number }> => {
     const response = await api.patch(`/kingdoms/fiefs/${fiefId}/location-modifiers`, payload);
+    return response.data;
+  },
+
+  setFiefSiege: async (
+    fiefId: number,
+    underSiege: boolean
+  ): Promise<{ fiefId: number; underSiege: boolean }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/siege`, { underSiege });
     return response.data;
   },
 

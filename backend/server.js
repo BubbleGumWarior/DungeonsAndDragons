@@ -420,6 +420,7 @@ const startServer = async () => {
         { name: 'addTier4Upgrade', fn: require('./migrations/add_tier4_upgrade') },
         { name: 'addGoldUpkeep', fn: require('./migrations/add_gold_upkeep') },
         { name: 'addFiefUnrest', fn: require('./migrations/add_fief_unrest') },
+        { name: 'addFiefSiege', fn: require('./migrations/add_fief_siege') },
         { name: 'addTier5Upgrade', fn: require('./migrations/add_tier5_upgrade') },
         { name: 'addEldritchBlastScaling', fn: require('./migrations/add_eldritch_blast_scaling') },
         { name: 'addWarlockFullProgression', fn: require('./migrations/add_warlock_full_progression') },

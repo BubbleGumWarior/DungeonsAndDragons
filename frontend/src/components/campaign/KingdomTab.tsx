@@ -157,6 +157,10 @@ const getDailyGoldConsumption = (population: number, unitReserves: Record<string
   return ((pop / 10) + (militiaCount * 1) + (otherSoldierCount * 2)) * TIER4_UPKEEP_MULTIPLIER;
 };
 
+// DM-declared siege — mirrors Campaign.SIEGE_UNREST_RATE_MULTIPLIER / SIEGE_PRODUCTION_PENALTY_PCT.
+const SIEGE_UNREST_RATE_MULTIPLIER = 10;
+const SIEGE_PRODUCTION_PENALTY_PCT = 50;
+
 // ── Tier 5+ civic stability (unrest) ────────────────────────────────────────
 // Mirrors the backend's Campaign.STABILITY_CAPACITY_BY_TYPE / getUnrestTarget /
 // getUnrestProductionPenaltyPct / getUnrestRevoltChance exactly.
@@ -1345,6 +1349,19 @@ const KingdomTab: React.FC<Props> = ({
     }
   };
 
+  const handleToggleFiefSiege = async (fiefId: number, fiefName: string, underSiege: boolean) => {
+    setBusy(`fief-siege-${fiefId}`);
+    try {
+      await kingdomAPI.setFiefSiege(fiefId, underSiege);
+      pushToast(underSiege ? `${fiefName} is now under siege` : `The siege of ${fiefName} has been lifted`);
+      await fetchKingdoms();
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to update siege');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const getAnimalPurchaseForm = (fiefId: number, defaultType: string) =>
     animalPurchaseForm[fiefId] || { animalType: defaultType, qty: 1 };
 
@@ -1928,6 +1945,15 @@ const KingdomTab: React.FC<Props> = ({
     output.research = applyLegendaryBonus('research', applyAllModifiers('research', output.research));
     output.building = applyLegendaryBonus('building', applyAllModifiers('building', output.building));
 
+    // Siege halves all production after every other bonus (mirrors Campaign.SIEGE_PRODUCTION_PENALTY_PCT).
+    // Refined goods are made from stock rather than produced, so they are not cut.
+    const siegeMultiplier = fiefDetails.is_under_siege ? 1 - (SIEGE_PRODUCTION_PENALTY_PCT / 100) : 1;
+    if (siegeMultiplier !== 1) {
+      for (const lane of Object.keys(output)) {
+        if (!(lane in REFINING_LANES)) output[lane] *= siegeMultiplier;
+      }
+    }
+
     const foodTotal = output.vegetables + output.meat;
     const foodConsumptionReductionPct = Number(fiefLegendaryBonuses.food_consumption_reduction_pct || 0);
     const consumptionMultiplier = Math.max(0, 1 - (foodConsumptionReductionPct / 100));
@@ -1946,7 +1972,7 @@ const KingdomTab: React.FC<Props> = ({
         consumption,
         net,
         nextDayIsHarvest,
-        projectedVegetableYield,
+        projectedVegetableYield: projectedVegetableYield * siegeMultiplier,
         daysLeftInCycle,
         vegetablePhase,
         vegetableDayInPhase,
@@ -4045,6 +4071,8 @@ const KingdomTab: React.FC<Props> = ({
                           : {};
                         const activeMods = LOCATION_LANES.filter(({ key }) => Number(mods[key] || 0) !== 0);
                         const inTransit = Number(f.travel_days_remaining || 0) > 0;
+                        const underSiege = Boolean(f.is_under_siege);
+                        const siegeBusy = busy === `fief-siege-${f.id}`;
                         return (
                           <div
                             key={f.id}
@@ -4068,7 +4096,17 @@ const KingdomTab: React.FC<Props> = ({
                                     {' '}· 🚶 {f.travel_days_remaining}d
                                   </span>
                                 )}
+                                {underSiege && (
+                                  <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.75rem' }}>
+                                    {' '}· 🏰 Under siege
+                                  </span>
+                                )}
                               </span>
+                              {underSiege && (
+                                <span style={{ color: '#fca5a5', fontSize: '0.74rem' }}>
+                                  Unrest rising {SIEGE_UNREST_RATE_MULTIPLIER}× faster · −{SIEGE_PRODUCTION_PENALTY_PCT}% production · population growth stalled
+                                </span>
+                              )}
                               {activeMods.length === 0 ? (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>No terrain bonuses set</span>
                               ) : (
@@ -4086,6 +4124,27 @@ const KingdomTab: React.FC<Props> = ({
                                 </div>
                               )}
                             </div>
+                            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', flexShrink: 0 }}>
+                            <button
+                              onClick={() => handleToggleFiefSiege(Number(f.id), f.name, !underSiege)}
+                              disabled={siegeBusy}
+                              title={underSiege
+                                ? 'DM: lift the siege and restore normal unrest, production and growth'
+                                : `DM: place under siege — unrest ${SIEGE_UNREST_RATE_MULTIPLIER}× faster, −${SIEGE_PRODUCTION_PENALTY_PCT}% production, population growth stalled`}
+                              style={{
+                                padding: '0.32rem 0.7rem',
+                                borderRadius: '1.4rem',
+                                border: underSiege ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(239,68,68,0.5)',
+                                background: underSiege ? 'rgba(20,83,45,0.35)' : 'rgba(127,29,29,0.35)',
+                                color: underSiege ? '#86efac' : '#fca5a5',
+                                fontWeight: 700,
+                                fontSize: '0.78rem',
+                                cursor: siegeBusy ? 'not-allowed' : 'pointer',
+                                opacity: siegeBusy ? 0.6 : 1,
+                              }}
+                            >
+                              {underSiege ? 'Lift Siege' : '🏰 Besiege'}
+                            </button>
                             <button
                               onClick={() => {
                                 setPendingFiefModifierId(Number(f.id));
@@ -4107,6 +4166,7 @@ const KingdomTab: React.FC<Props> = ({
                             >
                               Edit Terrain
                             </button>
+                            </div>
                           </div>
                         );
                       })
@@ -4585,7 +4645,12 @@ const KingdomTab: React.FC<Props> = ({
                 })()}
 
                 {/* ── Unrest (Tier 5+ civic stability) ── */}
-                {Number(fiefDetails?.tier || 1) >= 5 && (() => {
+                {fiefDetails?.is_under_siege && (
+                  <div style={{ marginTop: '0.5rem', padding: '0.4rem 0.7rem', borderRadius: '0.4rem', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '0.8rem', fontWeight: 600 }}>
+                    🏰 Under siege — unrest rises {SIEGE_UNREST_RATE_MULTIPLIER}× faster, all production is cut by {SIEGE_PRODUCTION_PENALTY_PCT}%, and population growth is stalled.
+                  </div>
+                )}
+                {(Number(fiefDetails?.tier || 1) >= 5 || fiefDetails?.is_under_siege) && (() => {
                   const barColor = currentUnrest >= UNREST_REVOLT_FLOOR ? '#ef4444' : currentUnrest > UNREST_PENALTY_FLOOR ? '#fbbf24' : '#22c55e';
                   return (
                     <div style={{ paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.07)' }}>

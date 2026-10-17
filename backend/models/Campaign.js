@@ -284,6 +284,10 @@ class Campaign {
   static UNREST_REVOLT_FLOOR = 70;
   // Maximum daily revolt chance (at unrest 100).
   static UNREST_MAX_REVOLT_CHANCE = 0.25;
+  // DM-declared siege: unrest climbs this many times faster than its normal daily step,
+  // and all production is cut by this percentage after every other modifier.
+  static SIEGE_UNREST_RATE_MULTIPLIER = 10;
+  static SIEGE_PRODUCTION_PENALTY_PCT = 50;
 
   static getStabilityCapacity(completedBuildings) {
     let capacity = 0;
@@ -1735,6 +1739,7 @@ class Campaign {
       let hasConsecutiveStarvationDaysColumn = false;
       let hasConsecutiveGoldShortageDaysColumn = false;
       let hasUnrestColumn = false;
+      let hasSiegeColumn = false;
       let hasTierUpgradeDaysRemaining3Column = false;
       let hasTierUpgradeDaysRemaining4Column = false;
       let hasTierUpgradeDaysRemaining5Column = false;
@@ -1771,6 +1776,7 @@ class Campaign {
             'travel_days_remaining',
             'unit_reserves',
             'unrest',
+            'is_under_siege',
             'food_storage_capacity',
             'bank_capacity',
             'mana_status',
@@ -1791,6 +1797,7 @@ class Campaign {
         hasTravelDaysColumn = availableColumns.has('travel_days_remaining');
         hasUnitReservesColumn = availableColumns.has('unit_reserves');
         hasUnrestColumn = availableColumns.has('unrest');
+        hasSiegeColumn = availableColumns.has('is_under_siege');
         hasFoodStorageCapacityColumn = availableColumns.has('food_storage_capacity');
         hasBankCapacityColumn = availableColumns.has('bank_capacity');
         hasManaStatusColumn = availableColumns.has('mana_status');
@@ -1895,6 +1902,7 @@ class Campaign {
                     ${hasTravelDaysColumn ? 'COALESCE(f.travel_days_remaining, 0)' : '0'} AS travel_days_remaining,
                     ${hasUnitReservesColumn ? "COALESCE(f.unit_reserves, '{}'::jsonb)" : "'{}'::jsonb"} AS unit_reserves,
                     ${hasUnrestColumn ? 'COALESCE(f.unrest, 0)' : '0'} AS unrest,
+                    ${hasSiegeColumn ? 'COALESCE(f.is_under_siege, false)' : 'false'} AS is_under_siege,
                     ${hasManaStatusColumn ? "COALESCE(f.mana_status, '{}'::jsonb)" : "'{}'::jsonb"} AS mana_status
            FROM fiefs f
            JOIN kingdoms k ON k.id = f.kingdom_id
@@ -1940,6 +1948,7 @@ class Campaign {
             travelDaysRemaining: Number(row.travel_days_remaining || 0),
             unitReserves: (row.unit_reserves && typeof row.unit_reserves === 'object' && !Array.isArray(row.unit_reserves)) ? row.unit_reserves : {},
             unrest: Math.max(0, Math.min(100, Number(row.unrest || 0))),
+            isUnderSiege: Boolean(row.is_under_siege),
             manaStatus: (row.mana_status && typeof row.mana_status === 'object') ? row.mana_status : {},
             // Last day this fief was actually simulated (not in transit) — drives the single
             // end-of-advance training update. Unfinished buildings are indexed lazily (see below).
@@ -2150,7 +2159,11 @@ class Campaign {
           // vs. guard/faith/governance building capacity, then saps production once high.
           const stabilityCapacity = Campaign.getStabilityCapacity(completed);
           const unrestTarget = Campaign.getUnrestTarget(fief.population, stabilityCapacity, fief.tier);
-          if (fief.unrest < unrestTarget) {
+          if (fief.isUnderSiege) {
+            // Siege: unrest surges at 10x the normal daily step, regardless of civic capacity
+            // (the target is 0 below Tier 5 and would otherwise cap the climb).
+            fief.unrest = Math.min(100, fief.unrest + (Campaign.UNREST_DAILY_STEP * Campaign.SIEGE_UNREST_RATE_MULTIPLIER));
+          } else if (fief.unrest < unrestTarget) {
             fief.unrest = Math.min(unrestTarget, fief.unrest + Campaign.UNREST_DAILY_STEP);
           } else if (fief.unrest > unrestTarget) {
             fief.unrest = Math.max(unrestTarget, fief.unrest - Campaign.UNREST_DAILY_STEP);
@@ -2269,13 +2282,18 @@ class Campaign {
             Campaign.sumBuildingBonusPct(completed)
           );
           const unrestPenaltyPct = Campaign.getUnrestProductionPenaltyPct(fief.unrest);
-          const modifiedProduction = Campaign.applyUnrestPenalty(
+          const unrestAdjustedProduction = Campaign.applyUnrestPenalty(
             Campaign.applyLegendaryBonuses(
               Campaign.applyCombinedModifiers(baseProduction, seasonEffects, logisticsLevel, fief.locationModifiers),
               legendaryBonuses
             ),
             unrestPenaltyPct
           );
+          // Siege halves everything produced, applied last so it cuts the fully boosted output.
+          // (applyUnrestPenalty is a plain percentage multiplier over every resource.)
+          const modifiedProduction = fief.isUnderSiege
+            ? Campaign.applyUnrestPenalty(unrestAdjustedProduction, Campaign.SIEGE_PRODUCTION_PENALTY_PCT)
+            : unrestAdjustedProduction;
 
           // Kingdom Taxation — a cut of today's raw gold production (before storage caps,
           // so a full treasury never blocks collection) is diverted straight to the
@@ -2437,7 +2455,7 @@ class Campaign {
           // remaining housing room and gold on hand after upkeep. Independent of
           // (and stacks with) birth-chance population growth.
           const migrantConfig = Campaign.getMigrantAttractionConfig(completed);
-          if (migrantConfig.ratePerDay > 0) {
+          if (migrantConfig.ratePerDay > 0 && !fief.isUnderSiege) {
             const housingCapacityForMigrants = Campaign.calculateHousingCapacityFromCompletedBuildings(
               completed,
               fief.completedResearch,
@@ -2714,7 +2732,10 @@ class Campaign {
             + Campaign.getPopulationGrowthBonusPct(completed);
           const birthChanceMultiplier = Math.max(0, Campaign.getBirthChanceMultiplier(foodProducedToday, adjustedDailyFoodNeeded, starvationDeaths, season)
             * (1 + (populationGrowthBonusPct / 100)));
-          const birthsToday = Campaign.sampleBirths(assignableAdults, populationConfig.dailyBirthChance * birthChanceMultiplier);
+          // Siege stalls population growth entirely: no births (and no migrants, above).
+          const birthsToday = fief.isUnderSiege
+            ? 0
+            : Campaign.sampleBirths(assignableAdults, populationConfig.dailyBirthChance * birthChanceMultiplier);
           const housingCapacity = Campaign.calculateHousingCapacityFromCompletedBuildings(completed, fief.completedResearch, fief.population);
 
           // Enforce prisoner cap: excess prisoners escape and blend into civilian population
