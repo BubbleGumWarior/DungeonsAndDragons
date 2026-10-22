@@ -452,6 +452,7 @@ const startServer = async () => {
         { name: 'addUnitAnimalRequirements', fn: require('./migrations/add_unit_animal_requirements') },
         { name: 'addUnitAwaitingAnimals', fn: require('./migrations/add_unit_awaiting_animals') },
         { name: 'moveAnimalFarmersToHerding', fn: require('./migrations/move_animal_farmers_to_herding') },
+        { name: 'addCascadeFkIndexes', fn: require('./migrations/add_cascade_fk_indexes') },
       ];
       
       const failedMigrations = [];
