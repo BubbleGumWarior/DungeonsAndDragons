@@ -736,6 +736,13 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
     return map;
   }, [guards]);
 
+  // Units still in the training queue (including finished-but-uncollected batches), per unit type.
+  const trainingByUnit = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of queue) map.set(row.unit_type, (map.get(row.unit_type) || 0) + Math.max(1, toCount(row.count)));
+    return map;
+  }, [queue]);
+
   const dmLines = useMemo(
     () =>
       progression
@@ -746,13 +753,22 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
               const reserve = toCount(reserves[t.unit_type]);
               const posted = postedByUnit.get(t.unit_type) || 0;
               const awaiting = toCount((fief.unit_awaiting_animals || {})[t.unit_type]);
-              return { unit: t.unit_type, reserve, posted, awaiting, total: reserve + posted + awaiting };
+              const training = trainingByUnit.get(t.unit_type) || 0;
+              return { unit: t.unit_type, reserve, posted, awaiting, training, total: reserve + posted + awaiting + training };
             })
             .filter((r) => r.total > 0 || dmEdit?.unit === r.unit),
         }))
         .filter((line) => line.rows.length > 0),
-    [progression, reserves, postedByUnit, dmEdit, fief.unit_awaiting_animals]
+    [progression, reserves, postedByUnit, trainingByUnit, dmEdit, fief.unit_awaiting_animals]
   );
+
+  type DmRow = { unit: string; reserve: number; posted: number; awaiting: number; training: number; total: number };
+
+  const dmTotalFor = (unit: string): number =>
+    toCount(reserves[unit]) + (postedByUnit.get(unit) || 0) + toCount((fief.unit_awaiting_animals || {})[unit]) + (trainingByUnit.get(unit) || 0);
+
+  const dmSplitText = (row: DmRow) =>
+    `${row.reserve} in reserve · ${row.posted} posted${row.awaiting > 0 ? ` · ${row.awaiting} awaiting animals` : ''}${row.training > 0 ? ` · ${row.training} in training` : ''}`;
 
   const startDmEdit = (unit: string, total: number) => {
     setDmEdit({ unit, value: String(total) });
@@ -771,13 +787,13 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
     if (ok) setDmEdit(null);
   };
 
-  const renderDmRow = (row: { unit: string; reserve: number; posted: number; awaiting: number; total: number }) => {
+  const renderDmRow = (row: DmRow) => {
     const editing = dmEdit?.unit === row.unit;
     if (!editing || !dmEdit) {
       return (
         <li key={row.unit} className="kt-mt-dm-row">
           <span className="kt-mt-dm-unit">{row.unit}</span>
-          <span className="kt-mt-dm-split">{row.reserve} in reserve · {row.posted} posted{row.awaiting > 0 ? ` · ${row.awaiting} awaiting animals` : ''}</span>
+          <span className="kt-mt-dm-split">{dmSplitText(row)}</span>
           <span className="kt-mt-dm-total" aria-label={`${row.total} total`}>{row.total}</span>
           <button type="button" className="kt-ui-btn" data-variant="ghost" onClick={() => startDmEdit(row.unit, row.total)} disabled={busy === 'dm-adjust-units'}>
             Edit
@@ -787,19 +803,33 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
     }
     const next = clampInt(dmEdit.value === '' ? 0 : dmEdit.value, 0, Number.MAX_SAFE_INTEGER);
     const delta = next - row.total;
-    const fromReserve = Math.min(row.reserve, Math.max(0, -delta));
-    const fromPosts = Math.max(0, -delta) - fromReserve;
+    // Mirrors the server's removal order: idle reserve, posted guards, awaiting animals, then training.
+    let toTake = Math.max(0, -delta);
+    const takeFrom = (available: number) => {
+      const n = Math.min(available, toTake);
+      toTake -= n;
+      return n;
+    };
+    const fromReserve = takeFrom(row.reserve);
+    const fromPosts = takeFrom(row.posted);
+    const fromAwaiting = takeFrom(row.awaiting);
+    const fromTraining = takeFrom(row.training);
+    const removal = [
+      fromReserve > 0 && `${fromReserve} from reserve`,
+      fromPosts > 0 && `unassigns ${fromPosts} from posts`,
+      fromAwaiting > 0 && `${fromAwaiting} awaiting animals`,
+      fromTraining > 0 && `${fromTraining} from training`,
+    ].filter(Boolean).join(', ');
     const preview = delta === 0
       ? 'No change'
       : delta > 0
         ? `Adds ${delta} to reserve`
-        : fromPosts > 0
-          ? `Removes ${fromReserve} from reserve and unassigns ${fromPosts} from posts`
-          : `Removes ${fromReserve} from reserve`;
+        : `Removes ${removal}`;
+    const touchesCommitted = fromPosts + fromAwaiting + fromTraining > 0;
     return (
       <li key={row.unit} className="kt-mt-dm-row" data-editing="true">
         <span className="kt-mt-dm-unit">{row.unit}</span>
-        <span className="kt-mt-dm-split">{row.reserve} in reserve · {row.posted} posted{row.awaiting > 0 ? ` · ${row.awaiting} awaiting animals` : ''}</span>
+        <span className="kt-mt-dm-split">{dmSplitText(row)}</span>
         <div className="kt-mt-dm-edit">
           <Stepper
             size="sm"
@@ -816,7 +846,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
             Cancel
           </button>
         </div>
-        <p className={`kt-mt-dm-preview${fromPosts > 0 ? ' kt-ui-bad' : ''}`} role="status">{preview}</p>
+        <p className={`kt-mt-dm-preview${touchesCommitted ? ' kt-ui-bad' : ''}`} role="status">{preview}</p>
       </li>
     );
   };
@@ -824,7 +854,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
   const renderDm = () => (
     <div className="kt-mt-stack">
       <div className="kt-mt-section-head">
-        <p className="kt-ui-note">Totals include troops posted as guards. Lowering a total takes from reserve first, then unassigns from posts.</p>
+        <p className="kt-ui-note">Totals include troops posted as guards and units still in training. Lowering a total takes from idle reserve first, then posted guards, then units awaiting animals, and finally units in training.</p>
         <button type="button" className="kt-ui-btn" data-variant="ghost" onClick={() => setDmPickerOpen((o) => !o)} aria-expanded={dmPickerOpen}>
           <Icon name="plus" size={14} />
           Add unit type
@@ -842,7 +872,7 @@ const MilitiaTrainingPanel: React.FC<MilitiaTrainingPanelProps> = ({
                     key={t.unit_type}
                     type="button"
                     className="kt-ui-chip"
-                    onClick={() => startDmEdit(t.unit_type, toCount(reserves[t.unit_type]) + (postedByUnit.get(t.unit_type) || 0))}
+                    onClick={() => startDmEdit(t.unit_type, dmTotalFor(t.unit_type))}
                   >
                     {t.unit_type}
                   </button>

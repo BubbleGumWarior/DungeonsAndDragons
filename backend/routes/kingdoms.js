@@ -3924,9 +3924,9 @@ const buildGuardAssignmentsView = (buildings) => {
   }));
 };
 
-// Removes `amount` of `unitType` from a fief: pulls from free reserves first, then — if that isn't
-// enough — pulls the rest from whatever's currently assigned as guards on defensive buildings, so a
-// DM "Remove" always actually removes units even when the whole stack is on garrison duty.
+// Removes `amount` of `unitType` from a fief: pulls from idle reserves first, then from guards posted
+// on defensive buildings, then from troops awaiting animals, and only as a last resort from units still
+// in the training queue, so a DM "Remove" always actually removes units.
 const removeUnitsFromReservesAndGuards = async (client, fiefId, reserves, unitType, amount) => {
   const available = Math.max(0, Number(reserves[unitType] || 0));
   const fromReserves = Math.min(available, amount);
@@ -3959,8 +3959,7 @@ const removeUnitsFromReservesAndGuards = async (client, fiefId, reserves, unitTy
       [row.id, JSON.stringify(assignedByType)]
     );
   }
-  // If remaining > 0 here, fewer than `amount` of this unit existed in total (reserves + guards) — clamps to what's available.
-  // Troops still waiting for an animal are removed last.
+  // Troops still waiting for an animal come next.
   if (remaining > 0) {
     const row = await client.query(`SELECT unit_awaiting_animals FROM fiefs WHERE id = $1 FOR UPDATE`, [fiefId]);
     const awaiting = normalizeUnitReserves(row.rows[0]?.unit_awaiting_animals);
@@ -3969,6 +3968,34 @@ const removeUnitsFromReservesAndGuards = async (client, fiefId, reserves, unitTy
       awaiting[unitType] -= take;
       if (awaiting[unitType] <= 0) delete awaiting[unitType];
       await client.query(`UPDATE fiefs SET unit_awaiting_animals = $2::jsonb WHERE id = $1`, [fiefId, JSON.stringify(awaiting)]);
+      remaining -= take;
+    }
+  }
+  // Last resort: units still in the training queue. Batches with the most training left go first and
+  // finished ("ready") batches last, so the least-progressed recruits are the ones lost.
+  // If remaining > 0 after this, fewer than `amount` of this unit existed in total — clamps to what's available.
+  if (remaining > 0 && (await tableExists('fief_training'))) {
+    const trainingRows = await client.query(
+      `SELECT id, COALESCE(count, 1) AS count
+       FROM fief_training
+       WHERE fief_id = $1 AND unit_type = $2 AND status IN ('training', 'ready')
+       ORDER BY (status = 'ready') ASC, complete_day DESC NULLS FIRST, id DESC
+       FOR UPDATE`,
+      [fiefId, unitType]
+    );
+    for (const row of trainingRows.rows) {
+      if (remaining <= 0) break;
+      const rowCount = Math.max(1, Math.floor(Number(row.count || 1)));
+      const take = Math.min(remaining, rowCount);
+      remaining -= take;
+      if (take >= rowCount) {
+        await client.query(`DELETE FROM fief_training WHERE id = $1`, [row.id]);
+      } else {
+        await client.query(
+          `UPDATE fief_training SET count = $2, animals_locked = LEAST(COALESCE(animals_locked, 0), $2) WHERE id = $1`,
+          [row.id, rowCount - take]
+        );
+      }
     }
   }
   // Mounts / bonded beasts of troops that no longer exist go back to the herd.
