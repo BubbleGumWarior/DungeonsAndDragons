@@ -218,6 +218,12 @@ class Campaign {
     grand_migration_port: 20,
   };
 
+  // Ceiling on the combined (buildings + legendary) birth bonus. The per-building bonuses
+  // stack with no limit, so a fief with hundreds of taverns/amphitheaters otherwise reaches a
+  // 20x+ birth multiplier and fills all its housing with children who can't work for 15 years.
+  // Debuffs (negative values) are not limited.
+  static POPULATION_GROWTH_BONUS_CAP_PCT = 200;
+
   static getPopulationGrowthBonusPct(completedBuildings) {
     let pct = 0;
     for (const building of (completedBuildings || [])) {
@@ -2728,8 +2734,10 @@ class Campaign {
           const foodProducedToday = Math.max(0, Number(capacityApplied.applied.food || 0));
           const season = Campaign.getSeasonForDay(dayNumber);
           // Negative values are intentional debuffs and reduce birth chance instead of boosting it.
-          const populationGrowthBonusPct = Number(legendaryBonuses.population_growth_bonus_pct || 0)
-            + Campaign.getPopulationGrowthBonusPct(completed);
+          const populationGrowthBonusPct = Math.min(
+            Campaign.POPULATION_GROWTH_BONUS_CAP_PCT,
+            Number(legendaryBonuses.population_growth_bonus_pct || 0) + Campaign.getPopulationGrowthBonusPct(completed)
+          );
           const birthChanceMultiplier = Math.max(0, Campaign.getBirthChanceMultiplier(foodProducedToday, adjustedDailyFoodNeeded, starvationDeaths, season)
             * (1 + (populationGrowthBonusPct / 100)));
           // Siege stalls population growth entirely: no births (and no migrants, above).

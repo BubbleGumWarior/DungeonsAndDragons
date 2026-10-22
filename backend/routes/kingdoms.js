@@ -7911,6 +7911,132 @@ router.post('/fiefs/:id/give-birth', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── DM: Set Children By Age — set how many children are exactly N years old (0–14), for any
+// number of ages at once. Uses the same age bucketing as the Children By Age modal: a cohort
+// maturing `d` days from now is (15y − d) days old. Raising a count adds people (population
+// grows with it); lowering removes them (population shrinks) from the youngest end of that age. ──
+router.patch('/fiefs/:id/children-by-age', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!requireDM(req, res)) return;
+
+    const fiefId = Number(req.params.id);
+    if (!Number.isFinite(fiefId)) return res.status(400).json({ error: 'Invalid fief ID' });
+
+    const MATURITY_DAYS = 15 * 365;
+    const MAX_PER_AGE = 10000000;
+    const rawCounts = (req.body?.counts && typeof req.body.counts === 'object') ? req.body.counts : null;
+    if (!rawCounts || Object.keys(rawCounts).length === 0) {
+      return res.status(400).json({ error: 'counts is required' });
+    }
+    const targets = new Map();
+    for (const [ageRaw, countRaw] of Object.entries(rawCounts)) {
+      const age = Number(ageRaw);
+      const count = Number(countRaw);
+      if (!Number.isInteger(age) || age < 0 || age > 14) {
+        return res.status(400).json({ error: `Invalid age: ${ageRaw}` });
+      }
+      if (!Number.isInteger(count) || count < 0 || count > MAX_PER_AGE) {
+        return res.status(400).json({ error: `Count for age ${age} must be a whole number between 0 and ${MAX_PER_AGE}` });
+      }
+      targets.set(age, count);
+    }
+
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      `SELECT f.*, k.player_id, k.campaign_id, c.dungeon_master_id
+       FROM fiefs f
+       JOIN kingdoms k ON k.id = f.kingdom_id
+       JOIN campaigns c ON c.id = k.campaign_id
+       WHERE f.id = $1
+       FOR UPDATE`,
+      [fiefId]
+    );
+
+    const fief = result.rows[0];
+    if (!fief) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fief not found' });
+    }
+
+    const campDayResult = await client.query(
+      `SELECT COALESCE(current_day, 1) AS current_day FROM campaigns WHERE id = $1`,
+      [fief.campaign_id]
+    );
+    const currentDay = Math.max(1, Math.floor(Number(campDayResult.rows[0]?.current_day || 1)));
+
+    const ageOfMaturityDay = (maturityDay) => {
+      const daysUntilMature = Math.max(0, maturityDay - currentDay);
+      const ageDays = Math.max(0, MATURITY_DAYS - daysUntilMature);
+      return Math.min(14, Math.floor(ageDays / 365));
+    };
+
+    const nextSchedule = normalizeMaturationSchedule(fief.population_maturation_schedule);
+    const keysByAge = new Map();
+    const totalByAge = new Map();
+    for (const [key, count] of Object.entries(nextSchedule)) {
+      const age = ageOfMaturityDay(Number(key));
+      totalByAge.set(age, (totalByAge.get(age) || 0) + count);
+      if (!keysByAge.has(age)) keysByAge.set(age, []);
+      keysByAge.get(age).push(Number(key));
+    }
+
+    let populationDelta = 0;
+    for (const [age, target] of targets) {
+      const current = totalByAge.get(age) || 0;
+      const delta = target - current;
+      if (delta === 0) continue;
+
+      if (delta > 0) {
+        // Add at the start of the age bucket (exactly `age` years old today).
+        const key = String(currentDay + MATURITY_DAYS - (age * 365));
+        nextSchedule[key] = (nextSchedule[key] || 0) + delta;
+      } else {
+        let toRemove = -delta;
+        // Furthest-from-maturity (youngest) cohorts go first.
+        const keys = (keysByAge.get(age) || []).sort((a, b) => b - a);
+        for (const dayKey of keys) {
+          if (toRemove <= 0) break;
+          const key = String(dayKey);
+          const have = nextSchedule[key] || 0;
+          const removed = Math.min(have, toRemove);
+          if (have - removed <= 0) delete nextSchedule[key];
+          else nextSchedule[key] = have - removed;
+          toRemove -= removed;
+        }
+      }
+      populationDelta += delta;
+    }
+
+    const nextPopulation = Math.max(0, Math.floor(Number(fief.population || 0)) + populationDelta);
+
+    const updateResult = await client.query(
+      `UPDATE fiefs
+       SET population = $2,
+           population_maturation_schedule = $3::jsonb
+       WHERE id = $1
+       RETURNING *`,
+      [fiefId, nextPopulation, JSON.stringify(nextSchedule)]
+    );
+
+    await client.query('COMMIT');
+
+    const io = req.app.get('io') || req.io;
+    if (io) {
+      io.to(`campaign_${fief.campaign_id}`).emit('kingdomDataChanged', { campaignId: fief.campaign_id, fiefId });
+    }
+
+    res.json({ fief: withPopulationBreakdown(updateResult.rows[0]), populationDelta });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error setting children by age:', error);
+    res.status(500).json({ error: 'Failed to update children' });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── DM: Set Fief Location Modifiers + Travel Days ───────────────────────────
 router.patch('/fiefs/:id/location-modifiers', authenticateToken, async (req, res) => {
   try {

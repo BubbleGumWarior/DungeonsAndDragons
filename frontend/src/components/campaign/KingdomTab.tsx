@@ -576,6 +576,8 @@ const KingdomTab: React.FC<Props> = ({
 
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [showChildrenModal, setShowChildrenModal] = useState(false);
+  // DM edit mode for the Children By Age modal: age (0–14) -> draft count text; null = not editing.
+  const [childrenDraft, setChildrenDraft] = useState<Record<number, string> | null>(null);
   const [showGiveBirthModal, setShowGiveBirthModal] = useState(false);
   const [giveBirthCount, setGiveBirthCount] = useState('1');
   const [giveBirthMode, setGiveBirthMode] = useState<'fixed' | 'random'>('fixed');
@@ -2530,6 +2532,51 @@ const KingdomTab: React.FC<Props> = ({
       pushToast(result.count > 1 ? `${result.count} children were born!` : 'A child was born!', 'success');
     } catch (e: any) {
       pushToast(e?.response?.data?.error || 'Failed to give birth');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const closeChildrenModal = () => {
+    setShowChildrenModal(false);
+    setChildrenDraft(null);
+  };
+
+  const startEditingChildren = () => {
+    const draft: Record<number, string> = {};
+    for (let age = 0; age <= 14; age += 1) {
+      draft[age] = String(childrenByAgeYears.find((g) => g.ageYears === age)?.count || 0);
+    }
+    setChildrenDraft(draft);
+  };
+
+  const handleSaveChildrenByAge = async () => {
+    if (!fiefDetails || !isDungeonMaster || !childrenDraft) return;
+    const counts: Record<number, number> = {};
+    for (let age = 0; age <= 14; age += 1) {
+      const raw = String(childrenDraft[age] ?? '').trim();
+      const value = raw === '' ? 0 : Number(raw);
+      if (!Number.isInteger(value) || value < 0) {
+        pushToast(`Age ${age}: enter a whole number of 0 or more.`);
+        return;
+      }
+      const current = childrenByAgeYears.find((g) => g.ageYears === age)?.count || 0;
+      if (value !== current) counts[age] = value;
+    }
+    if (Object.keys(counts).length === 0) {
+      setChildrenDraft(null);
+      return;
+    }
+
+    setBusy('children-by-age');
+    try {
+      await kingdomAPI.setChildrenByAge(Number(fiefDetails.id), counts);
+      await fetchFief(Number(fiefDetails.id));
+      await fetchKingdoms();
+      setChildrenDraft(null);
+      pushToast('Children updated.', 'success');
+    } catch (e: any) {
+      pushToast(e?.response?.data?.error || 'Failed to update children');
     } finally {
       setBusy(null);
     }
@@ -6026,7 +6073,7 @@ const KingdomTab: React.FC<Props> = ({
             overflowY: 'auto',
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowChildrenModal(false);
+            if (e.target === e.currentTarget) closeChildrenModal();
           }}
         >
           <div
@@ -6044,7 +6091,7 @@ const KingdomTab: React.FC<Props> = ({
           >
             <div className="modal-header">
               <h3 className="modal-title">Children By Age</h3>
-              <button className="modal-close" onClick={() => setShowChildrenModal(false)} aria-label="Close">×</button>
+              <button className="modal-close" onClick={() => closeChildrenModal()} aria-label="Close">×</button>
             </div>
 
             <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: 'calc(90vh - 90px)', overflowY: 'auto' }}>
@@ -6060,7 +6107,26 @@ const KingdomTab: React.FC<Props> = ({
                   : `Next child matures in ${nextMaturityDays} day(s).`}
               </div>
 
-              {!currentCampaignDay ? (
+              {childrenDraft && currentCampaignDay ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <div style={{ color: '#fbbf24', fontSize: '0.8rem' }}>
+                    DM edit — changing a count adds or removes that many people from the fief's population.
+                  </div>
+                  {Array.from({ length: 15 }, (_, age) => (
+                    <label key={`edit-age-${age}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '0.45rem', padding: '0.3rem 0.55rem' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Age {age}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={childrenDraft[age] ?? '0'}
+                        onChange={(e) => setChildrenDraft((prev) => ({ ...(prev || {}), [age]: e.target.value }))}
+                        style={{ width: '8rem', padding: '0.3rem 0.5rem', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(15,15,15,0.6)', color: 'var(--text-secondary)', textAlign: 'right', fontWeight: 700 }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : !currentCampaignDay ? (
                 <div style={{ color: '#fca5a5', fontSize: '0.82rem' }}>Could not determine current campaign day, so age grouping is unavailable.</div>
               ) : childrenByAgeYears.length === 0 ? (
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No children cohorts found.</div>
@@ -6075,8 +6141,22 @@ const KingdomTab: React.FC<Props> = ({
                 </div>
               )}
 
-              <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'flex-end' }}>
-                <button className="btn btn-secondary" onClick={() => setShowChildrenModal(false)}>Close</button>
+              <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                {childrenDraft ? (
+                  <>
+                    <button className="btn btn-secondary" onClick={() => setChildrenDraft(null)} disabled={busy === 'children-by-age'}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleSaveChildrenByAge} disabled={busy === 'children-by-age'}>
+                      {busy === 'children-by-age' ? 'Saving...' : 'Save'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {isDungeonMaster && currentCampaignDay ? (
+                      <button className="btn btn-secondary" onClick={startEditingChildren}>DM Edit</button>
+                    ) : null}
+                    <button className="btn btn-secondary" onClick={() => closeChildrenModal()}>Close</button>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -2262,6 +2262,14 @@ export const kingdomAPI = {
     return response.data;
   },
 
+  setChildrenByAge: async (
+    fiefId: number,
+    counts: Record<number, number>
+  ): Promise<{ fief: KingdomFief; populationDelta: number }> => {
+    const response = await api.patch(`/kingdoms/fiefs/${fiefId}/children-by-age`, { counts });
+    return response.data;
+  },
+
   getKingdomAnimals: async (
     kingdomId: number
   ): Promise<{
